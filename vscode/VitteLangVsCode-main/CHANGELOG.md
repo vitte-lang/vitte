@@ -5,6 +5,20 @@ and adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — 2026-10-17
+### Changed
+- Synchronized the VS Code language surface with `grammar/vitte.ebnf`: `use`, `return`, `let`, `proc`, `and/or/not`, and `::` are now the only canonical spellings exposed by completions, snippets, quick fixes, semantic tokens, navigation, and documentation.
+- Updated the language server indexer, navigation, hover, inlay hints, lint rules, import organizer, auto-imports, and local/AI suggestion engines for `form`, `pick`, `trait`, `impl`, `opaque`, generics, attributes, patterns, `where`, and the current `entry` syntax.
+- Removed obsolete migration actions that rewrote valid `use`/`return` code back to `pull`/`give`; import path normalization now proposes `::`.
+- Added Unicode-aware identifier matching to the editor word pattern, completion token extraction, and language facts.
+- Regenerated the workspace import catalog while excluding test-only modules.
+
+### Fixed
+- Removed obsolete `&&`/`||` highlighting and stale `give`, `make`, `fn`, `module`, `import`, and `otherwise` suggestions.
+- Replaced legacy colorization and test fixtures with canonical Vitte examples covering generic types, traits, implementations, attributes, patterns, imports, and recovery.
+
+---
+
 ## [2.2.0] — 2026-09-20
 ### Changed
 - Aligned TextMate highlighting, language facts, completions, snippets, comments, operators, literals, and primitive types with the canonical EBNF and Pest grammars.

@@ -349,9 +349,16 @@ The canonical generator validates the PE header before invoking NSIS:
   ARCH=$arch WINDOWS_VITTE_EXE=/path/to/vitte.exe scripts/build-windows-installer.sh
 EOF
 
-  rm -f "$kit_file" "$kit_file.sha256"
+  rm -f \
+    "$kit_file" \
+    "$kit_file.sha256" \
+    "$kit_file.MANIFEST.json" \
+    "$package_file" \
+    "$package_file.sha256" \
+    "$package_file.MANIFEST.json"
   scripts_build_tar_gz "$kit_file" "$stage" installer.nsi install.ps1 uninstall.ps1 BUILD.txt LICENSE README.md logo.png payload
   scripts_build_sha256_write "$kit_file" "$kit_file.sha256"
+  scripts_build_write_artifact_manifest "$kit_file" windows "$arch" "$VERSION"
   printf '[build-windows-installer] wrote build kit %s (%s bytes)\n' "$kit_file" "$(wc -c < "$kit_file" | tr -d ' ')"
 
   if [ "$has_pe" -eq 1 ] && command -v makensis >/dev/null 2>&1; then
@@ -360,6 +367,7 @@ EOF
     validate_pe "$package_file" "$arch" || die "NSIS output is not a Windows $arch executable"
     sign_windows_artifact "$package_file"
     scripts_build_sha256_write "$package_file" "$package_file.sha256"
+    scripts_build_write_artifact_manifest "$package_file" windows "$arch" "$VERSION"
     printf '[build-windows-installer] wrote %s (%s bytes)\n' "$package_file" "$(wc -c < "$package_file" | tr -d ' ')"
   elif [ "$has_pe" -eq 0 ]; then
     [ "$REQUIRE_NATIVE" -eq 0 ] ||

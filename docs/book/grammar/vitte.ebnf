@@ -1,15 +1,17 @@
 (* GENERATED FILE - DO NOT EDIT
    grammar_version: 2
-   source: src/vitte/grammar/vitte.ebnf
+   source: grammar/vitte.ebnf
    tool: docs/book/grammar/scripts/sync_grammar.py v2
 *)
 
 (*
   Vitte language grammar — normative frontend surface.
 
-  This is the canonical Vitte EBNF used by the parser, documentation,
-  editor tooling, and tests. The notation is defined here so that the
-  file has one unambiguous interpretation:
+  This file is the normative language surface and the canonical source for
+  published grammar references and editor tooling. It does not assert that
+  every compiler route implements every production. The native parser subset
+  and downstream compilation status are tracked in
+  docs/bootstrap/frontend_native_port.md. The notation is:
 
     ::=       defines a production
     |         separates alternatives
@@ -67,8 +69,8 @@ toplevel ::= inner_attribute
 space_decl ::= "space" WS1 module_path ;
 
 use_decl ::= "use" WS1 package_path [ use_group | use_glob ] [ WS1 "as" WS1 ident ] ;
-use_glob ::= "." "*" ;
-use_group ::= "." "{" WS? ( "*" | import_items [ WS? "," WS? "*" ]? ) WS? "}" ;
+use_glob ::= "::" "*" ;
+use_group ::= "::" "{" WS? ( "*" | import_items [ WS? "," WS? "*" ]? ) WS? "}" ;
 
 import_items ::= import_item { WS? "," WS? import_item } [ WS? "," ] ;
 import_item ::= ident [ WS1 "as" WS1 ident ] ;
@@ -156,6 +158,7 @@ proc_modifier ::= "async" WS1
 
 proc_suffix ::= effects_clause
               | requires_clause
+              | ensures_clause
               | where_clause
               | "noexcept"
               ;
@@ -180,10 +183,11 @@ intrinsic_decl ::= { attr_prefix WS? } "intrinsic" WS1 ident [ generic_params ]
                    WS? ";"
                    ;
 
-(* macro / compiler / pass / backend / diagnostic / entry are currently
-    preserved as top-level meta items by the frontend. They accept either a
-    trailing ";" form or a raw "{ ... }" body, but the body is not yet parsed
-    into a dedicated structured AST. Keep these rules narrow and parser-aligned. *)
+(* These declarations are part of the normative language surface. Each
+   frontend route may support only a subset; native parser acceptance
+   and downstream expansion/codegen support are tracked separately in
+   docs/bootstrap/frontend_native_port.md. Meta bodies are not described here
+   as proof of structured AST or code-generation support. *)
 macro_decl ::= { attr_prefix WS? } "macro" WS1 ident [ "(" WS? macro_param_list? WS? ")" ] WS? meta_tail ;
 macro_param_list ::= macro_param { WS? "," WS? macro_param } [ WS? "," ] ;
 macro_param ::= ident [ WS? ":" WS? macro_kind ] ;
@@ -198,12 +202,9 @@ comptime_decl ::= { attr_prefix WS? } "comptime" WS? block ;
 visibility ::= "pub" | "priv" | "pub" WS? "(" WS? visibility_scope WS? ")" ;
 visibility_scope ::= "package" | "module" | "super" ;
 
-generic_params ::= "[" WS? generic_param_list? WS? "]" ;
+generic_params ::= "<" WS? generic_param_list? WS? ">" ;
 generic_param_list ::= generic_param { WS? "," WS? generic_param } [ WS? "," ] ;
-generic_param ::= ident [ WS? ":" WS? trait_bound ] [ WS? "=" WS? type_expr ]
-                | "const" WS1 ident WS? ":" WS? type_expr
-                | "comptime" WS1 ident WS? ":" WS? type_expr
-                ;
+generic_param ::= ident [ WS? ":" WS? trait_bound ] ;
 
 where_clause ::= "where" WS1 where_bounds ;
 where_bounds ::= where_bound { WS? "," WS? where_bound } [ WS? "," ] ;
@@ -223,13 +224,14 @@ param_mode ::= "mut" | "owned" | "borrow" | "move" ;
 
 effects_clause ::= "effects" WS? "(" WS? ident_list? WS? ")" ;
 requires_clause ::= "requires" WS? "(" WS? capability_list? WS? ")" ;
+ensures_clause ::= "ensures" WS1 expr ";" ;
 capability_list ::= capability { WS? "," WS? capability } [ WS? "," ] ;
-capability ::= ident { "." ident } ;
+capability ::= ident { "::" ident } ;
 
 module_path ::= relative? package_parts ;
 package_path ::= relative? package_parts ;
-relative ::= { "." } ;
-package_parts ::= ident { ( "/" | "." | "::" ) ident } ;
+relative ::= "::" { "::" } ;
+package_parts ::= ident { ( "/" | "::" ) ident } ;
 ident_list ::= ident { WS? "," WS? ident } [ WS? "," ] ;
 
 query_decl ::= { attr_prefix WS? } "query" WS1 ident
@@ -260,7 +262,7 @@ outer_attribute ::= "#[" attr_path [ "(" WS? attr_arg_list? WS? ")" ] "]" ;
 doc_comment ::= "///" { ~NEWLINE ANY } ;
 docstring ::= raw_string_lit ;
 
-attr_path ::= ident { "." ident } ;
+attr_path ::= ident { "::" ident } ;
 attr_arg_list ::= attr_arg { WS? "," WS? attr_arg } [ WS? "," ] ;
 attr_arg ::= ident
            | string_lit
@@ -276,7 +278,7 @@ block ::= "{" WS? { stmt WS? } "}" ;
 stmt ::= local_const_stmt stmt_end
        | let_stmt stmt_end
        | set_stmt stmt_end
-       | give_stmt stmt_end
+       | return_stmt stmt_end
        | try_stmt stmt_end
        | defer_stmt
        | asm_stmt stmt_end
@@ -308,7 +310,7 @@ let_stmt ::= "let" WS1 [ "mut" WS1 ] pattern [ WS? ":" WS? type_expr ] WS? "=" W
 set_stmt ::= "set" WS1 assign_target WS? assign_op WS? expr ;
 assign_target ::= unary_expr ;
 
-give_stmt ::= "give" [ WS1 expr ] ;
+return_stmt ::= "return" [ WS1 expr ] ;
 try_stmt ::= "try" WS1 expr ;
 defer_stmt ::= "defer" WS? block ;
 
@@ -363,8 +365,8 @@ ternary_expr ::= coalesce_expr [ WS? "?" WS? expr WS? ":" WS? expr ] ;
 coalesce_expr ::= range_expr { WS? "??" WS? range_expr } ;
 range_expr ::= or_expr [ WS? ( ".." | "..=" ) WS? or_expr ] ;
 
-or_expr ::= and_expr { WS? ( "or" | "||" ) WS? and_expr } ;
-and_expr ::= bit_or_expr { WS? ( "and" | "&&" ) WS? bit_or_expr } ;
+or_expr ::= and_expr { WS? "or" WS? and_expr } ;
+and_expr ::= bit_or_expr { WS? "and" WS? bit_or_expr } ;
 
 bit_or_expr ::= bit_xor_expr { WS? "|" WS? bit_xor_expr } ;
 bit_xor_expr ::= bit_and_expr { WS? "^" WS? bit_and_expr } ;
@@ -400,6 +402,7 @@ slice_expr ::= [ expr ] ":" [ expr ] [ ":" expr ] ;
 
 primary ::= literal
           | builtin_expr
+          | print_call
           | path_expr
           | struct_lit
           | list_lit
@@ -417,7 +420,9 @@ primary ::= literal
           | "(" WS? expr WS? ")"
           ;
 
-path_expr ::= ident { ( "." | "::" ) ident } ;
+path_expr ::= ident { "::" ident } ;
+
+print_call ::= "print" call_suffix ;
 
 arg_list ::= arg { WS? "," WS? arg } [ WS? "," ] ;
 arg ::= ident WS? ":" WS? expr | expr ;
@@ -435,8 +440,10 @@ resource_lit ::= "resource" WS? "{" WS? resource_items? WS? "}" ;
 resource_items ::= resource_item { WS? "," WS? resource_item } [ WS? "," ] ;
 resource_item ::= ident WS? ":" WS? expr ;
 
-struct_lit ::= type_path WS? "{" WS? field_init_list? WS? "}" ;
-type_path ::= ident { ( "." | "::" ) ident } ;
+struct_lit ::= type_path [ generic_type_args ] WS? "{" WS? field_init_list? WS? "}" ;
+type_path ::= ident { "::" ident } ;
+generic_type_args ::= "<" WS? type_expr_list? WS? ">" ;
+type_expr_list ::= type_expr { WS? "," WS? type_expr } [ WS? "," ] ;
 field_init_list ::= field_init { WS? "," WS? field_init } [ WS? "," ] ;
 field_init ::= ident WS? ":" WS? expr
              | ident
@@ -487,7 +494,7 @@ pattern_atom ::= "_"
 
 pattern_bind ::= ident ;
 pattern_ctor ::= pattern_head [ "(" WS? pattern_args? WS? ")" ] ;
-pattern_head ::= ident { ( "." | "::" ) ident } ;
+pattern_head ::= ident { "::" ident } ;
 pattern_args ::= pattern { WS? "," WS? pattern } [ WS? "," ] ;
 
 pattern_struct ::= pattern_head WS? "{" WS? pattern_fields? WS? "}" ;
@@ -577,32 +584,21 @@ primitive_type ::= "void"
                  | "InstrId"
                  ;
 
-(* Complete reserved-word inventory shared with editor tooling. Contextual
-   words such as ABI names, visibility scopes, region kinds, and Self remain
+(* Reserved-word inventory shared with editor tooling. Contextual terminals
+   such as `pub`, `asm`, `emit`, and `loop` are recognized by their productions
+   but are not globally reserved. ABI names, region kinds, and Self remain
    identifiers outside the productions that give them a special meaning. *)
 reserved_keyword ::= "space" | "use" | "export" | "share"
-                   | "const" | "static" | "global" | "region"
-                   | "type" | "opaque" | "extern" | "form" | "pick"
-                   | "trait" | "impl" | "proc" | "intrinsic"
-                   | "compiler" | "query" | "pass" | "backend"
-                   | "diagnostic" | "macro" | "comptime" | "static_assert"
-                   | "test" | "bench" | "entry"
-                   | "pub" | "priv" | "unsafe" | "async" | "inline"
-                   | "noinline" | "naked" | "interrupt" | "where"
-                   | "effects" | "requires" | "operator" | "noexcept"
-                   | "as" | "for" | "at" | "let" | "set" | "give"
-                   | "try" | "defer" | "asm" | "emit" | "assert"
-                   | "panic" | "unreachable" | "if" | "elif" | "else"
-                   | "while" | "loop" | "in" | "break" | "continue"
-                   | "select" | "when" | "match" | "case" | "with"
-                   | "critical" | "mut" | "owned" | "borrow" | "move"
-                   | "await" | "not" | "and" | "or" | "is" | "self"
-                   | "ref" | "dyn" | "true" | "false" | "null"
-                   | "sizeof" | "alignof" | "offsetof" | "typeof"
-                   | "nameof" | "map" | "resource" | "volatile"
-                   | "atomic" | "user" | "kernel" | "phys" | "mmio"
-                   | "dma"
-                   | "class" | "union" | "bits" | "flags"
+                   | "const" | "region" | "type" | "extern" | "form" | "pick"
+                   | "trait" | "impl" | "proc" | "intrinsic" | "compiler"
+                   | "diagnostic" | "macro" | "as" | "assert" | "async"
+                   | "bench" | "break" | "continue" | "elif" | "else"
+                   | "ensures" | "entry" | "for" | "if" | "in" | "let"
+                   | "requires" | "return" | "set" | "test" | "print" | "unsafe"
+                   | "while" | "select" | "when" | "match" | "case"
+                   | "critical" | "mut" | "owned" | "borrow" | "not"
+                   | "and" | "or" | "is" | "self" | "true" | "false" | "null"
+                   | "kernel" | "class" | "flags"
                    ;
 
 (* Literals. *)

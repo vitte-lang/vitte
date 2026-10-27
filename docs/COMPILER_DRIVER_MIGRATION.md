@@ -1,14 +1,21 @@
-# Compiler Driver Alignment
+# Compiler Driver Migration History
 
-This document tracks the Vitte-owned compiler driver surface after the host
-driver migration.
+**Status correction — 2026-10-23:** The Vitte-owned runtime described below was
+an intended migration state, not the current executable route. The standard
+build now links the Vitte lexer, parser, semantic analyzer, codegen
+orchestrator, and AST-to-C17 emitter for ordinary `compile`, `run`, and
+`--emit-c`. The CLI still uses bootstrap fallback after native frontend
+failures; `check`, inspection, and `--emit-ir` retain bootstrap stages, and
+the C host still compiles, links, and executes generated output. The compiler
+is not yet self-hosted. The remaining sections are retained as historical
+migration notes.
 
-## Overview
+## Archived Overview
 
 The driver remains a first-class subsystem because it defines the stable command
 entrypoints that users, CI, bootstrap flows, and documentation all depend on.
 
-| Concern | Current contract |
+| Concern | Historical contract |
 | --- | --- |
 | Surface ownership | `src/vitte/compiler/driver/*` catalogs |
 | Runtime implementation | `src/vitte/compiler/driver/*` |
@@ -33,7 +40,7 @@ Why the driver stays explicit:
 - Normalization rules must stay deterministic.
 - Strict gates must detect driver regressions before release-facing changes land.
 
-## Current Surface
+## Planned Vitte Surface (Historical)
 
 The Vitte package lives in:
 
@@ -53,7 +60,7 @@ This package now owns:
 - normalization of selected command and flag aliases
 - stage mapping for normalized commands
 
-## Data Flow
+## Planned Data Flow (Historical)
 
 1. User input enters through the top-level driver command surface.
 2. Package catalogs normalize commands, aliases, and selected option values.
@@ -61,7 +68,7 @@ This package now owns:
 4. Strict audits verify that the exposed help and command behavior still match
    the owned catalogs.
 
-## Driver Implementation
+## Intended Driver Implementation (Historical)
 
 The compiler driver implementation is split between the public entry facade and
 the runtime driver core:
@@ -75,7 +82,7 @@ the runtime driver core:
 and packaging flows. `src/vitte/compiler/driver/compiler.vit` remains the
 runtime command dispatcher and stage-mapping core behind that facade.
 
-## Audit And Bootstrap Commands
+## Historical Audit And Bootstrap Commands
 
 ```sh
 make driver-surface-audit
@@ -83,13 +90,13 @@ make driver-surface-parity
 make selfhost-driver-bootstrap
 ```
 
-## Pipeline
+## Planned Pipeline (Historical)
 
 The driver sits ahead of the compiler pipeline proper. Its job is to convert CLI
 surface into a precise compiler action before frontend, analysis, or backend
 work begins.
 
-## Examples
+## Historical Examples
 
 ```sh
 make driver-surface-audit
@@ -98,7 +105,7 @@ make driver-surface-parity
 ./bin/vitte check src/app.vit
 ```
 
-## Next Step
+## Remaining Historical Goals
 
 Keep option value normalization aligned across the driver package and compiler
 driver:

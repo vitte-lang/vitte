@@ -1,0 +1,20 @@
+/// Interface de l'allocateur système choisi par défaut par `alloc`.
+space alloc::allocator::global;
+
+use core::mem::layout::{Layout};
+use alloc::allocator::allocator::{Allocator, system_allocator, allocator_allocate, allocator_deallocate};
+use alloc::allocator::result::{AllocationResult};
+
+export proc global_allocator() -> Allocator {
+    return system_allocator();
+}
+
+export proc global_allocate(layout: Layout) -> AllocationResult {
+    let allocator: Allocator = system_allocator();
+    return allocator_allocate(&allocator, layout);
+}
+
+export proc global_deallocate(pointer: *mut u8, layout: Layout) -> bool {
+    let allocator: Allocator = system_allocator();
+    return allocator_deallocate(&allocator, pointer, layout);
+}

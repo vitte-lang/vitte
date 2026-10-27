@@ -1,4 +1,10 @@
-# Diagnostics Migration Plan (`dignostics` -> `diagnostics`)
+# Diagnostics Migration Plan (Historical)
+
+This plan refers to the retired `src/vitte/` layout. Current diagnostics sources
+are under `src/bootstrap/diagnostic/` (C17 bootstrap) and
+`src/compiler/diagnostic/` (staged Vitte implementation). The phases below are
+kept as migration history, not as current source paths or active completion criteria.
+
 
 ## Goal
 Use canonical `diagnostics` naming everywhere while preserving temporary compatibility during bootstrap.

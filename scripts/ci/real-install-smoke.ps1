@@ -22,7 +22,7 @@ function Invoke-Vitte {
 
 $source = @"
 proc main() -> int {
-  give 0;
+  return 0;
 }
 "@
 $smoke = Join-Path $WorkDir "smoke.vit"

@@ -58,9 +58,9 @@
 (type_declaration "type" (identifier) @type)
 (opaque_declaration "opaque" (identifier) @type)
 
-(parameter (identifier) @variable.parameter)
-(let_statement (identifier) @variable)
-(for_statement (identifier) @variable)
+(parameter (pattern (identifier) @variable.parameter))
+(let_statement (pattern (identifier) @variable))
+(for_statement (pattern (identifier) @variable))
 (generic_parameter (identifier) @type)
 (field (identifier) @property)
 (variant (identifier) @constant)

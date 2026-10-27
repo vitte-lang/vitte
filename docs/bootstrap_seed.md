@@ -93,21 +93,9 @@ bootstrap targets concurrently in the same worktree.
 
 ## Source Coverage
 
-The readable seed and real compiler entry should exercise the current
-bootstrap-native forms they rely on:
+The readable stage0 source is `toolchain/seed/src/main.vit`. The active compiler executable entry is `src/bootstrap/main.c`; compiler implementation files are under `src/bootstrap/`, while the staged native Vitte components are under `src/compiler/`.
 
-- `toolchain/seed/src/main.vit` must include named string constants, named int
-  constants, `proc main(args: list[string]) -> int`, and a named constant return.
-- `src/vitte/compiler/main.vit` must include named `VERSION_TEXT` and
-  `BANNER_TEXT` string constants, use a named string constant in
-  `version_text()`, and define `main`.
-
-This is checked by `make bootstrap-source-coverage-check` and is included in the
-bootstrap-native contract targets.
-
-The stricter trust-root syntax contract is documented in
-`docs/compiler/selfhost_core_subset.md` and enforced by
-`make selfhost-subset-check`.
+The former coverage requirement for `src/vitte/compiler/main.vit` is retired because that path is not present in the current repository. The native Vitte track does not yet provide a complete replacement entry point.
 
 ## Project Path Resolution
 
@@ -115,12 +103,11 @@ Bootstrap and driver flows now accept a project directory as the CLI input path.
 When a command such as `./bin/vitte check .` or `./bin/vitte build . -o
 target/app` receives a directory-like path, it resolves the entry in this order:
 
-1. src/main.vit
-2. `src/vitte/compiler/main.vit`
-3. `main.vit`
+1. `src/main.vit`
+2. `main.vit`
 
-This keeps bootstrap-oriented projects and the compiler source tree addressable
-through the same CLI surface.
+This keeps bootstrap-oriented projects addressable through the same CLI surface.
+The former `src/vitte/compiler/main.vit` lookup is retired.
 
 For CI or release checks, `SEED_CONTRACT_BASE` may be set to the base commit or
 branch used for the diff:

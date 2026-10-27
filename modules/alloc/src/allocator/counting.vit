@@ -1,0 +1,85 @@
+/// Compteurs explicites pour les allocations effectuées par une stratégie.
+space alloc::allocator::counting;
+
+use core::mem::layout::{Layout, layout_is_valid};
+use alloc::allocator::result::{AllocationResult, AllocationError, allocation_failure};
+use alloc::allocator::allocator::{Allocator, allocator_allocate, allocator_deallocate};
+
+export form AllocationCounters {
+    allocations: usize,
+    deallocations: usize,
+    failures: usize,
+    bytes_total: usize,
+    bytes_live: usize,
+    bytes_peak: usize,
+}
+
+export form CountingAllocator {
+    base: Allocator,
+    counters: AllocationCounters,
+}
+
+export proc counting_allocator(base: Allocator) -> CountingAllocator {
+    return CountingAllocator {
+        base: base,
+        counters: AllocationCounters {
+            allocations: 0,
+            deallocations: 0,
+            failures: 0,
+            bytes_total: 0,
+            bytes_live: 0,
+            bytes_peak: 0,
+        },
+    };
+}
+
+export proc counting_allocate(value: &mut CountingAllocator, layout: Layout) -> AllocationResult {
+    if not layout_is_valid(&layout) {
+        if value.counters.failures < usize.MAX {
+            set value.counters.failures = value.counters.failures + 1;
+        }
+        return allocation_failure(AllocationError.InvalidLayout, value.base.kind);
+    }
+    if value.counters.bytes_live > usize.MAX - layout.size {
+        if value.counters.failures < usize.MAX {
+            set value.counters.failures = value.counters.failures + 1;
+        }
+        return allocation_failure(AllocationError.SizeOverflow, value.base.kind);
+    }
+    let result: AllocationResult = allocator_allocate(&value.base, layout);
+    if result.success {
+        if value.counters.allocations < usize.MAX {
+            set value.counters.allocations = value.counters.allocations + 1;
+        }
+        if value.counters.bytes_total <= usize.MAX - layout.size {
+            set value.counters.bytes_total = value.counters.bytes_total + layout.size;
+        } else {
+            set value.counters.bytes_total = usize.MAX;
+        }
+        set value.counters.bytes_live = value.counters.bytes_live + layout.size;
+        if value.counters.bytes_live > value.counters.bytes_peak {
+            set value.counters.bytes_peak = value.counters.bytes_live;
+        }
+    } else if value.counters.failures < usize.MAX {
+        set value.counters.failures = value.counters.failures + 1;
+    }
+    return result;
+}
+
+export proc counting_deallocate(
+    value: &mut CountingAllocator,
+    pointer: *mut u8,
+    layout: Layout
+) -> bool {
+    if layout.size > value.counters.bytes_live { return false; }
+    if not allocator_deallocate(&value.base, pointer, layout) { return false; }
+    if value.counters.deallocations < usize.MAX {
+        set value.counters.deallocations = value.counters.deallocations + 1;
+    }
+    set value.counters.bytes_live = value.counters.bytes_live - layout.size;
+    return true;
+}
+
+export proc counting_counters(value: &CountingAllocator) -> AllocationCounters {
+    return value.counters;
+}

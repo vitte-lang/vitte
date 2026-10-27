@@ -135,7 +135,7 @@ def draw_rule_svg(rule: Rule) -> str:
 
 
 def build_index(rules: list[Rule]) -> str:
-    lines = ["# Railroad Diagrams", "", "Generated from `src/vitte/grammar/vitte.ebnf`.", ""]
+    lines = ["# Railroad Diagrams", "", "Generated from `grammar/vitte.ebnf`.", ""]
     for rule in rules:
         lines.append(f"- [{rule.name}](./{rule.name}.svg)")
     lines.append("")
@@ -143,12 +143,12 @@ def build_index(rules: list[Rule]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build railroad SVG diagrams from src/vitte/grammar/vitte.ebnf")
+    parser = argparse.ArgumentParser(description="Build railroad SVG diagrams from grammar/vitte.ebnf")
     parser.add_argument("--check", action="store_true", help="fail if generated files are out of sync")
     args = parser.parse_args()
 
     repo = Path(__file__).resolve().parents[4]
-    grammar_path = repo / "src/vitte/grammar/vitte.ebnf"
+    grammar_path = repo / "grammar/vitte.ebnf"
     out_dir = repo / "docs/book/grammar/railroad"
     index_path = out_dir / "README.md"
 
@@ -164,14 +164,19 @@ def main() -> int:
 
     mismatches: list[Path] = []
     writes: list[tuple[Path, str]] = []
+    expected_targets: set[Path] = set()
 
     for rule in rules:
         target = out_dir / f"{rule.name}.svg"
+        expected_targets.add(target)
         content = draw_rule_svg(rule)
         writes.append((target, content))
         current = target.read_text(encoding="utf-8") if target.exists() else ""
         if current != content:
             mismatches.append(target)
+
+    stale_targets = sorted(set(out_dir.glob("*.svg")) - expected_targets)
+    mismatches.extend(stale_targets)
 
     index_content = build_index(rules)
     writes.append((index_path, index_content))
@@ -192,6 +197,9 @@ def main() -> int:
     for path, content in writes:
         path.write_text(content, encoding="utf-8")
         print(f"[railroad] wrote {path}")
+    for path in stale_targets:
+        path.unlink()
+        print(f"[railroad] removed stale diagram {path}")
     return 0
 
 

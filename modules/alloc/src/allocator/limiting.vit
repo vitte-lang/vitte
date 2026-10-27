@@ -1,0 +1,45 @@
+/// Adaptateur qui borne les octets simultanément réservés via un allocateur.
+space alloc::allocator::limiting;
+
+use core::mem::layout::{Layout, layout_is_valid};
+use alloc::allocator::result::{AllocationResult, AllocationError, allocation_failure};
+use alloc::allocator::allocator::{Allocator, allocator_allocate, allocator_deallocate};
+
+export form LimitingAllocator {
+    base: Allocator,
+    limit: usize,
+    allocated: usize,
+}
+
+export proc limiting_allocator(base: Allocator, limit: usize) -> LimitingAllocator {
+    return LimitingAllocator { base: base, limit: limit, allocated: 0 };
+}
+
+export proc limiting_allocate(value: &mut LimitingAllocator, layout: Layout) -> AllocationResult {
+    if not layout_is_valid(&layout) {
+        return allocation_failure(AllocationError.InvalidLayout, value.base.kind);
+    }
+    if value.allocated > value.limit || layout.size > value.limit - value.allocated {
+        return allocation_failure(AllocationError.LimitExceeded, value.base.kind);
+    }
+    let result: AllocationResult = allocator_allocate(&value.base, layout);
+    if result.success {
+        set value.allocated = value.allocated + layout.size;
+    }
+    return result;
+}
+
+export proc limiting_deallocate(
+    value: &mut LimitingAllocator,
+    pointer: *mut u8,
+    layout: Layout
+) -> bool {
+    if layout.size > value.allocated { return false; }
+    if not allocator_deallocate(&value.base, pointer, layout) { return false; }
+    set value.allocated = value.allocated - layout.size;
+    return true;
+}
+
+export proc limiting_allocated(value: &LimitingAllocator) -> usize {
+    return value.allocated;
+}

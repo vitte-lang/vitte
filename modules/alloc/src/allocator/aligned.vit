@@ -1,0 +1,21 @@
+/// Façade d'allocation alignée; `system_allocate` satisfait l'alignement du layout.
+space alloc::allocator::aligned;
+
+use core::mem::layout::{Layout, layout};
+use alloc::allocator::result::{AllocationResult, AllocationError, AllocatorKind, allocation_failure};
+use alloc::allocator::result::{allocation_success};
+use alloc::allocator::system::{system_allocate, system_deallocate};
+
+export proc aligned_allocate(size: usize, alignment: usize) -> AllocationResult {
+    let requested: Layout = layout(size, alignment);
+    if requested.valid == false { return allocation_failure(AllocationError.InvalidLayout, AllocatorKind.System); }
+    let result: AllocationResult = system_allocate(requested);
+    if result.success == false { return result; }
+    return allocation_success(result.pointer, AllocatorKind.System);
+}
+
+export proc aligned_deallocate(pointer: *mut u8, size: usize, alignment: usize) -> bool {
+    let requested: Layout = layout(size, alignment);
+    if requested.valid == false { return false; }
+    return system_deallocate(pointer, requested);
+}

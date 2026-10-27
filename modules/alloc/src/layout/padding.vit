@@ -1,0 +1,18 @@
+/// Padding requis pour aligner une taille sur un alignement puissance de deux.
+space alloc::layout::padding;
+
+use core::mem::align::{mem_alignment_is_valid};
+
+export form PaddingResult {
+    valid: bool,
+    padding: usize,
+}
+
+export proc layout_padding(size: usize, alignment: usize) -> PaddingResult {
+    if not mem_alignment_is_valid(alignment) {
+        return PaddingResult { valid: false, padding: 0 };
+    }
+    let remainder: usize = size % alignment;
+    if remainder == 0 { return PaddingResult { valid: true, padding: 0 }; }
+    return PaddingResult { valid: true, padding: alignment - remainder };
+}

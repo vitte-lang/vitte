@@ -175,18 +175,18 @@ proc convert(source: string) {
 
     if !parsed.ok {
         // parsed.diagnostic contient l’erreur détaillée.
-        give;
+        return;
     }
 
     let encoded: JsonEncodeResult = encode_pretty(&parsed.value);
 
     if !encoded.ok {
         // La valeur doit être validée avant de devenir une sortie.
-        give;
+        return;
     }
 
     // encoded.text contient le document JSON formaté.
-    give;
+    return;
 }
 ```
 
@@ -920,11 +920,11 @@ Recommandations pour des données non fiables :
 ```vitte
 let result: JsonParseResult = parse_strict(source);
 if !result.ok {
-    give;
+    return;
 }
 
 if !is_object(&result.value) {
-    give;
+    return;
 }
 
 let host: string =

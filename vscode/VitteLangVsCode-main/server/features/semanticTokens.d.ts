@@ -23,8 +23,8 @@
  * - Numbers (decimal, hex 0x, bin 0b, octal 0o, floats with exponent).
  * - Strings with escapes (single‑line) and block/line comments.
  * - Multiline block comments `/* ... *\/` supported via state.
- * - Token modifiers: declaration (after fn/struct/enum/trait/type/let/const),
- *   readonly (const), async (async keyword before fn).
+ * - Token modifiers: declaration (after proc/form/pick/trait/type/let/const),
+ *   readonly (const), async (async keyword before proc).
  */
 import type { SemanticTokens, SemanticTokensLegend } from 'vscode-languageserver';
 export declare const legend: SemanticTokensLegend;

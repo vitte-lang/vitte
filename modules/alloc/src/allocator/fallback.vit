@@ -1,0 +1,57 @@
+/// Allocateur qui essaie une seconde stratégie après l'échec de la première.
+space alloc::allocator::fallback;
+
+use core::mem::layout::{Layout};
+use alloc::allocator::result::{AllocationError, AllocatorKind};
+use alloc::allocator::allocator::{Allocator, allocator_allocate, allocator_deallocate};
+
+export form FallbackAllocator {
+    primary: Allocator,
+    fallback: Allocator,
+}
+
+export form FallbackAllocation {
+    success: bool,
+    pointer: *mut u8,
+    error: AllocationError,
+    allocator: AllocatorKind,
+    used_fallback: bool,
+}
+
+export proc fallback_allocator(primary: Allocator, fallback: Allocator) -> FallbackAllocator {
+    return FallbackAllocator { primary: primary, fallback: fallback };
+}
+
+export proc fallback_allocate(value: &FallbackAllocator, layout: Layout) -> FallbackAllocation {
+    let primary_result = allocator_allocate(&value.primary, layout);
+    if primary_result.success {
+        return FallbackAllocation {
+            success: true,
+            pointer: primary_result.pointer,
+            error: AllocationError.None,
+            allocator: primary_result.allocator,
+            used_fallback: false,
+        };
+    }
+
+    let fallback_result = allocator_allocate(&value.fallback, layout);
+    return FallbackAllocation {
+        success: fallback_result.success,
+        pointer: fallback_result.pointer,
+        error: fallback_result.error,
+        allocator: fallback_result.allocator,
+        used_fallback: true,
+    };
+}
+
+export proc fallback_deallocate(
+    value: &FallbackAllocator,
+    allocation: &FallbackAllocation,
+    layout: Layout
+) -> bool {
+    if allocation.success == false { return false; }
+    if allocation.used_fallback {
+        return allocator_deallocate(&value.fallback, allocation.pointer, layout);
+    }
+    return allocator_deallocate(&value.primary, allocation.pointer, layout);
+}

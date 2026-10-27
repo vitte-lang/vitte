@@ -303,7 +303,7 @@ function startsWithClosingBracket(line: string): boolean {
 function ensureSpacesAroundOpsOutsideStrings(line: string): string {
   const ops = [
     "\\+=", "-=", "\\*=", "/=", "%=", "<<=", ">>=", "&=", "\\^=", "\\|=",
-    "===", "!==", "==", "!=", "<=", ">=", "&&", "\\|\\|", "<<", ">>",
+    "==", "!=", "<=", ">=", "<<", ">>",
     "\\+", "-", "\\*", "/", "%", "<", ">", "=", "&", "\\|", "\\^",
   ];
   const rx = new RegExp(`\\s*(${ops.join("|")})\\s*`, "g");

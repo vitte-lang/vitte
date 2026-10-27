@@ -1,0 +1,21 @@
+/// Interface de verrouillage manuel pour les données partagées de `alloc`.
+space alloc::concurrency::lock;
+
+use alloc::concurrency::spinlock::{
+    AllocSpinLock,
+    alloc_spinlock,
+    alloc_spinlock_try_lock,
+    alloc_spinlock_lock,
+    alloc_spinlock_unlock,
+    alloc_spinlock_is_locked,
+    alloc_spinlock_value_mut,
+};
+
+export type Lock[T] = AllocSpinLock[T];
+
+export proc lock_new<T>(value: T) -> Lock[T] { return alloc_spinlock(value); }
+export proc lock_try_acquire<T>(value: &mut Lock[T]) -> bool { return alloc_spinlock_try_lock(value); }
+export proc lock_acquire<T>(value: &mut Lock[T]) { alloc_spinlock_lock(value); }
+export proc lock_release<T>(value: &mut Lock[T]) { alloc_spinlock_unlock(value); }
+export proc lock_is_locked<T>(value: &Lock[T]) -> bool { return alloc_spinlock_is_locked(value); }
+export proc lock_value_mut<T>(value: &mut Lock[T]) -> &mut T { return alloc_spinlock_value_mut(value); }

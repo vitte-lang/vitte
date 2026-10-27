@@ -1,20 +1,5 @@
 # Vitte Formatter
 
-Status: official formatter surface for Vitte 0.1.0.
+The formatter commands previously documented here refer to files that are not present in the current repository (`tools/vitte_format.py` and `src/vitte/tools/lsp/mod.vit`). The formatter guide is awaiting an update to the current implementation and command surface.
 
-The formatter is deterministic by edition. The default edition is `2026`; the compatibility edition is `2024`.
-
-Release-gated behavior:
-
-- stable output for the same source and edition
-- comments preserved
-- single-line imports normalized in deterministic order
-- text snapshots generated under `target/formatter/`
-- CI enforced through `make formatter-gate`
-
-Use:
-
-```sh
-python3 tools/vitte_format.py --check --changed
-python3 tools/vitte_format.py --edition 2026 src/vitte/tools/lsp/mod.vit
-```
+For compiler source paths that are current, see the [compiler source map](MODULE_REFERENCE.md).

@@ -7,15 +7,16 @@
 <link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../css/site.css">
 <link rel="stylesheet" href="../css/print.css" media="print">
-<link rel="alternate" hreflang="en" href="https://vitte-lang.org/build.html">
-<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/build.html">
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/compiler/build.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/compiler/build.html">
 
 
 
 
 
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
-</head>
+
+<link rel="canonical" href="https://vitte-lang.org/compiler/build.html"></head>
 <body class="classic-doc">
 <a class="skip-link" href="#main-content">Skip to content</a>
 <div class="site-shell">
@@ -45,81 +46,23 @@
 </header>
 <main id="main-content" class="site-main">
 <article class="doc-content">
-<h1>Build & Artifacts</h1>
-<p>The seed compiler writes reproducible structured outputs under:</p>
-<ul>
-<li><code>build/tokens</code></li>
-<li><code>build/ast</code></li>
-<li><code>build/hir</code></li>
-<li><code>build/mir</code></li>
-<li><code>build/c</code></li>
-<li><code>build/obj</code></li>
-<li><code>build/bin</code></li>
-<li><code>build/logs</code></li>
-<li><code>build/diagnostics</code></li>
-</ul>
-<p>Incremental build fingerprint includes source graph, stdlib files, and options.</p>
-<h2>Foundation Status (174-177)</h2>
-<h3>174. Parallel Borrow Analysis</h3>
-<p>Borrow checking now includes a concurrency-oriented foundation layer:</p>
-<ul>
-<li>Send/Sync-equivalent diagnostics for thread/send/sync misuse patterns</li>
-<li>shared mutation checks across thread-like boundaries</li>
-<li>thread ownership violation checks for escaped mutable references</li>
-<li>race-risk diagnostics to flag potential missing happens-before edges</li>
-</ul>
-<p>Primary implementation:</p>
-<ul>
-<li><code>src/vitte/compiler/analysis/borrowck/mod.vit</code></li>
-<li><code>src/vitte/compiler/analysis/borrowck/errors.vit</code></li>
-<li><a href="/home/vincentr/Documents/GitHub/vitte/docs/compiler/parallel_borrow_analysis.html">parallel_borrow_analysis.md</a></li>
-</ul>
-<h3>175. Advanced Optimization Passes</h3>
-<p>MIR transform foundation now tracks and reports advanced pass families:</p>
-<ul>
-<li>inline candidates</li>
-<li>loop simplification candidates</li>
-<li>branch folding candidates</li>
-<li>scalar replacement placeholders</li>
-<li>dead store elimination candidates</li>
-<li>value numbering placeholders</li>
-</ul>
-<p>Primary implementation:</p>
-<ul>
-<li><code>src/vitte/compiler/middle/mir/transform.vit</code></li>
-<li><a href="/home/vincentr/Documents/GitHub/vitte/docs/compiler/advanced_optimization_passes.html">advanced_optimization_passes.md</a></li>
-</ul>
-<h3>176. LLVM Backend Experimental</h3>
-<p>Experimental LLVM path is now selectable as <code>llvm-exp</code>:</p>
-<ul>
-<li>LLVM IR emission via existing LLVM binding surface</li>
-<li>debug metadata path preserved through profile options</li>
-<li>optimization bridge (<code>O0..Oz</code>, LTO/PGO compatibility checks)</li>
-<li>target lowering + linker/toolchain integration via LLVM toolchain status</li>
-</ul>
-<p>Primary implementation:</p>
-<ul>
-<li><code>src/vitte/compiler/backend/pipeline.vit</code></li>
-<li><code>src/vitte/compiler/driver/compile.vit</code></li>
-<li><code>src/vitte/compiler/backends/llvm_bindings/mod.vit</code></li>
-<li><a href="/home/vincentr/Documents/GitHub/vitte/docs/compiler/llvm_backend_experimental.html">llvm_backend_experimental.md</a></li>
-</ul>
-<h3>177. Native ASM Backend</h3>
-<p>Minimal native assembly backend is now selectable as <code>asm-native</code>:</p>
-<ul>
-<li>selection statement (x86_64 path)</li>
-<li>virtual register allocation</li>
-<li>calling convention marker (<code>sysv-amd64</code>)</li>
-<li>stack-layout/prologue/epilogue verification signal</li>
-<li>object text packaging for linker integration</li>
-</ul>
-<p>Primary implementation:</p>
-<ul>
-<li><code>src/vitte/compiler/backend/codegen/machine.vit</code></li>
-<li><code>src/vitte/compiler/backend/codegen/mod.vit</code></li>
-<li><code>src/vitte/compiler/backend/pipeline.vit</code></li>
-<li><a href="/home/vincentr/Documents/GitHub/vitte/docs/compiler/native_asm_backend.html">native_asm_backend.md</a></li>
-</ul>
+<h1>Build and Compiler Paths</h1>
+<h2>Active compiler path</h2>
+<p>The standard <code>make</code> target builds a stage bootstrap compiler, uses it to compile the native Vitte pipeline, then links that pipeline into the normal executable. The ordinary compile/run frontend uses Vitte code; the host C compiler still handles object generation, linking, and execution.</p>
+<ol>
+<li><code>src/bootstrap/main.c</code> and <code>src/bootstrap/cli/</code> — process entry, CLI compatibility, source loading, and module-graph assembly.</li>
+<li><code>src/compiler/driver/pipeline.vitte</code> — native pipeline coordinator.</li>
+<li><code>src/compiler/lexer/lexer.vitte</code>, <code>src/compiler/parser/parser.vitte</code>, and <code>src/compiler/sema/sema.vitte</code> — native lexing, parsing, and semantic analysis for ordinary compile/run.</li>
+<li><code>src/compiler/hir/hir.vitte</code> and <code>src/compiler/ir/ir.vitte</code> — native HIR/IR lowering and validation.</li>
+<li><code>src/compiler/backend/c17/ir_emitter.vitte</code> — default C17 emission for supported IR; <code>ast_emitter.vitte</code> handles constructs without IR lowering.</li>
+<li><code>src/bootstrap/backend/c17/</code> — host C compilation, object generation, linking, execution, and compatibility emission paths.</li>
+</ol>
+<p><code>compile</code>, <code>run</code>, <code>check</code>, <code>--emit-c</code>, and <code>--emit-ir</code> use the native pipeline for its implemented subset. Supported programs route through HIR/IR to the native IR C17 backend; IR-incomplete constructs retain the AST emitter. Arrays and indexing, picks, contract clauses, export aliases, borrowed call results, and several expression forms use the bootstrap compatibility pipeline. Native failures remain authoritative when the native frontend is selected. The host C driver handles object generation, linking, and execution; inspection commands retain bootstrap stages.</p>
+<h2>Staged native Vitte path</h2>
+<p>The Vitte parser and semantic surface remain partial. HIR/IR lowering does not yet cover the full language, and parser/sema diagnostic locations in the CLI remain incomplete. At present, <code>make native-frontend</code> stops on source diagnostics in the arena, scanner, HIR, IR, and semantic modules, so it does not produce a fresh linked native executable. A full self-hosted rebuild is not yet established.</p>
+<h2>Documentation checks</h2>
+<p>Run <code>make -C src docs-check</code> to check generated CLI and grammar artifacts and grammar-to-frontend synchronization. This check does not prove every feature-status entry; the <a href="https://github.com/vitte-lang/vitte/blob/main/src/docs/language_coverage.md">coverage matrix</a> is reviewed against source and examples.</p>
+<p>See the <a href="../MODULE_REFERENCE.html">compiler source map</a> and <a href="../MAKE_TARGETS.html">Make targets</a> for file locations and build commands.</p>
 </article>
 </main>
 <footer class="site-footer">

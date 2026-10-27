@@ -943,14 +943,14 @@ function inlineHeuristicCandidate(document: vscode.TextDocument, position: vscod
   if (/^for\s+[^{]*$/.test(left)) return " {\n\t\n}";
   if (/^while\s+[^{]*$/.test(left)) return " {\n\t\n}";
   if (/^match\s+[^{]*$/.test(left)) return " {\n\t_ => \n}";
-  if (/^(proc|fn)\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*$/.test(left)) return " {\n\t\n}";
+  if (/^proc\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*$/.test(left)) return " {\n\t\n}";
   if (/^test\s+\"[^\"]*\"\s*$/.test(left)) return " {\n\t\n}";
   return undefined;
 }
 
 function inlineNextEditCandidate(document: vscode.TextDocument, position: vscode.Position): string | undefined {
   const current = document.lineAt(position.line).text.slice(0, position.character).trim();
-  if (/^(proc|fn)\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*$/.test(current)) return " {\n\t\n}";
+  if (/^proc\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*$/.test(current)) return " {\n\t\n}";
   if (current.endsWith("{")) return "\n\t\n}";
   if (/;\s*$/.test(current)) {
     for (let i = position.line; i >= Math.max(0, position.line - 20); i -= 1) {
@@ -1211,7 +1211,7 @@ export interface ExtensionApi {
 
 const LANGUAGES = ["vitte", "vit"] as const;
 const WATCH_PATTERNS = [
-  "**/*.{vitte,vit}",
+  "**/*.{vitte,vit,vitl}",
   "**/vitte.toml",
   "**/.vitteconfig"
 ] as const;
@@ -4645,7 +4645,7 @@ function summarizeWorkspaceEditDetailed(edit: vscode.WorkspaceEdit): { fileCount
 
 async function detectRenameConflicts(edit: vscode.WorkspaceEdit, newName: string): Promise<string[]> {
   const conflictFiles: string[] = [];
-  const declRx = new RegExp(`\\b(?:proc|fn|entry|let|const|static|type|struct|form|trait|enum|union)\\s+${newName}\\b`);
+  const declRx = new RegExp(`\\b(?:proc|entry|let|const|static|global|type|opaque|form|pick|trait|impl|class|union|bits|flags)\\s+${newName}\\b`);
   for (const [uri] of edit.entries()) {
     try {
       const doc = await vscode.workspace.openTextDocument(uri);

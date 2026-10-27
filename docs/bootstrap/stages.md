@@ -53,13 +53,9 @@ To resume only stage2 without rebuilding the whole chain:
 python3 tools/bootstrap_real/bootstrap_real.py --stage2
 ```
 
-For a targeted command with the same safeguards:
-
-```sh
-python3 tools/bootstrap_real/resource_guard.py \
-  --report target/reports/stage2_build_resources.json -- \
-  target/stage1/vitte build src/vitte/compiler/main.vit -o target/stage2/vitte
-```
+The former stage2 example targeted `src/vitte/compiler/main.vit`, which is no
+longer present. The native Vitte compiler entry is not complete, so that command
+is not a valid current self-host build recipe.
 
 An interrupted or failed build is not a validated stage: do not refresh its
 manifest or promote it to release. Inspect the build report and diagnostics

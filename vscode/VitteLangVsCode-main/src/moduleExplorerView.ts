@@ -239,7 +239,7 @@ async function seedModulesFromWorkspace(byModule: Map<string, ModuleBucket>): Pr
 async function moduleNameForUri(uri: vscode.Uri): Promise<string> {
   try {
     const doc = await vscode.workspace.openTextDocument(uri);
-    const match = /^\s*(?:space|module|package)\s+([A-Za-z_][\w./:]*)/m.exec(doc.getText());
+    const match = /^\s*space\s+([A-Za-z_][\w./:]*)/m.exec(doc.getText());
     if (match?.[1]) return match[1];
   } catch {
     // Ignore unreadable files and fall back to a path-derived module id.

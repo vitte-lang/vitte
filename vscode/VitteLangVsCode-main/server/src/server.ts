@@ -35,6 +35,11 @@ import type {
   WorkspaceSymbolParams,
   WorkspaceSymbol,
   DefinitionParams,
+  DeclarationParams,
+  ImplementationParams,
+  TypeDefinitionParams,
+  DocumentHighlightParams,
+  DocumentHighlight,
   ReferenceParams,
   RenameParams,
   PrepareRenameParams,
@@ -66,7 +71,12 @@ import { provideCompletions, resolveCompletion, triggerCharacters, configureComp
 import {
   documentSymbols,
   definitionAtPosition,
+  declarationAtPosition,
+  implementationAtPosition,
+  typeDefinitionAtPosition,
   referencesAtPosition,
+  referencesForToken,
+  MAX_REFERENCE_RESULTS,
   renameSymbol,
   renameIdentifierByName,
   tokenAtPosition,
@@ -86,7 +96,7 @@ import { provideSignatureHelp } from "./signatureHelp.js";
 import { getIntelliSenseCapabilities } from "./intellisenseCapabilities.js";
 import { lintToPublishable } from "./lint.js";
 import { registerCommands } from "./commands.js";
-import { indexDocument as indexWorkspaceDocument, removeDocument as removeWorkspaceDocument, clearIndex, exportIndexSnapshot, loadIndexSnapshot, getIndex, type IndexSnapshot } from "./indexer.js";
+import { indexDocument as indexWorkspaceDocument, indexText, removeDocument as removeWorkspaceDocument, clearIndex, exportIndexSnapshot, loadIndexSnapshot, getIndex, type IndexSnapshot } from "./indexer.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -108,6 +118,8 @@ interface MetricAggregate {
 }
 
 const metricStore = new Map<string, MetricAggregate>();
+const WORKSPACE_INDEX_FILE_LIMIT = 5000;
+const WORKSPACE_INDEX_BUDGET_MS = 30_000;
 
 /* --------------------------- Connection + documents ----------------------- */
 const connection: Connection = createConnection(ProposedFeatures.all);
@@ -182,7 +194,7 @@ const DEFAULT_SETTINGS: ServerSettings = {
   enableFormatting: true,
   maxFileSizeKB: 1024, // 1 MB
   requestTimeoutMs: 800,
-  requestTimeouts: {},
+  requestTimeouts: { references: 2500 },
   requestMaxConcurrent: 4,
   indexerMaxRssMB: 1024,
   indexerCacheEnabled: true,
@@ -250,6 +262,10 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       documentFormattingProvider: true,
       documentRangeFormattingProvider: true,
       definitionProvider: true,
+      declarationProvider: true,
+      implementationProvider: true,
+      typeDefinitionProvider: true,
+      documentHighlightProvider: true,
       referencesProvider: true,
       renameProvider: { prepareProvider: true },
       workspaceSymbolProvider: true,
@@ -278,11 +294,17 @@ connection.onInitialized(() => {
   connection.onDidChangeWatchedFiles((change) => {
     for (const ev of change.changes) {
       if (ev.type === FileChangeType.Deleted) {
+        removeWorkspaceDocument(ev.uri);
         void connection.sendDiagnostics({ uri: ev.uri, diagnostics: [] });
+      } else {
+        void refreshWorkspaceFile(ev.uri);
       }
     }
   });
-  void loadIndexCache();
+  void loadIndexCache().then(async () => {
+    for (const doc of documents.all()) safeIndexDocument(doc);
+    await indexWorkspaceFiles();
+  });
 });
 
 connection.onRequest("vitte/metrics", () => {
@@ -527,7 +549,7 @@ async function resolveInlayPrefs(uri: string): Promise<Partial<InlayHintPrefs>> 
 function isIndexSnapshot(value: unknown): value is IndexSnapshot {
   if (!value || typeof value !== "object") return false;
   const v = value as { version?: unknown; entries?: unknown };
-  return v.version === 2 && Array.isArray(v.entries);
+  return v.version === 3 && Array.isArray(v.entries);
 }
 
 async function loadIndexCache(): Promise<void> {
@@ -550,9 +572,87 @@ async function loadIndexCache(): Promise<void> {
   if (mergedEntries.length > 0) {
     const unique = new Map<string, IndexSnapshot["entries"][number]>();
     for (const e of mergedEntries) unique.set(e.uri, e);
-    const count = loadIndexSnapshot({ version: 2, entries: Array.from(unique.values()) });
+    const count = loadIndexSnapshot({ version: 3, entries: Array.from(unique.values()) });
     connection.console.log(`[index] merged cache (${count} files)`);
   }
+}
+
+function isVitteSourcePath(filePath: string): boolean {
+  return /\.(?:vit|vitl|vitte)$/i.test(filePath);
+}
+
+async function refreshWorkspaceFile(uri: string): Promise<void> {
+  if (!uri.startsWith("file://")) return;
+  let filePath: string;
+  try {
+    filePath = fileURLToPath(uri);
+  } catch {
+    return;
+  }
+  if (!isVitteSourcePath(filePath)) return;
+
+  const openDocument = documents.get(uri);
+  if (openDocument) {
+    safeIndexDocument(openDocument);
+    return;
+  }
+
+  try {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile() || stat.size > globalSettings.maxFileSizeKB * 1024) {
+      removeWorkspaceDocument(uri);
+      return;
+    }
+    const text = await fs.readFile(filePath, "utf8");
+    const latestOpenDocument = documents.get(uri);
+    if (latestOpenDocument) safeIndexDocument(latestOpenDocument);
+    else indexText(uri, text);
+  } catch {
+    removeWorkspaceDocument(uri);
+  }
+}
+
+async function indexWorkspaceFiles(): Promise<void> {
+  const roots = await resolveWorkspaceRoots();
+  if (roots.length === 0) return;
+  const deadline = Date.now() + WORKSPACE_INDEX_BUDGET_MS;
+  const discoveryDeadline = Math.min(deadline, Date.now() + 5_000);
+  const files: string[] = [];
+  const seen = new Set<string>();
+  for (const root of roots) {
+    if (Date.now() >= discoveryDeadline || files.length >= WORKSPACE_INDEX_FILE_LIMIT) break;
+    const candidates = await walkVitteFiles(root, WORKSPACE_INDEX_FILE_LIMIT - files.length, discoveryDeadline);
+    for (const candidate of candidates) {
+      if (seen.has(candidate)) continue;
+      seen.add(candidate);
+      files.push(candidate);
+    }
+  }
+
+  let indexed = 0;
+  for (const filePath of files) {
+    if (Date.now() >= deadline || memoryExceeded()) break;
+    const uri = pathToFileURL(filePath).toString();
+    const openDocument = documents.get(uri);
+    if (openDocument) {
+      safeIndexDocument(openDocument);
+      indexed++;
+      continue;
+    }
+    try {
+      const stat = await fs.stat(filePath);
+      if (!stat.isFile() || stat.size > globalSettings.maxFileSizeKB * 1024) continue;
+      const text = await fs.readFile(filePath, "utf8");
+      const latestOpenDocument = documents.get(uri);
+      if (latestOpenDocument) safeIndexDocument(latestOpenDocument);
+      else indexText(uri, text);
+      indexed++;
+    } catch {
+      // Ignore files removed or made unreadable during the background scan.
+    }
+  }
+  await saveIndexCache();
+  connection.console.info(`[index] workspace scan indexed ${indexed} of ${files.length} Vitte files`);
 }
 
 async function saveIndexCache(): Promise<void> {
@@ -863,13 +963,6 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
   const lineRange = lineRangeAt(doc, lineNo);
   const lineText = doc.getText(lineRange);
 
-  const convertedLine = convertUsePullLine(lineText);
-  if (convertedLine && convertedLine !== lineText) {
-    actions.push(mkAction("Vitte: Convert use/pull", "refactor.rewrite", {
-      changes: { [doc.uri]: [TextEdit.replace(lineRange, convertedLine)] },
-    }));
-  }
-
   const aliasLine = addPkgAliasLine(lineText);
   if (aliasLine && aliasLine !== lineText) {
     actions.push(mkAction("Vitte: Add alias *_pkg", "quickfix", {
@@ -922,6 +1015,89 @@ connection.onDefinition(async (params: DefinitionParams, token?: CancellationTok
   });
 });
 
+connection.onDeclaration(async (params: DeclarationParams, token?: CancellationToken): Promise<Location[]> => {
+  if (failFast("definition") || isBreakerActive()) return [];
+  return withBackpressure(async () => {
+    const start = now();
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || cancelled(token)) return [];
+    try {
+      const openDocs = documents.all().map((openDoc) => ({ uri: openDoc.uri, doc: openDoc }));
+      const locations = await withTimeout(
+        Promise.resolve(declarationAtPosition(doc, params.position, doc.uri, openDocs)),
+        timeoutFor("definition"),
+      );
+      metric("declaration", start, doc.uri, locations.length);
+      recordSuccess();
+      return locations;
+    } catch (e) {
+      metric("declaration", start, doc.uri, undefined, e);
+      recordFailure();
+      logErr("declaration", e);
+      return [];
+    }
+  });
+});
+
+connection.onImplementation(async (params: ImplementationParams, token?: CancellationToken): Promise<Location[]> => {
+  if (failFast("definition") || isBreakerActive()) return [];
+  return withBackpressure(async () => {
+    const start = now();
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || cancelled(token)) return [];
+    try {
+      const locations = await withTimeout(
+        (async () => {
+          const openDocs = documents.all().map((openDoc) => ({ uri: openDoc.uri, doc: openDoc }));
+          const tokenName = tokenAtPosition(doc, params.position) ?? "";
+          const indexedDocs = await collectIndexedDocumentsForSymbol(tokenName, doc.uri);
+          openDocs.push(...indexedDocs.map((indexedDoc) => ({ uri: indexedDoc.uri, doc: indexedDoc })));
+          return implementationAtPosition(doc, params.position, doc.uri, openDocs);
+        })(),
+        timeoutFor("definition"),
+      );
+      metric("implementation", start, doc.uri, locations.length);
+      recordSuccess();
+      return locations;
+    } catch (e) {
+      metric("implementation", start, doc.uri, undefined, e);
+      recordFailure();
+      logErr("implementation", e);
+      return [];
+    }
+  });
+});
+
+connection.onTypeDefinition(async (params: TypeDefinitionParams, token?: CancellationToken): Promise<Location[]> => {
+  if (failFast("definition") || isBreakerActive()) return [];
+  return withBackpressure(async () => {
+    const start = now();
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || cancelled(token)) return [];
+    try {
+      const openDocs = documents.all().map((openDoc) => ({ uri: openDoc.uri, doc: openDoc }));
+      const locations = await withTimeout(
+        Promise.resolve(typeDefinitionAtPosition(doc, params.position, doc.uri, openDocs)),
+        timeoutFor("definition"),
+      );
+      metric("typeDefinition", start, doc.uri, locations.length);
+      recordSuccess();
+      return locations;
+    } catch (e) {
+      metric("typeDefinition", start, doc.uri, undefined, e);
+      recordFailure();
+      logErr("typeDefinition", e);
+      return [];
+    }
+  });
+});
+
+connection.onDocumentHighlight((params: DocumentHighlightParams): DocumentHighlight[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || failFast("references") || isBreakerActive()) return [];
+  return referencesAtPosition(doc, params.position, doc.uri).map(({ range }) => ({ range }));
+});
+
 connection.onReferences(async (params: ReferenceParams, token?: CancellationToken): Promise<Location[]> => {
   if (failFast("references")) return [];
   if (isBreakerActive()) return [];
@@ -930,12 +1106,31 @@ connection.onReferences(async (params: ReferenceParams, token?: CancellationToke
     const doc = documents.get(params.textDocument.uri);
     if (!doc || cancelled(token)) return [];
     try {
-      const refs = await withTimeout(Promise.resolve(referencesAtPosition(doc, params.position, params.textDocument.uri)), timeoutFor("references"));
       const tok = tokenAtPosition(doc, params.position);
-      const merged = tok ? dedupeLocations([
-        ...refs,
-        ...collectOpenDocumentReferences(tok, params.textDocument.uri),
-      ]) : refs;
+      const requestDeadline = Date.now() + timeoutFor("references");
+      const merged = await withTimeout((async () => {
+        const refs = dedupeLocations(referencesAtPosition(doc, params.position, params.textDocument.uri));
+        if (!tok) return refs;
+        const openRefs = collectOpenDocumentReferences(
+          tok,
+          params.textDocument.uri,
+          Math.max(0, MAX_REFERENCE_RESULTS - refs.length),
+          refs,
+        );
+        const currentAndOpenRefs = dedupeLocations([...refs, ...openRefs]);
+        const workspaceRefs = await collectWorkspaceReferences(
+          tok,
+          params.textDocument.uri,
+          token,
+          Math.max(0, requestDeadline - Date.now() - 100),
+          Math.max(0, MAX_REFERENCE_RESULTS - currentAndOpenRefs.length),
+        );
+        const mergedRefs = [...currentAndOpenRefs, ...workspaceRefs];
+        const filteredRefs = params.context.includeDeclaration
+          ? mergedRefs
+          : mergedRefs.filter((location) => !isIndexedDeclaration(location, tok));
+        return filteredRefs.slice(0, MAX_REFERENCE_RESULTS);
+      })(), timeoutFor("references"));
       metric("references", start, doc.uri, merged.length);
       recordSuccess();
       return merged;
@@ -1211,7 +1406,7 @@ function processLintQueue(): void {
 documents.onDidOpen((e) => { safeIndexDocument(e.document); scheduleLint(e.document); });
 documents.onDidChangeContent((e) => { safeIndexDocument(e.document); scheduleLint(e.document); });
 documents.onDidClose((e) => {
-  removeWorkspaceDocument(e.document.uri);
+  void refreshWorkspaceFile(e.document.uri);
   void connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
   const timer = lintTimers.get(e.document.uri);
   if (timer) clearTimeout(timer);
@@ -1327,7 +1522,7 @@ function computeOrganizeImportsEdit(doc: TextDocument, text: string): WorkspaceE
   const imports: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i] ?? "";
-    if (/^\s*(use|pull)\b/.test(l)) {
+    if (/^\s*use\b/.test(l)) {
       importIdx.push(i);
       imports.push(l.trim());
     }
@@ -1345,12 +1540,6 @@ function computeOrganizeImportsEdit(doc: TextDocument, text: string): WorkspaceE
   const endText = doc.getText(Range.create(Position.create(lastLine, 0), Position.create(lastLine, Number.MAX_SAFE_INTEGER)));
   const full = Range.create(Position.create(0, 0), Position.create(lastLine, endText.length));
   return { changes: { [doc.uri]: [TextEdit.replace(full, newText)] } };
-}
-
-function convertUsePullLine(line: string): string | null {
-  if (/^\s*use\b/.test(line)) return line.replace(/^(\s*)use\b/, "$1pull");
-  if (/^\s*pull\b/.test(line)) return line.replace(/^(\s*)pull\b/, "$1use");
-  return null;
 }
 
 function addPkgAliasLine(line: string): string | null {
@@ -1408,10 +1597,10 @@ function quickFixForDiagnostic(doc: TextDocument, d: Diagnostic): CodeAction | n
   }
 
   if (code === "style.usePath") {
-    const fixed = lineText.replace(/::/g, "/").replace(/\s*\/\s*/g, "/").replace(/\s*\.\s*/g, ".");
+    const fixed = lineText.replace(/\s*\/\s*/g, "::").replace(/\s*\.\s*/g, "::");
     if (fixed === lineText) return null;
     return {
-      title: "Vitte: Normalize use/pull path",
+      title: "Vitte: Normalize use path",
       kind: "quickfix",
       diagnostics: [d],
       edit: { changes: { [doc.uri]: [TextEdit.replace(lineRange, fixed)] } },
@@ -1432,12 +1621,16 @@ function dedupeLocations(locations: Location[]): Location[] {
   const seen = new Set<string>();
   const out: Location[] = [];
   for (const l of locations) {
-    const k = `${l.uri}:${l.range.start.line}:${l.range.start.character}:${l.range.end.line}:${l.range.end.character}`;
+    const k = locationKey(l);
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(l);
   }
   return out;
+}
+
+function locationKey(location: Location): string {
+  return `${location.uri}:${location.range.start.line}:${location.range.start.character}:${location.range.end.line}:${location.range.end.character}`;
 }
 
 function isPathLikeToken(token: string): boolean {
@@ -1451,8 +1644,8 @@ function collectOpenDocumentDefinitions(token: string, currentUri: string): Loca
     if (d.uri === currentUri) continue;
     const text = d.getText();
     const rx = pathLike
-      ? new RegExp(`\\b(?:space|use|pull|entry\\s+[A-Za-z_][A-Za-z0-9_]*\\s+at)\\s+${escapeForRegex(token)}\\b`, "g")
-      : new RegExp(`\\b(?:proc|form|pick|trait|type|const|let|make|field|case|share)\\s+${escapeForRegex(token)}\\b`, "g");
+      ? new RegExp(`\\b(?:space|use|entry\\s+[A-Za-z_][A-Za-z0-9_]*\\s+at)\\s+${escapeForRegex(token)}\\b`, "g")
+      : new RegExp(`\\b(?:proc|form|pick|trait|impl|type|opaque|const|static|global|let|case|share)\\s+${escapeForRegex(token)}\\b`, "g");
     let m: RegExpExecArray | null;
     while ((m = rx.exec(text))) {
       const idx = (m.index ?? 0) + m[0].lastIndexOf(token);
@@ -1465,26 +1658,123 @@ function collectOpenDocumentDefinitions(token: string, currentUri: string): Loca
   return out;
 }
 
-function collectOpenDocumentReferences(token: string, currentUri: string): Location[] {
-  const out: Location[] = [];
-  const pathLike = isPathLikeToken(token);
-  const rx = pathLike
-    ? new RegExp(`(?<![A-Za-z0-9_./:-])${escapeForRegex(token)}(?![A-Za-z0-9_./:-])`, "g")
-    : new RegExp(`(?<![A-Za-z0-9_])${escapeForRegex(token)}(?![A-Za-z0-9_])`, "g");
-  for (const d of documents.all()) {
-    if (d.uri === currentUri) continue;
-    const text = d.getText();
-    let m: RegExpExecArray | null;
-    while ((m = rx.exec(text))) {
-      const idx = m.index ?? 0;
-      const start = d.positionAt(idx);
-      const end = d.positionAt(idx + token.length);
-      out.push(Location.create(d.uri, Range.create(start, end)));
-      if (m[0].length === 0) rx.lastIndex++;
+async function collectIndexedDocumentsForSymbol(token: string, currentUri: string): Promise<TextDocument[]> {
+  if (!token) return [];
+  const openUris = new Set(documents.all().map((doc) => doc.uri));
+  const candidates: string[] = [];
+  for (const [uri, symbols] of getIndex()) {
+    if (uri === currentUri || openUris.has(uri)) continue;
+    if (!uri.startsWith("file://") || !symbols.some((symbol) =>
+      symbol.name === token || symbol.implementationType === token)) continue;
+    candidates.push(uri);
+    if (candidates.length >= 128) break;
+  }
+
+  const deadline = Date.now() + 350;
+  const maxBytes = Math.min(globalSettings.maxFileSizeKB, 1024) * 1024;
+  const out: TextDocument[] = [];
+  for (const uri of candidates) {
+    if (Date.now() >= deadline || memoryExceeded()) break;
+    try {
+      const filePath = fileURLToPath(uri);
+      const stat = await fs.stat(filePath);
+      if (!stat.isFile() || stat.size > maxBytes) continue;
+      const text = await fs.readFile(filePath, "utf8");
+      const latestOpenDocument = documents.get(uri);
+      if (latestOpenDocument) {
+        out.push(latestOpenDocument);
+      } else {
+        const languageId = filePath.endsWith(".vitte") ? "vitte" : "vit";
+        out.push(TextDocument.create(uri, languageId, 0, text));
+      }
+    } catch {
+      // Ignore files deleted or unreadable after the workspace index was built.
     }
-    rx.lastIndex = 0;
   }
   return out;
+}
+
+function collectOpenDocumentReferences(
+  token: string,
+  currentUri: string,
+  maxResults: number,
+  existing: Location[] = [],
+): Location[] {
+  const out: Location[] = [];
+  const seen = new Set(existing.map(locationKey));
+  for (const d of documents.all()) {
+    if (d.uri === currentUri || out.length >= maxResults) continue;
+    const refs = referencesForToken(d, token, d.uri, maxResults - out.length);
+    for (const ref of refs) {
+      const key = locationKey(ref);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(ref);
+      if (out.length >= maxResults) break;
+    }
+  }
+  return out;
+}
+
+async function collectWorkspaceReferences(
+  token: string,
+  currentUri: string,
+  cancellation?: CancellationToken,
+  budgetMs = 2400,
+  maxResults = MAX_REFERENCE_RESULTS,
+): Promise<Location[]> {
+  if (!token || budgetMs <= 0 || maxResults <= 0) return [];
+  const deadline = Date.now() + budgetMs;
+  const openUris = new Set(documents.all().map((doc) => doc.uri));
+  const indexedUris = Array.from(getIndex().keys())
+    .filter((uri) => uri.startsWith("file://") && uri !== currentUri && !openUris.has(uri))
+    .slice(0, WORKSPACE_INDEX_FILE_LIMIT);
+  const maxBytes = Math.min(globalSettings.maxFileSizeKB, 1024) * 1024;
+  const out: Location[] = [];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, budgetMs));
+  const cancellationSubscription = cancellation?.onCancellationRequested(() => controller.abort());
+  let nextCandidate = 0;
+  const worker = async (): Promise<void> => {
+    while (!controller.signal.aborted && Date.now() < deadline && !memoryExceeded() && out.length < maxResults) {
+      const uri = indexedUris[nextCandidate++];
+      if (!uri) return;
+      try {
+        const filePath = fileURLToPath(uri);
+        const stat = await fs.stat(filePath);
+        if (controller.signal.aborted || Date.now() >= deadline) return;
+        if (!stat.isFile() || stat.size > maxBytes) continue;
+        const raw = await fs.readFile(filePath, { encoding: "utf8", signal: controller.signal });
+        if (controller.signal.aborted || Date.now() >= deadline || !raw.includes(token)) continue;
+        const doc = TextDocument.create(uri, filePath.endsWith(".vitte") ? "vitte" : "vit", 0, raw);
+        const refs = referencesForToken(doc, token, uri, Math.max(0, maxResults - out.length));
+        for (const ref of refs) {
+          if (out.length >= maxResults) break;
+          out.push(ref);
+        }
+        if (out.length >= maxResults) controller.abort();
+      } catch {
+        // Ignore files removed, unreadable, or aborted during the workspace scan.
+      }
+    }
+  };
+
+  try {
+    await Promise.all(Array.from({ length: Math.min(8, indexedUris.length) }, () => worker()));
+  } finally {
+    clearTimeout(timeout);
+    cancellationSubscription?.dispose();
+  }
+  return out;
+}
+
+function isIndexedDeclaration(location: Location, token: string): boolean {
+  const symbols = getIndex().get(location.uri);
+  if (!symbols) return false;
+  const { line, character } = location.range.start;
+  return symbols.some((symbol) => symbol.name === token
+    && symbol.line === line
+    && (symbol.nameCharacter ?? symbol.character) === character);
 }
 
 function escapeForRegex(value: string): string {

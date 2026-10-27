@@ -6,7 +6,7 @@ This freezes the supported subset for current professional gate.
 - module header: `space <path>`
 - imports: `use`, `from ... import`, `import`
 - decls: `const`, `proc`, `form`, `pick`
-- stmts subset: `let`, `set`, `give`, `if`, `loop/for/while`, `match`
+- stmts subset: `let`, `set`, `return`, `if`, `loop/for/while`, `match`
 
 ## Semantics
 - explicit export surface required (`export *` or explicit list per module policy)
@@ -33,7 +33,7 @@ This freezes the supported subset for current professional gate.
 space main
 
 proc main() -> void {
-  give "Hello, Vitte!"
+  return "Hello, Vitte!"
 }
 ```
 Ce programme illustre la structure minimale d'un module Vitte et la procédure d'entrée `main`.
@@ -46,7 +46,7 @@ const PI = 3.14
 
 proc area(radius: int) -> int {
   let result = PI * radius * radius
-  give result
+  return result
 }
 ```
 Cet exemple montre une constante, une procédure, et le calcul d'une valeur retournée.

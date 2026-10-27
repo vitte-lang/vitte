@@ -1,0 +1,1410 @@
+space games::tetris::board;
+
+/*
+ * ============================================================================
+ * VITTE TETRIS — BOARD ENGINE
+ * ============================================================================
+ *
+ * File:
+ *   games/tetris/board.vitte
+ *
+ * Board:
+ *   Width  : 10
+ *   Height : 20
+ *   Cells  : 200
+ *
+ * Piece matrix:
+ *   Width  : 4
+ *   Height : 4
+ *   Cells  : 16
+ *
+ * Cell values:
+ *   0 = empty
+ *   1 = I
+ *   2 = O
+ *   3 = T
+ *   4 = S
+ *   5 = Z
+ *   6 = J
+ *   7 = L
+ *
+ * Features:
+ *   - Board initialization
+ *   - Safe cell access
+ *   - Board mutation
+ *   - Row operations
+ *   - Column operations
+ *   - Collision detection
+ *   - Tetromino locking
+ *   - Ghost-piece projection
+ *   - Line clearing
+ *   - Perfect-clear detection
+ *   - Top-out detection
+ *   - Board statistics
+ *   - Board integrity checks
+ *   - Unit tests
+ *
+ * No external C libraries.
+ * Cross-module declarations are exposed with `export`.
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * CONSTANTS
+ * ============================================================================
+ */
+
+export const BOARD_WIDTH: i64 = 10;
+export const BOARD_HEIGHT: i64 = 20;
+export const BOARD_SIZE: i64 = 200;
+
+export const BOARD_PIECE_WIDTH: i64 = 4;
+export const BOARD_PIECE_HEIGHT: i64 = 4;
+export const BOARD_PIECE_SIZE: i64 = 16;
+
+export const BOARD_EMPTY: i64 = 0;
+
+export const BOARD_PIECE_I: i64 = 1;
+export const BOARD_PIECE_O: i64 = 2;
+export const BOARD_PIECE_T: i64 = 3;
+export const BOARD_PIECE_S: i64 = 4;
+export const BOARD_PIECE_Z: i64 = 5;
+export const BOARD_PIECE_J: i64 = 6;
+export const BOARD_PIECE_L: i64 = 7;
+
+export const BOARD_MIN_PIECE: i64 = 1;
+export const BOARD_MAX_PIECE: i64 = 7;
+
+export const BOARD_SPAWN_X: i64 = 3;
+export const BOARD_SPAWN_Y: i64 = -1;
+
+/* ============================================================================
+ * TYPES
+ * ============================================================================
+ */
+
+export form Board {
+    cells: [i64; 200],
+    occupied: i64,
+    cleared_lines: i64,
+    locked_pieces: i64,
+    last_clear: i64,
+    top_out: bool
+}
+
+export form BoardPosition {
+    x: i64,
+    y: i64
+}
+
+export form BoardBounds {
+    left: i64,
+    right: i64,
+    top: i64,
+    bottom: i64
+}
+
+export form BoardStatistics {
+    occupied_cells: i64,
+    empty_cells: i64,
+    completed_lines: i64,
+    aggregate_height: i64,
+    maximum_height: i64,
+    minimum_height: i64,
+    holes: i64,
+    bumpiness: i64,
+    top_occupied: bool
+}
+
+export form BoardClearResult {
+    lines: i64,
+    perfect_clear: bool,
+    top_out: bool
+}
+
+/* ============================================================================
+ * BASIC UTILITIES
+ * ============================================================================
+ */
+
+export proc board_min(a: i64, b: i64) -> i64 {
+    if a < b {
+        return a;
+    }
+
+    return b;
+}
+
+export proc board_max(a: i64, b: i64) -> i64 {
+    if a > b {
+        return a;
+    }
+
+    return b;
+}
+
+export proc board_abs(value: i64) -> i64 {
+    if value < 0 {
+        return -value;
+    }
+
+    return value;
+}
+
+export proc board_clamp(
+    value: i64,
+    minimum: i64,
+    maximum: i64
+) -> i64 {
+    if value < minimum {
+        return minimum;
+    }
+
+    if value > maximum {
+        return maximum;
+    }
+
+    return value;
+}
+
+/* ============================================================================
+ * COORDINATES
+ * ============================================================================
+ */
+
+export proc board_inside(x: i64, y: i64) -> bool {
+    return x >= 0
+        and x < BOARD_WIDTH
+        and y >= 0
+        and y < BOARD_HEIGHT;
+}
+
+export proc board_inside_x(x: i64) -> bool {
+    return x >= 0 and x < BOARD_WIDTH;
+}
+
+export proc board_inside_y(y: i64) -> bool {
+    return y >= 0 and y < BOARD_HEIGHT;
+}
+
+export proc board_index(x: i64, y: i64) -> i64 {
+    return y * BOARD_WIDTH + x;
+}
+
+export proc board_index_valid(index: i64) -> bool {
+    return index >= 0 and index < BOARD_SIZE;
+}
+
+export proc board_x_from_index(index: i64) -> i64 {
+    return index % BOARD_WIDTH;
+}
+
+export proc board_y_from_index(index: i64) -> i64 {
+    return index / BOARD_WIDTH;
+}
+
+export proc board_position(x: i64, y: i64) -> BoardPosition {
+    return BoardPosition {
+        x: x,
+        y: y
+    };
+}
+
+export proc board_position_valid(position: &BoardPosition) -> bool {
+    return board_inside(position.x, position.y);
+}
+
+export proc board_bounds() -> BoardBounds {
+    return BoardBounds {
+        left: 0,
+        right: BOARD_WIDTH - 1,
+        top: 0,
+        bottom: BOARD_HEIGHT - 1
+    };
+}
+
+/* ============================================================================
+ * CELL VALIDATION
+ * ============================================================================
+ */
+
+export proc board_cell_value_valid(value: i64) -> bool {
+    return value >= BOARD_EMPTY
+        and value <= BOARD_MAX_PIECE;
+}
+
+export proc board_piece_value_valid(value: i64) -> bool {
+    return value >= BOARD_MIN_PIECE
+        and value <= BOARD_MAX_PIECE;
+}
+
+export proc board_cell_is_empty(value: i64) -> bool {
+    return value == BOARD_EMPTY;
+}
+
+export proc board_cell_is_occupied(value: i64) -> bool {
+    return value != BOARD_EMPTY;
+}
+
+/* ============================================================================
+ * BOARD CREATION
+ * ============================================================================
+ */
+
+export proc board_create() -> Board {
+    return Board {
+        cells: [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        occupied: 0,
+        cleared_lines: 0,
+        locked_pieces: 0,
+        last_clear: 0,
+        top_out: false
+    };
+}
+
+/* ============================================================================
+ * BOARD RESET
+ * ============================================================================
+ */
+
+export proc board_reset(board: &mut Board) {
+    let mut index: i64 = 0;
+
+    while index < BOARD_SIZE {
+        set board.cells[index] = BOARD_EMPTY;
+        set index = index + 1;
+    }
+
+    set board.occupied = 0;
+    set board.cleared_lines = 0;
+    set board.locked_pieces = 0;
+    set board.last_clear = 0;
+    set board.top_out = false;
+}
+
+/* ============================================================================
+ * CELL ACCESS
+ * ============================================================================
+ */
+
+export proc board_get(
+    board: &Board,
+    x: i64,
+    y: i64
+) -> i64 {
+    if not board_inside(x, y) {
+        return -1;
+    }
+
+    let index: i64 = board_index(x, y);
+
+    return board.cells[index];
+}
+
+export proc board_get_index(
+    board: &Board,
+    index: i64
+) -> i64 {
+    if not board_index_valid(index) {
+        return -1;
+    }
+
+    return board.cells[index];
+}
+
+export proc board_set(
+    board: &mut Board,
+    x: i64,
+    y: i64,
+    value: i64
+) -> bool {
+    if not board_inside(x, y) {
+        return false;
+    }
+
+    if not board_cell_value_valid(value) {
+        return false;
+    }
+
+    let index: i64 = board_index(x, y);
+    let previous: i64 = board.cells[index];
+
+    if previous == BOARD_EMPTY and value != BOARD_EMPTY {
+        set board.occupied = board.occupied + 1;
+    } elif previous != BOARD_EMPTY and value == BOARD_EMPTY {
+        set board.occupied = board.occupied - 1;
+    }
+
+    set board.cells[index] = value;
+
+    return true;
+}
+
+export proc board_set_index(
+    board: &mut Board,
+    index: i64,
+    value: i64
+) -> bool {
+    if not board_index_valid(index) {
+        return false;
+    }
+
+    return board_set(
+        board,
+        board_x_from_index(index),
+        board_y_from_index(index),
+        value
+    );
+}
+
+export proc board_clear_cell(
+    board: &mut Board,
+    x: i64,
+    y: i64
+) -> bool {
+    return board_set(board, x, y, BOARD_EMPTY);
+}
+
+/* ============================================================================
+ * CELL QUERIES
+ * ============================================================================
+ */
+
+export proc board_is_empty(
+    board: &Board,
+    x: i64,
+    y: i64
+) -> bool {
+    if not board_inside(x, y) {
+        return false;
+    }
+
+    return board_get(board, x, y) == BOARD_EMPTY;
+}
+
+export proc board_is_occupied(
+    board: &Board,
+    x: i64,
+    y: i64
+) -> bool {
+    if not board_inside(x, y) {
+        return false;
+    }
+
+    return board_get(board, x, y) != BOARD_EMPTY;
+}
+
+export proc board_is_blocked(
+    board: &Board,
+    x: i64,
+    y: i64
+) -> bool {
+    if x < 0 or x >= BOARD_WIDTH {
+        return true;
+    }
+
+    if y >= BOARD_HEIGHT {
+        return true;
+    }
+
+    if y < 0 {
+        return false;
+    }
+
+    return board_is_occupied(board, x, y);
+}
+
+/* ============================================================================
+ * BOARD COPYING
+ * ============================================================================
+ */
+
+export proc board_copy(
+    destination: &mut Board,
+    source: &Board
+) {
+    let mut index: i64 = 0;
+
+    while index < BOARD_SIZE {
+        set destination.cells[index] = source.cells[index];
+        set index = index + 1;
+    }
+
+    set destination.occupied = source.occupied;
+    set destination.cleared_lines = source.cleared_lines;
+    set destination.locked_pieces = source.locked_pieces;
+    set destination.last_clear = source.last_clear;
+    set destination.top_out = source.top_out;
+}
+
+export proc board_clone(source: &Board) -> Board {
+    let mut result: Board = board_create();
+
+    board_copy(&mut result, source);
+
+    return result;
+}
+
+export proc board_equals(
+    left: &Board,
+    right: &Board
+) -> bool {
+    let mut index: i64 = 0;
+
+    while index < BOARD_SIZE {
+        if left.cells[index] != right.cells[index] {
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+/* ============================================================================
+ * ROW OPERATIONS
+ * ============================================================================
+ */
+
+export proc board_row_occupied(
+    board: &Board,
+    y: i64
+) -> i64 {
+    if not board_inside_y(y) {
+        return 0;
+    }
+
+    let mut count: i64 = 0;
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        if board_is_occupied(board, x, y) {
+            set count = count + 1;
+        }
+
+        set x = x + 1;
+    }
+
+    return count;
+}
+
+export proc board_row_empty(
+    board: &Board,
+    y: i64
+) -> bool {
+    if not board_inside_y(y) {
+        return false;
+    }
+
+    return board_row_occupied(board, y) == 0;
+}
+
+export proc board_row_complete(
+    board: &Board,
+    y: i64
+) -> bool {
+    if not board_inside_y(y) {
+        return false;
+    }
+
+    return board_row_occupied(board, y) == BOARD_WIDTH;
+}
+
+export proc board_row_has_space(
+    board: &Board,
+    y: i64
+) -> bool {
+    if not board_inside_y(y) {
+        return false;
+    }
+
+    return board_row_occupied(board, y) < BOARD_WIDTH;
+}
+
+export proc board_clear_row(
+    board: &mut Board,
+    y: i64
+) {
+    if not board_inside_y(y) {
+        return;
+    }
+
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        board_clear_cell(board, x, y);
+        set x = x + 1;
+    }
+}
+
+export proc board_copy_row(
+    board: &mut Board,
+    source_y: i64,
+    destination_y: i64
+) {
+    if not board_inside_y(source_y) {
+        return;
+    }
+
+    if not board_inside_y(destination_y) {
+        return;
+    }
+
+    if source_y == destination_y {
+        return;
+    }
+
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        let value: i64 = board_get(board, x, source_y);
+
+        board_set(board, x, destination_y, value);
+
+        set x = x + 1;
+    }
+}
+
+/* ============================================================================
+ * LINE REMOVAL
+ * ============================================================================
+ */
+
+export proc board_remove_line(
+    board: &mut Board,
+    row: i64
+) {
+    if not board_inside_y(row) {
+        return;
+    }
+
+    let mut y: i64 = row;
+
+    while y > 0 {
+        board_copy_row(board, y - 1, y);
+        set y = y - 1;
+    }
+
+    board_clear_row(board, 0);
+}
+
+export proc board_count_complete_lines(
+    board: &Board
+) -> i64 {
+    let mut count: i64 = 0;
+    let mut y: i64 = 0;
+
+    while y < BOARD_HEIGHT {
+        if board_row_complete(board, y) {
+            set count = count + 1;
+        }
+
+        set y = y + 1;
+    }
+
+    return count;
+}
+
+export proc board_clear_lines(
+    board: &mut Board
+) -> i64 {
+    let mut cleared: i64 = 0;
+    let mut y: i64 = BOARD_HEIGHT - 1;
+
+    while y >= 0 {
+        if board_row_complete(board, y) {
+            board_remove_line(board, y);
+            set cleared = cleared + 1;
+        } else {
+            set y = y - 1;
+        }
+    }
+
+    set board.last_clear = cleared;
+    set board.cleared_lines = board.cleared_lines + cleared;
+
+    return cleared;
+}
+
+export proc board_clear_result(
+    board: &mut Board
+) -> BoardClearResult {
+    let lines: i64 = board_clear_lines(board);
+
+    return BoardClearResult {
+        lines: lines,
+        perfect_clear: board.occupied == 0,
+        top_out: board.top_out
+    };
+}
+
+/* ============================================================================
+ * COLUMN OPERATIONS
+ * ============================================================================
+ */
+
+export proc board_column_occupied(
+    board: &Board,
+    x: i64
+) -> i64 {
+    if not board_inside_x(x) {
+        return 0;
+    }
+
+    let mut count: i64 = 0;
+    let mut y: i64 = 0;
+
+    while y < BOARD_HEIGHT {
+        if board_is_occupied(board, x, y) {
+            set count = count + 1;
+        }
+
+        set y = y + 1;
+    }
+
+    return count;
+}
+
+export proc board_column_empty(
+    board: &Board,
+    x: i64
+) -> bool {
+    if not board_inside_x(x) {
+        return false;
+    }
+
+    return board_column_occupied(board, x) == 0;
+}
+
+export proc board_column_height(
+    board: &Board,
+    x: i64
+) -> i64 {
+    if not board_inside_x(x) {
+        return 0;
+    }
+
+    let mut y: i64 = 0;
+
+    while y < BOARD_HEIGHT {
+        if board_is_occupied(board, x, y) {
+            return BOARD_HEIGHT - y;
+        }
+
+        set y = y + 1;
+    }
+
+    return 0;
+}
+
+export proc board_aggregate_height(board: &Board) -> i64 {
+    let mut total: i64 = 0;
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        set total = total + board_column_height(board, x);
+        set x = x + 1;
+    }
+
+    return total;
+}
+
+export proc board_maximum_height(board: &Board) -> i64 {
+    let mut result: i64 = 0;
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        set result = board_max(
+            result,
+            board_column_height(board, x)
+        );
+
+        set x = x + 1;
+    }
+
+    return result;
+}
+
+export proc board_minimum_height(board: &Board) -> i64 {
+    let mut result: i64 = BOARD_HEIGHT;
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        set result = board_min(
+            result,
+            board_column_height(board, x)
+        );
+
+        set x = x + 1;
+    }
+
+    return result;
+}
+
+/* ============================================================================
+ * HOLES
+ * ============================================================================
+ */
+
+export proc board_column_holes(
+    board: &Board,
+    x: i64
+) -> i64 {
+    if not board_inside_x(x) {
+        return 0;
+    }
+
+    let mut found_block: bool = false;
+    let mut holes: i64 = 0;
+    let mut y: i64 = 0;
+
+    while y < BOARD_HEIGHT {
+        if board_is_occupied(board, x, y) {
+            set found_block = true;
+        } elif found_block {
+            set holes = holes + 1;
+        }
+
+        set y = y + 1;
+    }
+
+    return holes;
+}
+
+export proc board_count_holes(board: &Board) -> i64 {
+    let mut holes: i64 = 0;
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        set holes = holes + board_column_holes(board, x);
+        set x = x + 1;
+    }
+
+    return holes;
+}
+
+/* ============================================================================
+ * SURFACE BUMPINESS
+ * ============================================================================
+ */
+
+export proc board_bumpiness(board: &Board) -> i64 {
+    let mut total: i64 = 0;
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH - 1 {
+        let left: i64 = board_column_height(board, x);
+        let right: i64 = board_column_height(board, x + 1);
+
+        set total = total + board_abs(left - right);
+
+        set x = x + 1;
+    }
+
+    return total;
+}
+
+/* ============================================================================
+ * TOP-OUT DETECTION
+ * ============================================================================
+ */
+
+export proc board_top_occupied(board: &Board) -> bool {
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        if board_is_occupied(board, x, 0) {
+            return true;
+        }
+
+        set x = x + 1;
+    }
+
+    return false;
+}
+
+export proc board_has_top_out(board: &Board) -> bool {
+    return board.top_out;
+}
+
+export proc board_mark_top_out(board: &mut Board) {
+    set board.top_out = true;
+}
+
+export proc board_clear_top_out(board: &mut Board) {
+    set board.top_out = false;
+}
+
+/* ============================================================================
+ * PIECE MATRIX
+ * ============================================================================
+ */
+
+export proc board_piece_index(x: i64, y: i64) -> i64 {
+    return y * BOARD_PIECE_WIDTH + x;
+}
+
+export proc board_piece_cell(
+    cells: *i64,
+    x: i64,
+    y: i64
+) -> i64 {
+    if x < 0 or x >= BOARD_PIECE_WIDTH {
+        return 0;
+    }
+
+    if y < 0 or y >= BOARD_PIECE_HEIGHT {
+        return 0;
+    }
+
+    return cells[board_piece_index(x, y)];
+}
+
+/* ============================================================================
+ * PIECE COLLISION
+ * ============================================================================
+ */
+
+export proc board_piece_fits(
+    board: &Board,
+    cells: *i64,
+    position_x: i64,
+    position_y: i64
+) -> bool {
+    let mut py: i64 = 0;
+
+    while py < BOARD_PIECE_HEIGHT {
+        let mut px: i64 = 0;
+
+        while px < BOARD_PIECE_WIDTH {
+            if board_piece_cell(cells, px, py) != 0 {
+                let x: i64 = position_x + px;
+                let y: i64 = position_y + py;
+
+                if board_is_blocked(board, x, y) {
+                    return false;
+                }
+            }
+
+            set px = px + 1;
+        }
+
+        set py = py + 1;
+    }
+
+    return true;
+}
+
+/* ============================================================================
+ * PIECE LOCKING
+ * ============================================================================
+ */
+
+export proc board_lock_piece(
+    board: &mut Board,
+    cells: *i64,
+    position_x: i64,
+    position_y: i64,
+    kind: i64
+) -> bool {
+    if not board_piece_value_valid(kind) {
+        return false;
+    }
+
+    if not board_piece_fits(
+        board,
+        cells,
+        position_x,
+        position_y
+    ) {
+        return false;
+    }
+
+    let mut top_out: bool = false;
+    let mut py: i64 = 0;
+
+    while py < BOARD_PIECE_HEIGHT {
+        let mut px: i64 = 0;
+
+        while px < BOARD_PIECE_WIDTH {
+            if board_piece_cell(cells, px, py) != 0 {
+                let x: i64 = position_x + px;
+                let y: i64 = position_y + py;
+
+                if y < 0 {
+                    set top_out = true;
+                } else {
+                    board_set(board, x, y, kind);
+                }
+            }
+
+            set px = px + 1;
+        }
+
+        set py = py + 1;
+    }
+
+    set board.locked_pieces = board.locked_pieces + 1;
+
+    if top_out {
+        board_mark_top_out(board);
+    }
+
+    return true;
+}
+
+/* ============================================================================
+ * GHOST PIECE
+ * ============================================================================
+ */
+
+export proc board_ghost_y(
+    board: &Board,
+    cells: *i64,
+    position_x: i64,
+    position_y: i64
+) -> i64 {
+    if not board_piece_fits(
+        board,
+        cells,
+        position_x,
+        position_y
+    ) {
+        return position_y;
+    }
+
+    let mut y: i64 = position_y;
+
+    while board_piece_fits(
+        board,
+        cells,
+        position_x,
+        y + 1
+    ) {
+        set y = y + 1;
+    }
+
+    return y;
+}
+
+/* ============================================================================
+ * BOARD STATISTICS
+ * ============================================================================
+ */
+
+export proc board_statistics(board: &Board) -> BoardStatistics {
+    return BoardStatistics {
+        occupied_cells: board.occupied,
+        empty_cells: BOARD_SIZE - board.occupied,
+        completed_lines: board_count_complete_lines(board),
+        aggregate_height: board_aggregate_height(board),
+        maximum_height: board_maximum_height(board),
+        minimum_height: board_minimum_height(board),
+        holes: board_count_holes(board),
+        bumpiness: board_bumpiness(board),
+        top_occupied: board_top_occupied(board)
+    };
+}
+
+/* ============================================================================
+ * OCCUPIED CELL COUNT
+ * ============================================================================
+ */
+
+export proc board_count_occupied(board: &Board) -> i64 {
+    let mut count: i64 = 0;
+    let mut index: i64 = 0;
+
+    while index < BOARD_SIZE {
+        if board.cells[index] != BOARD_EMPTY {
+            set count = count + 1;
+        }
+
+        set index = index + 1;
+    }
+
+    return count;
+}
+
+/* ============================================================================
+ * BOARD VALIDATION
+ * ============================================================================
+ */
+
+export proc board_validate(board: &Board) -> bool {
+    let mut index: i64 = 0;
+
+    while index < BOARD_SIZE {
+        if not board_cell_value_valid(board.cells[index]) {
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    if board.occupied != board_count_occupied(board) {
+        return false;
+    }
+
+    if board.occupied < 0 or board.occupied > BOARD_SIZE {
+        return false;
+    }
+
+    if board.cleared_lines < 0 {
+        return false;
+    }
+
+    if board.locked_pieces < 0 {
+        return false;
+    }
+
+    if board.last_clear < 0 {
+        return false;
+    }
+
+    return true;
+}
+
+/* ============================================================================
+ * PERFECT CLEAR
+ * ============================================================================
+ */
+
+export proc board_is_perfect_clear(board: &Board) -> bool {
+    return board.occupied == 0;
+}
+
+/* ============================================================================
+ * BOARD DENSITY
+ * ============================================================================
+ */
+
+export proc board_density_percent(board: &Board) -> i64 {
+    return board.occupied * 100 / BOARD_SIZE;
+}
+
+/* ============================================================================
+ * TESTS — DIMENSIONS
+ * ============================================================================
+ */
+
+test "board dimensions" {
+    assert BOARD_WIDTH == 10;
+    assert BOARD_HEIGHT == 20;
+    assert BOARD_SIZE == 200;
+}
+
+/* ============================================================================
+ * TESTS — INITIALIZATION
+ * ============================================================================
+ */
+
+test "board initialization" {
+    let board: Board = board_create();
+
+    assert board.occupied == 0;
+    assert board.cleared_lines == 0;
+    assert board.locked_pieces == 0;
+    assert not board.top_out;
+    assert board_validate(&board);
+}
+
+/* ============================================================================
+ * TESTS — COORDINATES
+ * ============================================================================
+ */
+
+test "board coordinates" {
+    assert board_inside(0, 0);
+    assert board_inside(9, 19);
+
+    assert not board_inside(-1, 0);
+    assert not board_inside(10, 0);
+    assert not board_inside(0, -1);
+    assert not board_inside(0, 20);
+}
+
+/* ============================================================================
+ * TESTS — INDEX
+ * ============================================================================
+ */
+
+test "board indexing" {
+    assert board_index(0, 0) == 0;
+    assert board_index(9, 0) == 9;
+    assert board_index(0, 1) == 10;
+    assert board_index(9, 19) == 199;
+}
+
+/* ============================================================================
+ * TESTS — CELL ACCESS
+ * ============================================================================
+ */
+
+test "board get and set" {
+    let mut board: Board = board_create();
+
+    assert board_set(&mut board, 5, 10, BOARD_PIECE_T);
+
+    assert board_get(&board, 5, 10) == BOARD_PIECE_T;
+    assert board.occupied == 1;
+    assert board_validate(&board);
+}
+
+/* ============================================================================
+ * TESTS — CLEAR CELL
+ * ============================================================================
+ */
+
+test "board clear cell" {
+    let mut board: Board = board_create();
+
+    board_set(&mut board, 5, 10, BOARD_PIECE_T);
+
+    assert board_clear_cell(&mut board, 5, 10);
+
+    assert board_get(&board, 5, 10) == BOARD_EMPTY;
+    assert board.occupied == 0;
+}
+
+/* ============================================================================
+ * TESTS — INVALID COORDINATES
+ * ============================================================================
+ */
+
+test "board invalid coordinates" {
+    let mut board: Board = board_create();
+
+    assert not board_set(&mut board, -1, 0, BOARD_PIECE_I);
+    assert not board_set(&mut board, 10, 0, BOARD_PIECE_I);
+    assert not board_set(&mut board, 0, 20, BOARD_PIECE_I);
+
+    assert board.occupied == 0;
+}
+
+/* ============================================================================
+ * TESTS — LINE COMPLETION
+ * ============================================================================
+ */
+
+test "board row completion" {
+    let mut board: Board = board_create();
+
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        board_set(&mut board, x, 19, BOARD_PIECE_I);
+        set x = x + 1;
+    }
+
+    assert board_row_complete(&board, 19);
+    assert not board_row_complete(&board, 18);
+}
+
+/* ============================================================================
+ * TESTS — LINE REMOVAL
+ * ============================================================================
+ */
+
+test "board line removal" {
+    let mut board: Board = board_create();
+
+    let mut x: i64 = 0;
+
+    while x < BOARD_WIDTH {
+        board_set(&mut board, x, 19, BOARD_PIECE_I);
+        set x = x + 1;
+    }
+
+    board_set(&mut board, 5, 18, BOARD_PIECE_T);
+
+    let cleared: i64 = board_clear_lines(&mut board);
+
+    assert cleared == 1;
+    assert board_get(&board, 5, 19) == BOARD_PIECE_T;
+    assert board.cleared_lines == 1;
+    assert board_validate(&board);
+}
+
+/* ============================================================================
+ * TESTS — CLONE
+ * ============================================================================
+ */
+
+test "board clone" {
+    let mut board: Board = board_create();
+
+    board_set(&mut board, 4, 10, BOARD_PIECE_L);
+
+    let copy: Board = board_clone(&board);
+
+    assert board_equals(&board, &copy);
+}
+
+/* ============================================================================
+ * TESTS — COLUMN HEIGHT
+ * ============================================================================
+ */
+
+test "board column height" {
+    let mut board: Board = board_create();
+
+    board_set(&mut board, 3, 15, BOARD_PIECE_J);
+
+    assert board_column_height(&board, 3) == 5;
+    assert board_column_height(&board, 4) == 0;
+}
+
+/* ============================================================================
+ * TESTS — HOLES
+ * ============================================================================
+ */
+
+test "board holes" {
+    let mut board: Board = board_create();
+
+    board_set(&mut board, 3, 15, BOARD_PIECE_I);
+    board_set(&mut board, 3, 19, BOARD_PIECE_I);
+
+    assert board_column_holes(&board, 3) == 3;
+}
+
+/* ============================================================================
+ * TESTS — PERFECT CLEAR
+ * ============================================================================
+ */
+
+test "board perfect clear" {
+    let mut board: Board = board_create();
+
+    assert board_is_perfect_clear(&board);
+
+    board_set(&mut board, 1, 1, BOARD_PIECE_O);
+
+    assert not board_is_perfect_clear(&board);
+}
+
+/* ============================================================================
+ * TESTS — DENSITY
+ * ============================================================================
+ */
+
+test "board density" {
+    let mut board: Board = board_create();
+
+    assert board_density_percent(&board) == 0;
+
+    let mut y: i64 = 0;
+
+    while y < 10 {
+        let mut x: i64 = 0;
+
+        while x < BOARD_WIDTH {
+            board_set(&mut board, x, y, BOARD_PIECE_T);
+            set x = x + 1;
+        }
+
+        set y = y + 1;
+    }
+
+    assert board_density_percent(&board) == 50;
+}
+
+/* ============================================================================
+ * TESTS — RESET
+ * ============================================================================
+ */
+
+test "board reset" {
+    let mut board: Board = board_create();
+
+    board_set(&mut board, 1, 1, BOARD_PIECE_I);
+    board_set(&mut board, 2, 2, BOARD_PIECE_O);
+
+    board_reset(&mut board);
+
+    assert board.occupied == 0;
+    assert board_get(&board, 1, 1) == BOARD_EMPTY;
+    assert board_get(&board, 2, 2) == BOARD_EMPTY;
+    assert board_validate(&board);
+}
+
+/* ============================================================================
+ * TESTS — GHOST PIECE
+ * ============================================================================
+ */
+
+test "board ghost piece" {
+    let board: Board = board_create();
+
+    let cells: [i64; 16] = [
+        0, 0, 0, 0,
+        1, 1, 1, 1,
+        0, 0, 0, 0,
+        0, 0, 0, 0
+    ];
+
+    let ghost: i64 = board_ghost_y(
+        &board,
+        &cells[0],
+        3,
+        0
+    );
+
+    assert ghost == 18;
+}
+
+/* ============================================================================
+ * TESTS — PIECE LOCK
+ * ============================================================================
+ */
+
+test "board lock piece" {
+    let mut board: Board = board_create();
+
+    let cells: [i64; 16] = [
+        0, 0, 0, 0,
+        1, 1, 1, 1,
+        0, 0, 0, 0,
+        0, 0, 0, 0
+    ];
+
+    assert board_lock_piece(
+        &mut board,
+        &cells[0],
+        3,
+        18,
+        BOARD_PIECE_I
+    );
+
+    assert board.occupied == 4;
+    assert board.locked_pieces == 1;
+    assert board_validate(&board);
+}
+
+/* ============================================================================
+ * END OF FILE
+ * ============================================================================
+ */

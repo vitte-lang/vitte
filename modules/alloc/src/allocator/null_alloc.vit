@@ -1,0 +1,30 @@
+/// Allocateur qui refuse les réservations, utile pour tester les chemins d'échec.
+space alloc::allocator::null_alloc;
+
+use core::mem::layout::{Layout, layout_is_valid};
+use alloc::allocator::result::{
+    AllocationResult,
+    AllocationError,
+    AllocatorKind,
+    allocation_failure,
+};
+
+export proc null_allocate(layout: Layout) -> AllocationResult {
+    if not layout_is_valid(&layout) {
+        return allocation_failure(AllocationError.InvalidLayout, AllocatorKind.Null);
+    }
+    if layout.size == 0 {
+        return AllocationResult {
+            success: true,
+            pointer: null,
+            error: AllocationError.None,
+            allocator: AllocatorKind.Null,
+        };
+    }
+    return allocation_failure(AllocationError.OutOfMemory, AllocatorKind.Null);
+}
+
+export proc null_deallocate(pointer: *mut u8, layout: Layout) -> bool {
+    return pointer == null && layout_is_valid(&layout);
+}
+

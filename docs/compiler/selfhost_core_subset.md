@@ -1,26 +1,14 @@
 # Self-Host Core Subset
 
-This document defines the current **compiler self-host subset** for Vitte.
-
-It is narrower than the broader language surface documented elsewhere. The goal
-is not to describe every accepted syntax form, but to define the contract that
-the trusted bootstrap path and compiler entrypoint may rely on while the compiler
-is still converging toward full self-hosting.
+This document records only the constrained syntax subset used by the trusted stage0 source. It is not the implementation map for the active compiler: stage0 still supplies the executable and C host-toolchain boundary, while ordinary `compile` and `run` inputs use the linked Vitte frontend described in the [active pipeline](pipeline.md).
 
 ## Scope
 
-This contract is enforced today for:
-
-- `toolchain/seed/src/main.vit`
-- `src/vitte/compiler/main.vit`
-
-These files are the bootstrap and driver-facing trust anchors. The full
-compiler tree still uses a broader language surface and is not yet required to
-fit inside this subset.
+The syntax subset applies to `toolchain/seed/src/main.vit`. The former compiler entry `src/vitte/compiler/main.vit` is retired; the staged native Vitte track does not yet have a complete replacement entry point.
 
 ## Required top-level shape
 
-Every self-host subset module must use only these top-level constructions:
+The seed subset uses these top-level constructions:
 
 - `space <name>`
 - `import <path>`
@@ -31,111 +19,32 @@ Every self-host subset module must use only these top-level constructions:
 - `proc <name>(...) -> <type> { ... }`
 - `export *`
 
-The bootstrap entry modules are also expected to expose:
-
-- `const VERSION_TEXT: string = ...`
-- `const BANNER_TEXT: string = ...`
-- `proc version_text() -> string`
-- `proc banner_text() -> string`
-- `proc main(args: list[string]) -> int`
+The seed entry exposes named version/banner constants and a `main(args: list[string]) -> int` procedure.
 
 ## Allowed declaration surface
 
-The current self-host subset allows these declaration categories:
+The seed subset covers named string and integer constants, forms, picks, procedures, module imports, and full-module export through `export *`.
 
-- named string constants
-- named integer constants
-- forms
-- picks
-- procedures
-- module imports
-- full-module export via `export *`
+The following top-level constructs are outside this subset:
 
-The following top-level constructs are **not** part of the current self-host
-subset contract:
-
-- `trait`
-- `impl`
-- `class`
-- `union`
-- `bits`
-- `flags`
-- `macro`
-- `query`
-- `compiler`
-- `pass`
-- `backend`
-- `diagnostic`
-- `test`
-- `bench`
+- `trait`, `impl`, `class`, `union`, `bits`, `flags`
+- `macro`, `query`, `compiler`, `pass`, `backend`, `diagnostic`
+- `test`, `bench`
 
 ## Allowed statement surface
 
-Inside procedures, the currently accepted self-host contract is intentionally
-constrained but no longer wrapper-only. The trust root already uses:
+The seed uses `let`, `set`, `if`, `elif`, `else`, `while`, and `return`.
 
-- `let`
-- `set`
-- `if`
-- `elif`
-- `else`
-- `while`
-- `give`
+The following statement or control-flow families are outside the subset:
 
-The following statement or control-flow families are currently excluded from
-the self-host contract:
-
-- `with`
-- `try`
-- `defer`
-- `unsafe`
-- `asm`
-- `emit`
-- `panic`
-- `select`
-- `critical`
+- `with`, `try`, `defer`, `unsafe`, `asm`, `emit`, `panic`, `select`, `critical`
 
 ## Allowed type surface
 
-The subset currently relies on these type forms:
-
-- `int`
-- `string`
-- `bool`
-- `list[string]`
-- arrays such as `[string]`
-- named compiler support types reached through `use`, such as
-  `panic_boundary.PanicBoundaryState`
+The subset uses `int`, `string`, `bool`, `list[string]`, arrays such as `[string]`, and named support types imported with `use`.
 
 ## Design rule
 
-The self-host subset is a **contract-first** surface:
+Keep the trusted seed entry simple, keep bootstrap wrappers explicit, and avoid experimental syntax in trust-root files. Widening the subset requires matching seed contract updates.
 
-- keep stage entrypoints simple
-- keep bootstrap wrappers explicit
-- avoid using experimental syntax in trust-root files
-- widen this subset only with matching gate updates
-
-## Enforcement
-
-The executable gate is:
-
-```sh
-make selfhost-subset-check
-```
-
-Bootstrap contract runners include it transitively through:
-
-```sh
-make bootstrap-native-contract
-make bootstrap-native-fast-contract
-```
-
-## Expansion rule
-
-Any intentional subset expansion must update all of:
-
-- this file
-- `docs/spec/grammar.md` when the parser-level core contract changes
-- `tools/check_selfhost_subset.sh`
-- bootstrap tests or snapshots when the trusted stage surface changes
+For the current compiler paths, see [the compiler source map](../MODULE_REFERENCE.md) and [native frontend port notes](../bootstrap/frontend_native_port.md).

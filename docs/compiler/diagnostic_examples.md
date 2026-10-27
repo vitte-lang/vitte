@@ -10,14 +10,14 @@ Invalid:
 
 ```vitte
 proc main() -> int {
-  give 0
+  return 0
 ```
 
 Corrected:
 
 ```vitte
 proc main() -> int {
-  give 0
+  return 0
 }
 ```
 
@@ -27,7 +27,7 @@ Invalid:
 
 ```vitte
 proc main() -> int {
-  give total
+  return total
 }
 ```
 
@@ -36,7 +36,7 @@ Corrected:
 ```vitte
 proc main() -> int {
   let total: int = 0;
-  give total;
+  return total;
 }
 ```
 
@@ -46,7 +46,7 @@ Invalid:
 
 ```vitte
 proc main() -> int {
-  give "zero";
+  return "zero";
 }
 ```
 
@@ -54,7 +54,7 @@ Corrected:
 
 ```vitte
 proc main() -> int {
-  give 0;
+  return 0;
 }
 ```
 
@@ -66,7 +66,7 @@ Invalid:
 proc main() -> int {
   let value: string = "v";
   let moved: string = value;
-  give len(value);
+  return len(value);
 }
 ```
 
@@ -75,7 +75,7 @@ Corrected:
 ```vitte
 proc main() -> int {
   let value: string = "v";
-  give len(value);
+  return len(value);
 }
 ```
 
@@ -89,7 +89,7 @@ extern "C" {
 }
 
 proc main() -> int {
-  give missing_symbol();
+  return missing_symbol();
 }
 ```
 
@@ -97,10 +97,10 @@ Corrected:
 
 ```vitte
 proc missing_symbol() -> int {
-  give 0;
+  return 0;
 }
 
 proc main() -> int {
-  give missing_symbol();
+  return missing_symbol();
 }
 ```

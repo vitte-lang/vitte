@@ -24,8 +24,8 @@
  * - Numbers (decimal, hex 0x, bin 0b, octal 0o, floats with exponent).
  * - Strings with escapes (single‑line) and block/line comments.
  * - Multiline block comments `/* ... *\/` supported via state.
- * - Token modifiers: declaration (after fn/struct/enum/trait/type/let/const),
- *   readonly (const), async (async keyword before fn).
+ * - Token modifiers: declaration (after proc/form/pick/trait/type/let/const),
+ *   readonly (const), async (async keyword before proc).
  */
 
 import type { SemanticTokens, SemanticTokensLegend } from 'vscode-languageserver';
@@ -74,15 +74,21 @@ export const legend: SemanticTokensLegend = {
 // Fast index lookup.
 const TI = Object.fromEntries(legend.tokenTypes.map((t, i) => [t, i])) as Record<string, number>;
 const TM = Object.fromEntries(legend.tokenModifiers.map((t, i) => [t, 1 << i])) as Record<string, number>;
+const IDENTIFIER_START_RE = /^[\p{L}\p{Nl}_]$/u;
+const IDENTIFIER_PART_RE = /^[\p{L}\p{Nl}\p{Nd}_]$/u;
 
 const KEYWORDS = new Set([
-  'fn','struct','enum','trait','impl','let','const','mut','pub','use','mod','return','if','else','while','for','match',
-  'break','continue','async','await','yield','where','type','alias','true','false','in','of'
+  'space','use','export','share','const','static','global','region','type','opaque','extern','form','pick','trait','impl','proc',
+  'class','union','bits','flags','intrinsic','compiler','query','pass','backend','diagnostic','macro','comptime','static_assert','test','bench','entry',
+  'return','let','set','try','defer','asm','emit','assert','panic','unreachable','if','elif','else','while','loop','for','in',
+  'break','continue','select','when','match','case','with','critical','async','await','unsafe','inline','noinline','naked',
+  'interrupt','where','effects','requires','operator','noexcept','as','mut','pub','priv','owned','borrow','move','not','and','or','is',
+  'self','ref','dyn','sizeof','alignof','offsetof','typeof','nameof','map','resource','volatile','atomic','user','kernel','phys','mmio','dma'
 ]);
 
 // Simple operator / punct set (we may ignore emitting tokens for these for now).
-const OPERATORS = new Set(['=>','->','==','!=','<=','>=','&&','||','::',':=','+=','-=','*=','/=','%=',
-  '+','-','*','/','%','<','>','=','!','&','|','^','~',':','.',';',',','(',')','[',']','{','}']);
+const OPERATORS = new Set(['=>','->','==','!=','<=','>=','::','..','..=','??','+=','-=','*=','/=','%=','&=','|=','^=',
+  '<<','>>','<<=','>>=','+','-','*','/','%','<','>','=','&','|','^','~','?',':','.',';',',','(',')','[',']','{','}']);
 
 /** Encodes one token into the semantic tokens `data` using delta encoding. */
 function pushToken(
@@ -112,21 +118,21 @@ function classifyIdent(
     return { type: TI['keyword'], mods: 0 };
   }
 
-  // Contextual declarations: name after fn/struct/enum/trait/type/let/const.
-  if (prevSigToken === 'fn') {
+  // Contextual declarations: name after proc/form/pick/trait/type/let/const.
+  if (prevSigToken === 'proc') {
     return { type: TI['function'], mods: TM['declaration'] };
   }
-  if (prevSigToken === 'struct' || prevSigToken === 'enum' || prevSigToken === 'trait' || prevSigToken === 'type') {
+  if (prevSigToken === 'form' || prevSigToken === 'pick' || prevSigToken === 'trait' || prevSigToken === 'impl' || prevSigToken === 'type' || prevSigToken === 'opaque') {
     return { type: TI['type'], mods: TM['declaration'] };
   }
-  if (prevSigToken === 'let' || prevSigToken === 'const') {
+  if (prevSigToken === 'let' || prevSigToken === 'const' || prevSigToken === 'static' || prevSigToken === 'global') {
     let mods = TM['declaration'];
     if (prevSigToken === 'const') mods |= TM['readonly'];
     return { type: TI['variable'], mods };
   }
 
   // Heuristic: UpperCamel → type-ish.
-  if (/^[A-Z][A-Za-z0-9_]*$/.test(ident)) {
+  if (/^\p{Lu}[\p{L}\p{Nl}\p{Nd}_]*$/u.test(ident)) {
     return { type: TI['type'], mods: 0 };
   }
 
@@ -162,7 +168,7 @@ export function tokenize(text: string): SemanticTokens {
 
     // Track last significant keyword for contextual declarations on this line.
     let lastSigKeyword: string | null = null;
-    let pendingAsync = false; // Marks async before fn.
+    let pendingAsync = false; // Marks async before proc.
 
     const L = line.length;
     while (i < L) {
@@ -245,17 +251,17 @@ export function tokenize(text: string): SemanticTokens {
       }
 
       // Identifier or keyword.
-      if (/[A-Za-z_]/.test(ch)) {
+      if (IDENTIFIER_START_RE.test(ch)) {
         let j = i + 1;
-        while (j < L && /[A-Za-z0-9_]/.test(line[j])) j++;
+        while (j < L && IDENTIFIER_PART_RE.test(line[j] ?? "")) j++;
         const ident = line.slice(i, j);
 
-        // Track async before fn to add modifier to the function decl.
+        // Track async before proc to add modifier to the procedure declaration.
         if (ident === 'async') { pendingAsync = true; lastSigKeyword = 'async'; }
         if (KEYWORDS.has(ident)) {
           pushToken(data, state, lineNo, i, j - i, TI['keyword']);
           // Maintain contextual keyword for upcoming declarations.
-          if (ident === 'fn' || ident === 'struct' || ident === 'enum' || ident === 'trait' || ident === 'type' || ident === 'let' || ident === 'const') {
+          if (ident === 'proc' || ident === 'form' || ident === 'pick' || ident === 'trait' || ident === 'impl' || ident === 'type' || ident === 'opaque' || ident === 'let' || ident === 'const' || ident === 'static' || ident === 'global') {
             lastSigKeyword = ident;
           }
           i = j;
@@ -267,8 +273,8 @@ export function tokenize(text: string): SemanticTokens {
         const cls = classifyIdent(ident, lastSigKeyword, nextChar);
         let mods = cls.mods;
         if (mods & TM['declaration']) {
-          // If `async` precedes `fn`, mark async on the declaration token (function name).
-          if (lastSigKeyword === 'fn' && pendingAsync) mods |= TM['async'];
+          // If `async` precedes `proc`, mark async on the declaration token.
+          if (lastSigKeyword === 'proc' && pendingAsync) mods |= TM['async'];
           // Reset after using declaration context.
           lastSigKeyword = null;
           pendingAsync = false;

@@ -18,6 +18,7 @@ STRICT_NATIVE=${STRICT_NATIVE:-0}
 FREEBSD_MAJOR=${FREEBSD_MAJOR:-14}
 VERIFY_METADATA=${VERIFY_METADATA:-0}
 RELEASE_INSTALLER_GATE=${RELEASE_INSTALLER_GATE:-0}
+REQUIRE_ARTIFACT_MANIFESTS=${REQUIRE_ARTIFACT_MANIFESTS:-0}
 
 die() {
   scripts_build_die "$*"
@@ -54,12 +55,19 @@ verify_optional_sum() {
 
 verify_manifest_if_present() {
   file=$1
+  expected_os=${2:-}
+  expected_arch=${3:-}
   manifest=$file.MANIFEST.json
 
-  [ ! -e "$manifest" ] || {
-    require_file "$manifest"
+  if [ ! -e "$manifest" ]; then
+    [ "$REQUIRE_ARTIFACT_MANIFESTS" -ne 1 ] ||
+      die "missing artifact manifest: $manifest"
+    return 0
+  fi
 
-    python3 - "$file" "$manifest" <<'PY'
+  require_file "$manifest"
+
+  python3 - "$file" "$manifest" "$expected_os" "$expected_arch" "$VERSION" <<'PY'
 import hashlib
 import json
 import sys
@@ -67,6 +75,7 @@ from pathlib import Path
 
 artifact = Path(sys.argv[1])
 manifest_path = Path(sys.argv[2])
+expected_os, expected_arch, expected_version = sys.argv[3:6]
 
 value = json.loads(
     manifest_path.read_text(encoding="utf-8")
@@ -97,6 +106,26 @@ if value["name"] != artifact.name:
         f"{manifest_path.name}: artifact name mismatch"
     )
 
+if value["schema"] != "org.vitte.installer-artifact.v1":
+    raise SystemExit(
+        f"{manifest_path.name}: unsupported manifest schema"
+    )
+
+if expected_os and value["os"] != expected_os:
+    raise SystemExit(
+        f"{manifest_path.name}: expected OS {expected_os}, got {value['os']}"
+    )
+
+if expected_arch and value["arch"] != expected_arch:
+    raise SystemExit(
+        f"{manifest_path.name}: expected arch {expected_arch}, got {value['arch']}"
+    )
+
+if value["version"] != expected_version:
+    raise SystemExit(
+        f"{manifest_path.name}: expected version {expected_version}, got {value['version']}"
+    )
+
 actual = hashlib.sha256(
     artifact.read_bytes()
 ).hexdigest()
@@ -111,7 +140,6 @@ if "vitte" not in value["installed_commands"]:
         f"{manifest_path.name}: vitte command missing"
     )
 PY
-  }
 }
 
 verify_relocatable_wrapper() {
@@ -144,7 +172,7 @@ verify_deb() {
   printf '[verify-installers] Debian %s\n' "$arch"
 
   verify_sum "$file"
-  verify_manifest_if_present "$file"
+  verify_manifest_if_present "$file" linux "$arch"
 
   tmp=$(mktemp -d)
 
@@ -439,7 +467,7 @@ verify_macos() {
         "$extension"
 
       verify_sum "$file"
-      verify_manifest_if_present "$file"
+      verify_manifest_if_present "$file" macos "$arch"
     done
   done
 }
@@ -508,7 +536,13 @@ verify_windows() {
       "$arch"
 
     verify_sum "$windows_kit"
-    verify_manifest_if_present "$windows_kit"
+    verify_manifest_if_present "$windows_kit" windows "$arch"
+
+    windows_exe=$OUT_DIR/vitte-${VERSION}-windows-${arch}-installer.exe
+    if [ -e "$windows_exe" ]; then
+      verify_sum "$windows_exe"
+      verify_manifest_if_present "$windows_exe" windows "$arch"
+    fi
 
     tar -xOzf \
       "$windows_kit" \

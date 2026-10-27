@@ -1,6 +1,6 @@
 # Vitte Stdlib Changelog
 
-Generated from commits touching `src/vitte/stdlib`, `tools/stdlib`, and stdlib docs.
+Generated from commits touching `modules/`, `tools/stdlib`, and stdlib docs.
 
 ## Recent Changes
 

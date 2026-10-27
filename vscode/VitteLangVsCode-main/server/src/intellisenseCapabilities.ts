@@ -18,6 +18,10 @@ export interface VitteIntelliSenseCapabilities {
     documentSymbols: true;
     workspaceSymbols: true;
     definition: true;
+    declaration: true;
+    implementation: true;
+    typeDefinition: true;
+    documentHighlights: true;
     references: true;
     rename: true;
     codeActions: true;
@@ -47,6 +51,10 @@ export function getIntelliSenseCapabilities(): VitteIntelliSenseCapabilities {
       documentSymbols: true,
       workspaceSymbols: true,
       definition: true,
+      declaration: true,
+      implementation: true,
+      typeDefinition: true,
+      documentHighlights: true,
       references: true,
       rename: true,
       codeActions: true,

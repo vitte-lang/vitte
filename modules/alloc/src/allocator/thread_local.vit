@@ -1,0 +1,43 @@
+/// État d'allocateur qu'un runtime peut conserver dans son emplacement TLS.
+/// Ce module ne crée pas lui-même le stockage local au thread.
+space alloc::allocator::thread_local;
+
+use core::mem::layout::{Layout, layout_is_valid};
+use alloc::allocator::result::{AllocationResult, AllocationError, allocation_failure};
+use alloc::allocator::allocator::{Allocator, allocator_allocate, allocator_deallocate};
+
+export form ThreadAllocator {
+    base: Allocator,
+    allocations: usize,
+    bytes_live: usize,
+}
+
+export proc thread_allocator(base: Allocator) -> ThreadAllocator {
+    return ThreadAllocator { base: base, allocations: 0, bytes_live: 0 };
+}
+
+export proc thread_allocator_allocate(value: &mut ThreadAllocator, layout: Layout) -> AllocationResult {
+    if not layout_is_valid(&layout) {
+        return allocation_failure(AllocationError.InvalidLayout, value.base.kind);
+    }
+    if value.bytes_live > usize.MAX - layout.size {
+        return allocation_failure(AllocationError.SizeOverflow, value.base.kind);
+    }
+    let result: AllocationResult = allocator_allocate(&value.base, layout);
+    if result.success {
+        if value.allocations < usize.MAX { set value.allocations = value.allocations + 1; }
+        set value.bytes_live = value.bytes_live + layout.size;
+    }
+    return result;
+}
+
+export proc thread_allocator_deallocate(value: &mut ThreadAllocator, pointer: *mut u8, layout: Layout) -> bool {
+    if layout.size > value.bytes_live { return false; }
+    if not allocator_deallocate(&value.base, pointer, layout) { return false; }
+    set value.bytes_live = value.bytes_live - layout.size;
+    return true;
+}
+
+export proc thread_allocator_bytes_live(value: &ThreadAllocator) -> usize {
+    return value.bytes_live;
+}

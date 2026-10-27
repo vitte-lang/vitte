@@ -7,19 +7,19 @@ ROLE-CONTRACT: strict
 VITTE-H0001
 >>>
 
-space demo/project
-pull std/io as io_pkg
-use std/math/core
+space demo::project
+use std::io as io_pkg
+use std::math::core
 share diagnostics_status, quickfix_status, doctor_status
 
 const HEX_MASK = 0xCAFE
 let BIN_MASK = 0b1010_0101
-make count = 42
+let count = 42
 
 type Coord = i32
 form Point {
-  field x: i32
-  field y: i32
+  x: i32,
+  y: i32,
 }
 
 trait Renderable {
@@ -33,9 +33,9 @@ pick Result {
 
 proc diagnostics_status(code: string) -> string {
   if code is "VITTE-H0001" and not false {
-    give "ok"
+    return "ok"
   } else {
-    give "ko"
+    return "ko"
   }
 }
 
@@ -54,36 +54,36 @@ proc quickfix_status(value: int) -> bool {
   let nothing = null
   let text: string = "vitte"
 
-  loop for i in value {
+  for i in value {
     if i > 100 {
       break
     } else {
       continue
     }
   }
-  give true
+  return true
 }
 
 macro doctor_status() -> string {
   emit "doctor"
-  asm "nop"
-  give "done"
+  asm("nop");
+  return "done"
 }
 
-entry main at demo/project {
+entry main {
   let alias_pkg = "core_pkg"
   let diagnostics_api = diagnostics_status("VITTE-H0001")
   let quickfix_api = quickfix_status(10)
   let doctor_api = doctor_status()
 
-  select diagnostics_api
+  select diagnostics_api {
     when "ok" {
       io_pkg.println("ok")
     }
-    otherwise {
+    else {
       io_pkg.println("ko")
     }
-  .end
+  }
 
   match quickfix_api {
     case true {

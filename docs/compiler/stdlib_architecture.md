@@ -1,15 +1,8 @@
 # Vitte Standard Library Architecture
 
-The Vitte standard library is a compiled Vitte source tree rooted at
-`src/vitte/stdlib`. Its architecture is defined by
-`src/vitte/stdlib/stdlib_architecture.json`, its module inventory is defined by
-`src/vitte/stdlib/stdlib_modules.json`, and its official dependency graph is
-defined by `src/vitte/stdlib/stdlib_dependency_graph.json`. All three are
-validated by `make stdlib-gate`.
+The current standard-library source root is `modules/`. The former `src/vitte/stdlib` tree and its documented JSON manifests are not present in the current repository. Treat the architecture below as a target model until it is reconciled with the module files and current build gates.
 
-## Levels
-
-The dependency hierarchy is strict:
+## Target levels
 
 1. `core`
 2. `alloc`
@@ -17,48 +10,14 @@ The dependency hierarchy is strict:
 4. `platform`
 5. `experimental`
 
-Lower levels cannot depend on higher levels. `experimental` can use stable
-lower layers, but stable layers cannot import `experimental`.
+Lower levels should not depend on higher levels. Stable layers should not import `experimental`.
 
-## Core
+## Target responsibilities
 
-`core` has no operating-system dependency and cannot use dynamic allocation.
-It owns primitive constants, simple forms, fixed-size helpers, and algorithms
-that work in freestanding builds.
+- `core`: portable primitive types and helpers without operating-system dependencies.
+- `alloc`: allocator-aware memory and collections.
+- `std`: portable higher-level modules such as math, strings, encoding, and JSON.
+- `platform`: host, kernel, IO, path, process, network, threading, runtime, and FFI boundaries.
+- `experimental`: unstable APIs and test-only surfaces.
 
-## Alloc
-
-`alloc` owns allocator-aware memory and collection APIs. It may depend on
-`core`, but it must remain portable and must not require an operating system.
-
-## Std
-
-`std` owns portable high-level modules such as math, strings, encoding, JSON,
-crypto, compression, regex, and data helpers. It may depend on `core` and
-`alloc`.
-
-## Platform
-
-`platform` owns host, kernel, IO, path, process, network, threading, runtime,
-and FFI boundaries. Platform modules are the only standard-library level that
-may directly encode operating-system behavior.
-
-## Experimental
-
-`experimental` owns unstable APIs and test-only surfaces. No stable layer may
-depend on it.
-
-## CI Rules
-
-The stdlib gate fails when:
-
-- one of the required top-level directories is missing;
-- a direct stdlib module directory does not contain `index.vit`;
-- `export *`, `share *`, or `share all` appears outside an official entrypoint;
-- a module imports a higher level;
-- the dependency graph contains a cycle;
-- an observed dependency edge is absent from the official graph;
-- `core` imports operating-system modules;
-- `core` uses dynamic allocation patterns;
-- the architecture manifest is missing or malformed;
-- stdlib sources are not Vitte source files.
+For the files that currently exist, browse `modules/` and its module-level documentation.

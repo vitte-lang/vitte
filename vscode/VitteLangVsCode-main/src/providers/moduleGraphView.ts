@@ -53,7 +53,7 @@ async function buildGraph(): Promise<GraphData> {
         errors: diagMap.get(uri.toString()) ?? 0,
       });
     }
-    const depRx = /^\s*(?:use|pull)\s+([A-Za-z_][\w./:]*)/gm;
+    const depRx = /^\s*use\s+([A-Za-z_][\w./:]*)/gm;
     let m: RegExpExecArray | null;
     while ((m = depRx.exec(text))) {
       const target = m[1] ?? "";
@@ -243,7 +243,7 @@ export function registerModuleGraphView(context: vscode.ExtensionContext): void 
     vscode.commands.registerCommand("vitte.moduleGraph.openModule", async (moduleName: string) => {
       if (!moduleName) return;
       const files = await vscode.workspace.findFiles("**/*.{vit,vitl,vitte}", "**/{node_modules,.git,out,dist,build}/**", 4000);
-      const modRx = new RegExp(`^\\s*(?:space|module)\\s+${rxEscape(moduleName)}\\b`, "m");
+      const modRx = new RegExp(`^\\s*space\\s+${rxEscape(moduleName)}\\b`, "m");
       for (const uri of files) {
         const doc = await vscode.workspace.openTextDocument(uri);
         if (modRx.test(doc.getText())) {

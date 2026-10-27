@@ -18,7 +18,7 @@ export function registerVitteCodeLens(context: vscode.ExtensionContext): void {
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i] ?? "";
-        const decl = /^\s*(?:proc|fn|entry)\s+([A-Za-z_]\w*)/.exec(line);
+        const decl = /^\s*(?:proc|entry)\s+([A-Za-z_]\w*)/.exec(line);
         if (decl) {
           const idx = decl[1] ? line.indexOf(decl[1]) : 0;
           const start = new vscode.Position(i, 0);

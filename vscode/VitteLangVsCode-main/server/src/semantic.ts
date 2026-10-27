@@ -19,7 +19,7 @@ import type {
   SemanticTokens,
 } from "vscode-languageserver/node";
 import type { TextDocument } from "vscode-languageserver-textdocument";
-import { RESERVED_WORDS, PRIMITIVE_TYPE_SET, BOOL_LITERAL_SET, NIL_LITERAL_SET } from "./languageFacts.js";
+import { RESERVED_WORDS, PRIMITIVE_TYPE_SET, BOOL_LITERAL_SET, NIL_LITERAL_SET, isIdentifierPart } from "./languageFacts.js";
 
 /* ------------------------------ Legend stable ----------------------------- */
 // Garder l’ordre en phase avec server.ts
@@ -61,7 +61,6 @@ export function getSemanticTokensLegend(): SemanticTokensLegend {
 
 const HOVER_DOC: Record<string, string> = {
   space: "Déclare l’espace courant.",
-  pull: "Importe un package avec alias.",
   use: "Importe un symbole depuis un package.",
   as: "Assigne un alias à un import.",
   form: "Définit une structure (form).",
@@ -79,8 +78,7 @@ const HOVER_DOC: Record<string, string> = {
   loop: "Boucle infinie interrompue par break.",
   break: "Interrompt une boucle.",
   continue: "Passe à l’itération suivante.",
-  return: "Retourne depuis une fonction.",
-  give: "Retourne depuis une procédure.",
+  return: "Retourne depuis une procédure.",
   true: "Booléen vrai.",
   false: "Booléen faux.",
 };
@@ -140,30 +138,27 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
   }
 
   // 4) mots-clés en zones de code
-  for (const m of matchAll(/\b[A-Za-z_]\w*\b/g, text)) {
+  for (const m of matchAll(/(?<![\p{L}\p{Nl}\p{Nd}_])[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*(?![\p{L}\p{Nl}\p{Nd}_])/gu, text)) {
     if (!lex.mask[m.index]) continue;
     if (!KW.has(m[0])) continue;
     insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.keyword);
   }
 
   // 5) déclarations: colorer uniquement le nom
-  addPathDeclSpans(text, lex.mask, /\bspace\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
-  addPathDeclSpans(text, lex.mask, /\b(?:use|pull)\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
-  addDeclSpans(text, lex.mask, /\bform\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\bpick\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\btrait\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\btype\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\bproc\s+([A-Za-z_]\w*)\s*\(/g, 1, TYPE_INDEX.function, spans);
-  addDeclSpans(text, lex.mask, /\b(?:let|make|const)\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.variable, spans);
+  addPathDeclSpans(text, lex.mask, /\bspace\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_./:]*)/gu, 1, TYPE_INDEX.namespace, spans);
+  addPathDeclSpans(text, lex.mask, /\buse\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_./:]*)/gu, 1, TYPE_INDEX.namespace, spans);
+  addDeclSpans(text, lex.mask, /\b(?:form|pick|trait|impl|class|union|bits|flags|type|opaque\s+type)\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)/gu, 1, TYPE_INDEX.type, spans);
+  addDeclSpans(text, lex.mask, /\bproc\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\s*\(/gu, 1, TYPE_INDEX.function, spans);
+  addDeclSpans(text, lex.mask, /\b(?:let|const|static|global)\s+(?:mut\s+)?([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)/gu, 1, TYPE_INDEX.variable, spans);
 
   // 6) paramètres de fonctions
-  for (const m of matchAll(/\bproc\s+[A-Za-z_]\w*\s*\(([^)]*)\)/g, text)) {
+  for (const m of matchAll(/\bproc\s+[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*\s*\(([^)]*)\)/gu, text)) {
     if (!lex.mask[m.index]) continue;
     const params = (m[1] ?? "").split(",");
     const base = m.index + m[0].indexOf("(") + 1;
     let offset = 0;
     for (const p of params) {
-      const mm = /\s*([A-Za-z_]\w*)/.exec(p);
+      const mm = /\s*([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)/u.exec(p);
       if (!mm) { offset += p.length + 1; continue; }
       const name = mm[1];
       const local = p.indexOf(name);
@@ -174,10 +169,10 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
   }
 
   // 7) champs nommés dans les forms
-  for (const m of matchAll(/\bform\s+[A-Za-z_]\w*\s*\{([\s\S]*?)\}/g, text)) {
+  for (const m of matchAll(/\bform\s+[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*\s*\{([\s\S]*?)\}/gu, text)) {
     const body = m[1] ?? "";
     const bodyStart = m.index + m[0].indexOf("{") + 1;
-    for (const fm of matchAll(/\bfield\s+([A-Za-z_]\w*)/g, body)) {
+    for (const fm of matchAll(/^\s*(?:pub(?:\s*\([^)]*\))?|priv)?\s*([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\s*:/gmu, body)) {
       const name = fm[1];
       const off = bodyStart + fm.index + fm[0].lastIndexOf(name);
       if (lex.mask[off]) insertSpan(spans, off, off + name.length, TYPE_INDEX.property);
@@ -200,8 +195,8 @@ function wordAt(doc: TextDocument, pos: Position): string | null {
   const text = doc.getText();
   const off = doc.offsetAt(pos);
   let s = off, e = off;
-  while (s > 0 && /[A-Za-z0-9_]/.test(text.charAt(s - 1))) s--;
-  while (e < text.length && /[A-Za-z0-9_]/.test(text.charAt(e))) e++;
+  while (s > 0 && isIdentifierPart(text.charAt(s - 1))) s--;
+  while (e < text.length && isIdentifierPart(text.charAt(e))) e++;
   return e > s ? text.slice(s, e) : null;
 }
 
@@ -354,7 +349,7 @@ function addDeclSpans(
   let m: RegExpExecArray | null;
   while ((m = rx.exec(text))) {
     const name = m[group];
-    if (!name || !/^[A-Za-z_]\w*$/.test(name)) continue;
+    if (!name || !/^[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*$/u.test(name)) continue;
     const nameOff = (m.index ?? 0) + m[0].indexOf(name);
     if (!mask[nameOff]) continue;
     insertSpan(spans, nameOff, nameOff + name.length, tokenTypeIndex);
@@ -375,7 +370,7 @@ function addPathDeclSpans(
     const raw = m[group];
     if (!raw) continue;
     const base = (m.index ?? 0) + m[0].indexOf(raw);
-    const segRx = /[A-Za-z_]\w*/g;
+    const segRx = /[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*/gu;
     let seg: RegExpExecArray | null;
     while ((seg = segRx.exec(raw))) {
       const off = base + seg.index;

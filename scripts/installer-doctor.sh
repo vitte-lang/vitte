@@ -92,7 +92,7 @@ if [ -x "$bindir/vitte" ]; then
   trap cleanup_smoke EXIT HUP INT TERM
   cat > "$smoke_dir/smoke.vit" <<'VITTE_INSTALLER_DOCTOR_SMOKE'
 proc main() -> int {
-  give 0;
+  return 0;
 }
 VITTE_INSTALLER_DOCTOR_SMOKE
 

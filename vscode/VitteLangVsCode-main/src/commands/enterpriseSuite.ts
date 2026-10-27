@@ -439,7 +439,7 @@ export function registerEnterpriseSuite(context: vscode.ExtensionContext, deps: 
       const doc = vscode.window.activeTextEditor?.document;
       if (!doc) return;
       const lines = doc.getText().split(/\r?\n/).length;
-      const funcs = (doc.getText().match(/\b(?:proc|fn|entry)\b/g) ?? []).length;
+      const funcs = (doc.getText().match(/\b(?:proc|entry)\b/g) ?? []).length;
       const impact = {
         recipe,
         file: vscode.workspace.asRelativePath(doc.uri, false),

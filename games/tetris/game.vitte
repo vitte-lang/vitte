@@ -1,0 +1,1727 @@
+space games::tetris::game;
+
+use games::tetris::board::*;
+use games::tetris::piece::*;
+
+/*
+ * ============================================================================
+ * VITTE TETRIS — GAME ENGINE
+ * ============================================================================
+ *
+ * File: games/tetris/game.vitte
+ *
+ * Dependencies:
+ *   board.vitte
+ *   piece.vitte
+ *
+ * Responsibilities:
+ *   - Game lifecycle
+ *   - Seven-bag randomizer
+ *   - Next-piece queue
+ *   - Piece spawning
+ *   - Movement and rotation
+ *   - Gravity and lock delay
+ *   - Soft drop and hard drop
+ *   - Hold
+ *   - Scoring and level progression
+ *   - Combos and back-to-back
+ *   - Perfect-clear bonuses
+ *   - Pause, resume, restart and quit
+ *   - Statistics and validation
+ *
+ * Cross-module declarations are exposed with `export`.
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * GAME STATES
+ * ============================================================================
+ */
+
+export const GAME_STATE_READY: i64 = 0;
+export const GAME_STATE_PLAYING: i64 = 1;
+export const GAME_STATE_PAUSED: i64 = 2;
+export const GAME_STATE_OVER: i64 = 3;
+export const GAME_STATE_QUIT: i64 = 4;
+
+/* ============================================================================
+ * ACTIONS
+ * ============================================================================
+ */
+
+export const GAME_ACTION_NONE: i64 = 0;
+export const GAME_ACTION_LEFT: i64 = 1;
+export const GAME_ACTION_RIGHT: i64 = 2;
+export const GAME_ACTION_ROTATE_CW: i64 = 3;
+export const GAME_ACTION_ROTATE_CCW: i64 = 4;
+export const GAME_ACTION_SOFT_DROP: i64 = 5;
+export const GAME_ACTION_HARD_DROP: i64 = 6;
+export const GAME_ACTION_HOLD: i64 = 7;
+export const GAME_ACTION_PAUSE: i64 = 8;
+export const GAME_ACTION_RESUME: i64 = 9;
+export const GAME_ACTION_QUIT: i64 = 10;
+export const GAME_ACTION_TICK: i64 = 11;
+export const GAME_ACTION_RESTART: i64 = 12;
+
+/* ============================================================================
+ * PIECES
+ * ============================================================================
+ */
+
+export const GAME_PIECE_NONE: i64 = 0;
+export const GAME_PIECE_I: i64 = 1;
+export const GAME_PIECE_O: i64 = 2;
+export const GAME_PIECE_T: i64 = 3;
+export const GAME_PIECE_S: i64 = 4;
+export const GAME_PIECE_Z: i64 = 5;
+export const GAME_PIECE_J: i64 = 6;
+export const GAME_PIECE_L: i64 = 7;
+
+export const GAME_PIECE_COUNT: i64 = 7;
+
+export const GAME_SPAWN_X: i64 = 3;
+export const GAME_SPAWN_Y: i64 = -1;
+
+/* ============================================================================
+ * SCORING
+ * ============================================================================
+ */
+
+export const GAME_SCORE_SINGLE: i64 = 100;
+export const GAME_SCORE_DOUBLE: i64 = 300;
+export const GAME_SCORE_TRIPLE: i64 = 500;
+export const GAME_SCORE_TETRIS: i64 = 800;
+
+export const GAME_SCORE_SOFT_DROP: i64 = 1;
+export const GAME_SCORE_HARD_DROP: i64 = 2;
+
+export const GAME_SCORE_PERFECT_CLEAR_SINGLE: i64 = 800;
+export const GAME_SCORE_PERFECT_CLEAR_DOUBLE: i64 = 1200;
+export const GAME_SCORE_PERFECT_CLEAR_TRIPLE: i64 = 1800;
+export const GAME_SCORE_PERFECT_CLEAR_TETRIS: i64 = 2000;
+
+export const GAME_LINES_PER_LEVEL: i64 = 10;
+export const GAME_MAX_LEVEL: i64 = 30;
+
+/* ============================================================================
+ * TIMING
+ * ============================================================================
+ */
+
+export const GAME_LOCK_DELAY_TICKS: i64 = 2;
+export const GAME_MAX_LOCK_RESETS: i64 = 15;
+
+export const GAME_MIN_GRAVITY_TICKS: i64 = 1;
+export const GAME_MAX_GRAVITY_TICKS: i64 = 48;
+
+/* ============================================================================
+ * QUEUE
+ * ============================================================================
+ */
+
+export const GAME_PREVIEW_COUNT: i64 = 5;
+export const GAME_QUEUE_CAPACITY: i64 = 14;
+
+export const GAME_RANDOM_MULTIPLIER: i64 = 48271;
+export const GAME_RANDOM_MODULUS: i64 = 2147483647;
+export const GAME_RANDOM_QUOTIENT: i64 = 44488;
+export const GAME_RANDOM_REMAINDER: i64 = 3399;
+
+/* ============================================================================
+ * STATISTICS
+ * ============================================================================
+ */
+
+export form GameStatistics {
+    score: i64,
+    high_score: i64,
+
+    level: i64,
+    lines: i64,
+
+    pieces_spawned: i64,
+    pieces_locked: i64,
+
+    singles: i64,
+    doubles: i64,
+    triples: i64,
+    tetrises: i64,
+
+    combo: i64,
+    best_combo: i64,
+
+    back_to_back: i64,
+    best_back_to_back: i64,
+
+    perfect_clears: i64,
+
+    soft_drop_cells: i64,
+    hard_drop_cells: i64,
+
+    rotations: i64,
+    moves: i64,
+    holds: i64,
+
+    ticks: i64,
+    elapsed_ticks: i64
+}
+
+/* ============================================================================
+ * GAME STRUCTURE
+ * ============================================================================
+ */
+
+export form Game {
+    board: Board,
+    current: Piece,
+
+    hold_kind: i64,
+    hold_used: bool,
+
+    queue: [i64; 14],
+    queue_count: i64,
+
+    random_state: i64,
+
+    statistics: GameStatistics,
+
+    state: i64,
+
+    gravity_counter: i64,
+    lock_counter: i64,
+    lock_resets: i64,
+
+    last_action: i64,
+    last_clear: i64,
+
+    grounded: bool
+}
+
+/* ============================================================================
+ * UTILITIES
+ * ============================================================================
+ */
+
+export proc game_min(a: i64, b: i64) -> i64 {
+    if a < b {
+        return a;
+    }
+
+    return b;
+}
+
+export proc game_max(a: i64, b: i64) -> i64 {
+    if a > b {
+        return a;
+    }
+
+    return b;
+}
+
+export proc game_clamp(
+    value: i64,
+    minimum: i64,
+    maximum: i64
+) -> i64 {
+    if value < minimum {
+        return minimum;
+    }
+
+    if value > maximum {
+        return maximum;
+    }
+
+    return value;
+}
+
+export proc game_valid_kind(kind: i64) -> bool {
+    return kind >= GAME_PIECE_I
+        and kind <= GAME_PIECE_L;
+}
+
+export proc game_valid_state(state: i64) -> bool {
+    return state >= GAME_STATE_READY
+        and state <= GAME_STATE_QUIT;
+}
+
+export proc game_normalize_rotation(rotation: i64) -> i64 {
+    let mut result: i64 = rotation % 4;
+
+    if result < 0 {
+        set result = result + 4;
+    }
+
+    return result;
+}
+
+/* ============================================================================
+ * RANDOM GENERATOR
+ * ============================================================================
+ *
+ * Park-Miller PRNG with Schrage reduction.
+ * Valid state range: 1..2147483646.
+ */
+
+export proc game_random_next(game: &mut Game) -> i64 {
+    let high: i64 = game.random_state / GAME_RANDOM_QUOTIENT;
+    let low: i64 = game.random_state % GAME_RANDOM_QUOTIENT;
+
+    let mut next: i64 =
+        GAME_RANDOM_MULTIPLIER * low - GAME_RANDOM_REMAINDER * high;
+
+    if next <= 0 {
+        set next = next + GAME_RANDOM_MODULUS;
+    }
+
+    set game.random_state = next;
+
+    return next;
+}
+
+export proc game_random_range(
+    game: &mut Game,
+    minimum: i64,
+    maximum: i64
+) -> i64 {
+    if maximum <= minimum {
+        return minimum;
+    }
+
+    let span: i64 = maximum - minimum + 1;
+
+    return minimum + game_random_next(game) % span;
+}
+
+/* ============================================================================
+ * STATISTICS INITIALIZATION
+ * ============================================================================
+ */
+
+export proc game_create_statistics() -> GameStatistics {
+    return GameStatistics {
+        score: 0,
+        high_score: 0,
+
+        level: 1,
+        lines: 0,
+
+        pieces_spawned: 0,
+        pieces_locked: 0,
+
+        singles: 0,
+        doubles: 0,
+        triples: 0,
+        tetrises: 0,
+
+        combo: -1,
+        best_combo: 0,
+
+        back_to_back: 0,
+        best_back_to_back: 0,
+
+        perfect_clears: 0,
+
+        soft_drop_cells: 0,
+        hard_drop_cells: 0,
+
+        rotations: 0,
+        moves: 0,
+        holds: 0,
+
+        ticks: 0,
+        elapsed_ticks: 0
+    };
+}
+
+/* ============================================================================
+ * GAME CREATION
+ * ============================================================================
+ */
+
+export proc game_create(seed: i64) -> Game {
+    let mut normalized_seed: i64 = seed % 2147483647;
+
+    if normalized_seed <= 0 {
+        set normalized_seed = normalized_seed + 2147483646;
+    }
+
+    return Game {
+        board: board_create(),
+        current: piece_create(GAME_PIECE_I),
+
+        hold_kind: GAME_PIECE_NONE,
+        hold_used: false,
+
+        queue: [
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0
+        ],
+        queue_count: 0,
+
+        random_state: normalized_seed,
+
+        statistics: game_create_statistics(),
+
+        state: GAME_STATE_READY,
+
+        gravity_counter: 0,
+        lock_counter: 0,
+        lock_resets: 0,
+
+        last_action: GAME_ACTION_NONE,
+        last_clear: 0,
+
+        grounded: false
+    };
+}
+
+/* ============================================================================
+ * QUEUE
+ * ============================================================================
+ */
+
+export proc game_queue_clear(game: &mut Game) {
+    let mut index: i64 = 0;
+
+    while index < GAME_QUEUE_CAPACITY {
+        set game.queue[index] = GAME_PIECE_NONE;
+        set index = index + 1;
+    }
+
+    set game.queue_count = 0;
+}
+
+export proc game_queue_push(
+    game: &mut Game,
+    kind: i64
+) -> bool {
+    if not game_valid_kind(kind) {
+        return false;
+    }
+
+    if game.queue_count >= GAME_QUEUE_CAPACITY {
+        return false;
+    }
+
+    set game.queue[game.queue_count] = kind;
+    set game.queue_count = game.queue_count + 1;
+
+    return true;
+}
+
+export proc game_queue_pop(game: &mut Game) -> i64 {
+    if game.queue_count <= 0 {
+        return GAME_PIECE_NONE;
+    }
+
+    let result: i64 = game.queue[0];
+
+    let mut index: i64 = 1;
+
+    while index < game.queue_count {
+        set game.queue[index - 1] = game.queue[index];
+        set index = index + 1;
+    }
+
+    set game.queue_count = game.queue_count - 1;
+    set game.queue[game.queue_count] = GAME_PIECE_NONE;
+
+    return result;
+}
+
+export proc game_queue_peek(
+    game: &Game,
+    index: i64
+) -> i64 {
+    if index < 0 or index >= game.queue_count {
+        return GAME_PIECE_NONE;
+    }
+
+    return game.queue[index];
+}
+
+/* ============================================================================
+ * SEVEN-BAG RANDOMIZER
+ * ============================================================================
+ */
+
+export proc game_refill_bag(game: &mut Game) {
+    let mut bag: [i64; 7] = [
+        GAME_PIECE_I,
+        GAME_PIECE_O,
+        GAME_PIECE_T,
+        GAME_PIECE_S,
+        GAME_PIECE_Z,
+        GAME_PIECE_J,
+        GAME_PIECE_L
+    ];
+
+    let mut index: i64 = 6;
+
+    while index > 0 {
+        let random_index: i64 =
+            game_random_range(game, 0, index);
+
+        let temporary: i64 = bag[index];
+
+        set bag[index] = bag[random_index];
+        set bag[random_index] = temporary;
+
+        set index = index - 1;
+    }
+
+    let mut i: i64 = 0;
+
+    while i < GAME_PIECE_COUNT {
+        game_queue_push(game, bag[i]);
+        set i = i + 1;
+    }
+}
+
+export proc game_ensure_queue(game: &mut Game) {
+    while game.queue_count < GAME_PREVIEW_COUNT + 1 {
+        game_refill_bag(game);
+    }
+}
+
+export proc game_next_kind(game: &mut Game) -> i64 {
+    game_ensure_queue(game);
+
+    let kind: i64 = game_queue_pop(game);
+
+    game_ensure_queue(game);
+
+    return kind;
+}
+
+/* ============================================================================
+ * COLLISION
+ * ============================================================================
+ */
+
+export proc game_piece_fits(
+    game: &Game,
+    current: &Piece
+) -> bool {
+    return board_piece_fits(
+        &game.board,
+        &current.cells[0],
+        current.x,
+        current.y
+    );
+}
+
+export proc game_current_fits(game: &Game) -> bool {
+    return game_piece_fits(game, &game.current);
+}
+
+/* ============================================================================
+ * GROUNDED STATE
+ * ============================================================================
+ */
+
+export proc game_piece_grounded(game: &Game) -> bool {
+    let candidate: Piece = piece_translated(
+        &game.current,
+        0,
+        1
+    );
+
+    return not game_piece_fits(game, &candidate);
+}
+
+export proc game_update_grounded(game: &mut Game) {
+    set game.grounded = game_piece_grounded(game);
+
+    if not game.grounded {
+        set game.lock_counter = 0;
+    }
+}
+
+/* ============================================================================
+ * SPAWN
+ * ============================================================================
+ */
+
+export proc game_spawn_kind(
+    game: &mut Game,
+    kind: i64
+) -> bool {
+    if not game_valid_kind(kind) {
+        return false;
+    }
+
+    set game.current = piece_create(kind);
+
+    set game.gravity_counter = 0;
+    set game.lock_counter = 0;
+    set game.lock_resets = 0;
+    set game.grounded = false;
+
+    if not game_current_fits(game) {
+        set game.state = GAME_STATE_OVER;
+        return false;
+    }
+
+    set game.statistics.pieces_spawned =
+        game.statistics.pieces_spawned + 1;
+
+    return true;
+}
+
+export proc game_spawn_next(game: &mut Game) -> bool {
+    let kind: i64 = game_next_kind(game);
+
+    set game.hold_used = false;
+
+    return game_spawn_kind(game, kind);
+}
+
+/* ============================================================================
+ * START
+ * ============================================================================
+ */
+
+export proc game_start(game: &mut Game) -> bool {
+    if game.state != GAME_STATE_READY {
+        return false;
+    }
+
+    game_ensure_queue(game);
+
+    set game.state = GAME_STATE_PLAYING;
+
+    return game_spawn_next(game);
+}
+
+/* ============================================================================
+ * MOVEMENT
+ * ============================================================================
+ */
+
+export proc game_try_move(
+    game: &mut Game,
+    dx: i64,
+    dy: i64
+) -> bool {
+    if game.state != GAME_STATE_PLAYING {
+        return false;
+    }
+
+    let was_grounded: bool = game.grounded;
+
+    let candidate: Piece = piece_translated(
+        &game.current,
+        dx,
+        dy
+    );
+
+    if not game_piece_fits(game, &candidate) {
+        return false;
+    }
+
+    set game.current = candidate;
+
+    if dx != 0 {
+        set game.statistics.moves =
+            game.statistics.moves + 1;
+    }
+
+    if dy > 0 {
+        set game.lock_counter = 0;
+    } elif was_grounded
+        and game.lock_resets < GAME_MAX_LOCK_RESETS
+    {
+        set game.lock_counter = 0;
+        set game.lock_resets = game.lock_resets + 1;
+    }
+
+    game_update_grounded(game);
+
+    return true;
+}
+
+export proc game_move_left(game: &mut Game) -> bool {
+    set game.last_action = GAME_ACTION_LEFT;
+
+    return game_try_move(game, -1, 0);
+}
+
+export proc game_move_right(game: &mut Game) -> bool {
+    set game.last_action = GAME_ACTION_RIGHT;
+
+    return game_try_move(game, 1, 0);
+}
+
+/* ============================================================================
+ * ROTATION
+ * ============================================================================
+ */
+
+export proc game_try_rotation_offset(
+    game: &mut Game,
+    rotation: i64,
+    offset_x: i64,
+    offset_y: i64
+) -> bool {
+    let candidate: Piece = piece_create_rotated(
+        game.current.kind,
+        rotation,
+        game.current.x + offset_x,
+        game.current.y + offset_y
+    );
+
+    if not game_piece_fits(game, &candidate) {
+        return false;
+    }
+
+    let was_grounded: bool = game.grounded;
+
+    set game.current = candidate;
+
+    set game.statistics.rotations =
+        game.statistics.rotations + 1;
+
+    if was_grounded
+        and game.lock_resets < GAME_MAX_LOCK_RESETS
+    {
+        set game.lock_counter = 0;
+        set game.lock_resets = game.lock_resets + 1;
+    }
+
+    game_update_grounded(game);
+
+    return true;
+}
+
+export proc game_try_rotate(
+    game: &mut Game,
+    direction: i64
+) -> bool {
+    if game.state != GAME_STATE_PLAYING {
+        return false;
+    }
+
+    let rotation: i64 = game_normalize_rotation(
+        game.current.rotation + direction
+    );
+
+    if game_try_rotation_offset(game, rotation, 0, 0) {
+        return true;
+    }
+
+    if game_try_rotation_offset(game, rotation, -1, 0) {
+        return true;
+    }
+
+    if game_try_rotation_offset(game, rotation, 1, 0) {
+        return true;
+    }
+
+    if game_try_rotation_offset(game, rotation, -2, 0) {
+        return true;
+    }
+
+    if game_try_rotation_offset(game, rotation, 2, 0) {
+        return true;
+    }
+
+    if game_try_rotation_offset(game, rotation, 0, -1) {
+        return true;
+    }
+
+    if game_try_rotation_offset(game, rotation, -1, -1) {
+        return true;
+    }
+
+    if game_try_rotation_offset(game, rotation, 1, -1) {
+        return true;
+    }
+
+    return false;
+}
+
+export proc game_rotate_cw(game: &mut Game) -> bool {
+    set game.last_action = GAME_ACTION_ROTATE_CW;
+
+    return game_try_rotate(game, 1);
+}
+
+export proc game_rotate_ccw(game: &mut Game) -> bool {
+    set game.last_action = GAME_ACTION_ROTATE_CCW;
+
+    return game_try_rotate(game, -1);
+}
+
+/* ============================================================================
+ * GHOST PIECE
+ * ============================================================================
+ */
+
+export proc game_ghost_y(game: &Game) -> i64 {
+    return board_ghost_y(
+        &game.board,
+        &game.current.cells[0],
+        game.current.x,
+        game.current.y
+    );
+}
+
+export proc game_drop_distance(game: &Game) -> i64 {
+    return game_ghost_y(game) - game.current.y;
+}
+
+/* ============================================================================
+ * SOFT DROP
+ * ============================================================================
+ */
+
+export proc game_soft_drop(game: &mut Game) -> bool {
+    if game.state != GAME_STATE_PLAYING {
+        return false;
+    }
+
+    set game.last_action = GAME_ACTION_SOFT_DROP;
+
+    if game_try_move(game, 0, 1) {
+        set game.statistics.score =
+            game.statistics.score + GAME_SCORE_SOFT_DROP;
+
+        set game.statistics.soft_drop_cells =
+            game.statistics.soft_drop_cells + 1;
+
+        game_update_high_score(game);
+
+        return true;
+    }
+
+    return false;
+}
+
+/* ============================================================================
+ * SCORING
+ * ============================================================================
+ */
+
+export proc game_line_base_score(lines: i64) -> i64 {
+    if lines == 1 {
+        return GAME_SCORE_SINGLE;
+    }
+
+    if lines == 2 {
+        return GAME_SCORE_DOUBLE;
+    }
+
+    if lines == 3 {
+        return GAME_SCORE_TRIPLE;
+    }
+
+    if lines == 4 {
+        return GAME_SCORE_TETRIS;
+    }
+
+    return 0;
+}
+
+export proc game_perfect_clear_score(lines: i64) -> i64 {
+    if lines == 1 {
+        return GAME_SCORE_PERFECT_CLEAR_SINGLE;
+    }
+
+    if lines == 2 {
+        return GAME_SCORE_PERFECT_CLEAR_DOUBLE;
+    }
+
+    if lines == 3 {
+        return GAME_SCORE_PERFECT_CLEAR_TRIPLE;
+    }
+
+    if lines == 4 {
+        return GAME_SCORE_PERFECT_CLEAR_TETRIS;
+    }
+
+    return 0;
+}
+
+export proc game_update_high_score(game: &mut Game) {
+    if game.statistics.score > game.statistics.high_score {
+        set game.statistics.high_score =
+            game.statistics.score;
+    }
+}
+
+export proc game_update_level(game: &mut Game) {
+    let calculated: i64 =
+        1 + game.statistics.lines / GAME_LINES_PER_LEVEL;
+
+    set game.statistics.level =
+        game_clamp(calculated, 1, GAME_MAX_LEVEL);
+}
+
+export proc game_apply_line_score(
+    game: &mut Game,
+    cleared: i64,
+    perfect_clear: bool
+) {
+    set game.last_clear = cleared;
+
+    if cleared <= 0 {
+        set game.statistics.combo = -1;
+        return;
+    }
+
+    let level: i64 = game.statistics.level;
+
+    let mut points: i64 =
+        game_line_base_score(cleared) * level;
+
+    if cleared == 1 {
+        set game.statistics.singles =
+            game.statistics.singles + 1;
+    } elif cleared == 2 {
+        set game.statistics.doubles =
+            game.statistics.doubles + 1;
+    } elif cleared == 3 {
+        set game.statistics.triples =
+            game.statistics.triples + 1;
+    } elif cleared == 4 {
+        set game.statistics.tetrises =
+            game.statistics.tetrises + 1;
+    }
+
+    set game.statistics.combo =
+        game.statistics.combo + 1;
+
+    if game.statistics.combo > game.statistics.best_combo {
+        set game.statistics.best_combo =
+            game.statistics.combo;
+    }
+
+    if game.statistics.combo > 0 {
+        set points = points
+            + 50 * game.statistics.combo * level;
+    }
+
+    if cleared == 4 {
+        if game.statistics.back_to_back > 0 {
+            set points = points + points / 2;
+        }
+
+        set game.statistics.back_to_back =
+            game.statistics.back_to_back + 1;
+
+        if game.statistics.back_to_back
+            > game.statistics.best_back_to_back
+        {
+            set game.statistics.best_back_to_back =
+                game.statistics.back_to_back;
+        }
+    } else {
+        set game.statistics.back_to_back = 0;
+    }
+
+    if perfect_clear {
+        set points = points
+            + game_perfect_clear_score(cleared) * level;
+
+        set game.statistics.perfect_clears =
+            game.statistics.perfect_clears + 1;
+    }
+
+    set game.statistics.score =
+        game.statistics.score + points;
+
+    set game.statistics.lines =
+        game.statistics.lines + cleared;
+
+    game_update_level(game);
+    game_update_high_score(game);
+}
+
+/* ============================================================================
+ * LOCKING
+ * ============================================================================
+ */
+
+export proc game_lock_current(game: &mut Game) -> bool {
+    if game.state != GAME_STATE_PLAYING {
+        return false;
+    }
+
+    let locked: bool = board_lock_piece(
+        &mut game.board,
+        &game.current.cells[0],
+        game.current.x,
+        game.current.y,
+        game.current.kind
+    );
+
+    if not locked {
+        set game.state = GAME_STATE_OVER;
+        return false;
+    }
+
+    set game.statistics.pieces_locked =
+        game.statistics.pieces_locked + 1;
+
+    if board_has_top_out(&game.board) {
+        set game.state = GAME_STATE_OVER;
+        return false;
+    }
+
+    let result: BoardClearResult =
+        board_clear_result(&mut game.board);
+
+    game_apply_line_score(
+        game,
+        result.lines,
+        result.perfect_clear and result.lines > 0
+    );
+
+    return game_spawn_next(game);
+}
+
+/* ============================================================================
+ * HARD DROP
+ * ============================================================================
+ */
+
+export proc game_hard_drop(game: &mut Game) -> bool {
+    if game.state != GAME_STATE_PLAYING {
+        return false;
+    }
+
+    set game.last_action = GAME_ACTION_HARD_DROP;
+
+    let distance: i64 = game_drop_distance(game);
+
+    if distance > 0 {
+        set game.current.y =
+            game.current.y + distance;
+
+        set game.statistics.score =
+            game.statistics.score
+            + distance * GAME_SCORE_HARD_DROP;
+
+        set game.statistics.hard_drop_cells =
+            game.statistics.hard_drop_cells + distance;
+    }
+
+    game_update_high_score(game);
+
+    return game_lock_current(game);
+}
+
+/* ============================================================================
+ * HOLD
+ * ============================================================================
+ */
+
+export proc game_hold(game: &mut Game) -> bool {
+    if game.state != GAME_STATE_PLAYING {
+        return false;
+    }
+
+    if game.hold_used {
+        return false;
+    }
+
+    let current_kind: i64 = game.current.kind;
+
+    if game.hold_kind == GAME_PIECE_NONE {
+        set game.hold_kind = current_kind;
+
+        if not game_spawn_next(game) {
+            return false;
+        }
+    } else {
+        let held_kind: i64 = game.hold_kind;
+
+        set game.hold_kind = current_kind;
+
+        if not game_spawn_kind(game, held_kind) {
+            return false;
+        }
+    }
+
+    set game.hold_used = true;
+
+    set game.statistics.holds =
+        game.statistics.holds + 1;
+
+    set game.last_action = GAME_ACTION_HOLD;
+
+    return true;
+}
+
+/* ============================================================================
+ * GRAVITY
+ * ============================================================================
+ */
+
+export proc game_gravity_interval(level: i64) -> i64 {
+    let clamped: i64 =
+        game_clamp(level, 1, GAME_MAX_LEVEL);
+
+    let interval: i64 =
+        GAME_MAX_GRAVITY_TICKS - (clamped - 1) * 2;
+
+    return game_max(
+        GAME_MIN_GRAVITY_TICKS,
+        interval
+    );
+}
+
+export proc game_gravity_step(game: &mut Game) -> bool {
+    if game_try_move(game, 0, 1) {
+        return true;
+    }
+
+    set game.grounded = true;
+
+    return false;
+}
+
+/* ============================================================================
+ * LOCK DELAY
+ * ============================================================================
+ */
+
+export proc game_update_lock_delay(game: &mut Game) {
+    if game.state != GAME_STATE_PLAYING {
+        return;
+    }
+
+    game_update_grounded(game);
+
+    if not game.grounded {
+        return;
+    }
+
+    set game.lock_counter =
+        game.lock_counter + 1;
+
+    if game.lock_counter >= GAME_LOCK_DELAY_TICKS {
+        game_lock_current(game);
+    }
+}
+
+/* ============================================================================
+ * GAME TICK
+ * ============================================================================
+ */
+
+export proc game_tick(game: &mut Game) {
+    if game.state != GAME_STATE_PLAYING {
+        return;
+    }
+
+    set game.statistics.ticks =
+        game.statistics.ticks + 1;
+
+    set game.statistics.elapsed_ticks =
+        game.statistics.elapsed_ticks + 1;
+
+    set game.gravity_counter =
+        game.gravity_counter + 1;
+
+    let interval: i64 =
+        game_gravity_interval(game.statistics.level);
+
+    if game.gravity_counter >= interval {
+        set game.gravity_counter = 0;
+
+        game_gravity_step(game);
+    }
+
+    game_update_lock_delay(game);
+
+    set game.last_action = GAME_ACTION_TICK;
+}
+
+export proc game_advance(
+    game: &mut Game,
+    ticks: i64
+) {
+    if ticks <= 0 {
+        return;
+    }
+
+    let mut remaining: i64 = ticks;
+
+    while remaining > 0
+        and game.state == GAME_STATE_PLAYING
+    {
+        game_tick(game);
+
+        set remaining = remaining - 1;
+    }
+}
+
+/* ============================================================================
+ * PAUSE / RESUME
+ * ============================================================================
+ */
+
+export proc game_pause(game: &mut Game) -> bool {
+    if game.state != GAME_STATE_PLAYING {
+        return false;
+    }
+
+    set game.state = GAME_STATE_PAUSED;
+    set game.last_action = GAME_ACTION_PAUSE;
+
+    return true;
+}
+
+export proc game_resume(game: &mut Game) -> bool {
+    if game.state != GAME_STATE_PAUSED {
+        return false;
+    }
+
+    set game.state = GAME_STATE_PLAYING;
+    set game.last_action = GAME_ACTION_RESUME;
+
+    return true;
+}
+
+export proc game_toggle_pause(game: &mut Game) -> bool {
+    if game.state == GAME_STATE_PLAYING {
+        return game_pause(game);
+    }
+
+    if game.state == GAME_STATE_PAUSED {
+        return game_resume(game);
+    }
+
+    return false;
+}
+
+/* ============================================================================
+ * QUIT / RESTART
+ * ============================================================================
+ */
+
+export proc game_quit(game: &mut Game) {
+    set game.state = GAME_STATE_QUIT;
+    set game.last_action = GAME_ACTION_QUIT;
+}
+
+export proc game_restart(
+    game: &mut Game,
+    seed: i64
+) -> bool {
+    let previous_high_score: i64 =
+        game.statistics.high_score;
+
+    let replacement: Game = game_create(seed);
+
+    set game.board = replacement.board;
+    set game.current = replacement.current;
+
+    set game.hold_kind = replacement.hold_kind;
+    set game.hold_used = replacement.hold_used;
+
+    let mut queue_index: i64 = 0;
+    while queue_index < GAME_QUEUE_CAPACITY {
+        set game.queue[queue_index] = replacement.queue[queue_index];
+        set queue_index += 1;
+    }
+    set game.queue_count = replacement.queue_count;
+
+    set game.random_state = replacement.random_state;
+
+    set game.statistics = replacement.statistics;
+    set game.statistics.high_score = previous_high_score;
+
+    set game.state = replacement.state;
+
+    set game.gravity_counter = 0;
+    set game.lock_counter = 0;
+    set game.lock_resets = 0;
+
+    set game.last_action = GAME_ACTION_RESTART;
+    set game.last_clear = 0;
+
+    set game.grounded = false;
+
+    return game_start(game);
+}
+
+/* ============================================================================
+ * ACTION DISPATCH
+ * ============================================================================
+ */
+
+export proc game_apply_action(
+    game: &mut Game,
+    action: i64
+) -> bool {
+    if action == GAME_ACTION_RESTART {
+        return game_restart(
+            game,
+            game.random_state + 1
+        );
+    }
+
+    if action == GAME_ACTION_QUIT {
+        game_quit(game);
+        return true;
+    }
+
+    if action == GAME_ACTION_PAUSE {
+        return game_pause(game);
+    }
+
+    if action == GAME_ACTION_RESUME {
+        return game_resume(game);
+    }
+
+    if action == GAME_ACTION_TICK {
+        if game.state != GAME_STATE_PLAYING {
+            return false;
+        }
+
+        game_tick(game);
+        return true;
+    }
+
+    if game.state != GAME_STATE_PLAYING {
+        return false;
+    }
+
+    if action == GAME_ACTION_LEFT {
+        return game_move_left(game);
+    }
+
+    if action == GAME_ACTION_RIGHT {
+        return game_move_right(game);
+    }
+
+    if action == GAME_ACTION_ROTATE_CW {
+        return game_rotate_cw(game);
+    }
+
+    if action == GAME_ACTION_ROTATE_CCW {
+        return game_rotate_ccw(game);
+    }
+
+    if action == GAME_ACTION_SOFT_DROP {
+        return game_soft_drop(game);
+    }
+
+    if action == GAME_ACTION_HARD_DROP {
+        return game_hard_drop(game);
+    }
+
+    if action == GAME_ACTION_HOLD {
+        return game_hold(game);
+    }
+
+    return false;
+}
+
+/* ============================================================================
+ * GAME QUERIES
+ * ============================================================================
+ */
+
+export proc game_is_ready(game: &Game) -> bool {
+    return game.state == GAME_STATE_READY;
+}
+
+export proc game_is_playing(game: &Game) -> bool {
+    return game.state == GAME_STATE_PLAYING;
+}
+
+export proc game_is_paused(game: &Game) -> bool {
+    return game.state == GAME_STATE_PAUSED;
+}
+
+export proc game_is_over(game: &Game) -> bool {
+    return game.state == GAME_STATE_OVER;
+}
+
+export proc game_is_quit(game: &Game) -> bool {
+    return game.state == GAME_STATE_QUIT;
+}
+
+export proc game_is_finished(game: &Game) -> bool {
+    return game_is_over(game) or game_is_quit(game);
+}
+
+export proc game_can_hold(game: &Game) -> bool {
+    return game.state == GAME_STATE_PLAYING
+        and not game.hold_used;
+}
+
+export proc game_can_move_left(game: &Game) -> bool {
+    let candidate: Piece = piece_translated(
+        &game.current,
+        -1,
+        0
+    );
+
+    return game_piece_fits(game, &candidate);
+}
+
+export proc game_can_move_right(game: &Game) -> bool {
+    let candidate: Piece = piece_translated(
+        &game.current,
+        1,
+        0
+    );
+
+    return game_piece_fits(game, &candidate);
+}
+
+export proc game_can_move_down(game: &Game) -> bool {
+    return not game_piece_grounded(game);
+}
+
+/* ============================================================================
+ * ACCESSORS
+ * ============================================================================
+ */
+
+export proc game_score(game: &Game) -> i64 {
+    return game.statistics.score;
+}
+
+export proc game_level(game: &Game) -> i64 {
+    return game.statistics.level;
+}
+
+export proc game_lines(game: &Game) -> i64 {
+    return game.statistics.lines;
+}
+
+export proc game_high_score(game: &Game) -> i64 {
+    return game.statistics.high_score;
+}
+
+export proc game_pieces_locked(game: &Game) -> i64 {
+    return game.statistics.pieces_locked;
+}
+
+export proc game_pieces_spawned(game: &Game) -> i64 {
+    return game.statistics.pieces_spawned;
+}
+
+export proc game_current_kind(game: &Game) -> i64 {
+    return game.current.kind;
+}
+
+export proc game_hold_kind(game: &Game) -> i64 {
+    return game.hold_kind;
+}
+
+export proc game_next_preview(
+    game: &Game,
+    index: i64
+) -> i64 {
+    if index < 0 or index >= GAME_PREVIEW_COUNT {
+        return GAME_PIECE_NONE;
+    }
+
+    return game_queue_peek(game, index);
+}
+
+/* ============================================================================
+ * VALIDATION
+ * ============================================================================
+ */
+
+export proc game_validate(game: &Game) -> bool {
+    if not board_validate(&game.board) {
+        return false;
+    }
+
+    if not game_valid_state(game.state) {
+        return false;
+    }
+
+    if game.statistics.level < 1
+        or game.statistics.level > GAME_MAX_LEVEL
+    {
+        return false;
+    }
+
+    if game.statistics.score < 0
+        or game.statistics.lines < 0
+    {
+        return false;
+    }
+
+    if game.queue_count < 0
+        or game.queue_count > GAME_QUEUE_CAPACITY
+    {
+        return false;
+    }
+
+    if game.random_state <= 0
+        or game.random_state >= 2147483647
+    {
+        return false;
+    }
+
+    if game.hold_kind != GAME_PIECE_NONE
+        and not game_valid_kind(game.hold_kind)
+    {
+        return false;
+    }
+
+    if game.state == GAME_STATE_PLAYING {
+        if not game_valid_kind(game.current.kind) {
+            return false;
+        }
+
+        if not game_current_fits(game) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* ============================================================================
+ * TESTS
+ * ============================================================================
+ */
+
+test "game constants" {
+    assert GAME_PIECE_COUNT == 7;
+    assert GAME_QUEUE_CAPACITY == 14;
+    assert GAME_PREVIEW_COUNT == 5;
+}
+
+test "game valid pieces" {
+    assert game_valid_kind(GAME_PIECE_I);
+    assert game_valid_kind(GAME_PIECE_O);
+    assert game_valid_kind(GAME_PIECE_T);
+    assert game_valid_kind(GAME_PIECE_S);
+    assert game_valid_kind(GAME_PIECE_Z);
+    assert game_valid_kind(GAME_PIECE_J);
+    assert game_valid_kind(GAME_PIECE_L);
+
+    assert not game_valid_kind(0);
+    assert not game_valid_kind(8);
+}
+
+test "game creation" {
+    let game: Game = game_create(123);
+
+    assert game.state == GAME_STATE_READY;
+    assert game.statistics.score == 0;
+    assert game.statistics.level == 1;
+    assert game.statistics.lines == 0;
+    assert game_validate(&game);
+}
+
+test "game random deterministic" {
+    let mut first: Game = game_create(12345);
+    let mut second: Game = game_create(12345);
+
+    assert game_random_next(&mut first)
+        == game_random_next(&mut second);
+}
+
+test "game seven bag" {
+    let mut game: Game = game_create(100);
+
+    game_refill_bag(&mut game);
+
+    assert game.queue_count == 7;
+
+    let mut kind: i64 = GAME_PIECE_I;
+
+    while kind <= GAME_PIECE_L {
+        let mut occurrences: i64 = 0;
+        let mut index: i64 = 0;
+
+        while index < 7 {
+            if game.queue[index] == kind {
+                set occurrences = occurrences + 1;
+            }
+
+            set index = index + 1;
+        }
+
+        assert occurrences == 1;
+
+        set kind = kind + 1;
+    }
+}
+
+test "game start" {
+    let mut game: Game = game_create(123);
+
+    assert game_start(&mut game);
+
+    assert game_is_playing(&game);
+    assert game_valid_kind(game.current.kind);
+    assert game.statistics.pieces_spawned == 1;
+}
+
+test "game movement" {
+    let mut game: Game = game_create(123);
+
+    game_start(&mut game);
+
+    let original_x: i64 = game.current.x;
+
+    assert game_move_left(&mut game);
+    assert game.current.x == original_x - 1;
+
+    assert game_move_right(&mut game);
+    assert game.current.x == original_x;
+}
+
+test "game soft drop" {
+    let mut game: Game = game_create(123);
+
+    game_start(&mut game);
+
+    let original_y: i64 = game.current.y;
+
+    assert game_soft_drop(&mut game);
+
+    assert game.current.y == original_y + 1;
+    assert game.statistics.soft_drop_cells == 1;
+}
+
+test "game hard drop" {
+    let mut game: Game = game_create(123);
+
+    game_start(&mut game);
+
+    assert game_hard_drop(&mut game);
+
+    assert game.statistics.pieces_locked == 1;
+    assert game.statistics.pieces_spawned == 2;
+}
+
+test "game hold" {
+    let mut game: Game = game_create(123);
+
+    game_start(&mut game);
+
+    let previous_kind: i64 = game.current.kind;
+
+    assert game_hold(&mut game);
+    assert game.hold_kind == previous_kind;
+    assert game.hold_used;
+
+    assert not game_hold(&mut game);
+}
+
+test "game scoring" {
+    assert game_line_base_score(1) == 100;
+    assert game_line_base_score(2) == 300;
+    assert game_line_base_score(3) == 500;
+    assert game_line_base_score(4) == 800;
+}
+
+test "game level progression" {
+    let mut game: Game = game_create(123);
+
+    set game.statistics.lines = 19;
+
+    game_update_level(&mut game);
+
+    assert game.statistics.level == 2;
+}
+
+test "game combo" {
+    let mut game: Game = game_create(123);
+
+    game_apply_line_score(&mut game, 1, false);
+    assert game.statistics.combo == 0;
+
+    game_apply_line_score(&mut game, 1, false);
+    assert game.statistics.combo == 1;
+
+    game_apply_line_score(&mut game, 0, false);
+    assert game.statistics.combo == -1;
+}
+
+test "game back to back" {
+    let mut game: Game = game_create(123);
+
+    game_apply_line_score(&mut game, 4, false);
+    assert game.statistics.back_to_back == 1;
+
+    game_apply_line_score(&mut game, 4, false);
+    assert game.statistics.back_to_back == 2;
+
+    game_apply_line_score(&mut game, 1, false);
+    assert game.statistics.back_to_back == 0;
+}
+
+test "game perfect clear" {
+    let mut game: Game = game_create(123);
+
+    game_apply_line_score(&mut game, 4, true);
+
+    assert game.statistics.perfect_clears == 1;
+    assert game.statistics.score > GAME_SCORE_TETRIS;
+}
+
+test "game pause resume" {
+    let mut game: Game = game_create(123);
+
+    game_start(&mut game);
+
+    assert game_pause(&mut game);
+    assert game_is_paused(&game);
+
+    assert game_resume(&mut game);
+    assert game_is_playing(&game);
+}
+
+test "game restart" {
+    let mut game: Game = game_create(123);
+
+    game_start(&mut game);
+
+    set game.statistics.score = 1000;
+    set game.statistics.high_score = 1000;
+
+    assert game_restart(&mut game, 456);
+
+    assert game_is_playing(&game);
+    assert game.statistics.score == 0;
+    assert game.statistics.high_score == 1000;
+}
+
+test "game gravity" {
+    assert game_gravity_interval(1) == 48;
+    assert game_gravity_interval(2) == 46;
+    assert game_gravity_interval(10) == 30;
+    assert game_gravity_interval(30) == 1;
+}
+
+test "game tick" {
+    let mut game: Game = game_create(123);
+
+    game_start(&mut game);
+    game_tick(&mut game);
+
+    assert game.statistics.ticks == 1;
+    assert game.statistics.elapsed_ticks == 1;
+}
+
+test "game quit" {
+    let mut game: Game = game_create(123);
+
+    game_start(&mut game);
+    game_quit(&mut game);
+
+    assert game_is_quit(&game);
+    assert game_is_finished(&game);
+}
+
+/* ============================================================================
+ * END OF FILE
+ * ============================================================================
+ */

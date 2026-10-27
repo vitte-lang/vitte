@@ -1,0 +1,15 @@
+/// Taille et stride pour les tableaux alloués.
+space alloc::layout::size;
+
+use core::mem::layout::{Layout, layout_array, layout_is_valid};
+
+export form LayoutSize {
+    valid: bool,
+    size: usize,
+}
+
+export proc array_size(element: Layout, count: usize) -> LayoutSize {
+    let repeated: Layout = layout_array(element, count);
+    if not layout_is_valid(&repeated) { return LayoutSize { valid: false, size: 0 }; }
+    return LayoutSize { valid: true, size: repeated.size };
+}

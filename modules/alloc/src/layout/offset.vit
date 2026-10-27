@@ -1,0 +1,20 @@
+/// Calcul de la taille occupée par `count` éléments, avec validation du layout.
+space alloc::layout::offset;
+
+use core::mem::layout::{Layout, layout_array, layout_is_valid};
+
+export form LayoutOffset {
+    valid: bool,
+    offset: usize,
+}
+
+export proc layout_offset(element: Layout, count: usize) -> LayoutOffset {
+    if not layout_is_valid(&element) {
+        return LayoutOffset { valid: false, offset: 0 };
+    }
+    let repeated: Layout = layout_array(element, count);
+    if not layout_is_valid(&repeated) {
+        return LayoutOffset { valid: false, offset: 0 };
+    }
+    return LayoutOffset { valid: true, offset: repeated.size };
+}

@@ -1,23 +1,13 @@
-# Self Host
+# Self-Hosting Status
 
-Run the generation-chain audit with:
+The compiler is not yet fully self-hosted. Stage0 C under `src/bootstrap/`
+still supplies the executable shell and host toolchain integration, while
+ordinary `compile`, `run`, and `--emit-c` inputs use the linked Vitte frontend
+under `src/compiler/`. See the active [compiler pipeline](../compiler/pipeline.md).
 
-```sh
-python3 tools/selfhost_completion_audit.py
-```
+The former target `src/vitte/compiler/main.vit` is not present in the current
+repository. The native parser and semantic surface are partial; frontend
+failures still fall back to bootstrap analysis, HIR/IR do not drive the
+ordinary route, and object/link/run still cross the C host boundary.
 
-It uses `toolchain/seed/vittec0.seed` through `bin/vittec0` to build
-`src/vitte/compiler/main.vit`, then rebuilds the same compiler entry with the
-generated compiler. Results are written to:
-
-- `target/selfhost_completion/selfhost_completion.json`
-- `target/reports/selfhost_completion.md`
-
-Official completion requires:
-
-```sh
-python3 tools/selfhost_completion_audit.py --strict-complete
-```
-
-That command fails while generation hashes differ or any transition bridge is
-present.
+Previous documentation named a generation audit at `tools/selfhost_completion_audit.py`, but that script is not present in this checkout. The current source map is in [the compiler reference](../MODULE_REFERENCE.md); migration status is in [the native frontend port notes](frontend_native_port.md).

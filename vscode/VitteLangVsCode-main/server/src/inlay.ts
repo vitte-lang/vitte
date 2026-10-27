@@ -18,15 +18,15 @@ function inferTypeFromExpr(expr: string): string {
   if (/^(true|false)\b/.test(s)) return "bool";
   if (/^\d+(?:\.\d+)?\b/.test(s)) return "int";
   if (/^\[.*\]$/.test(s)) return "list[unknown]";
-  if (/^[A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)?\(/.test(s)) return "type";
-  if (/^[A-Za-z_][A-Za-z0-9_]*\(/.test(s)) return "unknown";
+  if (/^[\p{Lu}][\p{L}\p{Nl}\p{Nd}_]*(?:::[\p{Lu}][\p{L}\p{Nl}\p{Nd}_]*)?\(/u.test(s)) return "type";
+  if (/^[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*\(/u.test(s)) return "unknown";
   return "unknown";
 }
 
 function inferAlias(pathExpr: string): string {
   const clean = pathExpr.replace(/[:.]/g, "/");
   const segs = clean.split("/").filter(Boolean);
-  const last = segs.length ? segs[segs.length - 1] : "mod";
+  const last = segs.length ? segs[segs.length - 1] : "pkg";
   return `${last.toLowerCase()}_pkg`;
 }
 
@@ -51,7 +51,7 @@ function splitArgs(raw: string): string[] {
 function parseProcInferredReturn(lines: string[], startLine: number): string {
   const max = Math.min(lines.length - 1, startLine + 40);
   for (let i = startLine + 1; i <= max; i++) {
-    const m = /\bgive\s+(.+?)\s*$/.exec(lines[i]);
+    const m = /\breturn\s+(.+?)\s*$/.exec(lines[i]);
     if (!m) continue;
     return inferTypeFromExpr(m[1]);
   }
@@ -75,7 +75,7 @@ export function provideInlayHints(doc: TextDocument, range: Range, prefs?: Parti
   for (let i = startLine; i <= endLine && out.length < maxHints; i++) {
     const line = lines[i];
 
-    const decl = /^\s*(?:let|const|make)\s+([A-Za-z_]\w*)\s*=\s*(.+?)\s*;?\s*$/.exec(line);
+    const decl = /^\s*(?:let|const|static|global)\s+(?:mut\s+)?([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\s*=\s*(.+?)\s*;?\s*$/u.exec(line);
     if (decl && cfg.typeHints) {
       const name = decl[1];
       const type = inferTypeFromExpr(decl[2]);
@@ -90,7 +90,7 @@ export function provideInlayHints(doc: TextDocument, range: Range, prefs?: Parti
       }
     }
 
-    const proc = /\bproc\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:->\s*([A-Za-z_][\w\[\], ./]*))?/.exec(line);
+    const proc = /\bproc\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\s*\(([^)]*)\)\s*(?:->\s*([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*(?:[\s:\[\],.<>*&-]+[\p{L}\p{Nl}\p{Nd}_]+)*))?/u.exec(line);
     if (proc && !proc[3] && cfg.returnHints) {
       const inferred = parseProcInferredReturn(lines, i);
       const closeParen = line.indexOf(")", proc.index);
@@ -104,7 +104,7 @@ export function provideInlayHints(doc: TextDocument, range: Range, prefs?: Parti
       }
     }
 
-    const alias = /\b(?:use|pull)\s+([A-Za-z_][\w./:]*)\b(?!\s+as\b)/.exec(line);
+    const alias = /\buse\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_./:]*)\b(?!\s+as\b)/u.exec(line);
     if (alias && cfg.aliasHints) {
       const p = alias[1];
       const c = line.indexOf(p) + p.length;
@@ -119,7 +119,7 @@ export function provideInlayHints(doc: TextDocument, range: Range, prefs?: Parti
     }
 
     if (cfg.parameterHints && !/^\s*(proc|entry|match|select|when|if|for|loop)\b/.test(line)) {
-      const call = /\b([A-Za-z_]\w*)\s*\(([^)]*)\)/g;
+      const call = /\b([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\s*\(([^)]*)\)/gu;
       let cm: RegExpExecArray | null;
       while ((cm = call.exec(line)) && out.length < maxHints) {
         const args = splitArgs(cm[2]).slice(0, 4);

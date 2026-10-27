@@ -1,0 +1,38 @@
+// ============================================================================
+// Vitte Standard Library
+// Module: math.classification.signbit
+// File: modules/math/src/classification/signbit.vit
+//
+// Read the IEEE 754 sign bit through the object's byte representation, which
+// preserves the sign of zero and NaN values without violating aliasing rules.
+// ============================================================================
+
+space math.classification.signbit
+
+proc signbit_byte_is_set(value: u8) -> bool {
+    return (value & 0x80) != 0;
+}
+
+export proc signbit_f32(value: f32) -> bool {
+    let probe: u16 = 1;
+    let probe_bytes: *const u8 = (&probe) as *const u8;
+    let bytes: *const u8 = (&value) as *const u8;
+
+    if probe_bytes[0] == 1 {
+        return signbit_byte_is_set(bytes[3]);
+    }
+
+    return signbit_byte_is_set(bytes[0]);
+}
+
+export proc signbit_f64(value: f64) -> bool {
+    let probe: u16 = 1;
+    let probe_bytes: *const u8 = (&probe) as *const u8;
+    let bytes: *const u8 = (&value) as *const u8;
+
+    if probe_bytes[0] == 1 {
+        return signbit_byte_is_set(bytes[7]);
+    }
+
+    return signbit_byte_is_set(bytes[0]);
+}

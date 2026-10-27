@@ -27,6 +27,15 @@
 
 space json::runtime::numeric;
 
+use core::convert::format::{FormatResult, format_i64 as core_format_i64, format_u64 as core_format_u64};
+use core::convert::parse::{
+    ParseError as CoreParseError,
+    ParseU64Result,
+    ParseI64Result,
+    parse_u64 as core_parse_u64,
+    parse_i64 as core_parse_i64,
+};
+
 const JSON_NUMERIC_DECIMAL_BASE: u64 = 10;
 
 const JSON_NUMERIC_MAX_EXPONENT_ABS: i64 = 100000;
@@ -192,130 +201,130 @@ proc error_name(
     error: JsonNumericError
 ) -> string {
     if error == JsonNumericError.None {
-        give "none";
+        return "none";
     }
 
     if error == JsonNumericError.Empty {
-        give "empty";
+        return "empty";
     }
 
     if error == JsonNumericError.InvalidCharacter {
-        give "invalid-character";
+        return "invalid-character";
     }
 
     if error == JsonNumericError.InvalidSign {
-        give "invalid-sign";
+        return "invalid-sign";
     }
 
     if error == JsonNumericError.InvalidInteger {
-        give "invalid-integer";
+        return "invalid-integer";
     }
 
     if error == JsonNumericError.InvalidFraction {
-        give "invalid-fraction";
+        return "invalid-fraction";
     }
 
     if error == JsonNumericError.InvalidExponent {
-        give "invalid-exponent";
+        return "invalid-exponent";
     }
 
     if error == JsonNumericError.LeadingPlus {
-        give "leading-plus";
+        return "leading-plus";
     }
 
     if error == JsonNumericError.LeadingZero {
-        give "leading-zero";
+        return "leading-zero";
     }
 
     if error == JsonNumericError.MissingIntegerDigits {
-        give "missing-integer-digits";
+        return "missing-integer-digits";
     }
 
     if error == JsonNumericError.MissingFractionDigits {
-        give "missing-fraction-digits";
+        return "missing-fraction-digits";
     }
 
     if error == JsonNumericError.MissingExponentDigits {
-        give "missing-exponent-digits";
+        return "missing-exponent-digits";
     }
 
     if error == JsonNumericError.IntegerOverflow {
-        give "integer-overflow";
+        return "integer-overflow";
     }
 
     if error == JsonNumericError.IntegerUnderflow {
-        give "integer-underflow";
+        return "integer-underflow";
     }
 
     if error == JsonNumericError.UnsignedOverflow {
-        give "unsigned-overflow";
+        return "unsigned-overflow";
     }
 
     if error == JsonNumericError.NegativeUnsigned {
-        give "negative-unsigned";
+        return "negative-unsigned";
     }
 
     if error == JsonNumericError.FloatOverflow {
-        give "float-overflow";
+        return "float-overflow";
     }
 
     if error == JsonNumericError.FloatUnderflow {
-        give "float-underflow";
+        return "float-underflow";
     }
 
     if error == JsonNumericError.NonFinite {
-        give "non-finite";
+        return "non-finite";
     }
 
     if error == JsonNumericError.DivisionByZero {
-        give "division-by-zero";
+        return "division-by-zero";
     }
 
     if error == JsonNumericError.RemainderByZero {
-        give "remainder-by-zero";
+        return "remainder-by-zero";
     }
 
     if error == JsonNumericError.ExponentTooLarge {
-        give "exponent-too-large";
+        return "exponent-too-large";
     }
 
     if error == JsonNumericError.InvalidPrecision {
-        give "invalid-precision";
+        return "invalid-precision";
     }
 
-    give "internal";
+    return "internal";
 }
 
 proc kind_name(
     kind: JsonNumericKind
 ) -> string {
     if kind == JsonNumericKind.Invalid {
-        give "invalid";
+        return "invalid";
     }
 
     if kind == JsonNumericKind.Integer {
-        give "integer";
+        return "integer";
     }
 
-    give "float";
+    return "float";
 }
 
 proc class_name(
     class_value: JsonNumericClass
 ) -> string {
     if class_value == JsonNumericClass.Invalid {
-        give "invalid";
+        return "invalid";
     }
 
     if class_value == JsonNumericClass.Zero {
-        give "zero";
+        return "zero";
     }
 
     if class_value == JsonNumericClass.Positive {
-        give "positive";
+        return "positive";
     }
 
-    give "negative";
+    return "negative";
 }
 
 /// -------------------------------------------------------------------------
@@ -325,28 +334,28 @@ proc class_name(
 proc is_digit(
     value: char
 ) -> bool {
-    give value >= '0' &&
+    return value >= '0'  and 
          value <= '9';
 }
 
 proc is_nonzero_digit(
     value: char
 ) -> bool {
-    give value >= '1' &&
+    return value >= '1'  and 
          value <= '9';
 }
 
 proc is_sign(
     value: char
 ) -> bool {
-    give value == '-' ||
+    return value == '-'  or 
          value == '+';
 }
 
 proc is_exponent_marker(
     value: char
 ) -> bool {
-    give value == 'e' ||
+    return value == 'e'  or 
          value == 'E';
 }
 
@@ -354,88 +363,88 @@ proc digit_value(
     value: char
 ) -> u64 {
     if value == '0' {
-        give 0;
+        return 0;
     }
 
     if value == '1' {
-        give 1;
+        return 1;
     }
 
     if value == '2' {
-        give 2;
+        return 2;
     }
 
     if value == '3' {
-        give 3;
+        return 3;
     }
 
     if value == '4' {
-        give 4;
+        return 4;
     }
 
     if value == '5' {
-        give 5;
+        return 5;
     }
 
     if value == '6' {
-        give 6;
+        return 6;
     }
 
     if value == '7' {
-        give 7;
+        return 7;
     }
 
     if value == '8' {
-        give 8;
+        return 8;
     }
 
     if value == '9' {
-        give 9;
+        return 9;
     }
 
-    give 0;
+    return 0;
 }
 
 proc digit_char(
     value: u64
 ) -> char {
     if value == 0 {
-        give '0';
+        return '0';
     }
 
     if value == 1 {
-        give '1';
+        return '1';
     }
 
     if value == 2 {
-        give '2';
+        return '2';
     }
 
     if value == 3 {
-        give '3';
+        return '3';
     }
 
     if value == 4 {
-        give '4';
+        return '4';
     }
 
     if value == 5 {
-        give '5';
+        return '5';
     }
 
     if value == 6 {
-        give '6';
+        return '6';
     }
 
     if value == 7 {
-        give '7';
+        return '7';
     }
 
     if value == 8 {
-        give '8';
+        return '8';
     }
 
-    give '9';
+    return '9';
 }
 
 /// -------------------------------------------------------------------------
@@ -443,7 +452,7 @@ proc digit_char(
 /// -------------------------------------------------------------------------
 
 proc empty_scan() -> JsonNumericScan {
-    give JsonNumericScan {
+    return JsonNumericScan {
         ok: false,
 
         kind:
@@ -496,7 +505,7 @@ proc scan_failure(
     set result.error_index =
         index;
 
-    give result;
+    return result;
 }
 
 proc scan_success(
@@ -513,7 +522,7 @@ proc scan_success(
 
     set result.error_index = 0;
 
-    if result.has_fraction ||
+    if result.has_fraction  or 
        result.has_exponent {
         set result.kind =
             JsonNumericKind.Float;
@@ -522,7 +531,7 @@ proc scan_success(
             JsonNumericKind.Integer;
     }
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -537,13 +546,13 @@ export proc scan(
             empty_scan();
 
     if source.length == 0 {
-        give result;
+        return result;
     }
 
     let mut index: usize = 0;
 
     if source[index] == '+' {
-        give scan_failure(
+        return scan_failure(
             result,
             JsonNumericError.LeadingPlus,
             index);
@@ -554,7 +563,7 @@ export proc scan(
         set index += 1;
 
         if index >= source.length {
-            give scan_failure(
+            return scan_failure(
                 result,
                 JsonNumericError.MissingIntegerDigits,
                 index);
@@ -570,23 +579,23 @@ export proc scan(
         set result.integer_digits =
             1;
 
-        if index < source.length &&
+        if index < source.length  and 
            is_digit(source[index]) {
-            give scan_failure(
+            return scan_failure(
                 result,
                 JsonNumericError.LeadingZero,
                 index);
         }
     } else {
-        if !is_nonzero_digit(
+        if not is_nonzero_digit(
             source[index]) {
-            give scan_failure(
+            return scan_failure(
                 result,
                 JsonNumericError.MissingIntegerDigits,
                 index);
         }
 
-        while index < source.length &&
+        while index < source.length  and 
               is_digit(source[index]) {
             set result.integer_digits += 1;
             set index += 1;
@@ -596,7 +605,7 @@ export proc scan(
     set result.integer_end =
         index;
 
-    if index < source.length &&
+    if index < source.length  and 
        source[index] == '.' {
         set result.has_fraction =
             true;
@@ -606,15 +615,15 @@ export proc scan(
         set result.fraction_begin =
             index;
 
-        if index >= source.length ||
-           !is_digit(source[index]) {
-            give scan_failure(
+        if index >= source.length  or 
+           not is_digit(source[index]) {
+            return scan_failure(
                 result,
                 JsonNumericError.MissingFractionDigits,
                 index);
         }
 
-        while index < source.length &&
+        while index < source.length  and 
               is_digit(source[index]) {
             set result.fraction_digits += 1;
             set index += 1;
@@ -624,7 +633,7 @@ export proc scan(
             index;
     }
 
-    if index < source.length &&
+    if index < source.length  and 
        is_exponent_marker(
            source[index]) {
         set result.has_exponent =
@@ -633,7 +642,7 @@ export proc scan(
         set index += 1;
 
         if index >= source.length {
-            give scan_failure(
+            return scan_failure(
                 result,
                 JsonNumericError.MissingExponentDigits,
                 index);
@@ -651,15 +660,15 @@ export proc scan(
         set result.exponent_begin =
             index;
 
-        if index >= source.length ||
-           !is_digit(source[index]) {
-            give scan_failure(
+        if index >= source.length  or 
+           not is_digit(source[index]) {
+            return scan_failure(
                 result,
                 JsonNumericError.MissingExponentDigits,
                 index);
         }
 
-        while index < source.length &&
+        while index < source.length  and 
               is_digit(source[index]) {
             set result.exponent_digits += 1;
             set index += 1;
@@ -670,26 +679,26 @@ export proc scan(
     }
 
     if index != source.length {
-        give scan_failure(
+        return scan_failure(
             result,
             JsonNumericError.InvalidCharacter,
             index);
     }
 
-    give scan_success(
+    return scan_success(
         result);
 }
 
 export proc valid(
     source: string
 ) -> bool {
-    give scan(source).ok;
+    return scan(source).ok;
 }
 
 export proc classify(
     source: string
 ) -> JsonNumericKind {
-    give scan(source).kind;
+    return scan(source).kind;
 }
 
 proc is_integer_literal(
@@ -699,7 +708,7 @@ proc is_integer_literal(
         JsonNumericScan =
             scan(source);
 
-    give result.ok &&
+    return result.ok  and 
          result.kind ==
              JsonNumericKind.Integer;
 }
@@ -711,7 +720,7 @@ proc is_float_literal(
         JsonNumericScan =
             scan(source);
 
-    give result.ok &&
+    return result.ok  and 
          result.kind ==
              JsonNumericKind.Float;
 }
@@ -723,7 +732,7 @@ proc is_negative_literal(
         JsonNumericScan =
             scan(source);
 
-    give result.ok &&
+    return result.ok  and 
          result.negative;
 }
 
@@ -734,7 +743,7 @@ proc has_fraction(
         JsonNumericScan =
             scan(source);
 
-    give result.ok &&
+    return result.ok  and 
          result.has_fraction;
 }
 
@@ -745,62 +754,22 @@ proc has_exponent(
         JsonNumericScan =
             scan(source);
 
-    give result.ok &&
+    return result.ok  and 
          result.has_exponent;
 }
 
 /// -------------------------------------------------------------------------
-/// Checked decimal accumulation
+/// Integer digit extraction for the shared `core` parser
 /// -------------------------------------------------------------------------
 
-proc u64_append_digit_checked(
-    current: u64,
-    digit: u64
-) -> JsonU64Result {
-    if digit > 9 {
-        give JsonU64Result {
-            ok: false,
-            value: 0,
-            error:
-                JsonNumericError.InvalidCharacter,
-            error_index: 0,
-        };
+proc integer_digits_text(source: string, begin: usize, end: usize) -> string {
+    let mut digits: string = "";
+    let mut index: usize = begin;
+    while index < end {
+        set digits = digits + source[index];
+        set index += 1;
     }
-
-    if current >
-       JSON_NUMERIC_U64_MAX / 10 {
-        give JsonU64Result {
-            ok: false,
-            value: 0,
-            error:
-                JsonNumericError.UnsignedOverflow,
-            error_index: 0,
-        };
-    }
-
-    let multiplied:
-        u64 =
-            current * 10;
-
-    if multiplied >
-       JSON_NUMERIC_U64_MAX - digit {
-        give JsonU64Result {
-            ok: false,
-            value: 0,
-            error:
-                JsonNumericError.UnsignedOverflow,
-            error_index: 0,
-        };
-    }
-
-    give JsonU64Result {
-        ok: true,
-        value:
-            multiplied + digit,
-        error:
-            JsonNumericError.None,
-        error_index: 0,
-    };
+    return digits;
 }
 
 /// -------------------------------------------------------------------------
@@ -814,8 +783,8 @@ export proc parse_u64(
         JsonNumericScan =
             scan(source);
 
-    if !scanned.ok {
-        give JsonU64Result {
+    if not scanned.ok {
+        return JsonU64Result {
             ok: false,
             value: 0,
             error:
@@ -827,7 +796,7 @@ export proc parse_u64(
 
     if scanned.kind !=
        JsonNumericKind.Integer {
-        give JsonU64Result {
+        return JsonU64Result {
             ok: false,
             value: 0,
             error:
@@ -837,7 +806,7 @@ export proc parse_u64(
     }
 
     if scanned.negative {
-        give JsonU64Result {
+        return JsonU64Result {
             ok: false,
             value: 0,
             error:
@@ -846,44 +815,29 @@ export proc parse_u64(
         };
     }
 
-    let mut result: u64 = 0;
+    let digits: string = integer_digits_text(
+        source,
+        scanned.integer_begin,
+        scanned.integer_end);
+    let parsed: ParseU64Result = core_parse_u64(digits, 10);
 
-    let mut index: usize =
-        scanned.integer_begin;
-
-    while index <
-          scanned.integer_end {
-        let digit:
-            u64 =
-                digit_value(
-                    source[index]);
-
-        let next:
-            JsonU64Result =
-                u64_append_digit_checked(
-                    result,
-                    digit);
-
-        if !next.ok {
-            let mut failure:
-                JsonU64Result =
-                    next;
-
-            set failure.error_index =
-                index;
-
-            give failure;
-        }
-
-        set result =
-            next.value;
-
-        set index += 1;
+    if !parsed.success {
+        let error: JsonNumericError = if parsed.error == CoreParseError.Overflow {
+            JsonNumericError.UnsignedOverflow
+        } else {
+            JsonNumericError.InvalidCharacter
+        };
+        return JsonU64Result {
+            ok: false,
+            value: 0,
+            error: error,
+            error_index: scanned.integer_begin + parsed.error_index,
+        };
     }
 
-    give JsonU64Result {
+    return JsonU64Result {
         ok: true,
-        value: result,
+        value: parsed.value,
         error:
             JsonNumericError.None,
         error_index: 0,
@@ -901,8 +855,8 @@ export proc parse_i64(
         JsonNumericScan =
             scan(source);
 
-    if !scanned.ok {
-        give JsonI64Result {
+    if not scanned.ok {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -914,7 +868,7 @@ export proc parse_i64(
 
     if scanned.kind !=
        JsonNumericKind.Integer {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -923,104 +877,32 @@ export proc parse_i64(
         };
     }
 
-    let positive_limit:
-        u64 =
-            JSON_NUMERIC_I64_MAX as u64;
+    let mut literal: string = integer_digits_text(
+        source,
+        scanned.integer_begin,
+        scanned.integer_end);
+    let sign_width: usize = if scanned.negative { 1 } else { 0 };
+    if scanned.negative { set literal = "-" + literal; }
+    let parsed: ParseI64Result = core_parse_i64(literal, 10);
 
-    let negative_limit:
-        u64 =
-            (JSON_NUMERIC_I64_MAX as u64) +
-            1;
-
-    let limit:
-        u64 =
-            if scanned.negative {
-                negative_limit
-            } else {
-                positive_limit
-            };
-
-    let mut magnitude: u64 = 0;
-
-    let mut index: usize =
-        scanned.integer_begin;
-
-    while index <
-          scanned.integer_end {
-        let digit:
-            u64 =
-                digit_value(
-                    source[index]);
-
-        if magnitude >
-           limit / 10 {
-            give JsonI64Result {
-                ok: false,
-                value: 0,
-                error:
-                    if scanned.negative {
-                        JsonNumericError.IntegerUnderflow
-                    } else {
-                        JsonNumericError.IntegerOverflow
-                    },
-                error_index:
-                    index,
-            };
-        }
-
-        let multiplied:
-            u64 =
-                magnitude * 10;
-
-        if multiplied >
-           limit - digit {
-            give JsonI64Result {
-                ok: false,
-                value: 0,
-                error:
-                    if scanned.negative {
-                        JsonNumericError.IntegerUnderflow
-                    } else {
-                        JsonNumericError.IntegerOverflow
-                    },
-                error_index:
-                    index,
-            };
-        }
-
-        set magnitude =
-            multiplied + digit;
-
-        set index += 1;
-    }
-
-    if scanned.negative {
-        if magnitude ==
-           negative_limit {
-            give JsonI64Result {
-                ok: true,
-                value:
-                    JSON_NUMERIC_I64_MIN,
-                error:
-                    JsonNumericError.None,
-                error_index: 0,
-            };
-        }
-
-        give JsonI64Result {
-            ok: true,
-            value:
-                -(magnitude as i64),
-            error:
-                JsonNumericError.None,
-            error_index: 0,
+    if !parsed.success {
+        let error: JsonNumericError = if parsed.error == CoreParseError.Overflow {
+            if scanned.negative { JsonNumericError.IntegerUnderflow }
+            else { JsonNumericError.IntegerOverflow }
+        } else {
+            JsonNumericError.InvalidCharacter
+        };
+        return JsonI64Result {
+            ok: false,
+            value: 0,
+            error: error,
+            error_index: scanned.integer_begin + parsed.error_index - sign_width,
         };
     }
 
-    give JsonI64Result {
+    return JsonI64Result {
         ok: true,
-        value:
-            magnitude as i64,
+        value: parsed.value,
         error:
             JsonNumericError.None,
         error_index: 0,
@@ -1035,8 +917,8 @@ proc parse_exponent(
     source: string,
     scanned: &JsonNumericScan
 ) -> JsonI64Result {
-    if !scanned.has_exponent {
-        give JsonI64Result {
+    if not scanned.has_exponent {
+        return JsonI64Result {
             ok: true,
             value: 0,
             error:
@@ -1059,7 +941,7 @@ proc parse_exponent(
 
         if value >
            JSON_NUMERIC_MAX_EXPONENT_ABS / 10 {
-            give JsonI64Result {
+            return JsonI64Result {
                 ok: false,
                 value: 0,
                 error:
@@ -1074,7 +956,7 @@ proc parse_exponent(
 
         if value >
            JSON_NUMERIC_MAX_EXPONENT_ABS {
-            give JsonI64Result {
+            return JsonI64Result {
                 ok: false,
                 value: 0,
                 error:
@@ -1091,7 +973,7 @@ proc parse_exponent(
         set value = -value;
     }
 
-    give JsonI64Result {
+    return JsonI64Result {
         ok: true,
         value: value,
         error:
@@ -1116,7 +998,7 @@ proc pow10_positive(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc pow10_negative(
@@ -1131,22 +1013,22 @@ proc pow10_negative(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc pow10(
     exponent: i64
 ) -> f64 {
     if exponent == 0 {
-        give 1.0;
+        return 1.0;
     }
 
     if exponent > 0 {
-        give pow10_positive(
+        return pow10_positive(
             exponent as usize);
     }
 
-    give pow10_negative(
+    return pow10_negative(
         (-exponent) as usize);
 }
 
@@ -1161,8 +1043,8 @@ export proc parse_f64(
         JsonNumericScan =
             scan(source);
 
-    if !scanned.ok {
-        give JsonF64Result {
+    if not scanned.ok {
+        return JsonF64Result {
             ok: false,
             value: 0.0,
             error:
@@ -1178,8 +1060,8 @@ export proc parse_f64(
                 source,
                 &scanned);
 
-    if !exponent_result.ok {
-        give JsonF64Result {
+    if not exponent_result.ok {
+        return JsonF64Result {
             ok: false,
             value: 0.0,
             error:
@@ -1245,7 +1127,7 @@ export proc parse_f64(
         set value = -value;
     }
 
-    give JsonF64Result {
+    return JsonF64Result {
         ok: true,
         value: value,
         error:
@@ -1266,11 +1148,11 @@ proc as_i64(
         JsonI64Result =
             parse_i64(source);
 
-    if !result.ok {
-        give fallback;
+    if not result.ok {
+        return fallback;
     }
 
-    give result.value;
+    return result.value;
 }
 
 proc as_u64(
@@ -1281,11 +1163,11 @@ proc as_u64(
         JsonU64Result =
             parse_u64(source);
 
-    if !result.ok {
-        give fallback;
+    if not result.ok {
+        return fallback;
     }
 
-    give result.value;
+    return result.value;
 }
 
 proc as_f64(
@@ -1296,11 +1178,11 @@ proc as_f64(
         JsonF64Result =
             parse_f64(source);
 
-    if !result.ok {
-        give fallback;
+    if not result.ok {
+        return fallback;
     }
 
-    give result.value;
+    return result.value;
 }
 
 /// -------------------------------------------------------------------------
@@ -1311,42 +1193,42 @@ proc classify_i64(
     value: i64
 ) -> JsonNumericClass {
     if value == 0 {
-        give JsonNumericClass.Zero;
+        return JsonNumericClass.Zero;
     }
 
     if value > 0 {
-        give JsonNumericClass.Positive;
+        return JsonNumericClass.Positive;
     }
 
-    give JsonNumericClass.Negative;
+    return JsonNumericClass.Negative;
 }
 
 proc classify_u64(
     value: u64
 ) -> JsonNumericClass {
     if value == 0 {
-        give JsonNumericClass.Zero;
+        return JsonNumericClass.Zero;
     }
 
-    give JsonNumericClass.Positive;
+    return JsonNumericClass.Positive;
 }
 
 proc classify_f64(
     value: f64
 ) -> JsonNumericClass {
     if value != value {
-        give JsonNumericClass.Invalid;
+        return JsonNumericClass.Invalid;
     }
 
     if value == 0.0 {
-        give JsonNumericClass.Zero;
+        return JsonNumericClass.Zero;
     }
 
     if value > 0.0 {
-        give JsonNumericClass.Positive;
+        return JsonNumericClass.Positive;
     }
 
-    give JsonNumericClass.Negative;
+    return JsonNumericClass.Negative;
 }
 
 /// -------------------------------------------------------------------------
@@ -1356,17 +1238,17 @@ proc classify_f64(
 proc is_nan(
     value: f64
 ) -> bool {
-    give value != value;
+    return value != value;
 }
 
 proc is_positive_infinity(
     value: f64
 ) -> bool {
     if is_nan(value) {
-        give false;
+        return false;
     }
 
-    give value > 0.0 &&
+    return value > 0.0  and 
          value + value == value;
 }
 
@@ -1374,53 +1256,53 @@ proc is_negative_infinity(
     value: f64
 ) -> bool {
     if is_nan(value) {
-        give false;
+        return false;
     }
 
-    give value < 0.0 &&
+    return value < 0.0  and 
          value + value == value;
 }
 
 proc is_infinite(
     value: f64
 ) -> bool {
-    give is_positive_infinity(value) ||
+    return is_positive_infinity(value)  or 
          is_negative_infinity(value);
 }
 
 proc is_finite(
     value: f64
 ) -> bool {
-    give !is_nan(value) &&
-         !is_infinite(value);
+    return not is_nan(value)  and 
+         not is_infinite(value);
 }
 
 proc is_zero_f64(
     value: f64
 ) -> bool {
-    give is_finite(value) &&
+    return is_finite(value)  and 
          value == 0.0;
 }
 
 proc is_integer_f64(
     value: f64
 ) -> bool {
-    if !is_finite(value) {
-        give false;
+    if not is_finite(value) {
+        return false;
     }
 
     if value >
-           (JSON_NUMERIC_I64_MAX as f64) ||
+           (JSON_NUMERIC_I64_MAX as f64)  or 
        value <
            (JSON_NUMERIC_I64_MIN as f64) {
-        give false;
+        return false;
     }
 
     let integer_value:
         i64 =
             value as i64;
 
-    give (integer_value as f64) ==
+    return (integer_value as f64) ==
          value;
 }
 
@@ -1428,30 +1310,14 @@ proc is_integer_f64(
 /// Absolute values
 /// -------------------------------------------------------------------------
 
-proc abs_i64_magnitude(
-    value: i64
-) -> u64 {
-    if value >= 0 {
-        give value as u64;
-    }
-
-    if value ==
-       JSON_NUMERIC_I64_MIN {
-        give (JSON_NUMERIC_I64_MAX as u64) +
-             1;
-    }
-
-    give (-value) as u64;
-}
-
 proc abs_f64(
     value: f64
 ) -> f64 {
     if value < 0.0 {
-        give -value;
+        return -value;
     }
 
-    give value;
+    return value;
 }
 
 /// -------------------------------------------------------------------------
@@ -1462,10 +1328,10 @@ proc checked_add_i64(
     left: i64,
     right: i64
 ) -> JsonI64Result {
-    if right > 0 &&
+    if right > 0  and 
        left >
            JSON_NUMERIC_I64_MAX - right {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1474,10 +1340,10 @@ proc checked_add_i64(
         };
     }
 
-    if right < 0 &&
+    if right < 0  and 
        left <
            JSON_NUMERIC_I64_MIN - right {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1486,7 +1352,7 @@ proc checked_add_i64(
         };
     }
 
-    give JsonI64Result {
+    return JsonI64Result {
         ok: true,
         value:
             left + right,
@@ -1500,10 +1366,10 @@ proc checked_sub_i64(
     left: i64,
     right: i64
 ) -> JsonI64Result {
-    if right > 0 &&
+    if right > 0  and 
        left <
            JSON_NUMERIC_I64_MIN + right {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1512,10 +1378,10 @@ proc checked_sub_i64(
         };
     }
 
-    if right < 0 &&
+    if right < 0  and 
        left >
            JSON_NUMERIC_I64_MAX + right {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1524,7 +1390,7 @@ proc checked_sub_i64(
         };
     }
 
-    give JsonI64Result {
+    return JsonI64Result {
         ok: true,
         value:
             left - right,
@@ -1538,9 +1404,9 @@ proc checked_mul_i64(
     left: i64,
     right: i64
 ) -> JsonI64Result {
-    if left == 0 ||
+    if left == 0  or 
        right == 0 {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: true,
             value: 0,
             error:
@@ -1550,9 +1416,9 @@ proc checked_mul_i64(
     }
 
     if left ==
-           JSON_NUMERIC_I64_MIN &&
+           JSON_NUMERIC_I64_MIN  and 
        right == -1 {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1562,9 +1428,9 @@ proc checked_mul_i64(
     }
 
     if right ==
-           JSON_NUMERIC_I64_MIN &&
+           JSON_NUMERIC_I64_MIN  and 
        left == -1 {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1577,7 +1443,7 @@ proc checked_mul_i64(
         if right > 0 {
             if left >
                JSON_NUMERIC_I64_MAX / right {
-                give JsonI64Result {
+                return JsonI64Result {
                     ok: false,
                     value: 0,
                     error:
@@ -1588,7 +1454,7 @@ proc checked_mul_i64(
         } else {
             if right <
                JSON_NUMERIC_I64_MIN / left {
-                give JsonI64Result {
+                return JsonI64Result {
                     ok: false,
                     value: 0,
                     error:
@@ -1601,7 +1467,7 @@ proc checked_mul_i64(
         if right > 0 {
             if left <
                JSON_NUMERIC_I64_MIN / right {
-                give JsonI64Result {
+                return JsonI64Result {
                     ok: false,
                     value: 0,
                     error:
@@ -1612,7 +1478,7 @@ proc checked_mul_i64(
         } else {
             if left <
                JSON_NUMERIC_I64_MAX / right {
-                give JsonI64Result {
+                return JsonI64Result {
                     ok: false,
                     value: 0,
                     error:
@@ -1623,7 +1489,7 @@ proc checked_mul_i64(
         }
     }
 
-    give JsonI64Result {
+    return JsonI64Result {
         ok: true,
         value:
             left * right,
@@ -1638,7 +1504,7 @@ proc checked_div_i64(
     right: i64
 ) -> JsonI64Result {
     if right == 0 {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1648,9 +1514,9 @@ proc checked_div_i64(
     }
 
     if left ==
-           JSON_NUMERIC_I64_MIN &&
+           JSON_NUMERIC_I64_MIN  and 
        right == -1 {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1659,7 +1525,7 @@ proc checked_div_i64(
         };
     }
 
-    give JsonI64Result {
+    return JsonI64Result {
         ok: true,
         value:
             left / right,
@@ -1674,7 +1540,7 @@ proc checked_rem_i64(
     right: i64
 ) -> JsonI64Result {
     if right == 0 {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1684,9 +1550,9 @@ proc checked_rem_i64(
     }
 
     if left ==
-           JSON_NUMERIC_I64_MIN &&
+           JSON_NUMERIC_I64_MIN  and 
        right == -1 {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: true,
             value: 0,
             error:
@@ -1695,7 +1561,7 @@ proc checked_rem_i64(
         };
     }
 
-    give JsonI64Result {
+    return JsonI64Result {
         ok: true,
         value:
             left % right,
@@ -1710,7 +1576,7 @@ proc checked_neg_i64(
 ) -> JsonI64Result {
     if value ==
        JSON_NUMERIC_I64_MIN {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -1719,7 +1585,7 @@ proc checked_neg_i64(
         };
     }
 
-    give JsonI64Result {
+    return JsonI64Result {
         ok: true,
         value: -value,
         error:
@@ -1738,7 +1604,7 @@ proc checked_add_u64(
 ) -> JsonU64Result {
     if left >
        JSON_NUMERIC_U64_MAX - right {
-        give JsonU64Result {
+        return JsonU64Result {
             ok: false,
             value: 0,
             error:
@@ -1747,7 +1613,7 @@ proc checked_add_u64(
         };
     }
 
-    give JsonU64Result {
+    return JsonU64Result {
         ok: true,
         value:
             left + right,
@@ -1761,9 +1627,9 @@ proc checked_mul_u64(
     left: u64,
     right: u64
 ) -> JsonU64Result {
-    if left == 0 ||
+    if left == 0  or 
        right == 0 {
-        give JsonU64Result {
+        return JsonU64Result {
             ok: true,
             value: 0,
             error:
@@ -1774,7 +1640,7 @@ proc checked_mul_u64(
 
     if left >
        JSON_NUMERIC_U64_MAX / right {
-        give JsonU64Result {
+        return JsonU64Result {
             ok: false,
             value: 0,
             error:
@@ -1783,7 +1649,7 @@ proc checked_mul_u64(
         };
     }
 
-    give JsonU64Result {
+    return JsonU64Result {
         ok: true,
         value:
             left * right,
@@ -1801,7 +1667,7 @@ proc compare_i64(
     left: i64,
     right: i64
 ) -> JsonNumericComparison {
-    give JsonNumericComparison {
+    return JsonNumericComparison {
         comparable: true,
 
         less:
@@ -1819,7 +1685,7 @@ proc compare_u64(
     left: u64,
     right: u64
 ) -> JsonNumericComparison {
-    give JsonNumericComparison {
+    return JsonNumericComparison {
         comparable: true,
 
         less:
@@ -1837,9 +1703,9 @@ proc compare_f64(
     left: f64,
     right: f64
 ) -> JsonNumericComparison {
-    if is_nan(left) ||
+    if is_nan(left)  or 
        is_nan(right) {
-        give JsonNumericComparison {
+        return JsonNumericComparison {
             comparable: false,
             less: false,
             equal: false,
@@ -1847,7 +1713,7 @@ proc compare_f64(
         };
     }
 
-    give JsonNumericComparison {
+    return JsonNumericComparison {
         comparable: true,
 
         less:
@@ -1870,10 +1736,10 @@ proc min_i64(
     right: i64
 ) -> i64 {
     if left < right {
-        give left;
+        return left;
     }
 
-    give right;
+    return right;
 }
 
 proc max_i64(
@@ -1881,10 +1747,10 @@ proc max_i64(
     right: i64
 ) -> i64 {
     if left > right {
-        give left;
+        return left;
     }
 
-    give right;
+    return right;
 }
 
 proc clamp_i64(
@@ -1893,14 +1759,14 @@ proc clamp_i64(
     maximum: i64
 ) -> i64 {
     if value < minimum {
-        give minimum;
+        return minimum;
     }
 
     if value > maximum {
-        give maximum;
+        return maximum;
     }
 
-    give value;
+    return value;
 }
 
 proc min_f64(
@@ -1908,10 +1774,10 @@ proc min_f64(
     right: f64
 ) -> f64 {
     if left < right {
-        give left;
+        return left;
     }
 
-    give right;
+    return right;
 }
 
 proc max_f64(
@@ -1919,10 +1785,10 @@ proc max_f64(
     right: f64
 ) -> f64 {
     if left > right {
-        give left;
+        return left;
     }
 
-    give right;
+    return right;
 }
 
 proc clamp_f64(
@@ -1931,87 +1797,52 @@ proc clamp_f64(
     maximum: f64
 ) -> f64 {
     if value < minimum {
-        give minimum;
+        return minimum;
     }
 
     if value > maximum {
-        give maximum;
+        return maximum;
     }
 
-    give value;
+    return value;
 }
 
 /// -------------------------------------------------------------------------
 /// Integer formatting
 /// -------------------------------------------------------------------------
 
-proc reverse_ascii(
-    source: string
-) -> string {
-    let mut result: string = "";
-
-    let mut index: usize =
-        source.length;
-
-    while index > 0 {
-        set index -= 1;
-
-        set result =
-            result +
-            source[index];
-    }
-
-    give result;
-}
-
 export proc format_u64(
     value: u64
 ) -> string {
-    if value == 0 {
-        give "0";
+    let mut buffer: [u8] = [];
+    for index in 0..20 { set buffer.push(0); }
+
+    let output: *u8 = (&mut buffer[0]) as *u8;
+    let formatted: FormatResult = core_format_u64(value, output, buffer.length);
+    if !formatted.success { return ""; }
+
+    let mut result: string = "";
+    for index in 0..formatted.length {
+        set result = result + (buffer[index] as char);
     }
-
-    let mut current:
-        u64 =
-            value;
-
-    let mut reversed:
-        string =
-            "";
-
-    while current > 0 {
-        let digit:
-            u64 =
-                current % 10;
-
-        set reversed =
-            reversed +
-            digit_char(digit);
-
-        set current /=
-            10;
-    }
-
-    give reverse_ascii(
-        reversed);
+    return result;
 }
 
 export proc format_i64(
     value: i64
 ) -> string {
-    if value == 0 {
-        give "0";
-    }
+    let mut buffer: [u8] = [];
+    for index in 0..20 { set buffer.push(0); }
 
-    if value < 0 {
-        give "-" +
-             format_u64(
-                 abs_i64_magnitude(
-                     value));
-    }
+    let output: *u8 = (&mut buffer[0]) as *u8;
+    let formatted: FormatResult = core_format_i64(value, output, buffer.length);
+    if !formatted.success { return ""; }
 
-    give format_u64(
-        value as u64);
+    let mut result: string = "";
+    for index in 0..formatted.length {
+        set result = result + (buffer[index] as char);
+    }
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -2020,7 +1851,7 @@ export proc format_i64(
 
 proc default_format_options()
     -> JsonNumericFormatOptions {
-    give JsonNumericFormatOptions {
+    return JsonNumericFormatOptions {
         fraction_digits:
             JSON_NUMERIC_DEFAULT_FORMAT_FRACTION_DIGITS,
 
@@ -2041,7 +1872,7 @@ proc default_format_options()
 proc fixed_format_options(
     fraction_digits: usize
 ) -> JsonNumericFormatOptions {
-    give JsonNumericFormatOptions {
+    return JsonNumericFormatOptions {
         fraction_digits:
             fraction_digits,
 
@@ -2062,7 +1893,7 @@ proc fixed_format_options(
 proc format_failure(
     error: JsonNumericError
 ) -> JsonNumericFormatResult {
-    give JsonNumericFormatResult {
+    return JsonNumericFormatResult {
         ok: false,
         text: "",
         error: error,
@@ -2072,7 +1903,7 @@ proc format_failure(
 proc format_success(
     text: string
 ) -> JsonNumericFormatResult {
-    give JsonNumericFormatResult {
+    return JsonNumericFormatResult {
         ok: true,
         text: text,
         error:
@@ -2091,13 +1922,13 @@ proc contains_decimal_point(
 
     while index < source.length {
         if source[index] == '.' {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc contains_exponent_marker(
@@ -2106,44 +1937,44 @@ proc contains_exponent_marker(
     let mut index: usize = 0;
 
     while index < source.length {
-        if source[index] == 'e' ||
+        if source[index] == 'e'  or 
            source[index] == 'E' {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc trim_fraction_zeroes(
     source: string
 ) -> string {
     if source.length == 0 {
-        give source;
+        return source;
     }
 
     if contains_exponent_marker(
         source) {
-        give source;
+        return source;
     }
 
-    if !contains_decimal_point(
+    if not contains_decimal_point(
         source) {
-        give source;
+        return source;
     }
 
     let mut end_index:
         usize =
             source.length;
 
-    while end_index > 0 &&
+    while end_index > 0  and 
           source[end_index - 1] == '0' {
         set end_index -= 1;
     }
 
-    if end_index > 0 &&
+    if end_index > 0  and 
        source[end_index - 1] == '.' {
         set end_index -= 1;
     }
@@ -2161,14 +1992,14 @@ proc trim_fraction_zeroes(
     }
 
     if result == "-0" {
-        give "0";
+        return "0";
     }
 
     if result.length == 0 {
-        give "0";
+        return "0";
     }
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -2185,20 +2016,20 @@ proc format_f64_with_options(
 ) -> JsonNumericFormatResult {
     if options.fraction_digits >
        JSON_NUMERIC_MAX_FORMAT_FRACTION_DIGITS {
-        give format_failure(
+        return format_failure(
             JsonNumericError.InvalidPrecision);
     }
 
-    if is_nan(value) ||
+    if is_nan(value)  or 
        is_infinite(value) {
-        give format_failure(
+        return format_failure(
             JsonNumericError.NonFinite);
     }
 
     if value == 0.0 {
         if options.force_decimal_point {
             if options.fraction_digits == 0 {
-                give format_success(
+                return format_success(
                     "0.0");
             }
 
@@ -2217,11 +2048,11 @@ proc format_f64_with_options(
                 set zero_index += 1;
             }
 
-            give format_success(
+            return format_success(
                 zero_result);
         }
 
-        give format_success(
+        return format_success(
             "0");
     }
 
@@ -2235,7 +2066,7 @@ proc format_f64_with_options(
 
     if absolute >
        (JSON_NUMERIC_I64_MAX as f64) {
-        give format_failure(
+        return format_failure(
             JsonNumericError.FloatOverflow);
     }
 
@@ -2287,8 +2118,8 @@ proc format_f64_with_options(
             trim_fraction_zeroes(
                 result);
 
-        if options.force_decimal_point &&
-           !contains_decimal_point(
+        if options.force_decimal_point  and 
+           not contains_decimal_point(
                result) {
             set result =
                 result + ".0";
@@ -2300,14 +2131,14 @@ proc format_f64_with_options(
             "-" + result;
     }
 
-    give format_success(
+    return format_success(
         result);
 }
 
 export proc format_f64(
     value: f64
 ) -> JsonNumericFormatResult {
-    give format_f64_with_options(
+    return format_f64_with_options(
         value,
         default_format_options());
 }
@@ -2323,12 +2154,12 @@ proc normalize_integer_literal(
         JsonI64Result =
             parse_i64(source);
 
-    if !parsed.ok {
-        give format_failure(
+    if not parsed.ok {
+        return format_failure(
             parsed.error);
     }
 
-    give format_success(
+    return format_success(
         format_i64(
             parsed.value));
 }
@@ -2340,12 +2171,12 @@ proc normalize_float_literal(
         JsonF64Result =
             parse_f64(source);
 
-    if !parsed.ok {
-        give format_failure(
+    if not parsed.ok {
+        return format_failure(
             parsed.error);
     }
 
-    give format_f64(
+    return format_f64(
         parsed.value);
 }
 
@@ -2356,18 +2187,18 @@ export proc normalize(
         JsonNumericScan =
             scan(source);
 
-    if !scanned.ok {
-        give format_failure(
+    if not scanned.ok {
+        return format_failure(
             scanned.error);
     }
 
     if scanned.kind ==
        JsonNumericKind.Integer {
-        give normalize_integer_literal(
+        return normalize_integer_literal(
             source);
     }
 
-    give normalize_float_literal(
+    return normalize_float_literal(
         source);
 }
 
@@ -2382,11 +2213,11 @@ proc integer_digit_count(
         JsonNumericScan =
             scan(source);
 
-    if !result.ok {
-        give 0;
+    if not result.ok {
+        return 0;
     }
 
-    give result.integer_digits;
+    return result.integer_digits;
 }
 
 proc fraction_digit_count(
@@ -2396,11 +2227,11 @@ proc fraction_digit_count(
         JsonNumericScan =
             scan(source);
 
-    if !result.ok {
-        give 0;
+    if not result.ok {
+        return 0;
     }
 
-    give result.fraction_digits;
+    return result.fraction_digits;
 }
 
 proc exponent_digit_count(
@@ -2410,11 +2241,11 @@ proc exponent_digit_count(
         JsonNumericScan =
             scan(source);
 
-    if !result.ok {
-        give 0;
+    if not result.ok {
+        return 0;
     }
 
-    give result.exponent_digits;
+    return result.exponent_digits;
 }
 
 proc significant_digit_count(
@@ -2424,11 +2255,11 @@ proc significant_digit_count(
         JsonNumericScan =
             scan(source);
 
-    if !result.ok {
-        give 0;
+    if not result.ok {
+        return 0;
     }
 
-    give result.integer_digits +
+    return result.integer_digits +
          result.fraction_digits;
 }
 
@@ -2443,8 +2274,8 @@ proc literal_is_zero(
         JsonNumericScan =
             scan(source);
 
-    if !scanned.ok {
-        give false;
+    if not scanned.ok {
+        return false;
     }
 
     let mut index:
@@ -2454,7 +2285,7 @@ proc literal_is_zero(
     while index <
           scanned.integer_end {
         if source[index] != '0' {
-            give false;
+            return false;
         }
 
         set index += 1;
@@ -2467,14 +2298,14 @@ proc literal_is_zero(
         while index <
               scanned.fraction_end {
             if source[index] != '0' {
-                give false;
+                return false;
             }
 
             set index += 1;
         }
     }
 
-    give true;
+    return true;
 }
 
 proc literal_is_negative_zero(
@@ -2484,8 +2315,8 @@ proc literal_is_negative_zero(
         JsonNumericScan =
             scan(source);
 
-    give scanned.ok &&
-         scanned.negative &&
+    return scanned.ok  and 
+         scanned.negative  and 
          literal_is_zero(source);
 }
 
@@ -2496,19 +2327,19 @@ proc literal_is_negative_zero(
 proc fits_i64(
     source: string
 ) -> bool {
-    give parse_i64(source).ok;
+    return parse_i64(source).ok;
 }
 
 proc fits_u64(
     source: string
 ) -> bool {
-    give parse_u64(source).ok;
+    return parse_u64(source).ok;
 }
 
 proc fits_f64(
     source: string
 ) -> bool {
-    give parse_f64(source).ok;
+    return parse_f64(source).ok;
 }
 
 /// -------------------------------------------------------------------------
@@ -2518,20 +2349,20 @@ proc fits_f64(
 proc i64_to_f64(
     value: i64
 ) -> f64 {
-    give value as f64;
+    return value as f64;
 }
 
 proc u64_to_f64(
     value: u64
 ) -> f64 {
-    give value as f64;
+    return value as f64;
 }
 
 proc f64_to_i64_checked(
     value: f64
 ) -> JsonI64Result {
-    if !is_finite(value) {
-        give JsonI64Result {
+    if not is_finite(value) {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -2542,7 +2373,7 @@ proc f64_to_i64_checked(
 
     if value >
        (JSON_NUMERIC_I64_MAX as f64) {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -2553,7 +2384,7 @@ proc f64_to_i64_checked(
 
     if value <
        (JSON_NUMERIC_I64_MIN as f64) {
-        give JsonI64Result {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -2562,8 +2393,8 @@ proc f64_to_i64_checked(
         };
     }
 
-    if !is_integer_f64(value) {
-        give JsonI64Result {
+    if not is_integer_f64(value) {
+        return JsonI64Result {
             ok: false,
             value: 0,
             error:
@@ -2572,7 +2403,7 @@ proc f64_to_i64_checked(
         };
     }
 
-    give JsonI64Result {
+    return JsonI64Result {
         ok: true,
         value:
             value as i64,
@@ -2667,7 +2498,7 @@ test "json numeric accepts positive exponent sign" {
 
     assert result.ok;
     assert result.has_exponent;
-    assert !result.exponent_negative;
+    assert not result.exponent_negative;
 }
 
 test "json numeric accepts negative exponent" {
@@ -2698,7 +2529,7 @@ test "json numeric rejects empty" {
         JsonNumericScan =
             scan("");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.Empty;
@@ -2709,7 +2540,7 @@ test "json numeric rejects leading plus" {
         JsonNumericScan =
             scan("+1");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.LeadingPlus;
@@ -2720,7 +2551,7 @@ test "json numeric rejects sign only" {
         JsonNumericScan =
             scan("-");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingIntegerDigits;
@@ -2731,7 +2562,7 @@ test "json numeric rejects leading zero" {
         JsonNumericScan =
             scan("01");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.LeadingZero;
@@ -2742,7 +2573,7 @@ test "json numeric rejects negative leading zero" {
         JsonNumericScan =
             scan("-01");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.LeadingZero;
@@ -2753,7 +2584,7 @@ test "json numeric rejects missing integer before fraction" {
         JsonNumericScan =
             scan(".5");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingIntegerDigits;
@@ -2764,7 +2595,7 @@ test "json numeric rejects empty fraction" {
         JsonNumericScan =
             scan("1.");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingFractionDigits;
@@ -2775,7 +2606,7 @@ test "json numeric rejects exponent without digits" {
         JsonNumericScan =
             scan("1e");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingExponentDigits;
@@ -2786,7 +2617,7 @@ test "json numeric rejects signed exponent without digits" {
         JsonNumericScan =
             scan("1e+");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingExponentDigits;
@@ -2797,7 +2628,7 @@ test "json numeric rejects alpha suffix" {
         JsonNumericScan =
             scan("123x");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.InvalidCharacter;
@@ -2864,7 +2695,7 @@ test "json numeric detects positive i64 overflow" {
             parse_i64(
                 "9223372036854775808");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -2876,7 +2707,7 @@ test "json numeric detects negative i64 underflow" {
             parse_i64(
                 "-9223372036854775809");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerUnderflow;
@@ -2887,7 +2718,7 @@ test "json numeric i64 rejects fraction" {
         JsonI64Result =
             parse_i64("1.0");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.InvalidInteger;
@@ -2915,7 +2746,7 @@ test "json numeric detects u64 overflow" {
             parse_u64(
                 "18446744073709551616");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.UnsignedOverflow;
@@ -2926,7 +2757,7 @@ test "json numeric rejects negative u64" {
         JsonU64Result =
             parse_u64("-1");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.NegativeUnsigned;
@@ -3003,7 +2834,7 @@ test "json numeric checked add overflow" {
                 JSON_NUMERIC_I64_MAX,
                 1);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -3027,7 +2858,7 @@ test "json numeric checked sub underflow" {
                 JSON_NUMERIC_I64_MIN,
                 1);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerUnderflow;
@@ -3051,7 +2882,7 @@ test "json numeric checked multiply overflow" {
                 JSON_NUMERIC_I64_MAX,
                 2);
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "json numeric checked division" {
@@ -3072,7 +2903,7 @@ test "json numeric checked division by zero" {
                 42,
                 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.DivisionByZero;
@@ -3096,7 +2927,7 @@ test "json numeric checked remainder by zero" {
                 42,
                 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.RemainderByZero;
@@ -3117,7 +2948,7 @@ test "json numeric checked minimum negation overflow" {
             checked_neg_i64(
                 JSON_NUMERIC_I64_MIN);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -3177,12 +3008,12 @@ test "json numeric digit helpers" {
     assert is_digit('5');
     assert is_digit('9');
 
-    assert !is_digit('a');
-    assert !is_digit('-');
+    assert not is_digit('a');
+    assert not is_digit('-');
 
     assert is_nonzero_digit('1');
     assert is_nonzero_digit('9');
-    assert !is_nonzero_digit('0');
+    assert not is_nonzero_digit('0');
 
     assert digit_value('0') == 0;
     assert digit_value('9') == 9;
@@ -3193,19 +3024,19 @@ test "json numeric digit helpers" {
 
 test "json numeric literal properties" {
     assert is_integer_literal("42");
-    assert !is_integer_literal("42.0");
+    assert not is_integer_literal("42.0");
 
     assert is_float_literal("42.0");
     assert is_float_literal("42e0");
 
     assert is_negative_literal("-42");
-    assert !is_negative_literal("42");
+    assert not is_negative_literal("42");
 
     assert has_fraction("42.0");
-    assert !has_fraction("42");
+    assert not has_fraction("42");
 
     assert has_exponent("42e2");
-    assert !has_exponent("42");
+    assert not has_exponent("42");
 }
 
 test "json numeric digit counts" {
@@ -3232,8 +3063,8 @@ test "json numeric zero detection" {
     assert literal_is_zero("0.0");
     assert literal_is_zero("-0.000e10");
 
-    assert !literal_is_zero("0.1");
-    assert !literal_is_zero("1e-10");
+    assert not literal_is_zero("0.1");
+    assert not literal_is_zero("1e-10");
 }
 
 test "json numeric comparisons" {
@@ -3245,8 +3076,8 @@ test "json numeric comparisons" {
 
     assert less.comparable;
     assert less.less;
-    assert !less.equal;
-    assert !less.greater;
+    assert not less.equal;
+    assert not less.greater;
 
     let equal:
         JsonNumericComparison =
@@ -3307,13 +3138,13 @@ test "json numeric representability" {
     assert fits_i64(
         "9223372036854775807");
 
-    assert !fits_i64(
+    assert not fits_i64(
         "9223372036854775808");
 
     assert fits_u64(
         "18446744073709551615");
 
-    assert !fits_u64(
+    assert not fits_u64(
         "18446744073709551616");
 
     assert fits_f64(

@@ -1,0 +1,1744 @@
+space games::tetris::piece;
+
+/*
+ * ============================================================================
+ * VITTE TETRIS — TETROMINO ENGINE
+ * ============================================================================
+ *
+ * File:
+ *   games/tetris/piece.vitte
+ *
+ * Responsibilities:
+ *   - Seven tetromino definitions
+ *   - Four rotation states
+ *   - Matrix generation
+ *   - Piece construction
+ *   - Piece validation
+ *   - Matrix operations
+ *   - Piece geometry
+ *   - Bounding boxes
+ *   - Cell counting
+ *   - Coordinate conversion
+ *   - ASCII representation
+ *   - Unit tests
+ *
+ * Matrix:
+ *
+ *   0  1  2  3
+ *   4  5  6  7
+ *   8  9 10 11
+ *  12 13 14 15
+ *
+ * Cross-module declarations are exposed with `export`.
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * CONSTANTS — PIECE IDENTIFIERS
+ * ============================================================================
+ */
+
+export const PIECE_NONE: i64 = 0;
+
+export const PIECE_I: i64 = 1;
+export const PIECE_O: i64 = 2;
+export const PIECE_T: i64 = 3;
+export const PIECE_S: i64 = 4;
+export const PIECE_Z: i64 = 5;
+export const PIECE_J: i64 = 6;
+export const PIECE_L: i64 = 7;
+
+export const PIECE_MIN_KIND: i64 = 1;
+export const PIECE_MAX_KIND: i64 = 7;
+export const PIECE_KIND_COUNT: i64 = 7;
+
+/* ============================================================================
+ * CONSTANTS — MATRIX
+ * ============================================================================
+ */
+
+export const PIECE_MATRIX_WIDTH: i64 = 4;
+export const PIECE_MATRIX_HEIGHT: i64 = 4;
+export const PIECE_MATRIX_SIZE: i64 = 16;
+
+export const PIECE_BLOCK_COUNT: i64 = 4;
+
+/* ============================================================================
+ * CONSTANTS — ROTATION
+ * ============================================================================
+ */
+
+export const PIECE_ROTATION_0: i64 = 0;
+export const PIECE_ROTATION_90: i64 = 1;
+export const PIECE_ROTATION_180: i64 = 2;
+export const PIECE_ROTATION_270: i64 = 3;
+
+export const PIECE_ROTATION_COUNT: i64 = 4;
+
+export const PIECE_ROTATE_CW: i64 = 1;
+export const PIECE_ROTATE_CCW: i64 = -1;
+
+/* ============================================================================
+ * CONSTANTS — SPAWN
+ * ============================================================================
+ */
+
+export const PIECE_SPAWN_X: i64 = 3;
+export const PIECE_SPAWN_Y: i64 = -1;
+
+/* ============================================================================
+ * TYPES
+ * ============================================================================
+ */
+
+export form Piece {
+    kind: i64,
+    rotation: i64,
+    x: i64,
+    y: i64,
+    cells: [i64; 16]
+}
+
+export form PiecePosition {
+    x: i64,
+    y: i64
+}
+
+export form PieceBounds {
+    left: i64,
+    right: i64,
+    top: i64,
+    bottom: i64,
+    width: i64,
+    height: i64
+}
+
+export form PieceCell {
+    x: i64,
+    y: i64,
+    value: i64
+}
+
+export form PieceGeometry {
+    occupied: i64,
+    width: i64,
+    height: i64,
+    minimum_x: i64,
+    maximum_x: i64,
+    minimum_y: i64,
+    maximum_y: i64,
+    center_x: i64,
+    center_y: i64
+}
+
+/* ============================================================================
+ * BASIC UTILITIES
+ * ============================================================================
+ */
+
+export proc piece_min(a: i64, b: i64) -> i64 {
+    if a < b {
+        return a;
+    }
+
+    return b;
+}
+
+export proc piece_max(a: i64, b: i64) -> i64 {
+    if a > b {
+        return a;
+    }
+
+    return b;
+}
+
+export proc piece_abs(value: i64) -> i64 {
+    if value < 0 {
+        return -value;
+    }
+
+    return value;
+}
+
+export proc piece_clamp(
+    value: i64,
+    minimum: i64,
+    maximum: i64
+) -> i64 {
+    if value < minimum {
+        return minimum;
+    }
+
+    if value > maximum {
+        return maximum;
+    }
+
+    return value;
+}
+
+/* ============================================================================
+ * KIND VALIDATION
+ * ============================================================================
+ */
+
+export proc piece_valid_kind(kind: i64) -> bool {
+    return kind >= PIECE_MIN_KIND
+        and kind <= PIECE_MAX_KIND;
+}
+
+export proc piece_is_none(kind: i64) -> bool {
+    return kind == PIECE_NONE;
+}
+
+export proc piece_is_i(kind: i64) -> bool {
+    return kind == PIECE_I;
+}
+
+export proc piece_is_o(kind: i64) -> bool {
+    return kind == PIECE_O;
+}
+
+export proc piece_is_t(kind: i64) -> bool {
+    return kind == PIECE_T;
+}
+
+export proc piece_is_s(kind: i64) -> bool {
+    return kind == PIECE_S;
+}
+
+export proc piece_is_z(kind: i64) -> bool {
+    return kind == PIECE_Z;
+}
+
+export proc piece_is_j(kind: i64) -> bool {
+    return kind == PIECE_J;
+}
+
+export proc piece_is_l(kind: i64) -> bool {
+    return kind == PIECE_L;
+}
+
+/* ============================================================================
+ * ROTATION UTILITIES
+ * ============================================================================
+ */
+
+export proc piece_normalize_rotation(rotation: i64) -> i64 {
+    let mut result: i64 = rotation % PIECE_ROTATION_COUNT;
+
+    if result < 0 {
+        set result = result + PIECE_ROTATION_COUNT;
+    }
+
+    return result;
+}
+
+export proc piece_next_rotation(rotation: i64) -> i64 {
+    return piece_normalize_rotation(rotation + 1);
+}
+
+export proc piece_previous_rotation(rotation: i64) -> i64 {
+    return piece_normalize_rotation(rotation - 1);
+}
+
+export proc piece_opposite_rotation(rotation: i64) -> i64 {
+    return piece_normalize_rotation(rotation + 2);
+}
+
+export proc piece_rotation_valid(rotation: i64) -> bool {
+    return rotation >= PIECE_ROTATION_0
+        and rotation <= PIECE_ROTATION_270;
+}
+
+/* ============================================================================
+ * MATRIX COORDINATES
+ * ============================================================================
+ */
+
+export proc piece_matrix_inside(x: i64, y: i64) -> bool {
+    return x >= 0
+        and x < PIECE_MATRIX_WIDTH
+        and y >= 0
+        and y < PIECE_MATRIX_HEIGHT;
+}
+
+export proc piece_matrix_index(x: i64, y: i64) -> i64 {
+    return y * PIECE_MATRIX_WIDTH + x;
+}
+
+export proc piece_matrix_index_valid(index: i64) -> bool {
+    return index >= 0 and index < PIECE_MATRIX_SIZE;
+}
+
+export proc piece_matrix_x(index: i64) -> i64 {
+    return index % PIECE_MATRIX_WIDTH;
+}
+
+export proc piece_matrix_y(index: i64) -> i64 {
+    return index / PIECE_MATRIX_WIDTH;
+}
+
+/* ============================================================================
+ * EMPTY MATRIX
+ * ============================================================================
+ */
+
+export proc piece_clear_cells(cells: *i64) {
+    let mut index: i64 = 0;
+    while index < PIECE_MATRIX_SIZE {
+        set cells[index] = 0;
+        set index += 1;
+    }
+}
+
+/* ============================================================================
+ * BASE SHAPES
+ * ============================================================================
+ *
+ * I:
+ *   ....
+ *   IIII
+ *   ....
+ *   ....
+ *
+ * O:
+ *   ....
+ *   .OO.
+ *   .OO.
+ *   ....
+ *
+ * T:
+ *   ....
+ *   TTT.
+ *   .T..
+ *   ....
+ *
+ * S:
+ *   ....
+ *   .SS.
+ *   SS..
+ *   ....
+ *
+ * Z:
+ *   ....
+ *   ZZ..
+ *   .ZZ.
+ *   ....
+ *
+ * J:
+ *   ....
+ *   J...
+ *   JJJ.
+ *   ....
+ *
+ * L:
+ *   ....
+ *   ..L.
+ *   LLL.
+ *   ....
+ */
+
+/* ============================================================================
+ * BASE CELL QUERY
+ * ============================================================================
+ */
+
+export proc piece_base_cell(
+    kind: i64,
+    x: i64,
+    y: i64
+) -> bool {
+    if not piece_matrix_inside(x, y) {
+        return false;
+    }
+
+    if kind == PIECE_I {
+        return y == 1;
+    }
+
+    if kind == PIECE_O {
+        return (x == 1 or x == 2)
+            and (y == 1 or y == 2);
+    }
+
+    if kind == PIECE_T {
+        return (y == 1 and x <= 2)
+            or (y == 2 and x == 1);
+    }
+
+    if kind == PIECE_S {
+        return (y == 1 and (x == 1 or x == 2))
+            or (y == 2 and (x == 0 or x == 1));
+    }
+
+    if kind == PIECE_Z {
+        return (y == 1 and (x == 0 or x == 1))
+            or (y == 2 and (x == 1 or x == 2));
+    }
+
+    if kind == PIECE_J {
+        return (y == 1 and x == 0)
+            or (y == 2 and x <= 2);
+    }
+
+    if kind == PIECE_L {
+        return (y == 1 and x == 2)
+            or (y == 2 and x <= 2);
+    }
+
+    return false;
+}
+
+/* ============================================================================
+ * ROTATED CELL QUERY
+ * ============================================================================
+ */
+
+export proc piece_rotated_cell(
+    kind: i64,
+    rotation: i64,
+    x: i64,
+    y: i64
+) -> bool {
+    if not piece_valid_kind(kind) {
+        return false;
+    }
+
+    if not piece_matrix_inside(x, y) {
+        return false;
+    }
+
+    if kind == PIECE_O {
+        return piece_base_cell(kind, x, y);
+    }
+
+    let normalized: i64 =
+        piece_normalize_rotation(rotation);
+
+    if normalized == PIECE_ROTATION_0 {
+        return piece_base_cell(kind, x, y);
+    }
+
+    if normalized == PIECE_ROTATION_90 {
+        return piece_base_cell(kind, y, 3 - x);
+    }
+
+    if normalized == PIECE_ROTATION_180 {
+        return piece_base_cell(kind, 3 - x, 3 - y);
+    }
+
+    return piece_base_cell(kind, 3 - y, x);
+}
+
+/* ============================================================================
+ * MATRIX GENERATION
+ * ============================================================================
+ */
+
+export proc piece_rotate_cells(
+    kind: i64,
+    rotation: i64,
+    cells: *i64
+) {
+    piece_clear_cells(cells);
+
+    if not piece_valid_kind(kind) {
+        return;
+    }
+
+    let normalized: i64 =
+        piece_normalize_rotation(rotation);
+
+    let mut y: i64 = 0;
+
+    while y < PIECE_MATRIX_HEIGHT {
+        let mut x: i64 = 0;
+
+        while x < PIECE_MATRIX_WIDTH {
+            if piece_rotated_cell(
+                kind,
+                normalized,
+                x,
+                y
+            ) {
+                let index: i64 =
+                    piece_matrix_index(x, y);
+
+                set cells[index] = kind;
+            }
+
+            set x = x + 1;
+        }
+
+        set y = y + 1;
+    }
+
+}
+
+/* ============================================================================
+ * PIECE CONSTRUCTION
+ * ============================================================================
+ */
+
+export proc piece_create(kind: i64) -> Piece {
+    return piece_create_rotated(
+        kind,
+        PIECE_ROTATION_0,
+        PIECE_SPAWN_X,
+        PIECE_SPAWN_Y
+    );
+}
+
+export proc piece_create_at(
+    kind: i64,
+    x: i64,
+    y: i64
+) -> Piece {
+    return piece_create_rotated(
+        kind,
+        PIECE_ROTATION_0,
+        x,
+        y
+    );
+}
+
+export proc piece_create_rotated(
+    kind: i64,
+    rotation: i64,
+    x: i64,
+    y: i64
+) -> Piece {
+    let normalized: i64 =
+        piece_normalize_rotation(rotation);
+
+    let mut piece: Piece = Piece {
+        kind: kind,
+        rotation: normalized,
+        x: x,
+        y: y,
+        cells: [
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0
+        ]
+    };
+
+    piece_rotate_cells(
+        kind,
+        normalized,
+        &piece.cells[0]
+    );
+
+    return piece;
+}
+
+/* ============================================================================
+ * PIECE RESET
+ * ============================================================================
+ */
+
+export proc piece_reset(piece: &mut Piece) {
+    set piece.rotation = PIECE_ROTATION_0;
+    set piece.x = PIECE_SPAWN_X;
+    set piece.y = PIECE_SPAWN_Y;
+
+    piece_rotate_cells(
+        piece.kind,
+        PIECE_ROTATION_0,
+        &piece.cells[0]
+    );
+}
+
+export proc piece_reset_position(piece: &mut Piece) {
+    set piece.x = PIECE_SPAWN_X;
+    set piece.y = PIECE_SPAWN_Y;
+}
+
+/* ============================================================================
+ * PIECE REBUILD
+ * ============================================================================
+ */
+
+export proc piece_rebuild(piece: &mut Piece) {
+    set piece.rotation =
+        piece_normalize_rotation(piece.rotation);
+
+    piece_rotate_cells(
+        piece.kind,
+        piece.rotation,
+        &piece.cells[0]
+    );
+}
+
+/* ============================================================================
+ * PIECE MOVEMENT
+ * ============================================================================
+ */
+
+export proc piece_set_position(
+    piece: &mut Piece,
+    x: i64,
+    y: i64
+) {
+    set piece.x = x;
+    set piece.y = y;
+}
+
+export proc piece_translate(
+    piece: &mut Piece,
+    dx: i64,
+    dy: i64
+) {
+    set piece.x = piece.x + dx;
+    set piece.y = piece.y + dy;
+}
+
+export proc piece_move_left(piece: &mut Piece) {
+    set piece.x = piece.x - 1;
+}
+
+export proc piece_move_right(piece: &mut Piece) {
+    set piece.x = piece.x + 1;
+}
+
+export proc piece_move_down(piece: &mut Piece) {
+    set piece.y = piece.y + 1;
+}
+
+export proc piece_move_up(piece: &mut Piece) {
+    set piece.y = piece.y - 1;
+}
+
+/* ============================================================================
+ * PIECE ROTATION
+ * ============================================================================
+ */
+
+export proc piece_set_rotation(
+    piece: &mut Piece,
+    rotation: i64
+) {
+    set piece.rotation =
+        piece_normalize_rotation(rotation);
+
+    piece_rebuild(piece);
+}
+
+export proc piece_rotate_cw(piece: &mut Piece) {
+    piece_set_rotation(
+        piece,
+        piece.rotation + PIECE_ROTATE_CW
+    );
+}
+
+export proc piece_rotate_ccw(piece: &mut Piece) {
+    piece_set_rotation(
+        piece,
+        piece.rotation + PIECE_ROTATE_CCW
+    );
+}
+
+export proc piece_rotate_180(piece: &mut Piece) {
+    piece_set_rotation(
+        piece,
+        piece.rotation + 2
+    );
+}
+
+/* ============================================================================
+ * CELL ACCESS
+ * ============================================================================
+ */
+
+export proc piece_get_cell(
+    piece: &Piece,
+    x: i64,
+    y: i64
+) -> i64 {
+    if not piece_matrix_inside(x, y) {
+        return 0;
+    }
+
+    return piece.cells[piece_matrix_index(x, y)];
+}
+
+export proc piece_get_cell_index(
+    piece: &Piece,
+    index: i64
+) -> i64 {
+    if not piece_matrix_index_valid(index) {
+        return 0;
+    }
+
+    return piece.cells[index];
+}
+
+export proc piece_cell_occupied(
+    piece: &Piece,
+    x: i64,
+    y: i64
+) -> bool {
+    return piece_get_cell(piece, x, y) != 0;
+}
+
+export proc piece_cell_empty(
+    piece: &Piece,
+    x: i64,
+    y: i64
+) -> bool {
+    return not piece_cell_occupied(piece, x, y);
+}
+
+/* ============================================================================
+ * WORLD COORDINATES
+ * ============================================================================
+ */
+
+export proc piece_world_x(
+    piece: &Piece,
+    local_x: i64
+) -> i64 {
+    return piece.x + local_x;
+}
+
+export proc piece_world_y(
+    piece: &Piece,
+    local_y: i64
+) -> i64 {
+    return piece.y + local_y;
+}
+
+export proc piece_world_position(
+    piece: &Piece,
+    local_x: i64,
+    local_y: i64
+) -> PiecePosition {
+    return PiecePosition {
+        x: piece_world_x(piece, local_x),
+        y: piece_world_y(piece, local_y)
+    };
+}
+
+/* ============================================================================
+ * CELL COUNT
+ * ============================================================================
+ */
+
+export proc piece_count_cells(piece: &Piece) -> i64 {
+    let mut count: i64 = 0;
+    let mut index: i64 = 0;
+
+    while index < PIECE_MATRIX_SIZE {
+        if piece.cells[index] != 0 {
+            set count = count + 1;
+        }
+
+        set index = index + 1;
+    }
+
+    return count;
+}
+
+export proc piece_count_kind(
+    piece: &Piece,
+    kind: i64
+) -> i64 {
+    let mut count: i64 = 0;
+    let mut index: i64 = 0;
+
+    while index < PIECE_MATRIX_SIZE {
+        if piece.cells[index] == kind {
+            set count = count + 1;
+        }
+
+        set index = index + 1;
+    }
+
+    return count;
+}
+
+/* ============================================================================
+ * BOUNDING BOX
+ * ============================================================================
+ */
+
+export proc piece_bounds(piece: &Piece) -> PieceBounds {
+    let mut minimum_x: i64 = PIECE_MATRIX_WIDTH;
+    let mut maximum_x: i64 = -1;
+
+    let mut minimum_y: i64 = PIECE_MATRIX_HEIGHT;
+    let mut maximum_y: i64 = -1;
+
+    let mut y: i64 = 0;
+
+    while y < PIECE_MATRIX_HEIGHT {
+        let mut x: i64 = 0;
+
+        while x < PIECE_MATRIX_WIDTH {
+            if piece_cell_occupied(piece, x, y) {
+                set minimum_x = piece_min(minimum_x, x);
+                set maximum_x = piece_max(maximum_x, x);
+
+                set minimum_y = piece_min(minimum_y, y);
+                set maximum_y = piece_max(maximum_y, y);
+            }
+
+            set x = x + 1;
+        }
+
+        set y = y + 1;
+    }
+
+    if maximum_x < 0 {
+        return PieceBounds {
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: 0,
+            height: 0
+        };
+    }
+
+    return PieceBounds {
+        left: minimum_x,
+        right: maximum_x,
+        top: minimum_y,
+        bottom: maximum_y,
+        width: maximum_x - minimum_x + 1,
+        height: maximum_y - minimum_y + 1
+    };
+}
+
+/* ============================================================================
+ * PIECE DIMENSIONS
+ * ============================================================================
+ */
+
+export proc piece_width(piece: &Piece) -> i64 {
+    let bounds: PieceBounds = piece_bounds(piece);
+
+    return bounds.width;
+}
+
+export proc piece_height(piece: &Piece) -> i64 {
+    let bounds: PieceBounds = piece_bounds(piece);
+
+    return bounds.height;
+}
+
+export proc piece_left(piece: &Piece) -> i64 {
+    let bounds: PieceBounds = piece_bounds(piece);
+
+    return bounds.left;
+}
+
+export proc piece_right(piece: &Piece) -> i64 {
+    let bounds: PieceBounds = piece_bounds(piece);
+
+    return bounds.right;
+}
+
+export proc piece_top(piece: &Piece) -> i64 {
+    let bounds: PieceBounds = piece_bounds(piece);
+
+    return bounds.top;
+}
+
+export proc piece_bottom(piece: &Piece) -> i64 {
+    let bounds: PieceBounds = piece_bounds(piece);
+
+    return bounds.bottom;
+}
+
+/* ============================================================================
+ * WORLD BOUNDS
+ * ============================================================================
+ */
+
+export proc piece_world_bounds(piece: &Piece) -> PieceBounds {
+    let local: PieceBounds = piece_bounds(piece);
+
+    return PieceBounds {
+        left: piece.x + local.left,
+        right: piece.x + local.right,
+        top: piece.y + local.top,
+        bottom: piece.y + local.bottom,
+        width: local.width,
+        height: local.height
+    };
+}
+
+/* ============================================================================
+ * GEOMETRY
+ * ============================================================================
+ */
+
+export proc piece_geometry(piece: &Piece) -> PieceGeometry {
+    let bounds: PieceBounds = piece_bounds(piece);
+
+    return PieceGeometry {
+        occupied: piece_count_cells(piece),
+
+        width: bounds.width,
+        height: bounds.height,
+
+        minimum_x: bounds.left,
+        maximum_x: bounds.right,
+
+        minimum_y: bounds.top,
+        maximum_y: bounds.bottom,
+
+        center_x: (bounds.left + bounds.right) / 2,
+        center_y: (bounds.top + bounds.bottom) / 2
+    };
+}
+
+/* ============================================================================
+ * MATRIX VALIDATION
+ * ============================================================================
+ */
+
+export proc piece_cells_valid(
+    cells: *i64,
+    kind: i64
+) -> bool {
+    if not piece_valid_kind(kind) {
+        return false;
+    }
+
+    let mut count: i64 = 0;
+    let mut index: i64 = 0;
+
+    while index < PIECE_MATRIX_SIZE {
+        let value: i64 = cells[index];
+
+        if value != 0 {
+            if value != kind {
+                return false;
+            }
+
+            set count = count + 1;
+        }
+
+        set index = index + 1;
+    }
+
+    return count == PIECE_BLOCK_COUNT;
+}
+
+/* ============================================================================
+ * PIECE VALIDATION
+ * ============================================================================
+ */
+
+export proc piece_validate(piece: &Piece) -> bool {
+    if not piece_valid_kind(piece.kind) {
+        return false;
+    }
+
+    if not piece_rotation_valid(piece.rotation) {
+        return false;
+    }
+
+    if not piece_cells_valid(
+        &piece.cells[0],
+        piece.kind
+    ) {
+        return false;
+    }
+
+    let mut expected: [i64; 16] = [
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0
+    ];
+
+    piece_rotate_cells(
+        piece.kind,
+        piece.rotation,
+        &expected[0]
+    );
+
+    let mut index: i64 = 0;
+
+    while index < PIECE_MATRIX_SIZE {
+        if piece.cells[index] != expected[index] {
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+/* ============================================================================
+ * PIECE COPY
+ * ============================================================================
+ */
+
+export proc piece_copy(
+    destination: &mut Piece,
+    source: &Piece
+) {
+    set destination.kind = source.kind;
+    set destination.rotation = source.rotation;
+
+    set destination.x = source.x;
+    set destination.y = source.y;
+
+    let mut index: i64 = 0;
+
+    while index < PIECE_MATRIX_SIZE {
+        set destination.cells[index] = source.cells[index];
+
+        set index = index + 1;
+    }
+}
+
+export proc piece_clone(source: &Piece) -> Piece {
+    let mut result: Piece = piece_create(source.kind);
+
+    piece_copy(&mut result, source);
+
+    return result;
+}
+
+/* ============================================================================
+ * PIECE COMPARISON
+ * ============================================================================
+ */
+
+export proc piece_equals(
+    left: &Piece,
+    right: &Piece
+) -> bool {
+    if left.kind != right.kind {
+        return false;
+    }
+
+    if left.rotation != right.rotation {
+        return false;
+    }
+
+    if left.x != right.x or left.y != right.y {
+        return false;
+    }
+
+    let mut index: i64 = 0;
+
+    while index < PIECE_MATRIX_SIZE {
+        if left.cells[index] != right.cells[index] {
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+export proc piece_same_shape(
+    left: &Piece,
+    right: &Piece
+) -> bool {
+    if left.kind != right.kind {
+        return false;
+    }
+
+    let mut index: i64 = 0;
+
+    while index < PIECE_MATRIX_SIZE {
+        if left.cells[index] != right.cells[index] {
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+/* ============================================================================
+ * PIECE NAME
+ * ============================================================================
+ */
+
+export proc piece_name(kind: i64) -> str {
+    if kind == PIECE_I {
+        return "I";
+    }
+
+    if kind == PIECE_O {
+        return "O";
+    }
+
+    if kind == PIECE_T {
+        return "T";
+    }
+
+    if kind == PIECE_S {
+        return "S";
+    }
+
+    if kind == PIECE_Z {
+        return "Z";
+    }
+
+    if kind == PIECE_J {
+        return "J";
+    }
+
+    if kind == PIECE_L {
+        return "L";
+    }
+
+    return "NONE";
+}
+
+/* ============================================================================
+ * PIECE ASCII CHARACTER
+ * ============================================================================
+ */
+
+export proc piece_ascii(kind: i64) -> str {
+    if kind == PIECE_I {
+        return "I";
+    }
+
+    if kind == PIECE_O {
+        return "O";
+    }
+
+    if kind == PIECE_T {
+        return "T";
+    }
+
+    if kind == PIECE_S {
+        return "S";
+    }
+
+    if kind == PIECE_Z {
+        return "Z";
+    }
+
+    if kind == PIECE_J {
+        return "J";
+    }
+
+    if kind == PIECE_L {
+        return "L";
+    }
+
+    return ".";
+}
+
+/* ============================================================================
+ * PIECE ASCII DOUBLE CHARACTER
+ * ============================================================================
+ */
+
+export proc piece_ascii_double(kind: i64) -> str {
+    if kind == PIECE_I {
+        return "II";
+    }
+
+    if kind == PIECE_O {
+        return "OO";
+    }
+
+    if kind == PIECE_T {
+        return "TT";
+    }
+
+    if kind == PIECE_S {
+        return "SS";
+    }
+
+    if kind == PIECE_Z {
+        return "ZZ";
+    }
+
+    if kind == PIECE_J {
+        return "JJ";
+    }
+
+    if kind == PIECE_L {
+        return "LL";
+    }
+
+    return "  ";
+}
+
+/* ============================================================================
+ * PIECE SYMBOL
+ * ============================================================================
+ */
+
+export proc piece_symbol(kind: i64) -> str {
+    if piece_valid_kind(kind) {
+        return "[]";
+    }
+
+    return "  ";
+}
+
+/* ============================================================================
+ * PIECE GHOST SYMBOL
+ * ============================================================================
+ */
+
+export proc piece_ghost_symbol(kind: i64) -> str {
+    if piece_valid_kind(kind) {
+        return "::";
+    }
+
+    return "  ";
+}
+
+/* ============================================================================
+ * PIECE ROTATION SYMMETRY
+ * ============================================================================
+ */
+
+export proc piece_has_rotation_symmetry_90(kind: i64) -> bool {
+    return kind == PIECE_O;
+}
+
+export proc piece_has_rotation_symmetry_180(kind: i64) -> bool {
+    return kind == PIECE_I
+        or kind == PIECE_O
+        or kind == PIECE_S
+        or kind == PIECE_Z;
+}
+
+/* ============================================================================
+ * PIECE ROTATION COUNT
+ * ============================================================================
+ */
+
+export proc piece_unique_rotation_count(kind: i64) -> i64 {
+    if kind == PIECE_O {
+        return 1;
+    }
+
+    if kind == PIECE_I
+        or kind == PIECE_S
+        or kind == PIECE_Z
+    {
+        return 2;
+    }
+
+    if kind == PIECE_T
+        or kind == PIECE_J
+        or kind == PIECE_L
+    {
+        return 4;
+    }
+
+    return 0;
+}
+
+/* ============================================================================
+ * PIECE CENTER
+ * ============================================================================
+ */
+
+export proc piece_center_x(piece: &Piece) -> i64 {
+    let bounds: PieceBounds = piece_bounds(piece);
+
+    return piece.x + (bounds.left + bounds.right) / 2;
+}
+
+export proc piece_center_y(piece: &Piece) -> i64 {
+    let bounds: PieceBounds = piece_bounds(piece);
+
+    return piece.y + (bounds.top + bounds.bottom) / 2;
+}
+
+/* ============================================================================
+ * PIECE POSITION QUERIES
+ * ============================================================================
+ */
+
+export proc piece_is_above_board(piece: &Piece) -> bool {
+    let bounds: PieceBounds = piece_world_bounds(piece);
+
+    return bounds.bottom < 0;
+}
+
+export proc piece_touches_top(piece: &Piece) -> bool {
+    let bounds: PieceBounds = piece_world_bounds(piece);
+
+    return bounds.top <= 0 and bounds.bottom >= 0;
+}
+
+export proc piece_has_cells_above_board(piece: &Piece) -> bool {
+    let bounds: PieceBounds = piece_world_bounds(piece);
+
+    return bounds.top < 0;
+}
+
+/* ============================================================================
+ * PIECE MATRIX ROW COUNT
+ * ============================================================================
+ */
+
+export proc piece_row_occupied(
+    piece: &Piece,
+    y: i64
+) -> i64 {
+    if y < 0 or y >= PIECE_MATRIX_HEIGHT {
+        return 0;
+    }
+
+    let mut count: i64 = 0;
+    let mut x: i64 = 0;
+
+    while x < PIECE_MATRIX_WIDTH {
+        if piece_cell_occupied(piece, x, y) {
+            set count = count + 1;
+        }
+
+        set x = x + 1;
+    }
+
+    return count;
+}
+
+/* ============================================================================
+ * PIECE MATRIX COLUMN COUNT
+ * ============================================================================
+ */
+
+export proc piece_column_occupied(
+    piece: &Piece,
+    x: i64
+) -> i64 {
+    if x < 0 or x >= PIECE_MATRIX_WIDTH {
+        return 0;
+    }
+
+    let mut count: i64 = 0;
+    let mut y: i64 = 0;
+
+    while y < PIECE_MATRIX_HEIGHT {
+        if piece_cell_occupied(piece, x, y) {
+            set count = count + 1;
+        }
+
+        set y = y + 1;
+    }
+
+    return count;
+}
+
+/* ============================================================================
+ * PIECE MATRIX EMPTY ROW
+ * ============================================================================
+ */
+
+export proc piece_row_empty(
+    piece: &Piece,
+    y: i64
+) -> bool {
+    if y < 0 or y >= PIECE_MATRIX_HEIGHT {
+        return false;
+    }
+
+    return piece_row_occupied(piece, y) == 0;
+}
+
+/* ============================================================================
+ * PIECE MATRIX EMPTY COLUMN
+ * ============================================================================
+ */
+
+export proc piece_column_empty(
+    piece: &Piece,
+    x: i64
+) -> bool {
+    if x < 0 or x >= PIECE_MATRIX_WIDTH {
+        return false;
+    }
+
+    return piece_column_occupied(piece, x) == 0;
+}
+
+/* ============================================================================
+ * PIECE TRANSFORMATION
+ * ============================================================================
+ */
+
+export proc piece_transform(
+    source: &Piece,
+    rotation: i64,
+    dx: i64,
+    dy: i64
+) -> Piece {
+    return piece_create_rotated(
+        source.kind,
+        rotation,
+        source.x + dx,
+        source.y + dy
+    );
+}
+
+/* ============================================================================
+ * PIECE TRANSLATED COPY
+ * ============================================================================
+ */
+
+export proc piece_translated(
+    source: &Piece,
+    dx: i64,
+    dy: i64
+) -> Piece {
+    return piece_create_rotated(
+        source.kind,
+        source.rotation,
+        source.x + dx,
+        source.y + dy
+    );
+}
+
+/* ============================================================================
+ * PIECE ROTATED COPY
+ * ============================================================================
+ */
+
+export proc piece_rotated(
+    source: &Piece,
+    direction: i64
+) -> Piece {
+    let rotation: i64 =
+        piece_normalize_rotation(
+            source.rotation + direction
+        );
+
+    return piece_create_rotated(
+        source.kind,
+        rotation,
+        source.x,
+        source.y
+    );
+}
+
+/* ============================================================================
+ * PIECE CELL CHECKSUM
+ * ============================================================================
+ */
+
+export proc piece_checksum(piece: &Piece) -> i64 {
+    let mut checksum: i64 = 0;
+    let mut index: i64 = 0;
+
+    while index < PIECE_MATRIX_SIZE {
+        checksum = checksum
+            + piece.cells[index] * (index + 1);
+
+        set index = index + 1;
+    }
+
+    return checksum;
+}
+
+/* ============================================================================
+ * TESTS — PIECE IDENTIFIERS
+ * ============================================================================
+ */
+
+test "piece identifiers" {
+    assert PIECE_I == 1;
+    assert PIECE_O == 2;
+    assert PIECE_T == 3;
+    assert PIECE_S == 4;
+    assert PIECE_Z == 5;
+    assert PIECE_J == 6;
+    assert PIECE_L == 7;
+}
+
+/* ============================================================================
+ * TESTS — KIND VALIDATION
+ * ============================================================================
+ */
+
+test "piece valid kinds" {
+    assert piece_valid_kind(PIECE_I);
+    assert piece_valid_kind(PIECE_O);
+    assert piece_valid_kind(PIECE_T);
+    assert piece_valid_kind(PIECE_S);
+    assert piece_valid_kind(PIECE_Z);
+    assert piece_valid_kind(PIECE_J);
+    assert piece_valid_kind(PIECE_L);
+
+    assert not piece_valid_kind(PIECE_NONE);
+    assert not piece_valid_kind(8);
+}
+
+/* ============================================================================
+ * TESTS — MATRIX
+ * ============================================================================
+ */
+
+test "piece matrix dimensions" {
+    assert PIECE_MATRIX_WIDTH == 4;
+    assert PIECE_MATRIX_HEIGHT == 4;
+    assert PIECE_MATRIX_SIZE == 16;
+}
+
+/* ============================================================================
+ * TESTS — ROTATION NORMALIZATION
+ * ============================================================================
+ */
+
+test "piece rotation normalization" {
+    assert piece_normalize_rotation(0) == 0;
+    assert piece_normalize_rotation(1) == 1;
+    assert piece_normalize_rotation(2) == 2;
+    assert piece_normalize_rotation(3) == 3;
+    assert piece_normalize_rotation(4) == 0;
+    assert piece_normalize_rotation(-1) == 3;
+}
+
+/* ============================================================================
+ * TESTS — PIECE CREATION
+ * ============================================================================
+ */
+
+test "piece creation" {
+    let piece: Piece = piece_create(PIECE_T);
+
+    assert piece.kind == PIECE_T;
+    assert piece.rotation == 0;
+    assert piece.x == PIECE_SPAWN_X;
+    assert piece.y == PIECE_SPAWN_Y;
+
+    assert piece_validate(&piece);
+}
+
+/* ============================================================================
+ * TESTS — ALL PIECES
+ * ============================================================================
+ */
+
+test "all pieces contain four blocks" {
+    let mut kind: i64 = PIECE_I;
+
+    while kind <= PIECE_L {
+        let piece: Piece = piece_create(kind);
+
+        assert piece_count_cells(&piece) == 4;
+        assert piece_validate(&piece);
+
+        set kind = kind + 1;
+    }
+}
+
+/* ============================================================================
+ * TESTS — ALL ROTATIONS
+ * ============================================================================
+ */
+
+test "all piece rotations contain four blocks" {
+    let mut kind: i64 = PIECE_I;
+
+    while kind <= PIECE_L {
+        let mut rotation: i64 = 0;
+
+        while rotation < 4 {
+            let piece: Piece = piece_create_rotated(
+                kind,
+                rotation,
+                3,
+                0
+            );
+
+            assert piece_count_cells(&piece) == 4;
+            assert piece_validate(&piece);
+
+            set rotation = rotation + 1;
+        }
+
+        set kind = kind + 1;
+    }
+}
+
+/* ============================================================================
+ * TESTS — MOVEMENT
+ * ============================================================================
+ */
+
+test "piece movement" {
+    let mut piece: Piece = piece_create(PIECE_I);
+
+    let original_x: i64 = piece.x;
+    let original_y: i64 = piece.y;
+
+    piece_move_left(&mut piece);
+    assert piece.x == original_x - 1;
+
+    piece_move_right(&mut piece);
+    assert piece.x == original_x;
+
+    piece_move_down(&mut piece);
+    assert piece.y == original_y + 1;
+
+    piece_move_up(&mut piece);
+    assert piece.y == original_y;
+}
+
+/* ============================================================================
+ * TESTS — ROTATION
+ * ============================================================================
+ */
+
+test "piece clockwise rotation" {
+    let mut piece: Piece = piece_create(PIECE_T);
+
+    piece_rotate_cw(&mut piece);
+
+    assert piece.rotation == 1;
+    assert piece_validate(&piece);
+
+    piece_rotate_cw(&mut piece);
+
+    assert piece.rotation == 2;
+    assert piece_validate(&piece);
+}
+
+test "piece counterclockwise rotation" {
+    let mut piece: Piece = piece_create(PIECE_T);
+
+    piece_rotate_ccw(&mut piece);
+
+    assert piece.rotation == 3;
+    assert piece_validate(&piece);
+}
+
+/* ============================================================================
+ * TESTS — ROTATION CYCLE
+ * ============================================================================
+ */
+
+test "piece full rotation cycle" {
+    let mut piece: Piece = piece_create(PIECE_L);
+
+    piece_rotate_cw(&mut piece);
+    piece_rotate_cw(&mut piece);
+    piece_rotate_cw(&mut piece);
+    piece_rotate_cw(&mut piece);
+
+    assert piece.rotation == 0;
+    assert piece_validate(&piece);
+}
+
+/* ============================================================================
+ * TESTS — O PIECE
+ * ============================================================================
+ */
+
+test "piece O rotation symmetry" {
+    let first: Piece = piece_create_rotated(
+        PIECE_O,
+        0,
+        3,
+        0
+    );
+
+    let second: Piece = piece_create_rotated(
+        PIECE_O,
+        1,
+        3,
+        0
+    );
+
+    assert piece_same_shape(&first, &second);
+}
+
+/* ============================================================================
+ * TESTS — BOUNDS
+ * ============================================================================
+ */
+
+test "piece I bounds" {
+    let piece: Piece = piece_create(PIECE_I);
+
+    let bounds: PieceBounds = piece_bounds(&piece);
+
+    assert bounds.width == 4;
+    assert bounds.height == 1;
+}
+
+test "piece O bounds" {
+    let piece: Piece = piece_create(PIECE_O);
+
+    let bounds: PieceBounds = piece_bounds(&piece);
+
+    assert bounds.width == 2;
+    assert bounds.height == 2;
+}
+
+/* ============================================================================
+ * TESTS — CLONE
+ * ============================================================================
+ */
+
+test "piece clone" {
+    let original: Piece = piece_create_rotated(
+        PIECE_J,
+        2,
+        4,
+        8
+    );
+
+    let copy: Piece = piece_clone(&original);
+
+    assert piece_equals(&original, &copy);
+}
+
+/* ============================================================================
+ * TESTS — TRANSFORM
+ * ============================================================================
+ */
+
+test "piece transformation" {
+    let original: Piece = piece_create(PIECE_T);
+
+    let transformed: Piece = piece_transform(
+        &original,
+        1,
+        2,
+        3
+    );
+
+    assert transformed.rotation == 1;
+    assert transformed.x == original.x + 2;
+    assert transformed.y == original.y + 3;
+    assert piece_validate(&transformed);
+}
+
+/* ============================================================================
+ * TESTS — SYMMETRY
+ * ============================================================================
+ */
+
+test "piece rotation symmetry" {
+    assert piece_unique_rotation_count(PIECE_O) == 1;
+
+    assert piece_unique_rotation_count(PIECE_I) == 2;
+    assert piece_unique_rotation_count(PIECE_S) == 2;
+    assert piece_unique_rotation_count(PIECE_Z) == 2;
+
+    assert piece_unique_rotation_count(PIECE_T) == 4;
+    assert piece_unique_rotation_count(PIECE_J) == 4;
+    assert piece_unique_rotation_count(PIECE_L) == 4;
+}
+
+/* ============================================================================
+ * END OF FILE
+ * ============================================================================
+ */

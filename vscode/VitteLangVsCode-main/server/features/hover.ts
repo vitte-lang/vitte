@@ -40,13 +40,15 @@ interface SymbolInfo {
 
 // Minimal keyword set for classification fallback.
 const KEYWORDS = new Set([
-  'fn','struct','enum','union','trait','impl','let','const','mut','pub','use','mod','return','if','else','while','for','match','break','continue','async','await','yield','where','type','alias'
+  'space','use','export','share','const','static','global','type','opaque','extern','form','pick','trait','impl','proc','let','set','return',
+  'mut','pub','priv','unsafe','async','await','where','effects','requires','as','if','elif','else','while','loop','for','in','match','case',
+  'break','continue','select','when','with','critical','and','or','not','is','true','false','null','print'
 ]);
 
 /** Extracts the full word at a given position and its [start,end) columns. */
 function wordAt(lineText: string, col: number): { word: string; start: number; end: number } | null {
   if (col < 0) return null;
-  const re = /[A-Za-z0-9_]+/g;
+  const re = /[\p{L}\p{Nl}\p{Nd}_]+/gu;
   let m: RegExpExecArray | null;
   while ((m = re.exec(lineText))) {
     if (m.index <= col && re.lastIndex >= col) {
@@ -136,13 +138,13 @@ function indexSymbols(text: string): SymbolInfo[] {
   for (let ln = 0; ln < cap; ln++) {
     const line = lines[ln];
 
-    // --- Functions: fn name(args).
+    // --- Procedures: proc name(args).
     {
-      const m = line.match(/^\s*fn\s+([A-Za-z_]\w*)\s*\(([^)]*)\)?/);
+      const m = line.match(/^\s*proc\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\s*\(([^)]*)\)?/u);
       if (m) {
         const name = m[1];
         const nameStart = line.indexOf(name);
-        const sig = `fn ${name}(${m[2] ?? ''})`;
+        const sig = `proc ${name}(${m[2] ?? ''})`;
         symbols.push({
           name,
           kind: 'function',
@@ -156,9 +158,9 @@ function indexSymbols(text: string): SymbolInfo[] {
       }
     }
 
-    // --- Structs.
+    // --- Forms.
     {
-      const m = line.match(/^\s*struct\s+([A-Za-z_]\w*)\b/);
+      const m = line.match(/^\s*form\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\b/u);
       if (m) {
         const name = m[1];
         const nameStart = line.indexOf(name);
@@ -166,7 +168,7 @@ function indexSymbols(text: string): SymbolInfo[] {
           name,
           kind: 'struct',
           range: rangeForLine(ln, nameStart, nameStart + name.length),
-          signature: `struct ${name} { … }`,
+          signature: `form ${name} { … }`,
           doc: extractLeadingDoc(lines, ln),
           defLine: ln, defCol: nameStart,
         });
@@ -174,9 +176,9 @@ function indexSymbols(text: string): SymbolInfo[] {
       }
     }
 
-    // --- Enums.
+    // --- Picks.
     {
-      const m = line.match(/^\s*enum\s+([A-Za-z_]\w*)\b/);
+      const m = line.match(/^\s*pick\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\b/u);
       if (m) {
         const name = m[1];
         const nameStart = line.indexOf(name);
@@ -184,7 +186,7 @@ function indexSymbols(text: string): SymbolInfo[] {
           name,
           kind: 'enum',
           range: rangeForLine(ln, nameStart, nameStart + name.length),
-          signature: `enum ${name} { … }`,
+          signature: `pick ${name} { … }`,
           doc: extractLeadingDoc(lines, ln),
           defLine: ln, defCol: nameStart,
         });
@@ -194,7 +196,7 @@ function indexSymbols(text: string): SymbolInfo[] {
 
     // --- Traits.
     {
-      const m = line.match(/^\s*trait\s+([A-Za-z_]\w*)\b/);
+      const m = line.match(/^\s*trait\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\b/u);
       if (m) {
         const name = m[1];
         const nameStart = line.indexOf(name);
@@ -212,7 +214,7 @@ function indexSymbols(text: string): SymbolInfo[] {
 
     // --- Type alias.
     {
-      const m = line.match(/^\s*type\s+([A-Za-z_]\w*)\b/);
+      const m = line.match(/^\s*type\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\b/u);
       if (m) {
         const name = m[1];
         const nameStart = line.indexOf(name);
@@ -230,7 +232,7 @@ function indexSymbols(text: string): SymbolInfo[] {
 
     // --- Variables (let [mut] name [: Ty] = …).
     {
-      const m = line.match(/^\s*let\s+(?:mut\s+)?([A-Za-z_]\w*)(\s*:\s*([^=;]+))?/);
+      const m = line.match(/^\s*(?:let|const|static|global)\s+(?:mut\s+)?([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)(\s*:\s*([^=;]+))?/u);
       if (m) {
         const name = m[1];
         const nameStart = line.indexOf(name);
@@ -255,8 +257,8 @@ function indexSymbols(text: string): SymbolInfo[] {
 /** Basic classifier for non-indexed tokens (fallback). */
 function classifyFallback(word: string, before: string, after: string): SymbolKind | 'keyword' {
   if (KEYWORDS.has(word)) return 'keyword' as any;
-  if (/^[A-Z][A-Za-z0-9_]*$/.test(word)) return 'type';
-  if (/^\s*\(/.test(after) || /(^|\W)fn\s+$/.test(before)) return 'function';
+  if (/^\p{Lu}[\p{L}\p{Nl}\p{Nd}_]*$/u.test(word)) return 'type';
+  if (/^\s*\(/.test(after) || /(^|\W)proc\s+$/.test(before)) return 'function';
   return 'variable';
 }
 
@@ -316,7 +318,7 @@ export function provideHover(ctx: HoverContext): HoverPayload | null {
   const after = lineText.slice(w.end);
   const kind = classifyFallback(w.word, before, after);
   const md = `**${w.word}** — ${kind}` + (kind === 'function'
-    ? '\n\n' + fence('vitte', `fn ${w.word}(…)`)
+    ? '\n\n' + fence('vitte', `proc ${w.word}(…)`)
     : '');
   return { contents: { kind: 'markdown', value: md }, range: hoverRange };
 }

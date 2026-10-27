@@ -1,72 +1,42 @@
-# Build & Artifacts
+# Build and Compiler Paths
 
-The seed compiler writes reproducible structured outputs under:
-- `build/tokens`
-- `build/ast`
-- `build/hir`
-- `build/mir`
-- `build/c`
-- `build/obj`
-- `build/bin`
-- `build/logs`
-- `build/diagnostics`
+## Active compiler path
 
-Incremental build fingerprint includes source graph, stdlib files, and options.
+The standard `make` target builds a stage bootstrap compiler, uses it to compile
+the native Vitte pipeline, then links that pipeline into the normal executable.
+The compile/run path is:
 
-## Foundation Status (174-177)
+1. `src/bootstrap/main.c` and `src/bootstrap/cli/` — process entry, CLI
+   compatibility, source loading, and module-graph assembly.
+2. `src/compiler/driver/pipeline.vitte` — native pipeline coordinator.
+3. `src/compiler/lexer/lexer.vitte`, `src/compiler/parser/parser.vitte`, and
+   `src/compiler/sema/sema.vitte` — native lexing, parsing, and semantic
+   analysis for the ordinary compile/run route.
+4. `src/compiler/hir/hir.vitte` and `src/compiler/ir/ir.vitte` — native HIR/IR
+   lowering and validation.
+5. `src/compiler/backend/c17/ir_emitter.vitte` — default C17 emission for the
+   supported IR subset; `ast_emitter.vitte` handles constructs without IR
+   lowering.
+6. `src/bootstrap/backend/c17/` — host C compilation, object generation,
+   linking, execution, and compatibility emission paths.
 
-### 174. Parallel Borrow Analysis
+`compile`, `run`, `check`, `--emit-c`, and `--emit-ir` use the native pipeline
+for the implemented subset and route supported programs through HIR/IR to the
+native IR C17 backend. Language features without complete native support stay
+on the bootstrap compatibility pipeline; selected native frontend failures
+remain authoritative. The host C driver handles object generation, linking,
+and execution; inspection commands retain bootstrap stages.
 
-Borrow checking now includes a concurrency-oriented foundation layer:
-- Send/Sync-equivalent diagnostics for thread/send/sync misuse patterns
-- shared mutation checks across thread-like boundaries
-- thread ownership violation checks for escaped mutable references
-- race-risk diagnostics to flag potential missing happens-before edges
+## Staged native Vitte path
 
-Primary implementation:
-- `src/vitte/compiler/analysis/borrowck/mod.vit`
-- `src/vitte/compiler/analysis/borrowck/errors.vit`
-- [parallel_borrow_analysis.md](/home/vincentr/Documents/GitHub/vitte/docs/compiler/parallel_borrow_analysis.md)
+The Vitte parser and semantic surface remain partial. HIR/IR lowering does
+not yet cover the full language, and parser/sema diagnostic locations in the
+CLI remain incomplete. At present, `make native-frontend` stops on source
+diagnostics in the compiler's arena, scanner, HIR, IR, and semantic modules, so
+it does not produce a fresh linked native executable. A full self-hosted
+rebuild is not yet established.
 
-### 175. Advanced Optimization Passes
-
-MIR transform foundation now tracks and reports advanced pass families:
-- inline candidates
-- loop simplification candidates
-- branch folding candidates
-- scalar replacement placeholders
-- dead store elimination candidates
-- value numbering placeholders
-
-Primary implementation:
-- `src/vitte/compiler/middle/mir/transform.vit`
-- [advanced_optimization_passes.md](/home/vincentr/Documents/GitHub/vitte/docs/compiler/advanced_optimization_passes.md)
-
-### 176. LLVM Backend Experimental
-
-Experimental LLVM path is now selectable as `llvm-exp`:
-- LLVM IR emission via existing LLVM binding surface
-- debug metadata path preserved through profile options
-- optimization bridge (`O0..Oz`, LTO/PGO compatibility checks)
-- target lowering + linker/toolchain integration via LLVM toolchain status
-
-Primary implementation:
-- `src/vitte/compiler/backend/pipeline.vit`
-- `src/vitte/compiler/driver/compile.vit`
-- `src/vitte/compiler/backends/llvm_bindings/mod.vit`
-- [llvm_backend_experimental.md](/home/vincentr/Documents/GitHub/vitte/docs/compiler/llvm_backend_experimental.md)
-
-### 177. Native ASM Backend
-
-Minimal native assembly backend is now selectable as `asm-native`:
-- instruction selection (x86_64 path)
-- virtual register allocation
-- calling convention marker (`sysv-amd64`)
-- stack-layout/prologue/epilogue verification signal
-- object text packaging for linker integration
-
-Primary implementation:
-- `src/vitte/compiler/backend/codegen/machine.vit`
-- `src/vitte/compiler/backend/codegen/mod.vit`
-- `src/vitte/compiler/backend/pipeline.vit`
-- [native_asm_backend.md](/home/vincentr/Documents/GitHub/vitte/docs/compiler/native_asm_backend.md)
+The authoritative feature and CLI status is in
+[`src/docs/language_coverage.md`](../../src/docs/language_coverage.md). See [the
+compiler source map](../MODULE_REFERENCE.html) and [Make targets](../MAKE_TARGETS.html)
+for the current implementation overview and build commands.

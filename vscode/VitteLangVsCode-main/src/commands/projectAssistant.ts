@@ -24,7 +24,7 @@ function normalizeProjectName(input: string): string | undefined {
 }
 
 function normalizeModulePath(input: string): string | undefined {
-  const rel = input.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  const rel = input.trim().replace(/\\/g, "/").replace(/::/g, "/").replace(/^\/+|\/+$/g, "");
   if (!rel) return undefined;
   const parts = rel.split("/");
   if (parts.some((part) => part === "." || part === ".." || part.length === 0)) return undefined;
@@ -164,7 +164,7 @@ async function createNewProject(): Promise<void> {
     return;
   }
   await ensureDir(path.join(dir, "src"));
-  await writeIfMissing(path.join(dir, "src", "main.vit"), `space ${name}\n\nentry main at ${name} {\n  give 0\n}\n`);
+  await writeIfMissing(path.join(dir, "src", "main.vit"), `space ${name}\n\nentry main {\n  return 0\n}\n`);
   await writeIfMissing(path.join(dir, "vitte.config.json"), `${JSON.stringify({ name, version: "0.1.0" }, null, 2)}\n`);
   await generateWorkspaceVscodeFiles(dir);
   await promptOpenProjectFolder(dir);
@@ -173,11 +173,11 @@ async function createNewProject(): Promise<void> {
 async function createNewModule(): Promise<void> {
   const ws = rootDir();
   if (!ws) return;
-  const mod = await vscode.window.showInputBox({ prompt: "Module path (example: app/network/http)" });
+  const mod = await vscode.window.showInputBox({ prompt: "Module path (example: app::network::http)" });
   if (!mod) return;
   const rel = normalizeModulePath(mod);
   if (!rel) {
-    void vscode.window.showErrorMessage("Invalid module path. Use slash-separated identifiers (letters, digits, underscore).");
+    void vscode.window.showErrorMessage("Invalid module path. Use ::-separated identifiers (letters, digits, underscore).");
     return;
   }
   const file = path.join(ws, "src", `${rel}.vit`);
@@ -185,7 +185,8 @@ async function createNewModule(): Promise<void> {
     void vscode.window.showErrorMessage("Invalid module path.");
     return;
   }
-  const wrote = await writeWithOverwriteConfirm(file, `space ${rel}\n\nshare run\n\nproc run() -> i32 {\n  give 0\n}\n`);
+  const modulePath = rel.replace(/\//g, "::");
+  const wrote = await writeWithOverwriteConfirm(file, `space ${modulePath}\n\nshare run\n\nproc run() -> i32 {\n  return 0\n}\n`);
   if (!wrote) return;
   await generateWorkspaceVscodeFiles(ws);
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
@@ -209,10 +210,10 @@ async function createNewPackage(): Promise<void> {
   }
   await ensureDir(dir);
   const modFile = path.join(dir, "mod.vit");
-  const pkgPath = `vitte/${name}`;
+  const pkgPath = `vitte::${name}`;
   const wrote = await writeWithOverwriteConfirm(
     modFile,
-    `<<<\nmod.vit\npackage ${pkgPath}\n>>>\n\nspace ${pkgPath}\n\nshare ready\n\nproc ready() -> bool {\n  give true\n}\n\n<<< ROLE-CONTRACT\npackage: ${pkgPath}\nrole: Package responsibility\ninput_contract: Explicit normalized inputs\noutput_contract: Stable explicit outputs\nboundary: No business policy decisions\n>>>\n`,
+    `space ${pkgPath}\n\nshare ready\n\nproc ready() -> bool {\n  return true\n}\n`,
   );
   if (!wrote) return;
   await generateWorkspaceVscodeFiles(ws);

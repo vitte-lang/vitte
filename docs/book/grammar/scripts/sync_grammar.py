@@ -20,17 +20,17 @@ class GrammarArtifact:
 
 ARTIFACTS = (
     GrammarArtifact(
-        source_rel="src/vitte/grammar/vitte.ebnf",
+        source_rel="grammar/vitte.ebnf",
         targets=(
             "docs/book/grammar/grammar-surface.ebnf",
-            "docs/book/grammar/vitte.ebnf",
             "docs/book/grammar-surface.ebnf",
+            "docs/book/grammar/vitte.ebnf",
             "docs/grammar/vitte.ebnf",
         ),
         comment_prefix="ebnf",
     ),
     GrammarArtifact(
-        source_rel="src/vitte/grammar/vitte.pest",
+        source_rel="docs/grammar/vitte.pest",
         targets=(
             "docs/book/grammar/vitte.pest",
             "docs/grammar/vitte.pest",
@@ -72,7 +72,7 @@ def generated_body(text: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Sync grammar artifacts from src/vitte/grammar/vitte.{ebnf,pest}"
+        description="Sync grammar artifacts from grammar/vitte.ebnf and docs/grammar/vitte.pest"
     )
     parser.add_argument("--check", action="store_true", help="fail if generated files are out of date")
     args = parser.parse_args()
@@ -86,7 +86,7 @@ def main() -> int:
         if not source.exists():
             print(f"[grammar-sync] missing source: {source}")
             return 1
-        source_text = source.read_text(encoding="utf-8")
+        source_text = generated_body(source.read_text(encoding="utf-8"))
         expected = render_generated(source_text, artifact)
         for target_rel in artifact.targets:
             target = repo_root / target_rel

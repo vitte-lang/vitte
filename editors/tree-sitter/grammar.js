@@ -29,12 +29,34 @@ module.exports = grammar({
   conflicts: $ => [
     [$.defer_statement, $.primary_expression],
     [$.match_arm, $.primary_expression],
+    [$.path_type, $.primary_expression],
+    [$.array_type, $.array_literal],
+    [$.type_declaration, $.associated_type_declaration],
+    [$.path, $._pattern_atom],
   ],
 
   rules: {
     source_file: $ => repeat($.declaration),
 
-    declaration: $ => seq(repeat($.modifier), $.declaration_body),
+    declaration: $ => seq(repeat($.attribute), repeat($.modifier), $.declaration_body),
+
+    attribute: $ => seq(
+      '#',
+      optional('!'),
+      '[',
+      $.path,
+      optional(seq('(', optional(commaSep1Trailing($.attribute_argument)), ')')),
+      ']'
+    ),
+
+    attribute_argument: $ => choice(
+      $.identifier,
+      $.string_literal,
+      $.integer_literal,
+      'true',
+      'false',
+      seq($.identifier, '=', choice($.literal, $.identifier))
+    ),
 
     modifier: _ => choice('pub', 'export', 'async', 'unsafe', 'comptime'),
 
@@ -44,6 +66,7 @@ module.exports = grammar({
       $.export_declaration,
       $.value_declaration,
       $.type_declaration,
+      $.associated_type_declaration,
       $.opaque_declaration,
       $.form_declaration,
       $.pick_declaration,
@@ -63,7 +86,7 @@ module.exports = grammar({
       $.module_path,
       optional(choice(
         seq('as', $.identifier),
-        seq(choice('::', '.'), choice('*', seq('{', commaSep1Trailing($.path_alias), '}')))
+        seq('::', choice('*', seq('{', commaSep1Trailing($.path_alias), '}')))
       )),
       ';'
     ),
@@ -92,6 +115,14 @@ module.exports = grammar({
       optional($.where_clause),
       '=',
       $.type,
+      ';'
+    ),
+
+    associated_type_declaration: $ => seq(
+      'type',
+      $.identifier,
+      optional(seq(':', $.trait_bound)),
+      optional(seq('=', $.type)),
       ';'
     ),
 
@@ -160,7 +191,7 @@ module.exports = grammar({
       optional(seq('->', $.type)),
       optional($.where_clause),
       repeat($.contract_clause),
-      $.block
+      choice($.block, ';')
     ),
 
     contract_clause: $ => seq(choice('requires', 'ensures'), $.expression, ';'),
@@ -203,19 +234,32 @@ module.exports = grammar({
       '>'
     ),
 
-    generic_parameter: $ => seq($.identifier, optional(seq(':', $.type))),
+    generic_parameter: $ => seq(
+      $.identifier,
+      optional(seq(':', $.trait_bound))
+    ),
 
-    where_clause: $ => seq(
+    trait_bound: $ => seq($.type, repeat(seq('+', $.type))),
+
+    where_clause: $ => prec.right(seq(
       'where',
-      $.type,
-      ':',
-      $.type,
-      repeat(seq(',', $.type, ':', $.type))
+      commaSep1Trailing($.where_bound)
+    )),
+
+    where_bound: $ => choice(
+      seq($.type, ':', $.trait_bound),
+      seq($.type, choice('==', '<', '<=', '>', '>='), $.type),
+      seq($.expression, choice('==', '!=', '<', '<=', '>', '>='), $.expression)
     ),
 
     parameter_list: $ => seq('(', optional(commaSep1Trailing($.parameter)), ')'),
 
-    parameter: $ => seq($.identifier, ':', $.type),
+    parameter: $ => seq(
+      optional(choice('mut', 'owned', 'borrow', 'move')),
+      $.pattern,
+      ':',
+      $.type
+    ),
 
     type: $ => choice(
       $.reference_type,
@@ -230,13 +274,13 @@ module.exports = grammar({
 
     array_type: $ => seq('[', $.expression, ']', $.type),
 
-    path_type: $ => seq(
+    path_type: $ => prec.right(seq(
       $.path,
       optional(choice(
         seq('<', optional(commaSep1($.type)), '>'),
         seq('[', optional(commaSep1($.type)), ']')
       ))
-    ),
+    )),
 
     path: $ => prec.right(seq($.identifier, repeat(seq(choice('::', '/'), $.identifier)))),
 
@@ -265,7 +309,7 @@ module.exports = grammar({
     let_statement: $ => seq(
       'let',
       optional('mut'),
-      $.identifier,
+      $.pattern,
       optional(seq(':', $.type)),
       optional(seq('=', $.expression)),
       ';'
@@ -295,7 +339,7 @@ module.exports = grammar({
 
     loop_statement: $ => seq('loop', $.block),
 
-    for_statement: $ => seq('for', $.identifier, 'in', $.expression, $.block),
+    for_statement: $ => seq('for', $.pattern, 'in', $.expression, $.block),
 
     match_statement: $ => seq(
       'match',
@@ -305,7 +349,38 @@ module.exports = grammar({
       '}'
     ),
 
-    match_arm: $ => seq($.expression, '=>', choice($.block, $.expression)),
+    match_arm: $ => seq(
+      optional('case'),
+      $.pattern,
+      optional(seq('if', $.expression)),
+      '=>',
+      choice($.block, $.expression)
+    ),
+
+    pattern: $ => prec.left(PREC.or, seq(
+      $._pattern_atom,
+      repeat(seq('|', $._pattern_atom))
+    )),
+
+    _pattern_atom: $ => choice(
+      '_',
+      seq(choice('mut', 'ref'), $.identifier),
+      seq($.literal, choice('..', '..='), $.literal),
+      $.literal,
+      seq($._pattern_head, '(', optional(commaSep1Trailing($.pattern)), ')'),
+      seq($._pattern_head, '{', optional(commaSep1Trailing($._pattern_field)), '}'),
+      seq('(', commaSep1Trailing($.pattern), ')'),
+      seq('[', optional(commaSep1Trailing($.pattern)), ']'),
+      $.identifier,
+      $.path
+    ),
+
+    _pattern_head: $ => $.path,
+
+    _pattern_field: $ => choice(
+      seq($.identifier, optional(seq(':', $.pattern))),
+      '..'
+    ),
 
     unsafe_statement: $ => seq('unsafe', $.block),
 

@@ -473,7 +473,7 @@ function relevanceScore(candidate: string, left: string): number {
 
 function extractSymbols(text: string): Set<string> {
   const out = new Set<string>();
-  for (const m of text.matchAll(/\b(?:let|const|fn|proc|test|type|enum|struct)\s+([A-Za-z_][A-Za-z0-9_]*)/g)) {
+  for (const m of text.matchAll(/\b(?:let|const|static|global|proc|test|type|opaque|pick|form|trait|impl)\s+(?:mut\s+)?([A-Za-z_][A-Za-z0-9_]*)/g)) {
     if (m[1]) out.add(m[1]);
   }
   for (const m of text.matchAll(/\b([A-Z][A-Za-z0-9_]*)::([A-Z][A-Za-z0-9_]*)/g)) {
@@ -534,7 +534,7 @@ function extractImportTargets(document: vscode.TextDocument): string[] {
   const maxLines = Math.min(document.lineCount, 300);
   for (let i = 0; i < maxLines; i += 1) {
     const t = document.lineAt(i).text.trim();
-    const m = /^(?:import|use|pull)\s+([A-Za-z_][\w./:]*)/.exec(t);
+    const m = /^use\s+([A-Za-z_][\w./:]*)/.exec(t);
     if (m?.[1]) out.push(m[1]);
   }
   return out;
@@ -550,7 +550,7 @@ function collectExternalDeps(byUri: Map<string, FileDoc>): string[] {
   const out = new Set<string>();
   for (const doc of byUri.values()) {
     for (const ch of doc.chunks) {
-      for (const m of ch.text.matchAll(/^(?:import|use|pull)\s+([A-Za-z_][\w./:-]*)/gm)) {
+      for (const m of ch.text.matchAll(/^use\s+([A-Za-z_][\w./:-]*)/gm)) {
         const target = m[1] ?? "";
         if (!target) continue;
         if (target.includes("/") || target.includes(":")) out.add(target);
@@ -612,5 +612,5 @@ function percentile(xs: number[], q: number): number {
 }
 
 const KEYWORDS = new Set([
-  "if", "else", "for", "while", "match", "let", "const", "return", "break", "continue", "fn", "proc", "test", "import", "export", "type", "enum", "struct",
+  "if", "else", "for", "while", "loop", "match", "let", "const", "static", "global", "return", "break", "continue", "proc", "test", "use", "export", "type", "opaque", "form", "pick", "trait", "impl",
 ]);
