@@ -62,6 +62,32 @@ def main() -> int:
     baseurl = setting(config_text, "baseurl").rstrip("/")
     origin = urlsplit(site_url)
 
+    source_root = args.config.resolve().parent
+    repository_root = source_root.parent
+    release_version_path = repository_root / "VERSION"
+    if release_version_path.is_file():
+        release_version = release_version_path.read_text(encoding="utf-8").strip()
+        configured_version = setting(config_text, "vitte_version")
+        if configured_version != release_version:
+            print(
+                f"Documentation config names Vitte {configured_version!r}, but VERSION says {release_version!r}.",
+                file=sys.stderr,
+            )
+            return 1
+        for relative_page in (Path("exemples.html"), Path("reference/support.html")):
+            page_path = source_root / relative_page
+            if not page_path.is_file():
+                print(f"Missing version review page: {page_path}", file=sys.stderr)
+                return 1
+            page_version = setting(page_path.read_text(encoding="utf-8"), "vitte_version")
+            if page_version != release_version:
+                print(
+                    f"{page_path.relative_to(repository_root)} records Vitte {page_version!r}; "
+                    f"review it and update to {release_version!r} before publication.",
+                    file=sys.stderr,
+                )
+                return 1
+
     html_pages = sorted(root.rglob("*.html"))
     parsed_pages = {page: parse_page(page) for page in html_pages}
     failures: list[str] = []
@@ -131,6 +157,8 @@ def main() -> int:
         return 1
 
     print(f"Validated {len(html_pages)} HTML pages: internal targets and fragments are present.")
+    if release_version_path.is_file():
+        print(f"Vitte {release_version} review markers match VERSION.")
     return 0
 
 
