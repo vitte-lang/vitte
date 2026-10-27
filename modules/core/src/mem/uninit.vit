@@ -1,0 +1,36 @@
+/// Valeur optionnelle dont l'initialisation est suivie explicitement.
+/// Cette forme contient une valeur nullable; elle ne réserve pas des octets
+/// réellement non initialisés. Un stockage brut exige une primitive du compilateur.
+space core::mem::uninit;
+
+export form MaybeUninit<T> {
+    initialized: bool,
+    value: ?T,
+}
+
+export proc maybe_uninit<T>() -> MaybeUninit[T] {
+    return MaybeUninit[T] { initialized: false, value: null };
+}
+
+export proc maybe_uninit_from<T>(value: T) -> MaybeUninit[T] {
+    return MaybeUninit[T] { initialized: true, value: value };
+}
+
+export proc maybe_uninit_is_initialized<T>(value: &MaybeUninit[T]) -> bool {
+    return value.initialized;
+}
+
+export proc maybe_uninit_write<T>(destination: &mut MaybeUninit[T], value: T) {
+    set destination.value = value;
+    set destination.initialized = true;
+}
+
+export proc maybe_uninit_clear<T>(destination: &mut MaybeUninit[T]) {
+    set destination.value = null;
+    set destination.initialized = false;
+}
+
+export proc maybe_uninit_read<T>(source: &MaybeUninit[T]) -> ?T {
+    if not source.initialized { return null; }
+    return source.value;
+}

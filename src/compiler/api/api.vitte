@@ -1,0 +1,2055 @@
+///
+/// Vitte Compiler
+/// src/compiler/api/api.vitte
+///
+/// Public compiler API implementation.
+///
+/// Stable boundary between applications using Vitte as a library and the
+/// internal compiler pipeline.
+///
+/// Responsibilities:
+///
+/// - API lifecycle
+/// - compiler/context lifecycle
+/// - option normalization
+/// - source validation
+/// - source/file compilation
+/// - diagnostic propagation
+/// - result ownership
+/// - deterministic cleanup
+/// - defensive argument checking
+/// - translation of internal failures into public status values
+///
+/// Parsing, semantic analysis and backend implementation do not belong here.
+///
+
+space compiler::api::api;
+
+use compiler::api::context::{
+    Context,
+    context_add_source,
+    context_begin_compilation,
+    context_destroy,
+    context_diagnostics,
+    context_diagnostics_mut,
+    context_end_compilation,
+    context_init,
+    context_set_failure
+};
+use compiler::api::error::{
+    Error,
+    Status,
+    error_clear_last,
+    error_copy,
+    error_init,
+    error_is_set,
+    error_last,
+    error_reset,
+    error_set,
+    error_set_last
+};
+use compiler::api::version::{
+    version_string,
+    version_major,
+    version_minor,
+    version_patch,
+    version_build_mode,
+    version_host_compiler,
+    version_platform,
+    version_architecture,
+    version_c_standard
+};
+use compiler::diagnostic::diagnostic::{
+    Diagnostic,
+    DiagnosticOrigin,
+    DiagnosticSeverity,
+    diagnostic_add,
+    diagnostic_at,
+    diagnostic_bag_count,
+    diagnostic_default,
+    diagnostic_error_count,
+    diagnostic_format_one,
+    diagnostic_warning_count
+};
+use compiler::lexer::lexer::{vitte_lexer_error_name};
+use compiler::driver::pipeline::{
+    NativePipelinePhase,
+    native_pipeline_run,
+};
+use compiler::parser::parser::{vitte_parser_error_name};
+use compiler::parser::parser::{ParserError};
+use vitte::core::pointer::{add_bytes};
+
+/// =========================================================================
+/// Configuration
+/// =========================================================================
+
+const API_MAX_SOURCE_SIZE: usize = 1073741824 as u64;
+const API_MAX_PATH_LENGTH: usize = 32768;
+const API_INITIAL_OUTPUT_CAPACITY: usize = 4096;
+const API_INITIAL_FILE_CAPACITY: usize = 8192;
+
+const API_RESULT_MAGIC: u64 = 0x5649545445524553;
+const API_CONTEXT_MAGIC: u64 = 0x5649545445435458;
+
+const API_SIZE_MAX_VALUE: usize = usize.MAX;
+
+
+/// Host operating-system boundary. The API and file-loading policy remain
+/// implemented here in Vitte; these declarations call only the C runtime's
+/// standard file and allocation primitives, never the C bootstrap API.
+extern proc fopen(path: *mut u8, mode: *mut u8) -> *mut u8;
+extern proc fread(data: *mut u8, element_size: usize, element_count: usize, file: *mut u8) -> usize;
+extern proc ferror(file: *mut u8) -> i32;
+extern proc fclose(file: *mut u8) -> i32;
+extern proc malloc(size: usize) -> *mut u8;
+extern proc free(pointer: *mut u8);
+
+
+/// =========================================================================
+/// API state
+/// =========================================================================
+
+export pick ApiState {
+    Uninitialized,
+    Ready,
+    Compiling,
+    Failed,
+    Destroyed,
+}
+
+
+/// =========================================================================
+/// Internal byte buffer
+/// =========================================================================
+
+form ApiBuffer {
+    data: [u8],
+    length: usize,
+    capacity: usize,
+}
+
+
+/// =========================================================================
+/// Public compilation result
+/// =========================================================================
+
+export form ApiResult {
+    magic: u64,
+
+    status: Status,
+
+    source_name: string,
+
+    output: [u8],
+    output_size: usize,
+
+    diagnostics: [u8],
+    diagnostics_size: usize,
+
+    owns_source_name: bool,
+
+    error_count: usize,
+    warning_count: usize,
+    note_count: usize,
+
+    succeeded: bool,
+}
+
+
+/// =========================================================================
+/// API context
+/// =========================================================================
+
+export form Api {
+    magic: u64,
+
+    state: ApiState,
+
+    context: Context,
+
+    compilation_count: usize,
+    successful_compilation_count: usize,
+    failed_compilation_count: usize,
+
+    last_error: Error,
+}
+
+
+/// =========================================================================
+/// Integer safety
+/// =========================================================================
+
+proc size_add_overflow(
+    a: usize,
+    b: usize,
+    result: &mut usize
+) -> bool {
+    if a > API_SIZE_MAX_VALUE - b {
+        return true;
+    }
+
+    set *result = a + b;
+
+    return false;
+}
+
+proc size_mul_overflow(
+    a: usize,
+    b: usize,
+    result: &mut usize
+) -> bool {
+    if a != 0  and  b > API_SIZE_MAX_VALUE / a {
+        return true;
+    }
+
+    set *result = a * b;
+
+    return false;
+}
+
+
+/// =========================================================================
+/// Text utilities
+/// =========================================================================
+
+proc path_is_valid(path: str) -> bool {
+    let length: usize = path.length;
+    if length == 0 {
+        return false;
+    }
+
+    if length >= API_MAX_PATH_LENGTH {
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index < length {
+        if path[index] == '\0' {
+            return false;
+        }
+
+        set index += 1;
+    }
+
+    return true;
+}
+
+proc c_string_copy(text: str) -> *mut u8 {
+    let text_bytes: [u8] = text.bytes();
+    let mut allocation_size: usize = 0;
+    if size_add_overflow(text_bytes.length, 1, &mut allocation_size) {
+        return null;
+    }
+
+    let output: *mut u8 = malloc(allocation_size);
+    if output == null {
+        return null;
+    }
+
+    let mut index: usize = 0;
+    while index < text_bytes.length {
+        set output[index] = text_bytes[index];
+        set index += 1;
+    }
+    set output[index] = 0;
+
+    return output;
+}
+
+proc duplicate_string_n(
+    text: str,
+    length: usize
+) -> ?string {
+    let mut allocation_size: usize = 0;
+
+    if size_add_overflow(
+        length,
+        1,
+        &mut allocation_size
+    ) {
+        return null;
+    }
+
+    let mut result: string = "";
+
+    if length != 0 {
+        set result = string.from_bytes(
+            text,
+            length
+        );
+    }
+
+    return result;
+}
+
+proc duplicate_string(text: str) -> ?string {
+    return duplicate_string_n(
+        text,
+        text.length
+    );
+}
+
+
+/// =========================================================================
+/// Global error propagation
+/// =========================================================================
+
+proc set_last_error(
+    status: Status,
+    code: str,
+    message: str
+) {
+    let mut error: Error = Error {
+        status: status,
+        code: code,
+        message: message,
+        details: "",
+    };
+
+    error_set_last(&error);
+}
+
+
+/// =========================================================================
+/// Byte buffer
+/// =========================================================================
+
+proc buffer_init(buffer: &mut ApiBuffer) {
+    set buffer.data = [];
+    set buffer.length = 0;
+    set buffer.capacity = 0;
+}
+
+proc buffer_destroy(buffer: &mut ApiBuffer) {
+    if buffer.capacity != 0 {
+        free(buffer.data.as_ptr() as *mut u8);
+    }
+    set buffer.data = [];
+    set buffer.length = 0;
+    set buffer.capacity = 0;
+}
+
+proc buffer_reserve(
+    buffer: &mut ApiBuffer,
+    required: usize
+) -> bool {
+    if required <= buffer.capacity {
+        return true;
+    }
+
+    let mut new_capacity: usize = buffer.capacity;
+
+    if new_capacity == 0 {
+        set new_capacity = API_INITIAL_OUTPUT_CAPACITY;
+    }
+
+    while new_capacity < required {
+        if new_capacity > API_SIZE_MAX_VALUE / 2 {
+            set new_capacity = required;
+            break;
+        }
+
+        let next: usize = new_capacity * 2;
+
+        if next <= new_capacity {
+            set new_capacity = required;
+            break;
+        }
+
+        set new_capacity = next;
+    }
+
+    if new_capacity < required {
+        return false;
+    }
+
+    if not buffer.data.reserve(new_capacity) {
+        return false;
+    }
+
+    set buffer.capacity = new_capacity;
+
+    return true;
+}
+
+proc buffer_append(
+    buffer: &mut ApiBuffer,
+    data: [u8],
+    length: usize
+) -> bool {
+    if length == 0 {
+        return true;
+    }
+
+    let mut required: usize = 0;
+
+    if size_add_overflow(
+        buffer.length,
+        length,
+        &mut required
+    ) {
+        return false;
+    }
+
+    if not buffer_reserve(
+        buffer,
+        required
+    ) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index < length {
+        if not buffer.data.push(data[index]) {
+            return false;
+        }
+        set index += 1;
+    }
+
+    set buffer.length = required;
+
+    return true;
+}
+
+proc buffer_append_byte(
+    buffer: &mut ApiBuffer,
+    value: u8
+) -> bool {
+    let mut required: usize = 0;
+
+    if size_add_overflow(
+        buffer.length,
+        1,
+        &mut required
+    ) {
+        return false;
+    }
+
+    if not buffer_reserve(
+        buffer,
+        required
+    ) {
+        return false;
+    }
+
+    if not buffer.data.push(value) {
+        return false;
+    }
+
+    set buffer.length += 1;
+
+    return true;
+}
+
+/// =========================================================================
+/// Internal error handling
+/// =========================================================================
+
+proc fail(
+    api: ?&mut Api,
+    status: Status,
+    code: str,
+    message: str
+) -> Status {
+    if api != null {
+        let api_value = api?;
+        error_set(
+            &mut api_value.last_error,
+            status,
+            code,
+            message
+        );
+    }
+
+    set_last_error(
+        status,
+        code,
+        message
+    );
+
+    return status;
+}
+
+proc api_invalid_argument(
+    api: ?&mut Api,
+    message: str
+) -> Status {
+    return fail(
+        api,
+        Status.ErrorInvalidArgument,
+        "VITTE_API_INVALID_ARGUMENT",
+        message
+    );
+}
+
+proc api_invalid_state(
+    api: ?&mut Api,
+    message: str
+) -> Status {
+    return fail(
+        api,
+        Status.ErrorInvalidState,
+        "VITTE_API_INVALID_STATE",
+        message
+    );
+}
+
+proc api_out_of_memory(
+    api: ?&mut Api
+) -> Status {
+    return fail(
+        api,
+        Status.ErrorOutOfMemory,
+        "VITTE_API_OUT_OF_MEMORY",
+        "out of memory"
+    );
+}
+
+proc io_error(
+    api: ?&mut Api,
+    message: str
+) -> Status {
+    return fail(
+        api,
+        Status.ErrorIo,
+        "VITTE_API_IO_ERROR",
+        message
+    );
+}
+
+proc api_internal_error(
+    api: ?&mut Api,
+    message: str
+) -> Status {
+    return fail(
+        api,
+        Status.ErrorInternal,
+        "VITTE_API_INTERNAL_ERROR",
+        message
+    );
+}
+
+proc propagate_context_error(
+    api: &mut Api,
+    status: Status,
+    code: str,
+    message: str
+) {
+    if error_is_set(&api.context.last_error) {
+        error_copy(
+            &mut api.last_error,
+            &api.context.last_error
+        );
+        error_set_last(&api.last_error);
+        return;
+    }
+
+    fail(
+        api,
+        status,
+        code,
+        message
+    );
+}
+
+
+/// =========================================================================
+/// Validation
+/// =========================================================================
+
+proc api_context_is_valid(
+    api: ?&Api
+) -> bool {
+    if api == null {
+        return false;
+    }
+
+    if api.magic != API_CONTEXT_MAGIC {
+        return false;
+    }
+
+    if api.state == ApiState.Destroyed {
+        return false;
+    }
+
+    return true;
+}
+
+proc result_is_valid(
+    result: ?&ApiResult
+) -> bool {
+    if result == null {
+        return false;
+    }
+
+    return result.magic == API_RESULT_MAGIC;
+}
+
+
+/// =========================================================================
+/// Result lifecycle
+/// =========================================================================
+
+proc result_create() -> ApiResult {
+    return ApiResult {
+        magic: API_RESULT_MAGIC,
+
+        status: Status.Ok,
+
+        source_name: "",
+
+        output: [],
+        output_size: 0,
+
+        diagnostics: [],
+        diagnostics_size: 0,
+
+        owns_source_name: false,
+
+        error_count: 0,
+        warning_count: 0,
+        note_count: 0,
+
+        succeeded: false,
+    };
+}
+
+proc result_destroy_internal(
+    result: &mut ApiResult
+) {
+    if not result_is_valid(result) {
+        return;
+    }
+
+    if result.owns_source_name and result.source_name.length != 0 {
+        free(result.source_name.as_ptr() as *mut u8);
+    }
+    if result.output.capacity != 0 {
+        free(result.output.as_ptr() as *mut u8);
+    }
+    if result.diagnostics.capacity != 0 {
+        free(result.diagnostics.as_ptr() as *mut u8);
+    }
+
+    set result.magic = 0;
+
+    set result.source_name = "";
+
+    set result.output = [];
+    set result.output_size = 0;
+
+    set result.diagnostics = [];
+    set result.diagnostics_size = 0;
+    set result.owns_source_name = false;
+
+    set result.error_count = 0;
+    set result.warning_count = 0;
+    set result.note_count = 0;
+
+    set result.succeeded = false;
+}
+
+
+/// =========================================================================
+/// Source validation
+/// =========================================================================
+
+proc validate_source(
+    api: &mut Api,
+    source_name: ?str,
+    source: ?str,
+    source_length: usize
+) -> Status {
+    if source == null  and  source_length != 0 {
+        return api_invalid_argument(
+            api,
+            "source is null while source length is non-zero"
+        );
+    }
+
+    if source_length > API_MAX_SOURCE_SIZE {
+        return api_invalid_argument(
+            api,
+            "source exceeds the maximum supported API source size"
+        );
+    }
+
+    if source_name != null  and
+       not path_is_valid(source_name?) {
+        return api_invalid_argument(
+            api,
+            "invalid source name"
+        );
+    }
+
+    return Status.Ok;
+}
+
+
+/// =========================================================================
+/// File loading
+/// =========================================================================
+
+proc read_file(
+    api: &mut Api,
+    path: str
+) -> ?string {
+    if not path_is_valid(path) {
+        api_invalid_argument(
+            api,
+            "invalid input file path"
+        );
+
+        return null;
+    }
+
+    // C stdio consumes NUL-terminated pointers. Copy the Vitte path into a
+    // temporary C string instead of passing the Vitte string value as though
+    // it were a C char pointer.
+    let c_path: *mut u8 = c_string_copy(path);
+    if c_path == null {
+        api_out_of_memory(api);
+        return null;
+    }
+
+    let c_mode: *mut u8 = c_string_copy("rb");
+    if c_mode == null {
+        free(c_path);
+        api_out_of_memory(api);
+        return null;
+    }
+
+    let file: *mut u8 = fopen(
+        c_path,
+        c_mode
+    );
+    free(c_mode);
+    free(c_path);
+
+    if file == null {
+        io_error(api, "unable to open input file");
+        return null;
+    }
+
+    let mut capacity: usize = API_INITIAL_FILE_CAPACITY;
+    let mut allocation_size: usize = capacity + 1;
+    let mut length: usize = 0;
+
+    let mut file_data: *mut u8 = malloc(allocation_size);
+
+    if file_data == null {
+        fclose(file);
+        api_out_of_memory(api);
+        return null;
+    }
+
+    while true {
+        if length == API_MAX_SOURCE_SIZE {
+            let extra_byte: usize = fread(
+                add_bytes(file_data, length),
+                1,
+                1,
+                file
+            );
+
+            if extra_byte != 0 {
+                free(file_data);
+                fclose(file);
+                api_invalid_argument(
+                    api,
+                    "input file exceeds maximum source size"
+                );
+                return null;
+            }
+
+            if ferror(file) != 0 {
+                free(file_data);
+                fclose(file);
+                io_error(api, "unable to read input file");
+                return null;
+            }
+
+            break;
+        }
+
+        let available: usize = capacity - length;
+
+        let bytes_read: usize = fread(
+            add_bytes(file_data, length),
+            1,
+            available,
+            file
+        );
+
+        set length += bytes_read;
+
+        if ferror(file) != 0 {
+            free(file_data);
+            fclose(file);
+            io_error(api, "unable to read input file");
+            return null;
+        }
+
+        if bytes_read < available {
+            break;
+        }
+
+        if length == capacity {
+            let mut new_capacity: usize = capacity * 2;
+
+            if new_capacity > API_MAX_SOURCE_SIZE {
+                set new_capacity = API_MAX_SOURCE_SIZE;
+            }
+
+            if new_capacity <= capacity or
+               size_add_overflow(
+                   new_capacity,
+                   1,
+                   &mut allocation_size
+               ) {
+                free(file_data);
+                fclose(file);
+                api_invalid_argument(
+                    api,
+                    "input file size overflows the source buffer"
+                );
+                return null;
+            }
+
+            let new_data: *mut u8 = malloc(allocation_size);
+
+            if new_data == null {
+                free(file_data);
+                fclose(file);
+                api_out_of_memory(api);
+                return null;
+            }
+
+            let mut index: usize = 0;
+
+            while index < length {
+                set new_data[index] = file_data[index];
+                set index += 1;
+            }
+
+            free(file_data);
+            set file_data = new_data;
+            set capacity = new_capacity;
+        }
+    }
+
+    let close_failed: bool = fclose(file) != 0;
+
+    if close_failed {
+        free(file_data);
+        io_error(api, "unable to close input file");
+        return null;
+    }
+
+    let source: string = string.from_bytes(
+        file_data,
+        length
+    );
+
+    free(file_data);
+
+    return source;
+}
+
+
+/// =========================================================================
+/// Diagnostic rendering
+/// =========================================================================
+
+proc capture_diagnostics(
+    api: &mut Api,
+    result: &mut ApiResult
+) -> Status {
+    let bag = context_diagnostics(
+        &api.context
+    );
+
+    if bag == null {
+        return Status.Ok;
+    }
+
+    let bag_value = bag?;
+
+    set result.error_count =
+        diagnostic_error_count(bag_value);
+
+    set result.warning_count =
+        diagnostic_warning_count(bag_value);
+
+    set result.note_count = bag_value.counts.note_count;
+
+    let mut buffer: ApiBuffer = ApiBuffer {
+        data: [],
+        length: 0,
+        capacity: 0,
+    };
+    buffer_init(&mut buffer);
+
+    let count: usize =
+        diagnostic_bag_count(bag_value);
+
+    let mut index: usize = 0;
+
+    while index < count {
+            let diagnostic_value =
+            diagnostic_at(
+                bag_value,
+                index
+            );
+
+        if diagnostic_value != null {
+            let diagnostic_entry: &Diagnostic = &*diagnostic_value;
+            let rendered: string = diagnostic_format_one(diagnostic_entry);
+            let rendered_bytes: [u8] = rendered.bytes();
+            if not buffer_append(&mut buffer, rendered_bytes, rendered_bytes.length) or
+               not buffer_append_byte(&mut buffer, '\n' as u8) {
+                buffer_destroy(&mut buffer);
+                return api_out_of_memory(api);
+            }
+        }
+
+        set index += 1;
+    }
+
+    if buffer.length != 0 {
+        if not buffer_append_byte(&mut buffer, 0) {
+            buffer_destroy(&mut buffer);
+            return api_out_of_memory(api);
+        }
+        set result.diagnostics_size = buffer.length - 1;
+        set result.diagnostics = buffer.data;
+        set buffer.data = [];
+        set buffer.length = 0;
+        set buffer.capacity = 0;
+    } else {
+        set result.diagnostics = [];
+        set result.diagnostics_size = 0;
+    }
+    buffer_destroy(&mut buffer);
+
+    return Status.Ok;
+}
+
+proc append_pipeline_diagnostic(
+    api: &mut Api,
+    source_name: string,
+    code: string,
+    message: string,
+    details: string,
+    origin: DiagnosticOrigin
+) {
+    let bag = context_diagnostics_mut(&mut api.context);
+    if bag == null {
+        return;
+    }
+    let bag_value = bag?;
+
+    let mut item: Diagnostic = diagnostic_default();
+    set item.severity = DiagnosticSeverity.Error;
+    set item.origin = origin;
+    set item.code = code;
+    set item.message = message;
+    set item.details = details;
+    set item.source_name = source_name;
+    set item.is_primary = true;
+
+    diagnostic_add(bag_value, item);
+}
+
+
+/// =========================================================================
+/// Compilation core
+/// =========================================================================
+
+proc compile_internal(
+    api: &mut Api,
+    source_name: ?str,
+    source: ?str,
+    source_length: usize,
+    out_result: &mut ApiResult
+) -> Status {
+    if not api_context_is_valid(api) {
+        set_last_error(
+            Status.ErrorInvalidState,
+            "VITTE_API_INVALID_STATE",
+            "invalid compiler API context"
+        );
+
+        return Status.ErrorInvalidState;
+    }
+
+    let validation_status: Status =
+        validate_source(
+            api,
+            source_name,
+            source,
+            source_length
+        );
+
+    if validation_status != Status.Ok {
+        return validation_status;
+    }
+
+    if api.state == ApiState.Compiling {
+        return api_invalid_state(
+            api,
+            "compiler context is already compiling"
+        );
+    }
+
+    let mut result: ApiResult =
+        result_create();
+
+    if source_name != null {
+        let source_name_value: str = source_name?;
+        let source_name_copy: ?string = duplicate_string(source_name_value);
+        if source_name_copy == null {
+            return api_out_of_memory(api);
+        }
+        set result.source_name = source_name_copy?;
+        set result.owns_source_name = true;
+    } else {
+        let memory_name: ?string = duplicate_string("<memory>");
+        if memory_name == null {
+            return api_out_of_memory(api);
+        }
+        set result.source_name = memory_name?;
+        set result.owns_source_name = true;
+    }
+
+    if result.source_name.length == 0 {
+        return api_out_of_memory(api);
+    }
+
+    set api.state = ApiState.Compiling;
+    set api.compilation_count += 1;
+
+    error_reset(&mut api.last_error);
+    error_clear_last();
+
+    let mut status: Status =
+        context_begin_compilation(
+            &mut api.context
+        );
+
+    if status != Status.Ok {
+        propagate_context_error(
+            api,
+            status,
+            "VITTE_API_CONTEXT_BEGIN",
+            "unable to begin compiler context"
+        );
+
+        set api.state = ApiState.Failed;
+        set api.failed_compilation_count += 1;
+
+        set result.status = status;
+
+        capture_diagnostics(
+            api,
+            &mut result
+        );
+
+        set *out_result = result;
+
+        return status;
+    }
+
+    let mut source_id: u64 = 0;
+    let source_text: str = if source == null { "" } else { source? };
+    status = context_add_source(
+        &mut api.context,
+        result.source_name,
+        source_text,
+        source_length,
+        &mut source_id
+    );
+
+    if status != Status.Ok {
+        propagate_context_error(
+            api,
+            status,
+            "VITTE_API_SOURCE_REGISTRATION",
+            "unable to register source with compiler context"
+        );
+    }
+
+    if status == Status.Ok {
+        let pipeline = native_pipeline_run(
+            source_text,
+            source_length,
+            source_id
+        );
+
+        if not pipeline.succeeded {
+            let code: string = if pipeline.sema_error_count != 0 or pipeline.sema_error != 0 {
+                "VITTE_SEMANTIC_ERROR"
+            } else if pipeline.parser_diagnostic_count != 0 or pipeline.parser_error != 0 {
+                "VITTE_PARSER_ERROR"
+            } else if pipeline.hir_error != 0 {
+                "VITTE_HIR_LOWERING_ERROR"
+            } else if pipeline.ir_error != 0 {
+                "VITTE_IR_LOWERING_ERROR"
+            } else if pipeline.codegen_error != 0 {
+                "VITTE_CODEGEN_ERROR"
+            } else if pipeline.status == Status.ErrorParse {
+                "VITTE_LEXER_ERROR"
+            } else {
+                "VITTE_PIPELINE_ERROR"
+            };
+            let message: string = if pipeline.sema_error_count != 0 or pipeline.sema_error != 0 {
+                "semantic analysis found errors in the source"
+            } else if pipeline.parser_diagnostic_count != 0 or pipeline.parser_error != 0 {
+                "bootstrap parser rejected the source"
+            } else if pipeline.hir_error != 0 {
+                "HIR lowering rejected the parsed source"
+            } else if pipeline.ir_error != 0 {
+                "IR lowering rejected the HIR"
+            } else if pipeline.codegen_error != 0 {
+                "C17 code generation rejected the IR"
+            } else if pipeline.status == Status.ErrorParse {
+                "native lexer rejected the source"
+            } else {
+                "front-end pipeline failed"
+            };
+            let details: string = if pipeline.sema_error_count != 0 or pipeline.sema_error != 0 {
+                if pipeline.sema_error_count != 0 {
+                    pipeline.sema_error_count.to_string() + " semantic error(s)"
+                } else {
+                    "semantic analyzer error code " + pipeline.sema_error.to_string()
+                }
+            } else if pipeline.parser_diagnostic_count != 0 or pipeline.parser_error != 0 {
+                "parser error code " + pipeline.parser_error.to_string() +
+                    "; diagnostics: " + pipeline.parser_diagnostic_count.to_string()
+            } else if pipeline.hir_error != 0 {
+                "HIR lowering error code " + pipeline.hir_error.to_string()
+            } else if pipeline.ir_error != 0 {
+                "IR lowering error code " + pipeline.ir_error.to_string()
+            } else if pipeline.codegen_error != 0 {
+                "code generation error code " + pipeline.codegen_error.to_string()
+            } else {
+                vitte_lexer_error_name(pipeline.lexer_error)
+            };
+            let origin: DiagnosticOrigin = if pipeline.sema_error_count != 0 or pipeline.sema_error != 0 {
+                DiagnosticOrigin.NameResolution
+            } else if pipeline.parser_diagnostic_count != 0 or pipeline.parser_error != 0 {
+                DiagnosticOrigin.Parser
+            } else if pipeline.hir_error != 0 {
+                DiagnosticOrigin.Hir
+            } else if pipeline.ir_error != 0 {
+                DiagnosticOrigin.Ir
+            } else if pipeline.codegen_error != 0 {
+                DiagnosticOrigin.Codegen
+            } else {
+                DiagnosticOrigin.Lexer
+            };
+
+            set status = fail(
+                api,
+                pipeline.status,
+                code,
+                message
+            );
+
+            append_pipeline_diagnostic(
+                api,
+                result.source_name,
+                code,
+                message,
+                details,
+                origin
+            );
+
+            context_set_failure(
+                &mut api.context,
+                status,
+                code,
+                message
+            );
+        } else if pipeline.last_completed_phase == NativePipelinePhase.Lexed {
+            /// A parser setup failure did not produce an AST.
+            set status = fail(
+                api,
+                Status.ErrorInternal,
+                "VITTE_API_FRONTEND_INCOMPLETE",
+                "front-end stopped before parsing completed"
+            );
+
+            append_pipeline_diagnostic(
+                api,
+                result.source_name,
+                "VITTE_API_FRONTEND_INCOMPLETE",
+                "front-end stopped before parsing completed",
+                vitte_parser_error_name(pipeline.parser_error as ParserError),
+                DiagnosticOrigin.Driver
+            );
+
+            context_set_failure(
+                &mut api.context,
+                status,
+                "VITTE_API_FRONTEND_INCOMPLETE",
+                "front-end stopped before parsing completed"
+            );
+        } else if pipeline.last_completed_phase == NativePipelinePhase.Generated {
+            let generated_bytes: [u8] = pipeline.generated_source.bytes();
+            let mut output_buffer: ApiBuffer = ApiBuffer {
+                data: [],
+                length: 0,
+                capacity: 0,
+            };
+            buffer_init(&mut output_buffer);
+            if not buffer_append(
+                &mut output_buffer,
+                generated_bytes,
+                generated_bytes.length
+            ) {
+                buffer_destroy(&mut output_buffer);
+                set status = api_out_of_memory(api);
+            } else {
+                set result.output = output_buffer.data;
+                set result.output_size = output_buffer.length;
+                set output_buffer.data = [];
+                set output_buffer.length = 0;
+                set output_buffer.capacity = 0;
+                set status = pipeline.status;
+            }
+        }
+    }
+
+    let end_status: Status =
+        context_end_compilation(
+            &mut api.context
+        );
+
+    if status == Status.Ok  and
+       end_status != Status.Ok {
+        set status = end_status;
+    }
+
+    if status != Status.Ok  and
+       api.last_error.status == Status.Ok {
+        propagate_context_error(
+            api,
+            status,
+            "VITTE_API_CONTEXT_END",
+            "compiler context failed to finalize compilation"
+        );
+    }
+
+    set result.status = status;
+
+    let diagnostic_status: Status =
+        capture_diagnostics(
+            api,
+            &mut result
+        );
+
+    if status == Status.Ok  and
+       diagnostic_status != Status.Ok {
+        set status = diagnostic_status;
+        set result.status = status;
+    }
+
+    set result.succeeded =
+        status == Status.Ok  and
+        result.error_count == 0;
+
+    if result.succeeded {
+        set api.state = ApiState.Ready;
+        set api.successful_compilation_count += 1;
+    } else {
+        set api.state = ApiState.Failed;
+        set api.failed_compilation_count += 1;
+    }
+
+    set *out_result = result;
+
+    return status;
+}
+
+
+/// =========================================================================
+/// Public lifecycle
+/// =========================================================================
+
+export proc api_create() -> Api {
+    let mut api: Api = Api {
+        magic: API_CONTEXT_MAGIC,
+
+        state: ApiState.Uninitialized,
+
+        context: Context {},
+
+        compilation_count: 0,
+        successful_compilation_count: 0,
+        failed_compilation_count: 0,
+
+        last_error: Error {},
+    };
+
+    error_init(
+        &mut api.last_error
+    );
+
+    let status: Status =
+        context_init(
+            &mut api.context
+        );
+
+    if status != Status.Ok {
+        set_last_error(
+            status,
+            "VITTE_API_CONTEXT_INIT",
+            "unable to initialize compiler context"
+        );
+
+        set api.state = ApiState.Failed;
+        return api;
+    }
+
+    set api.state = ApiState.Ready;
+
+    return api;
+}
+
+export proc api_destroy(
+    api: &mut Api
+) {
+    if not api_context_is_valid(api) {
+        return;
+    }
+
+    if api.state == ApiState.Compiling {
+        return;
+    }
+
+    set api.state = ApiState.Destroyed;
+
+    context_destroy(
+        &mut api.context
+    );
+
+    error_reset(
+        &mut api.last_error
+    );
+
+    set api.magic = 0;
+}
+
+
+/// =========================================================================
+/// Public compilation
+/// =========================================================================
+
+export proc api_compile_source(
+    api: &mut Api,
+    source_name: ?str,
+    source: ?str,
+    source_length: usize
+) -> ApiResult {
+    let mut result: ApiResult = result_create();
+
+    let status: Status =
+        compile_internal(
+            api,
+            source_name,
+            source,
+            source_length,
+            &mut result
+        );
+    if result.status == Status.Ok and status != Status.Ok {
+        set result.status = status;
+        let fallback_name: str = if source_name == null { "<memory>" } else { source_name? };
+        let fallback_name_copy: ?string = duplicate_string(fallback_name);
+        if fallback_name_copy != null {
+            set result.source_name = fallback_name_copy?;
+            set result.owns_source_name = true;
+        }
+    }
+    return result;
+}
+
+export proc api_compile_string(
+    api: &mut Api,
+    source: ?str
+) -> ApiResult {
+    if source == null {
+        return api_compile_source(
+            api,
+            "<memory>",
+            null,
+            0
+        );
+    }
+
+    return api_compile_source(
+        api,
+        "<memory>",
+        source,
+        source.length
+    );
+}
+
+export proc api_compile_file(
+    api: &mut Api,
+    path: str
+) -> ApiResult {
+    if not api_context_is_valid(api) {
+        set_last_error(
+            Status.ErrorInvalidState,
+            "VITTE_API_INVALID_STATE",
+            "invalid compiler API context"
+        );
+
+        return ApiResult {
+            magic: API_RESULT_MAGIC,
+
+            status: Status.ErrorInvalidState,
+
+            source_name: path,
+
+            output: [],
+            output_size: 0,
+
+            diagnostics: [],
+            diagnostics_size: 0,
+
+            owns_source_name: false,
+
+            error_count: 0,
+            warning_count: 0,
+            note_count: 0,
+
+            succeeded: false,
+        };
+    }
+
+    let source_data = read_file(
+        api,
+        path
+    );
+
+    if source_data == null {
+        return ApiResult {
+            magic: API_RESULT_MAGIC,
+
+            status: api.last_error.status,
+
+            source_name: path,
+
+            output: [],
+            output_size: 0,
+
+            diagnostics: [],
+            diagnostics_size: 0,
+
+            owns_source_name: false,
+
+            error_count: 0,
+            warning_count: 0,
+            note_count: 0,
+
+            succeeded: false,
+        };
+    }
+
+    let source_text: string = source_data?;
+
+    return api_compile_source(
+        api,
+        path,
+        source_text,
+        source_text.length
+    );
+}
+
+
+/// =========================================================================
+/// Result API
+/// =========================================================================
+
+export proc api_result_destroy(
+    result: &mut ApiResult
+) {
+    result_destroy_internal(result);
+}
+
+export proc api_result_status(
+    result: &ApiResult
+) -> Status {
+    if not result_is_valid(result) {
+        return Status.ErrorInvalidArgument;
+    }
+
+    return result.status;
+}
+
+export proc api_result_succeeded(
+    result: &ApiResult
+) -> bool {
+    return result_is_valid(result)  and
+           result.succeeded;
+}
+
+export proc api_result_source_name(
+    result: &ApiResult
+) -> ?str {
+    if not result_is_valid(result) {
+        return null;
+    }
+
+    return result.source_name;
+}
+
+export proc api_result_output(
+    result: &ApiResult
+) -> ?&[u8] {
+    if not result_is_valid(result) {
+        return null;
+    }
+
+    return &result.output;
+}
+
+export proc api_result_output_size(
+    result: &ApiResult
+) -> usize {
+    if not result_is_valid(result) {
+        return 0;
+    }
+
+    return result.output_size;
+}
+
+export proc api_result_diagnostics(
+    result: &ApiResult
+) -> ?&[u8] {
+    if not result_is_valid(result) {
+        return null;
+    }
+
+    return &result.diagnostics;
+}
+
+export proc api_result_diagnostics_size(
+    result: &ApiResult
+) -> usize {
+    if not result_is_valid(result) {
+        return 0;
+    }
+
+    return result.diagnostics_size;
+}
+
+export proc api_result_error_count(
+    result: &ApiResult
+) -> usize {
+    if not result_is_valid(result) {
+        return 0;
+    }
+
+    return result.error_count;
+}
+
+export proc api_result_warning_count(
+    result: &ApiResult
+) -> usize {
+    if not result_is_valid(result) {
+        return 0;
+    }
+
+    return result.warning_count;
+}
+
+export proc api_result_note_count(
+    result: &ApiResult
+) -> usize {
+    if not result_is_valid(result) {
+        return 0;
+    }
+
+    return result.note_count;
+}
+
+
+/// =========================================================================
+/// API state
+/// =========================================================================
+
+export proc api_is_valid(
+    api: &Api
+) -> bool {
+    return api_context_is_valid(api);
+}
+
+export proc api_is_compiling(
+    api: &Api
+) -> bool {
+    return api_context_is_valid(api)  and
+           api.state == ApiState.Compiling;
+}
+
+export proc api_compilation_count(
+    api: &Api
+) -> usize {
+    if not api_context_is_valid(api) {
+        return 0;
+    }
+
+    return api.compilation_count;
+}
+
+export proc api_successful_compilation_count(
+    api: &Api
+) -> usize {
+    if not api_context_is_valid(api) {
+        return 0;
+    }
+
+    return api.successful_compilation_count;
+}
+
+export proc api_failed_compilation_count(
+    api: &Api
+) -> usize {
+    if not api_context_is_valid(api) {
+        return 0;
+    }
+
+    return api.failed_compilation_count;
+}
+
+
+/// =========================================================================
+/// Error access
+/// =========================================================================
+
+export proc api_last_error(
+    api: &Api
+) -> &Error {
+    if not api_context_is_valid(api) {
+        return error_last();
+    }
+
+    return &api.last_error;
+}
+
+export proc api_clear_error(
+    api: &mut Api
+) {
+    if not api_context_is_valid(api) {
+        return;
+    }
+
+    error_reset(
+        &mut api.last_error
+    );
+
+    error_clear_last();
+}
+
+
+/// =========================================================================
+/// Version
+/// =========================================================================
+
+export proc api_version() -> str {
+    return version_string();
+}
+
+export proc api_version_major() -> u32 {
+    return version_major();
+}
+
+export proc api_version_minor() -> u32 {
+    return version_minor();
+}
+
+export proc api_version_patch() -> u32 {
+    return version_patch();
+}
+
+
+/// =========================================================================
+/// Build information
+/// =========================================================================
+
+export proc api_build_mode() -> str {
+    return version_build_mode();
+}
+
+export proc api_compiler() -> str {
+    return version_host_compiler();
+}
+
+export proc api_platform() -> str {
+    return version_platform();
+}
+
+export proc api_architecture() -> str {
+    return version_architecture();
+}
+
+
+/// =========================================================================
+/// Sanity checking
+/// =========================================================================
+
+export proc api_validate(
+    api: &Api
+) -> bool {
+    if not api_context_is_valid(api) {
+        return false;
+    }
+
+    if api.successful_compilation_count >
+       api.compilation_count {
+        return false;
+    }
+
+    if api.failed_compilation_count >
+       api.compilation_count {
+        return false;
+    }
+
+    let mut completed: usize = 0;
+
+    if size_add_overflow(
+        api.successful_compilation_count,
+        api.failed_compilation_count,
+        &mut completed
+    ) {
+        return false;
+    }
+
+    if completed > api.compilation_count {
+        return false;
+    }
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Convenience predicates and compilation
+/// =========================================================================
+
+export proc api_result_failed(
+    result: &ApiResult
+) -> bool {
+    return not api_result_succeeded(result);
+}
+
+export proc api_result_has_errors(
+    result: &ApiResult
+) -> bool {
+    return api_result_error_count(result) != 0;
+}
+
+export proc api_result_has_warnings(
+    result: &ApiResult
+) -> bool {
+    return api_result_warning_count(result) != 0;
+}
+
+export proc api_result_has_notes(
+    result: &ApiResult
+) -> bool {
+    return api_result_note_count(result) != 0;
+}
+
+export proc api_has_compiled(
+    api: &Api
+) -> bool {
+    return api_compilation_count(api) != 0;
+}
+
+export proc api_check_string(
+    api: &mut Api,
+    source: ?str
+) -> Status {
+    let mut result: ApiResult =
+        api_compile_string(
+            api,
+            source
+        );
+
+    let status: Status = result.status;
+
+    api_result_destroy(
+        &mut result
+    );
+
+    return status;
+}
+
+export proc api_check_file(
+    api: &mut Api,
+    path: str
+) -> Status {
+    let mut result: ApiResult =
+        api_compile_file(
+            api,
+            path
+        );
+
+    let status: Status = result.status;
+
+    api_result_destroy(
+        &mut result
+    );
+
+    return status;
+}
+
+export proc api_status_is_ok(
+    status: Status
+) -> bool {
+    return status == Status.Ok;
+}
+
+export proc api_status_is_error(
+    status: Status
+) -> bool {
+    return status != Status.Ok;
+}
+
+/// =========================================================================
+/// Stable C ABI bridge
+/// =========================================================================
+
+export proc vitte_api_native_create(
+    out_api: &mut *mut Api
+) -> Status {
+    if out_api == null {
+        return Status.ErrorInvalidArgument;
+    }
+    set *out_api = null;
+
+    let mut api_value: Api = api_create();
+    if api_value.state != ApiState.Ready {
+        let status: Status = api_value.last_error.status;
+        api_destroy(&mut api_value);
+        return status;
+    }
+
+    let storage: *mut u8 = malloc(sizeof(Api));
+    if storage == null {
+        api_destroy(&mut api_value);
+        return Status.ErrorOutOfMemory;
+    }
+
+    let api_pointer: *mut Api = storage as *mut Api;
+    set *api_pointer = api_value;
+    set *out_api = api_pointer;
+    return Status.Ok;
+}
+
+export proc vitte_api_native_destroy(api: *mut Api) {
+    if api == null {
+        return;
+    }
+    api_destroy(&mut *api);
+    free(api as *mut u8);
+}
+
+export proc vitte_api_native_compile_source(
+    api: &mut Api,
+    source_name: ?str,
+    source: ?str,
+    source_length: usize,
+    out_result: &mut *mut ApiResult
+) -> Status {
+    if out_result == null {
+        return api_invalid_argument(api, "out_result is null");
+    }
+    set *out_result = null;
+
+    let mut result: ApiResult = api_compile_source(
+        api,
+        source_name,
+        source,
+        source_length
+    );
+    let storage: *mut u8 = malloc(sizeof(ApiResult));
+    if storage == null {
+        api_result_destroy(&mut result);
+        return api_out_of_memory(api);
+    }
+
+    let result_pointer: *mut ApiResult = storage as *mut ApiResult;
+    set *result_pointer = result;
+    set *out_result = result_pointer;
+    return (*result_pointer).status;
+}
+
+export proc vitte_api_native_compile_string(
+    api: &mut Api,
+    source: ?str,
+    out_result: &mut *mut ApiResult
+) -> Status {
+    if source == null {
+        return vitte_api_native_compile_source(
+            api,
+            "<memory>",
+            null,
+            0,
+            out_result
+        );
+    }
+    let source_text: str = source?;
+    return vitte_api_native_compile_source(
+        api,
+        "<memory>",
+        source_text,
+        source_text.length,
+        out_result
+    );
+}
+
+export proc vitte_api_native_compile_file(
+    api: &mut Api,
+    path: ?str,
+    out_result: &mut *mut ApiResult
+) -> Status {
+    if out_result == null {
+        return api_invalid_argument(api, "out_result is null");
+    }
+    set *out_result = null;
+
+    let mut result: ApiResult = if path == null {
+        let status: Status = api_invalid_argument(api, "invalid input file path");
+        ApiResult {
+            magic: API_RESULT_MAGIC,
+            status: status,
+            source_name: "",
+            output: [],
+            output_size: 0,
+            diagnostics: [],
+            diagnostics_size: 0,
+            owns_source_name: false,
+            error_count: 0,
+            warning_count: 0,
+            note_count: 0,
+            succeeded: false,
+        }
+    } else {
+        api_compile_file(api, path?)
+    };
+    let storage: *mut u8 = malloc(sizeof(ApiResult));
+    if storage == null {
+        api_result_destroy(&mut result);
+        return api_out_of_memory(api);
+    }
+
+    let result_pointer: *mut ApiResult = storage as *mut ApiResult;
+    set *result_pointer = result;
+    set *out_result = result_pointer;
+    return (*result_pointer).status;
+}
+
+export proc vitte_api_native_result_destroy(result: *mut ApiResult) {
+    if result == null {
+        return;
+    }
+    api_result_destroy(&mut *result);
+    free(result as *mut u8);
+}
+
+export proc vitte_api_native_result_status(result: &ApiResult) -> Status {
+    return api_result_status(result);
+}
+
+export proc vitte_api_native_result_succeeded(result: &ApiResult) -> bool {
+    return api_result_succeeded(result);
+}
+
+export proc vitte_api_native_result_source_name(result: &ApiResult) -> str {
+    if not result_is_valid(result) {
+        return "";
+    }
+    return result.source_name;
+}
+
+export proc vitte_api_native_result_output_data(result: &ApiResult) -> *const u8 {
+    if not result_is_valid(result) {
+        return null;
+    }
+    return result.output.as_ptr() as *const u8;
+}
+
+export proc vitte_api_native_result_output_size(result: &ApiResult) -> usize {
+    return api_result_output_size(result);
+}
+
+export proc vitte_api_native_result_diagnostics(result: &ApiResult) -> *const u8 {
+    if not result_is_valid(result) {
+        return null;
+    }
+    if result.diagnostics.length == 0 {
+        return null;
+    }
+    return result.diagnostics.as_ptr() as *const u8;
+}
+
+export proc vitte_api_native_result_diagnostics_size(result: &ApiResult) -> usize {
+    return api_result_diagnostics_size(result);
+}
+
+export proc vitte_api_native_result_error_count(result: &ApiResult) -> usize {
+    return api_result_error_count(result);
+}
+
+export proc vitte_api_native_result_warning_count(result: &ApiResult) -> usize {
+    return api_result_warning_count(result);
+}
+
+export proc vitte_api_native_result_note_count(result: &ApiResult) -> usize {
+    return api_result_note_count(result);
+}
+
+export proc vitte_api_native_compilation_count(api: &Api) -> usize {
+    return api_compilation_count(api);
+}
+
+export proc vitte_api_native_successful_compilation_count(api: &Api) -> usize {
+    return api_successful_compilation_count(api);
+}
+
+export proc vitte_api_native_failed_compilation_count(api: &Api) -> usize {
+    return api_failed_compilation_count(api);
+}
+
+export proc vitte_api_native_is_valid(api: &Api) -> bool {
+    return api_context_is_valid(api);
+}
+
+export proc vitte_api_native_is_compiling(api: &Api) -> bool {
+    return api_context_is_valid(api) and api.state == ApiState.Compiling;
+}
+
+export proc vitte_api_native_error_status(api: &Api) -> Status {
+    return api.last_error.status;
+}
+
+export proc vitte_api_native_error_code(api: &Api) -> str {
+    return api.last_error.code;
+}
+
+export proc vitte_api_native_error_message(api: &Api) -> str {
+    return api.last_error.message;
+}
+
+export proc vitte_api_native_error_details(api: &Api) -> ?str {
+    return api.last_error.details;
+}
+
+export proc vitte_api_native_clear_error(api: &mut Api) {
+    api_clear_error(api);
+}

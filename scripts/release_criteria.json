@@ -1,0 +1,50 @@
+{
+  "diagnostic_registry": {
+    "native": "src/compiler/diagnostic/registry.vitte",
+    "bootstrap": "src/bootstrap/diagnostic/registry.c",
+    "help": "src/compiler/diagnostic/help.vitte"
+  },
+  "compiler_actions": [
+    {
+      "action": "COMPILE",
+      "target": "test-cli-driver",
+      "witness": "Makefile",
+      "markers": ["$(TARGET_BIN) compile \"$$fixture\"", "expo_math.vit"]
+    },
+    {
+      "action": "CHECK",
+      "target": "test-native-frontend-subset",
+      "witness": "src/tests/native_frontend_subset_test.py",
+      "markers": ["invoke(binary, \"check\", source_path)"]
+    },
+    {
+      "action": "EMIT_IR",
+      "target": "test-native-frontend-subset",
+      "witness": "src/tests/native_frontend_subset_test.py",
+      "markers": ["\"--emit-ir\"", "array_make"]
+    }
+  ],
+  "ast_fallbacks": [
+    {
+      "node_kind": "FormDecl",
+      "target": "test-native-frontend-subset",
+      "witness": "src/tests/native_frontend_subset_test.py",
+      "case": "unsupported form declaration",
+      "assertion": "assert_ast_emitter_banner"
+    },
+    {
+      "node_kind": "TestDecl",
+      "target": "test-cli-driver",
+      "witness": "Makefile",
+      "case": "expo_math.vit",
+      "assertion": "vitte_test_0"
+    },
+    {
+      "node_kind": "ForStmt",
+      "target": "test-native-frontend-subset",
+      "witness": "src/tests/native_frontend_subset_test.py",
+      "case": "non-range for statement",
+      "assertion": "assert_ast_fallback_rejected"
+    }
+  ]
+}

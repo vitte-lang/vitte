@@ -1,0 +1,457 @@
+space core::array::zip
+
+/// Retourne la plus petite longueur de deux tableaux.
+proc array_zip_min_length<T, U>(
+    left: &[T],
+    right: &[U]
+) -> usize {
+    if left.len() < right.len() {
+        return left.len();
+    }
+
+    return right.len();
+}
+
+/// Retourne la plus petite longueur de trois tableaux.
+proc array_zip3_min_length<T, U, V>(
+    first: &[T],
+    second: &[U],
+    third: &[V]
+) -> usize {
+    let mut limit: usize = first.len();
+
+    if second.len() < limit {
+        set limit = second.len();
+    }
+
+    if third.len() < limit {
+        set limit = third.len();
+    }
+
+    return limit;
+}
+
+/// Retourne la plus petite longueur de quatre tableaux.
+proc array_zip4_min_length<T, U, V, W>(
+    first: &[T],
+    second: &[U],
+    third: &[V],
+    fourth: &[W]
+) -> usize {
+    let mut limit: usize = first.len();
+
+    if second.len() < limit {
+        set limit = second.len();
+    }
+
+    if third.len() < limit {
+        set limit = third.len();
+    }
+
+    if fourth.len() < limit {
+        set limit = fourth.len();
+    }
+
+    return limit;
+}
+
+/// Combine deux tableaux dans un tableau de couples.
+proc array_zip<T, U>(
+    left: &[T],
+    right: &[U],
+    destination: &mut [(T, U)]
+) -> usize {
+    let mut limit: usize = array_zip_min_length(left, right);
+
+    if destination.len() < limit {
+        set limit = destination.len();
+    }
+
+    for i in 0..limit {
+        set destination[i] = (left[i], right[i]);
+    }
+
+    return limit;
+}
+
+/// Combine trois tableaux dans un tableau de triplets.
+proc array_zip3<T, U, V>(
+    first: &[T],
+    second: &[U],
+    third: &[V],
+    destination: &mut [(T, U, V)]
+) -> usize {
+    let mut limit: usize = array_zip3_min_length(
+        first,
+        second,
+        third
+    );
+
+    if destination.len() < limit {
+        set limit = destination.len();
+    }
+
+    for i in 0..limit {
+        set destination[i] = (
+            first[i],
+            second[i],
+            third[i]
+        );
+    }
+
+    return limit;
+}
+
+/// Combine quatre tableaux dans un tableau de quadruplets.
+proc array_zip4<T, U, V, W>(
+    first: &[T],
+    second: &[U],
+    third: &[V],
+    fourth: &[W],
+    destination: &mut [(T, U, V, W)]
+) -> usize {
+    let mut limit: usize = array_zip4_min_length(
+        first,
+        second,
+        third,
+        fourth
+    );
+
+    if destination.len() < limit {
+        set limit = destination.len();
+    }
+
+    for i in 0..limit {
+        set destination[i] = (
+            first[i],
+            second[i],
+            third[i],
+            fourth[i]
+        );
+    }
+
+    return limit;
+}
+
+/// Combine deux tableaux à l'aide d'une transformation.
+proc array_zip_with<T, U, V>(
+    left: &[T],
+    right: &[U],
+    destination: &mut [V],
+    transform: proc(&T, &U) -> V
+) -> usize {
+    let mut limit: usize = array_zip_min_length(left, right);
+
+    if destination.len() < limit {
+        set limit = destination.len();
+    }
+
+    for i in 0..limit {
+        set destination[i] = transform(
+            &left[i],
+            &right[i]
+        );
+    }
+
+    return limit;
+}
+
+/// Combine trois tableaux à l'aide d'une transformation.
+proc array_zip3_with<T, U, V, W>(
+    first: &[T],
+    second: &[U],
+    third: &[V],
+    destination: &mut [W],
+    transform: proc(&T, &U, &V) -> W
+) -> usize {
+    let mut limit: usize = array_zip3_min_length(
+        first,
+        second,
+        third
+    );
+
+    if destination.len() < limit {
+        set limit = destination.len();
+    }
+
+    for i in 0..limit {
+        set destination[i] = transform(
+            &first[i],
+            &second[i],
+            &third[i]
+        );
+    }
+
+    return limit;
+}
+
+/// Parcourt simultanément deux tableaux.
+proc array_zip_for_each<T, U>(
+    left: &[T],
+    right: &[U],
+    callback: proc(&T, &U)
+) {
+    let limit: usize = array_zip_min_length(left, right);
+
+    for i in 0..limit {
+        callback(&left[i], &right[i]);
+    }
+}
+
+/// Parcourt simultanément deux tableaux avec leur indice.
+proc array_zip_for_each_indexed<T, U>(
+    left: &[T],
+    right: &[U],
+    callback: proc(usize, &T, &U)
+) {
+    let limit: usize = array_zip_min_length(left, right);
+
+    for i in 0..limit {
+        callback(i, &left[i], &right[i]);
+    }
+}
+
+/// Parcourt deux tableaux en ordre inverse.
+proc array_zip_reverse<T, U>(
+    left: &[T],
+    right: &[U],
+    callback: proc(&T, &U)
+) {
+    let mut i: usize = array_zip_min_length(left, right);
+
+    while i > 0 {
+        set i = i - 1;
+        callback(&left[i], &right[i]);
+    }
+}
+
+/// Vérifie si tous les couples satisfont un prédicat.
+proc array_zip_all<T, U>(
+    left: &[T],
+    right: &[U],
+    predicate: proc(&T, &U) -> bool
+) -> bool {
+    let limit: usize = array_zip_min_length(left, right);
+
+    for i in 0..limit {
+        if not predicate(&left[i], &right[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// Vérifie si au moins un couple satisfait un prédicat.
+proc array_zip_any<T, U>(
+    left: &[T],
+    right: &[U],
+    predicate: proc(&T, &U) -> bool
+) -> bool {
+    let limit: usize = array_zip_min_length(left, right);
+
+    for i in 0..limit {
+        if predicate(&left[i], &right[i]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// Compte les couples satisfaisant un prédicat.
+proc array_zip_count_if<T, U>(
+    left: &[T],
+    right: &[U],
+    predicate: proc(&T, &U) -> bool
+) -> usize {
+    let limit: usize = array_zip_min_length(left, right);
+    let mut count: usize = 0;
+
+    for i in 0..limit {
+        if predicate(&left[i], &right[i]) {
+            set count = count + 1;
+        }
+    }
+
+    return count;
+}
+
+/// Recherche le premier couple satisfaisant un prédicat.
+/// Retourne -1 si aucun couple ne correspond.
+proc array_zip_find_index<T, U>(
+    left: &[T],
+    right: &[U],
+    predicate: proc(&T, &U) -> bool
+) -> isize {
+    let limit: usize = array_zip_min_length(left, right);
+
+    for i in 0..limit {
+        if predicate(&left[i], &right[i]) {
+            return i as isize;
+        }
+    }
+
+    return -1;
+}
+
+/// Compare deux tableaux élément par élément.
+proc array_zip_equal<T, U>(
+    left: &[T],
+    right: &[U],
+    comparator: proc(&T, &U) -> bool
+) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    for i in 0..left.len() {
+        if not comparator(&left[i], &right[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// Filtre et transforme simultanément deux tableaux.
+proc array_zip_filter_map<T, U, V>(
+    left: &[T],
+    right: &[U],
+    destination: &mut [V],
+    predicate: proc(&T, &U) -> bool,
+    transform: proc(&T, &U) -> V
+) -> usize {
+    let limit: usize = array_zip_min_length(left, right);
+    let mut written: usize = 0;
+
+    for i in 0..limit {
+        if predicate(&left[i], &right[i]) {
+            if written >= destination.len() {
+                return written;
+            }
+
+            set destination[written] = transform(
+                &left[i],
+                &right[i]
+            );
+
+            set written = written + 1;
+        }
+    }
+
+    return written;
+}
+
+/// Réduit deux tableaux avec un accumulateur.
+proc array_zip_fold<T, U, A>(
+    left: &[T],
+    right: &[U],
+    initial: A,
+    reducer: proc(A, &T, &U) -> A
+) -> A {
+    let mut accumulator: A = initial;
+    let limit: usize = array_zip_min_length(left, right);
+
+    for i in 0..limit {
+        set accumulator = reducer(
+            accumulator,
+            &left[i],
+            &right[i]
+        );
+    }
+
+    return accumulator;
+}
+
+/// Réduit deux tableaux en ordre inverse.
+proc array_zip_fold_right<T, U, A>(
+    left: &[T],
+    right: &[U],
+    initial: A,
+    reducer: proc(A, &T, &U) -> A
+) -> A {
+    let mut accumulator: A = initial;
+    let mut i: usize = array_zip_min_length(left, right);
+
+    while i > 0 {
+        set i = i - 1;
+
+        set accumulator = reducer(
+            accumulator,
+            &left[i],
+            &right[i]
+        );
+    }
+
+    return accumulator;
+}
+
+/// Applique une transformation sur une plage commune.
+proc array_zip_range<T, U, V>(
+    left: &[T],
+    right: &[U],
+    destination: &mut [V],
+    start: usize,
+    end: usize,
+    transform: proc(&T, &U) -> V
+) -> usize {
+    let mut limit: usize = array_zip_min_length(left, right);
+
+    if destination.len() < limit {
+        set limit = destination.len();
+    }
+
+    let mut begin: usize = start;
+    let mut finish: usize = end;
+
+    if begin > limit {
+        set begin = limit;
+    }
+
+    if finish > limit {
+        set finish = limit;
+    }
+
+    if begin >= finish {
+        return 0;
+    }
+
+    for i in begin..finish {
+        set destination[i] = transform(
+            &left[i],
+            &right[i]
+        );
+    }
+
+    return finish - begin;
+}
+
+/// Combine deux tableaux en utilisant un pas fixe.
+proc array_zip_step<T, U>(
+    left: &[T],
+    right: &[U],
+    step: usize,
+    callback: proc(&T, &U)
+) -> usize {
+    if step == 0 {
+        return 0;
+    }
+
+    let limit: usize = array_zip_min_length(left, right);
+    let mut i: usize = 0;
+    let mut count: usize = 0;
+
+    while i < limit {
+        callback(&left[i], &right[i]);
+        set count = count + 1;
+
+        if step >= limit - i {
+            return count;
+        }
+
+        set i = i + step;
+    }
+
+    return count;
+}

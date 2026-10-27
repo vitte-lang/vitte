@@ -1,0 +1,1302 @@
+/// Vitte contextual-help policy aligned with `src/bootstrap/diagnostic/help.c`.
+space compiler::diagnostic::help;
+
+use compiler::source::source::{
+    SourceContext,
+    SourceSlice,
+    vitte_source_slice
+};
+use compiler::diagnostic::diagnostic::{
+    Diagnostic,
+    DiagnosticAnnotationKind,
+    DiagnosticContractKind,
+    DiagnosticLabelStyle,
+    DiagnosticOrigin,
+    DiagnosticSeverity,
+    origin_name
+};
+use compiler::diagnostic::registry::{
+    DiagnosticRegistryEntry,
+    diagnostic_registry_count,
+    diagnostic_registry_at,
+    vitte_diagnostic_registry_find_public,
+    vitte_diagnostic_registry_find_internal
+};
+
+const HELP_EXCERPT_CAPACITY: usize = 160;
+const HELP_REASON_LIMIT: usize = 192;
+const HELP_SUBJECT_LIMIT: usize = 128;
+const HELP_TYPE_LIMIT: usize = 128;
+const HELP_CONTRACT_LIMIT: usize = 192;
+const HELP_EXPECTED_TOKEN_LIMIT: usize = 96;
+const HELP_RULE_CODES: [string] = [
+    "E0000",
+    "E0001",
+    "E0002",
+    "E0003",
+    "E0004",
+    "E0005",
+    "E0006",
+    "E0007",
+    "E0008",
+    "E0009",
+    "E0010",
+    "E0011",
+    "E0012",
+    "E0013",
+    "E0014",
+    "E0101",
+    "E0102",
+    "E0103",
+    "E0104",
+    "E0105",
+    "E0106",
+    "E0107",
+    "E0108",
+    "E0201",
+    "E0202",
+    "E0203",
+    "E0204",
+    "E0205",
+    "E0206",
+    "E0207",
+    "E0208",
+    "E0209",
+    "E0301",
+    "E0302",
+    "E0303",
+    "E0304",
+    "E0305",
+    "E0306",
+    "E0307",
+    "E0401",
+    "E0402",
+    "E0403",
+    "E0404",
+    "E0405",
+    "E0406",
+    "E0501",
+    "E0502",
+    "E0503",
+    "E0504",
+    "E0505",
+    "E0506",
+    "E0507",
+    "E0508",
+    "E0509",
+    "E0510",
+    "E0511",
+    "E0512",
+    "E0513",
+    "E0514",
+    "E0515",
+    "E0601",
+    "E0602",
+    "E0603",
+    "E0604",
+    "E0605",
+    "E0606",
+    "E0607",
+    "E0700",
+    "E0701",
+    "E0702",
+    "E0703",
+    "E0704",
+    "E0705",
+    "E0706",
+    "E0707",
+    "E0708",
+    "E0709",
+    "E0710",
+    "E0711",
+    "E0712",
+    "E0713",
+    "E0714",
+    "E0801",
+    "E0802",
+    "E0810",
+    "E0811",
+    "E0812",
+    "E0901",
+    "E0902",
+    "E0903",
+    "E0904",
+    "E0905",
+    "E0906",
+    "E0907",
+    "E0908",
+    "E0909",
+    "E1001",
+    "E1002",
+    "E1003",
+    "E1010",
+    "E1011",
+    "E1101",
+    "E1102",
+    "E1103",
+    "E1104",
+    "E1201",
+    "E1202",
+    "E1203",
+    "E1204",
+    "E1301",
+    "E1302",
+    "E1303",
+    "E1401",
+    "E1402",
+    "E1403",
+    "E1404",
+    "E1501",
+    "E1502",
+    "E1503",
+    "E1504",
+    "E1505",
+    "E1601",
+    "E1602",
+    "E1603",
+    "E1604",
+    "E1701",
+    "E1702",
+    "E1710",
+    "E1711",
+    "E1801",
+    "E1802",
+    "E1810",
+    "E1811",
+    "E1901",
+    "E1902",
+    "E1903",
+    "E1904",
+    "E1905",
+    "W0001",
+    "W0002",
+    "W0003",
+    "W0004",
+    "W0010",
+    "W0020",
+    "W0030",
+    "W0040",
+    "W0041",
+    "W0042",
+    "W0050",
+    "W0051",
+    "W0060",
+    "W0070",
+    "W0080",
+    "W0090",
+];
+
+const HELP_RULE_TEXTS: [string] = [
+    "Capture the failing command and compiler version; this failure has no identified cause and needs a compiler bug report.",
+    "Rerun with VITTE_BACKTRACE=1 and report the failing input, command and compiler version.",
+    "Capture the violated invariant with VITTE_BACKTRACE=1; report the input that triggers this compiler defect.",
+    "Capture the impossible state with VITTE_BACKTRACE=1 and include the smallest reproducing input in a compiler bug report.",
+    "Check available memory and process resource limits; retry with fewer compilation jobs if the system is under memory pressure.",
+    "Resolve the source path relative to the working directory and ensure that it names an existing, readable regular file.",
+    "Save the source as UTF-8 and replace the invalid byte sequence at the reported offset.",
+    "Register the original source before mapping its spans; preserve the generated file and source mapping in a compiler bug report.",
+    "Report the diagnostic construction failure with its original message, source span and compiler version.",
+    "Fix the first reported error before rerunning; later diagnostics were suppressed after the configured diagnostic limit was reached.",
+    "Select terminal diagnostic output to inspect the formatting failure; report the failing output format and reproducing input.",
+    "Correct the option named in the diagnostic and use `vitte --help` to verify its accepted values and combinations.",
+    "Resolve the first diagnostic emitted by the failed compiler phase; if none was emitted, report the phase and reproducing command.",
+    "Identify the unavailable compiler component or external tool from the reported cause and install, configure or report that component.",
+    "Check the source with the command-line compiler for detailed parser and type diagnostics, then correct the reported source issue.",
+    "Remove the invalid character or place it inside a quoted string when it is intended to be text.",
+    "Close the string with the matching quote before the line ends; escape a quote that belongs inside the string.",
+    "Replace the invalid escape with a supported escape sequence or escape the backslash when a literal backslash is intended.",
+    "Use digits valid for the literal's base and place separators only where the numeric grammar permits them; verify the prefix and suffix.",
+    "Reduce the numeric literal to a representable value; lexical overflow must be corrected before type conversion can occur.",
+    "Add the missing block-comment terminator, including the terminator of any nested comment that remains open.",
+    "Start the identifier with a permitted identifier-start character and remove characters that cannot occur in an identifier.",
+    "Replace the malformed Unicode sequence with valid UTF-8 source text before compiling again.",
+    "Insert the expected delimiter, keyword or syntactic element before the token reported as found.",
+    "Remove the unexpected token or finish the preceding construct before beginning this one.",
+    "Provide a valid expression at this position, such as a literal, visible name, call or other expression accepted by the grammar.",
+    "Introduce a declaration at this position; move executable statements into a procedure or another context that accepts statements.",
+    "Provide a valid type at this position, such as a primitive type or a visible declared type.",
+    "Provide a pattern compatible with the matched value before the branch body.",
+    "Close the opening delimiter with its matching closing delimiter before the enclosing construct ends.",
+    "Replace the closing delimiter with the delimiter matching the relevant unclosed opener.",
+    "Remove this modifier or apply it only to a declaration kind that accepts it.",
+    "Match the module path to a source available under a configured import root, including its spelling and case.",
+    "Import an exported symbol or change the declaration's visibility when external access is intentionally part of the module API.",
+    "Break the reported import cycle by moving shared declarations into a module that does not depend back on either side of the cycle.",
+    "Remove the duplicate import or assign distinct aliases to imported declarations that would otherwise conflict.",
+    "Install or declare the missing package and make its source root available to import resolution.",
+    "Select a package version satisfying the declared constraint, or update the constraint after checking API compatibility.",
+    "Preserve the import graph, failing validation detail and compiler version; this structural failure should be reported as a compiler defect.",
+    "Declare or import the unresolved name in this scope and verify its spelling against visible declarations.",
+    "Rename this declaration or remove the earlier declaration with the same name in this scope.",
+    "Qualify the name with the intended module or use an alias that selects exactly one visible declaration.",
+    "Use an exported API or change the declaration's visibility when this access is intentionally permitted.",
+    "Move the use into the declaration's valid scope or pass the required value into the procedure that needs it.",
+    "Give every binding introduced by this pattern or declaration a distinct name.",
+    "Make the expression satisfy the required type; use an explicit conversion only when it preserves the intended value and semantics.",
+    "Add an explicit type annotation or provide an initializer whose type determines the declaration unambiguously.",
+    "Use a conversion supported by both types; parse or format textual representations explicitly instead of relying on an unrelated cast.",
+    "Call a procedure or callable value and check whether another declaration shadows the intended procedure.",
+    "Use a value supporting indexed access or access this value through operations provided by its declared type.",
+    "Use a member declared by the receiver's type and verify both the receiver type and member spelling.",
+    "Change the type argument or implementation so that it satisfies the constraint named by the diagnostic.",
+    "Provide the complete type definition before performing an operation that requires its size, layout or members.",
+    "Break the recursive by-value type cycle with a supported indirection or redesign the recursive representation.",
+    "Declare or import the type in this scope and verify the spelling and visibility of its declaration.",
+    "Use a type name at this position instead of a value, variable or procedure name.",
+    "Choose an operator defined for these operand types or explicitly convert the operands to compatible types.",
+    "Assign only to a writable mutable location such as a mutable binding, field or index.",
+    "Use an index of the type required by this collection and verify that the index expression represents an element position.",
+    "Use a boolean condition, normally by writing an explicit comparison; Vitte does not infer truthiness from unrelated value types.",
+    "Match the number of supplied arguments to the selected procedure's parameter list.",
+    "Pass an expression satisfying the declared parameter type at this argument position.",
+    "Compare the argument count and types with the available signatures and select a callable candidate that accepts them.",
+    "Qualify the procedure or make argument types explicit so that exactly one callable candidate matches.",
+    "Return an expression satisfying the procedure's declared result type or correct the result declaration when the API is wrong.",
+    "Remove the incompatible call modifier or select a procedure supporting the required calling context.",
+    "Move `return` into a procedure body; a top-level declaration cannot return a procedure result.",
+    "Use a well-typed boolean expression that is valid in this contract's declaration context.",
+    "Adjust the call arguments or caller state so the requires condition holds before entering the procedure.",
+    "Correct the returned value or resulting state so every successful return satisfies the ensures condition.",
+    "Restore the invariant before this program point and preserve it on every control-flow path reaching the check.",
+    "Make the requires clause a boolean expression referring only to values available before the call.",
+    "Make the ensures clause a boolean expression valid after the procedure has produced its result.",
+    "Capture the required entry value through a supported contract mechanism before referring to its previous value.",
+    "Use `result` only in a contract context where a procedure result exists.",
+    "Provide the missing precondition or simplify the assertion so the checker has enough information to prove the required relationship.",
+    "Remove or correct contradictory contract clauses so at least one valid program state can satisfy the contract.",
+    "Move state changes and I/O out of the contract and compute the condition only from permitted side-effect-free values.",
+    "Replace the call inside the contract with an operation permitted during contract evaluation.",
+    "Align the implementation contract with the declared API: do not strengthen caller requirements or weaken promised results.",
+    "Inspect the values reported by the failed runtime contract check and correct the caller or implementation violating the condition.",
+    "Report the contract expression, reproducing input and compiler version because contract analysis failed internally.",
+    "Choose a generic argument satisfying the named bound or provide the implementation required by that bound.",
+    "Supply one type or value argument for every required generic parameter in declaration order.",
+    "Implement the required trait for this type or use a type that already provides the required implementation.",
+    "Disambiguate the trait relation so exactly one implementation matches the type and generic arguments.",
+    "Remove or specialize the overlapping implementation so a trait/type relation resolves to exactly one implementation.",
+    "Preserve the generated C and the external compiler's first error, then report the Vitte construct that produced invalid C17.",
+    "Reduce the failing construct to a reproducer and report the C17 lowering failure together with its backend detail.",
+    "Rewrite the construct using features supported by the selected backend or select a backend that implements the required feature.",
+    "Inspect the external C compiler's first error, verify C17 support and preserve the generated C for a reproducible report.",
+    "Preserve the generated C and original Vitte source together and report the incorrect source mapping.",
+    "Choose a writable output path, check the parent directory permissions and available storage, then retry the output operation.",
+    "Verify linker availability, the selected target and library search paths, then inspect the first linker error and command.",
+    "Inspect the generated program's exit status and runtime output; compilation and linking completed before this failure.",
+    "Verify the selected C17 backend and its configuration values, then report the invalid option and reproducing command.",
+    "Report the invalid IR instruction and its originating source because compiler-generated IR must satisfy the verifier.",
+    "Report the source construct that failed IR lowering together with the failing phase and compiler version.",
+    "Preserve the verifier's first invariant failure and the corresponding IR dump in a compiler bug report.",
+    "Report the invalid HIR construct and its originating source so frontend lowering can be corrected.",
+    "Report the source construct and compiler version; the native frontend failed while building or validating its high-level representation.",
+    "Add `return` with a value satisfying the declared result type on every reachable path, including fallthrough.",
+    "Move `break` into a breakable construct or use the appropriate control-flow operation for leaving the current context.",
+    "Move `continue` into a loop body; outside a loop there is no next iteration.",
+    "Correct the preceding branch, termination or control-flow condition so this operation is reachable when it is intended to execute.",
+    "Verify that the referenced allocation remains alive and that the accessed range lies inside the allocation.",
+    "Handle the null case before dereferencing or provide a valid initialized reference.",
+    "Use a pointer to the required pointee type and verify the pointee representation before performing an explicit conversion.",
+    "Allocate or offset the storage so the accessed value satisfies the required alignment.",
+    "Prefer a safe API; when this low-level operation is required, establish its safety invariants and place it in an explicit unsafe context.",
+    "Match assembly instructions, operands and constraints to the selected target architecture.",
+    "Use the intrinsic's required argument types and compile-time values on a target that supports the intrinsic.",
+    "Choose an ABI supported by this target and match the foreign declaration's calling convention.",
+    "Use a foreign-compatible representation and explicitly marshal values whose Vitte representation cannot cross the foreign interface.",
+    "Match the foreign variadic signature and apply the ABI-required argument promotions to every trailing argument.",
+    "Match the link name to the actual exported foreign symbol and remove conflicting foreign declarations.",
+    "Replace runtime-dependent values with compile-time constants or move this computation out of the constant-evaluation context.",
+    "Reduce the constant operands or use a representable wider type before performing the overflowing operation.",
+    "Change the zero divisor or guard the operation so constant evaluation never performs division by zero.",
+    "Break the constant dependency cycle by giving at least one value an independent initializer.",
+    "Reduce compile-time recursion or work and verify termination before increasing an evaluation limit.",
+    "Add branches for the uncovered variants or a valid catch-all pattern when all remaining values should be handled uniformly.",
+    "Remove the already covered pattern or place a more specific pattern before the branch that subsumes it.",
+    "Use a pattern compatible with the scrutinee type and correct incompatible variants or literals.",
+    "Make every alternative introduce the same binding names with compatible binding types.",
+    "Move the asynchronous operation into a compatible async procedure or use the supported synchronous operation.",
+    "Await a task-compatible result instead of an already computed ordinary value.",
+    "Transfer an owned send-compatible value or use a supported synchronization mechanism between concurrent tasks.",
+    "Move the forbidden blocking or suspending operation outside the critical section.",
+    "Correct the macro arguments or expansion so it produces syntax valid at this invocation site.",
+    "Break recursive macro expansion or reduce its nesting before increasing any expansion limit.",
+    "Capture the failing compiler pass, its input and compiler version in a compiler bug report.",
+    "Preserve the representation immediately before and after the failing pass together with the verifier's first error.",
+    "Select a compilation target implemented by this compiler and supported by the installed toolchain.",
+    "Choose a supported CPU architecture and ensure it matches the selected target and external toolchain.",
+    "Remove the unsupported target feature or select a CPU and toolchain providing that feature.",
+    "Select a target with a supported pointer width and verify pointer-sized assumptions in foreign interfaces.",
+    "Use an operation supporting the target byte order or explicitly encode and decode the required endianness.",
+    "Remove the unused local binding or use its value in the computation that requires it.",
+    "Use the parameter in the procedure body or remove it and update callers when it is not part of the required API.",
+    "Remove the import when no declaration from it is required.",
+    "Handle the returned value, including any error result, before discarding it intentionally.",
+    "Replace the deprecated declaration with its documented successor.",
+    "Remove statements after the unconditional exit or correct the control flow that makes them unreachable.",
+    "Rename the inner binding when hiding the outer declaration is unintended.",
+    "Verify that the implicit conversion preserves the intended value; use compatible types or a deliberate checked conversion.",
+    "Verify the source value's range before conversion and use a wider representation when significant information would be lost.",
+    "Check for negative or out-of-range values before changing signedness.",
+    "Remove the cast because the expression already has the requested type.",
+    "Remove the redundant condition or correct the expression that makes its result constant.",
+    "Check both operands and the comparison operator for a copied name, incompatible range or unintended comparison.",
+    "Use a stable foreign representation and verify field offsets, size and alignment against the foreign declaration.",
+    "Keep the runtime contract check or provide enough constraints for the compiler to prove the condition statically.",
+    "Inspect the reported I/O or compiler operation and restore the required resource before relying on its output.",
+];
+
+form HelpExpectedTokens {
+    valid: bool,
+    expected: string,
+    found: string
+}
+
+proc help_text_present(text: string) -> bool {
+    return text.length() != 0;
+}
+
+proc help_ascii_lower(value: u8) -> u8 {
+    if value >= 65 as u8 and value <= 90 as u8 {
+        return value + 32 as u8;
+    }
+    return value;
+}
+
+proc help_ascii_equal(left: string, right: string) -> bool {
+    let left_bytes: [u8] = left.bytes();
+    let right_bytes: [u8] = right.bytes();
+    if left_bytes.len() != right_bytes.len() {
+        return false;
+    }
+    let mut index: usize = 0;
+    while index < left_bytes.len() {
+        if help_ascii_lower(left_bytes[index]) !=
+           help_ascii_lower(right_bytes[index]) {
+            return false;
+        }
+        set index += 1;
+    }
+    return true;
+}
+
+proc help_rule_index(code: string) -> usize {
+    let mut index: usize = 0;
+    while index < HELP_RULE_CODES.len() {
+        if help_ascii_equal(HELP_RULE_CODES[index], code) {
+            return index;
+        }
+        set index += 1;
+    }
+    return HELP_RULE_CODES.len();
+}
+
+proc help_explicit_annotation(
+    diagnostic_value: *const Diagnostic
+) -> string {
+    if diagnostic_value == null {
+        return "";
+    }
+    let mut index: usize = 0;
+    while index < diagnostic_value.annotations.len() {
+        let annotation = &diagnostic_value.annotations[index];
+        if annotation.kind == DiagnosticAnnotationKind.Help and
+           help_text_present(annotation.message) {
+            return annotation.message;
+        }
+        set index += 1;
+    }
+    return "";
+}
+
+proc help_copy_to_buffer(
+    buffer: *mut u8,
+    capacity: usize,
+    text: string
+) -> bool {
+    if buffer == null or capacity == 0 {
+        return false;
+    }
+
+    let bytes: [u8] = text.bytes();
+    let mut length: usize = bytes.len();
+    if length >= capacity {
+        set length = capacity - 1;
+        while length > 0 and length < bytes.len() and
+              bytes[length] >= 128 as u8 and
+              bytes[length] <= 191 as u8 {
+            set length -= 1;
+        }
+    }
+
+    let mut index: usize = 0;
+    while index < length {
+        set buffer[index as i64] = bytes[index];
+        set index += 1;
+    }
+    set buffer[length as i64] = 0 as u8;
+    return length != 0;
+}
+
+proc help_quote_fragment(text: string, maximum: usize) -> string {
+    if not help_text_present(text) {
+        return "";
+    }
+
+    let bytes: [u8] = text.bytes();
+    let mut output = "`";
+    let mut index: usize = 0;
+    let mut written: usize = 0;
+
+    while index < bytes.len() and written < maximum {
+        let byte = bytes[index];
+
+        if byte < 32 as u8 or byte == 127 as u8 {
+            set index += 1;
+            continue;
+        }
+
+        if byte == 96 as u8 {
+            set output += "\\`";
+            set written += 1;
+            set index += 1;
+            continue;
+        }
+
+        let mut width: usize = 1;
+        if byte >= 194 as u8 and byte <= 223 as u8 and
+           index + 1 < bytes.len() {
+            set width = 2;
+        } else if byte >= 224 as u8 and byte <= 239 as u8 and
+                  index + 2 < bytes.len() {
+            set width = 3;
+        } else if byte >= 240 as u8 and byte <= 244 as u8 and
+                  index + 3 < bytes.len() {
+            set width = 4;
+        }
+
+        if written + width > maximum {
+            break;
+        }
+
+        set output += text.slice(index, index + width);
+        set written += width;
+        set index += width;
+    }
+
+    if index < bytes.len() {
+        set output += "…";
+    }
+
+    set output += "`";
+    return output;
+}
+
+proc help_utf8_valid(text: string) -> bool {
+    let bytes: [u8] = text.bytes();
+    let mut index: usize = 0;
+
+    while index < bytes.len() {
+        let first = bytes[index];
+        let mut width: usize = 0;
+
+        if first <= 127 as u8 {
+            set width = 1;
+        } else if first >= 194 as u8 and first <= 223 as u8 {
+            if index + 1 >= bytes.len() or
+               bytes[index + 1] < 128 as u8 or
+               bytes[index + 1] > 191 as u8 {
+                return false;
+            }
+            set width = 2;
+        } else if first == 224 as u8 {
+            if index + 2 >= bytes.len() or
+               bytes[index + 1] < 160 as u8 or
+               bytes[index + 1] > 191 as u8 or
+               bytes[index + 2] < 128 as u8 or
+               bytes[index + 2] > 191 as u8 {
+                return false;
+            }
+            set width = 3;
+        } else if (first >= 225 as u8 and first <= 236 as u8) or
+                  (first >= 238 as u8 and first <= 239 as u8) {
+            if index + 2 >= bytes.len() or
+               bytes[index + 1] < 128 as u8 or
+               bytes[index + 1] > 191 as u8 or
+               bytes[index + 2] < 128 as u8 or
+               bytes[index + 2] > 191 as u8 {
+                return false;
+            }
+            set width = 3;
+        } else if first == 237 as u8 {
+            if index + 2 >= bytes.len() or
+               bytes[index + 1] < 128 as u8 or
+               bytes[index + 1] > 159 as u8 or
+               bytes[index + 2] < 128 as u8 or
+               bytes[index + 2] > 191 as u8 {
+                return false;
+            }
+            set width = 3;
+        } else if first == 240 as u8 {
+            if index + 3 >= bytes.len() or
+               bytes[index + 1] < 144 as u8 or
+               bytes[index + 1] > 191 as u8 or
+               bytes[index + 2] < 128 as u8 or
+               bytes[index + 2] > 191 as u8 or
+               bytes[index + 3] < 128 as u8 or
+               bytes[index + 3] > 191 as u8 {
+                return false;
+            }
+            set width = 4;
+        } else if first >= 241 as u8 and first <= 243 as u8 {
+            if index + 3 >= bytes.len() or
+               bytes[index + 1] < 128 as u8 or
+               bytes[index + 1] > 191 as u8 or
+               bytes[index + 2] < 128 as u8 or
+               bytes[index + 2] > 191 as u8 or
+               bytes[index + 3] < 128 as u8 or
+               bytes[index + 3] > 191 as u8 {
+                return false;
+            }
+            set width = 4;
+        } else if first == 244 as u8 {
+            if index + 3 >= bytes.len() or
+               bytes[index + 1] < 128 as u8 or
+               bytes[index + 1] > 143 as u8 or
+               bytes[index + 2] < 128 as u8 or
+               bytes[index + 2] > 191 as u8 or
+               bytes[index + 3] < 128 as u8 or
+               bytes[index + 3] > 191 as u8 {
+                return false;
+            }
+            set width = 4;
+        } else {
+            return false;
+        }
+
+        set index += width;
+    }
+
+    return true;
+}
+
+proc help_source_excerpt(
+    diagnostic_value: *const Diagnostic,
+    sources: *const SourceContext
+) -> string {
+    if diagnostic_value == null or sources == null or
+       not diagnostic_value.has_span or
+       diagnostic_value.source_id == 0 or
+       diagnostic_value.end_offset <= diagnostic_value.start_offset {
+        return "";
+    }
+
+    let length = diagnostic_value.end_offset -
+        diagnostic_value.start_offset;
+    if length == 0 or length >= HELP_EXCERPT_CAPACITY {
+        return "";
+    }
+
+    let mut source_slice = SourceSlice {
+        data: "",
+        length: 0,
+        source_id: diagnostic_value.source_id,
+        begin: diagnostic_value.start_offset,
+        end: diagnostic_value.end_offset,
+        valid: false,
+    };
+
+    if not vitte_source_slice(
+            &*sources,
+            diagnostic_value.source_id,
+            diagnostic_value.start_offset,
+            diagnostic_value.end_offset,
+            &mut source_slice
+        ) or not source_slice.valid or
+       source_slice.length != length {
+        return "";
+    }
+
+    let bytes: [u8] = source_slice.data.bytes();
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        if bytes[index] < 32 as u8 or
+           bytes[index] == 127 as u8 or
+           bytes[index] == 96 as u8 {
+            return "";
+        }
+        set index += 1;
+    }
+
+    if not help_utf8_valid(source_slice.data) {
+        return "";
+    }
+
+    return source_slice.data;
+}
+
+proc help_primary_label(
+    diagnostic_value: *const Diagnostic
+) -> string {
+    if diagnostic_value == null {
+        return "";
+    }
+    let mut index: usize = 0;
+    while index < diagnostic_value.labels.len() {
+        let label = &diagnostic_value.labels[index];
+        if label.style == DiagnosticLabelStyle.Primary and
+           help_text_present(label.message) {
+            return label.message;
+        }
+        set index += 1;
+    }
+    return "";
+}
+
+proc help_first_cause(
+    diagnostic_value: *const Diagnostic
+) -> string {
+    if diagnostic_value == null {
+        return "";
+    }
+    let mut index: usize = 0;
+    while index < diagnostic_value.causes.len() {
+        if help_text_present(diagnostic_value.causes[index].message) {
+            return diagnostic_value.causes[index].message;
+        }
+        set index += 1;
+    }
+    return "";
+}
+
+proc help_detail(diagnostic_value: *const Diagnostic) -> string {
+    if diagnostic_value == null {
+        return "";
+    }
+    if help_text_present(diagnostic_value.details) {
+        return diagnostic_value.details;
+    }
+    let label = help_primary_label(diagnostic_value);
+    if help_text_present(label) {
+        return label;
+    }
+    return help_first_cause(diagnostic_value);
+}
+
+proc help_trim(text: string) -> string {
+    let mut begin: usize = 0;
+    let mut end: usize = text.length();
+    while begin < end and text[begin].is_space() {
+        set begin += 1;
+    }
+    while end > begin and text[end - 1].is_space() {
+        set end -= 1;
+    }
+    if begin == end {
+        return "";
+    }
+    return text.slice(begin, end);
+}
+
+proc help_prefix_bytes(text: string, maximum: usize) -> string {
+    let bytes: [u8] = text.bytes();
+    if bytes.len() <= maximum {
+        return text;
+    }
+    let mut length = maximum;
+    while length > 0 and bytes[length] >= 128 as u8 and
+          bytes[length] <= 191 as u8 {
+        set length -= 1;
+    }
+    return text.slice(0, length);
+}
+
+proc help_find_bytes(text: string, needle: string) -> usize {
+    let text_bytes: [u8] = text.bytes();
+    let needle_bytes: [u8] = needle.bytes();
+    if needle_bytes.len() == 0 {
+        return 0;
+    }
+    if needle_bytes.len() > text_bytes.len() {
+        return 18446744073709551615 as usize;
+    }
+    let mut start: usize = 0;
+    while start + needle_bytes.len() <= text_bytes.len() {
+        let mut offset: usize = 0;
+        let mut matched: bool = true;
+        while offset < needle_bytes.len() {
+            if text_bytes[start + offset] != needle_bytes[offset] {
+                set matched = false;
+                break;
+            }
+            set offset += 1;
+        }
+        if matched {
+            return start;
+        }
+        set start += 1;
+    }
+    return 18446744073709551615 as usize;
+}
+
+proc help_extract_expected_token(reason: string) -> HelpExpectedTokens {
+    let trimmed = help_trim(reason);
+    let bytes: [u8] = trimmed.bytes();
+    let prefix = "expected ";
+    if bytes.len() < prefix.bytes().len() or
+       trimmed.slice(0, prefix.bytes().len()) != prefix {
+        return HelpExpectedTokens { valid: false, expected: "", found: "" };
+    }
+
+    let suffix_position = help_find_bytes(trimmed, ", found ");
+    let expected_end = if suffix_position ==
+        18446744073709551615 as usize {
+        bytes.len()
+    } else {
+        suffix_position
+    };
+    let expected = help_prefix_bytes(
+        help_trim(trimmed.slice(prefix.bytes().len(), expected_end)),
+        HELP_EXPECTED_TOKEN_LIMIT - 1
+    );
+    if expected == "" {
+        return HelpExpectedTokens { valid: false, expected: "", found: "" };
+    }
+
+    let mut found = "";
+    if suffix_position != 18446744073709551615 as usize {
+        found = help_prefix_bytes(
+            help_trim(trimmed.slice(
+                suffix_position + ", found ".bytes().len(),
+                bytes.len()
+            )),
+            HELP_EXPECTED_TOKEN_LIMIT - 1
+        );
+    }
+
+    return HelpExpectedTokens {
+        valid: true,
+        expected: expected,
+        found: found,
+    };
+}
+
+proc help_type_is_integer(name: string) -> bool {
+    return name == "int" or name == "uint" or
+        name == "i8" or name == "i16" or name == "i32" or
+        name == "i64" or name == "i128" or name == "u8" or
+        name == "u16" or name == "u32" or name == "u64" or
+        name == "u128" or name == "isize" or name == "usize";
+}
+
+proc help_type_is_float(name: string) -> bool {
+    return name == "float" or name == "f32" or name == "f64";
+}
+
+proc help_type_is_numeric(name: string) -> bool {
+    return help_type_is_integer(name) or help_type_is_float(name);
+}
+
+proc help_type_is_string(name: string) -> bool {
+    return name == "string" or name == "str";
+}
+
+proc help_format_type_mismatch(
+    diagnostic_value: *const Diagnostic,
+    source_text: string
+) -> ?string {
+    if diagnostic_value == null or
+       not help_text_present(diagnostic_value.expected_type) or
+       not help_text_present(diagnostic_value.actual_type) {
+        return null;
+    }
+
+    let mut output = "Provide a value of type ";
+    set output += help_quote_fragment(
+        diagnostic_value.expected_type,
+        HELP_TYPE_LIMIT
+    );
+    set output += " instead of ";
+    set output += help_quote_fragment(
+        diagnostic_value.actual_type,
+        HELP_TYPE_LIMIT
+    );
+    if help_text_present(source_text) {
+        set output += " for ";
+        set output += help_quote_fragment(source_text, HELP_SUBJECT_LIMIT);
+    }
+    set output += ". ";
+
+    if help_type_is_string(diagnostic_value.actual_type) and
+       help_type_is_numeric(diagnostic_value.expected_type) {
+        set output += "If the text represents user or file input, parse it as a numeric value and handle invalid input before using the result.";
+    } else if help_type_is_numeric(diagnostic_value.actual_type) and
+              help_type_is_string(diagnostic_value.expected_type) {
+        set output += "Format the numeric value explicitly when textual representation is intended instead of relying on an unrelated cast.";
+    } else if help_type_is_integer(diagnostic_value.actual_type) and
+              help_type_is_integer(diagnostic_value.expected_type) {
+        set output += "Check the value range and signedness before applying an explicit integer conversion.";
+    } else if help_type_is_float(diagnostic_value.actual_type) and
+              help_type_is_integer(diagnostic_value.expected_type) {
+        set output += "An integer conversion can discard a fractional component or exceed the destination range; make that behavior explicit only when it is intended.";
+    } else if help_type_is_integer(diagnostic_value.actual_type) and
+              help_type_is_float(diagnostic_value.expected_type) {
+        set output += "Use an explicit numeric conversion when the destination representation is intentional and its precision is acceptable.";
+    } else if diagnostic_value.expected_type == "bool" {
+        set output += "Produce a boolean expression explicitly, normally with a comparison or another operation whose result type is `bool`.";
+    } else {
+        set output += "Check the declaration establishing the required type and convert explicitly only when the conversion preserves the intended semantics.";
+    }
+    return output;
+}
+
+proc help_format_parser_expectation(reason: string) -> ?string {
+    let tokens = help_extract_expected_token(reason);
+    if not tokens.valid {
+        return null;
+    }
+    let mut output = "Insert or restore ";
+    set output += help_quote_fragment(tokens.expected, HELP_EXPECTED_TOKEN_LIMIT);
+    if help_text_present(tokens.found) {
+        set output += " before ";
+        set output += help_quote_fragment(tokens.found, HELP_EXPECTED_TOKEN_LIMIT);
+    }
+    set output += ". Match the expected element to the surrounding grammar and the nearest corresponding opening construct.";
+    return output;
+}
+
+proc help_format_subject(prefix: string, subject: string, suffix: string) -> ?string {
+    if not help_text_present(subject) {
+        return null;
+    }
+    return prefix + help_quote_fragment(subject, HELP_SUBJECT_LIMIT) + suffix;
+}
+
+proc help_format_boolean_condition(diagnostic_value: *const Diagnostic) -> ?string {
+    if diagnostic_value == null or
+       not help_text_present(diagnostic_value.actual_type) {
+        return null;
+    }
+    return "Convert the condition into an explicit boolean expression instead of using a value of type " +
+        help_quote_fragment(diagnostic_value.actual_type, HELP_TYPE_LIMIT) +
+        ". Choose a comparison or predicate that expresses the intended condition.";
+}
+
+proc help_format_contract(
+    diagnostic_value: *const Diagnostic,
+    policy: string
+) -> ?string {
+    if diagnostic_value == null or
+       diagnostic_value.contract.kind == DiagnosticContractKind.None or
+       not help_text_present(diagnostic_value.contract.expression) {
+        return null;
+    }
+    let mut output = "";
+    if help_text_present(policy) {
+        set output += policy;
+        set output += " ";
+    }
+    set output += "Contract condition: ";
+    set output += help_quote_fragment(
+        diagnostic_value.contract.expression,
+        HELP_CONTRACT_LIMIT
+    );
+    set output += ".";
+    if help_text_present(diagnostic_value.contract.reason) {
+        set output += " Reported reason: ";
+        set output += help_quote_fragment(
+            diagnostic_value.contract.reason,
+            HELP_REASON_LIMIT
+        );
+        set output += ".";
+    }
+    return output;
+}
+
+proc help_registry_entry(
+    diagnostic_value: *const Diagnostic
+) -> *const DiagnosticRegistryEntry {
+    if diagnostic_value == null {
+        return null;
+    }
+    let mut entry: *const DiagnosticRegistryEntry = null;
+    if help_text_present(diagnostic_value.code) {
+        entry = vitte_diagnostic_registry_find_internal(diagnostic_value.code);
+        if entry == null {
+            entry = vitte_diagnostic_registry_find_public(diagnostic_value.code);
+        }
+    }
+    if entry == null and help_text_present(diagnostic_value.short_code) {
+        entry = vitte_diagnostic_registry_find_public(diagnostic_value.short_code);
+        if entry == null {
+            entry = vitte_diagnostic_registry_find_internal(diagnostic_value.short_code);
+        }
+    }
+    return entry;
+}
+
+proc help_public_code(
+    diagnostic_value: *const Diagnostic,
+    entry: *const DiagnosticRegistryEntry
+) -> string {
+    if entry != null and help_text_present(entry.public_code) {
+        return entry.public_code;
+    }
+    if diagnostic_value != null and help_text_present(diagnostic_value.short_code) {
+        return diagnostic_value.short_code;
+    }
+    return "";
+}
+
+proc help_append_semantic_context(
+    output: string,
+    diagnostic_value: *const Diagnostic,
+    include_types: bool
+) -> string {
+    let mut result = output;
+    if diagnostic_value == null {
+        return result;
+    }
+    if help_text_present(diagnostic_value.symbol) {
+        set result += " Concerned symbol: ";
+        set result += help_quote_fragment(diagnostic_value.symbol, HELP_SUBJECT_LIMIT);
+        set result += ".";
+    }
+    if include_types and help_text_present(diagnostic_value.expected_type) {
+        set result += " Required type: ";
+        set result += help_quote_fragment(diagnostic_value.expected_type, HELP_TYPE_LIMIT);
+        set result += ".";
+    }
+    if include_types and help_text_present(diagnostic_value.actual_type) {
+        set result += " Actual type: ";
+        set result += help_quote_fragment(diagnostic_value.actual_type, HELP_TYPE_LIMIT);
+        set result += ".";
+    }
+    return result;
+}
+
+proc help_append_compilation_context(
+    output: string,
+    diagnostic_value: *const Diagnostic
+) -> string {
+    let mut result = output;
+    if diagnostic_value == null {
+        return result;
+    }
+    if help_text_present(diagnostic_value.procedure) {
+        set result += " In procedure ";
+        set result += help_quote_fragment(diagnostic_value.procedure, 256);
+        set result += ".";
+    } else if help_text_present(diagnostic_value.module) {
+        set result += " In module ";
+        set result += help_quote_fragment(diagnostic_value.module, 256);
+        set result += ".";
+    }
+    return result;
+}
+
+proc help_append_reference(output: string, public_code: string) -> string {
+    if not help_text_present(public_code) {
+        return output;
+    }
+    return output + " See `vitte explain " + public_code + "`.";
+}
+
+proc help_format_fallback(
+    diagnostic_value: *const Diagnostic,
+    reason: string
+) -> string {
+    if diagnostic_value == null {
+        return "";
+    }
+    let identifier = if help_text_present(diagnostic_value.short_code) {
+        diagnostic_value.short_code
+    } else {
+        diagnostic_value.code
+    };
+    let phase = origin_name(diagnostic_value.origin);
+    let mut output = "No verified correction is registered for ";
+    if help_text_present(identifier) {
+        set output += help_quote_fragment(identifier, 128);
+    } else {
+        set output += "this unclassified diagnostic";
+    }
+    if help_text_present(phase) {
+        set output += " from compiler phase ";
+        set output += help_quote_fragment(phase, 64);
+    }
+    set output += ".";
+    if help_text_present(diagnostic_value.message) {
+        set output += " Failure: ";
+        set output += help_quote_fragment(diagnostic_value.message, HELP_REASON_LIMIT);
+        set output += ".";
+    }
+    if help_text_present(reason) {
+        set output += " Detail: ";
+        set output += help_quote_fragment(reason, HELP_REASON_LIMIT);
+        set output += ".";
+    }
+    let cause = help_first_cause(diagnostic_value);
+    if help_text_present(cause) and cause != reason {
+        set output += " Investigate the reported cause: ";
+        set output += help_quote_fragment(cause, HELP_REASON_LIMIT);
+        set output += ".";
+    }
+    if diagnostic_value.origin == DiagnosticOrigin.Internal or
+       diagnostic_value.severity == DiagnosticSeverity.Fatal {
+        set output += " Preserve the failing command, compiler version and smallest reproducing input for a compiler report.";
+    }
+    return output;
+}
+
+proc help_format_text(
+    diagnostic_value: *const Diagnostic,
+    sources: *const SourceContext
+) -> string {
+    if diagnostic_value == null {
+        return "";
+    }
+
+    let explicit = help_explicit_annotation(diagnostic_value);
+    if help_text_present(explicit) {
+        return explicit;
+    }
+
+    if diagnostic_value.severity != DiagnosticSeverity.Warning and
+       diagnostic_value.severity != DiagnosticSeverity.Error and
+       diagnostic_value.severity != DiagnosticSeverity.Fatal {
+        return "";
+    }
+
+    let entry = help_registry_entry(diagnostic_value);
+    let public_code = help_public_code(diagnostic_value, entry);
+    let policy = vitte_diagnostic_help_for_code(public_code);
+    let reason = help_detail(diagnostic_value);
+    let source_text = help_source_excerpt(diagnostic_value, sources);
+    let subject = if help_text_present(diagnostic_value.symbol) {
+        diagnostic_value.symbol
+    } else {
+        source_text
+    };
+
+    let mut output = "";
+    let mut specialized: bool = false;
+    let mut include_types: bool = true;
+
+    if public_code == "E0501" or public_code == "E0602" or
+       public_code == "E0605" {
+        let type_help = help_format_type_mismatch(diagnostic_value, source_text);
+        if type_help != null {
+            set output = type_help?;
+            set specialized = true;
+            set include_types = false;
+        }
+    }
+
+    if not specialized and
+       (public_code == "E0201" or public_code == "E0207" or
+        public_code == "E0208") {
+        let mut parser_reason = reason;
+        if not help_text_present(parser_reason) and
+           help_text_present(diagnostic_value.expected) {
+            set parser_reason = "expected " + diagnostic_value.expected;
+            if help_text_present(diagnostic_value.found) {
+                set parser_reason += ", found " + diagnostic_value.found;
+            }
+        }
+        let parser_help = help_format_parser_expectation(parser_reason);
+        if parser_help != null {
+            set output = parser_help?;
+            set specialized = true;
+        }
+    }
+
+    if not specialized and public_code == "E0401" {
+        let name_help = help_format_subject(
+            "Declare or import ",
+            subject,
+            " in this scope, or correct its spelling to match a visible declaration."
+        );
+        if name_help != null {
+            set output = name_help?;
+            set specialized = true;
+        }
+    }
+
+    if not specialized and public_code == "E0510" {
+        let type_help = help_format_subject(
+            "Declare or import the type ",
+            subject,
+            " before using it here; verify the type's spelling, module and visibility."
+        );
+        if type_help != null {
+            set output = type_help?;
+            set specialized = true;
+        }
+    }
+
+    if not specialized and public_code == "E0515" {
+        let bool_help = help_format_boolean_condition(diagnostic_value);
+        if bool_help != null {
+            set output = bool_help?;
+            set specialized = true;
+            set include_types = false;
+        }
+    }
+
+    if not specialized {
+        let contract_help = help_format_contract(diagnostic_value, policy);
+        if contract_help != null {
+            set output = contract_help?;
+            set specialized = true;
+        }
+    }
+
+    if not specialized and help_text_present(policy) {
+        set output = policy;
+        set specialized = true;
+    }
+
+    if not specialized {
+        set output = help_format_fallback(diagnostic_value, reason);
+    } else {
+        if (public_code == "E0005" or public_code == "E0011" or
+            public_code == "E0013") and help_text_present(reason) {
+            set output += " Reported failure: ";
+            set output += help_quote_fragment(reason, HELP_REASON_LIMIT);
+            set output += ".";
+        }
+        if public_code != "E0401" and public_code != "E0510" {
+            set output = help_append_semantic_context(
+                output,
+                diagnostic_value,
+                include_types
+            );
+        }
+    }
+
+    set output = help_append_compilation_context(output, diagnostic_value);
+    set output = help_append_reference(output, public_code);
+    return output;
+}
+
+export proc vitte_diagnostic_help_for_code(code: string) -> string {
+    let index = help_rule_index(code);
+    if index >= HELP_RULE_CODES.len() or index >= HELP_RULE_TEXTS.len() {
+        return "";
+    }
+    return HELP_RULE_TEXTS[index];
+}
+
+export proc vitte_diagnostic_help_has_policy(public_code: string) -> bool {
+    return help_text_present(vitte_diagnostic_help_for_code(public_code));
+}
+
+export proc vitte_diagnostic_has_help(
+    diagnostic_value: *const Diagnostic
+) -> bool {
+    return help_text_present(help_explicit_annotation(diagnostic_value));
+}
+
+export proc vitte_diagnostic_help_available(
+    diagnostic_value: *const Diagnostic
+) -> bool {
+    if diagnostic_value == null {
+        return false;
+    }
+    if vitte_diagnostic_has_help(diagnostic_value) {
+        return true;
+    }
+    return vitte_diagnostic_help_has_policy(diagnostic_value.short_code) or
+        vitte_diagnostic_help_has_policy(diagnostic_value.code);
+}
+
+export proc vitte_diagnostic_format_help(
+    diagnostic_value: *const Diagnostic,
+    sources: *const SourceContext,
+    buffer: *mut u8,
+    capacity: usize
+) -> bool {
+    if buffer == null or capacity == 0 {
+        return false;
+    }
+    set buffer[0 as i64] = 0 as u8;
+    if diagnostic_value == null {
+        return false;
+    }
+    return help_copy_to_buffer(
+        buffer,
+        capacity,
+        help_format_text(diagnostic_value, sources)
+    );
+}
+
+export proc vitte_diagnostic_help_rule_count() -> usize {
+    return HELP_RULE_CODES.len();
+}
+
+export proc vitte_diagnostic_help_rule_code(index: usize) -> string {
+    if index >= HELP_RULE_CODES.len() {
+        return "";
+    }
+    return HELP_RULE_CODES[index];
+}
+
+export proc vitte_diagnostic_help_rule_text(index: usize) -> string {
+    if index >= HELP_RULE_TEXTS.len() {
+        return "";
+    }
+    return HELP_RULE_TEXTS[index];
+}
+
+export proc vitte_diagnostic_help_validate_rules(
+    missing_count: *mut usize,
+    orphan_count: *mut usize,
+    duplicate_count: *mut usize
+) -> bool {
+    let mut missing: usize = 0;
+    let mut orphan: usize = 0;
+    let mut duplicate: usize = 0;
+    let registry_count = diagnostic_registry_count();
+    let mut registry_index: usize = 0;
+
+    while registry_index < registry_count {
+        let registry_entry = diagnostic_registry_at(registry_index);
+        if registry_entry != null and help_text_present(registry_entry.public_code) and
+           registry_entry.default_severity != DiagnosticSeverity.Note and
+           registry_entry.default_severity != DiagnosticSeverity.Help and
+           help_rule_index(registry_entry.public_code) >= HELP_RULE_CODES.len() {
+            set missing += 1;
+        }
+        set registry_index += 1;
+    }
+
+    let mut rule_index: usize = 0;
+    while rule_index < HELP_RULE_CODES.len() {
+        if vitte_diagnostic_registry_find_public(HELP_RULE_CODES[rule_index]) == null {
+            set orphan += 1;
+        }
+        let mut other: usize = rule_index + 1;
+        while other < HELP_RULE_CODES.len() {
+            if HELP_RULE_CODES[rule_index] == HELP_RULE_CODES[other] {
+                set duplicate += 1;
+            }
+            set other += 1;
+        }
+        set rule_index += 1;
+    }
+
+    if missing_count != null {
+        set missing_count[0] = missing;
+    }
+    if orphan_count != null {
+        set orphan_count[0] = orphan;
+    }
+    if duplicate_count != null {
+        set duplicate_count[0] = duplicate;
+    }
+
+    return missing == 0 and orphan == 0 and duplicate == 0;
+}
+
+/// Compatibility name used by the Vitte explanation layer.
+export proc diagnostic_help_for_code(code: string) -> string {
+    return vitte_diagnostic_help_for_code(code);
+}

@@ -1,0 +1,29 @@
+/// Parcours de points de code dans une tranche UTF-8.
+space core::str::chars;
+
+use core::str::utf8::{Utf8DecodeResult, utf8_decode};
+
+export proc str_char_count(bytes: &[u8]) -> ?usize {
+    let mut count: usize = 0;
+    let mut offset: usize = 0;
+    while offset < bytes.len() {
+        let decoded: Utf8DecodeResult = utf8_decode(bytes, offset);
+        if not decoded.success { return null; }
+        set offset = offset + decoded.width;
+        set count = count + 1;
+    }
+    return count;
+}
+
+export proc str_char_at(bytes: &[u8], character_index: usize) -> ?u32 {
+    let mut offset: usize = 0;
+    let mut index: usize = 0;
+    while offset < bytes.len() {
+        let decoded: Utf8DecodeResult = utf8_decode(bytes, offset);
+        if not decoded.success { return null; }
+        if index == character_index { return decoded.codepoint; }
+        set offset = offset + decoded.width;
+        set index = index + 1;
+    }
+    return null;
+}

@@ -1,0 +1,187 @@
+/// Vitte declarations ported from `src/bootstrap/diagnostic/render_terminal.h`.
+space compiler::diagnostic::render_terminal;
+
+use compiler::api::error::{Status};
+use compiler::diagnostic::diagnostic::{Diagnostic, DiagnosticBag, SourceManager};
+
+export const VITTE_DIAGNOSTIC_TERMINAL_DEFAULT_TAB_WIDTH: usize = 4;
+export const VITTE_DIAGNOSTIC_TERMINAL_DEFAULT_CONTEXT_LINES: usize = 1;
+
+export form DiagnosticTerminalOptions {
+    color: bool,
+    show_code: bool,
+    show_phase: bool,
+    show_category: bool,
+    show_source: bool,
+    show_labels: bool,
+    show_related: bool,
+    show_causes: bool,
+    show_notes: bool,
+    show_help: bool,
+    show_suggestions: bool,
+    show_contract: bool,
+    show_context: bool,
+    show_cascade: bool,
+    show_fingerprint: bool,
+    include_suppressed: bool,
+    compact: bool,
+    trailing_newline: bool,
+    tab_width: usize,
+    context_lines: usize,
+    sources: *const SourceManager
+}
+
+export proc vitte_diagnostic_terminal_options_init(options: *mut DiagnosticTerminalOptions) {
+    if options == null { return; }
+    set *options = DiagnosticTerminalOptions {
+        color: true,
+        show_code: true,
+        show_phase: true,
+        show_category: true,
+        show_source: true,
+        show_labels: true,
+        show_related: true,
+        show_causes: true,
+        show_notes: true,
+        show_help: true,
+        show_suggestions: true,
+        show_contract: true,
+        show_context: true,
+        show_cascade: false,
+        show_fingerprint: false,
+        include_suppressed: false,
+        compact: false,
+        trailing_newline: true,
+        tab_width: VITTE_DIAGNOSTIC_TERMINAL_DEFAULT_TAB_WIDTH,
+        context_lines: VITTE_DIAGNOSTIC_TERMINAL_DEFAULT_CONTEXT_LINES,
+        sources: null
+    };
+}
+
+export extern proc vitte_diagnostic_render_terminal_one(
+    stream: *mut u8,
+    diagnostic_value: *const Diagnostic,
+    options: *const DiagnosticTerminalOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_render_terminal(
+    stream: *mut u8,
+    bag: *const DiagnosticBag,
+    options: *const DiagnosticTerminalOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_render_terminal_summary(
+    stream: *mut u8,
+    bag: *const DiagnosticBag,
+    options: *const DiagnosticTerminalOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_write_terminal(
+    stream: *mut u8,
+    bag: *const DiagnosticBag
+) -> Status;
+
+export proc vitte_diagnostic_terminal_renderer_name() -> string {
+    return "terminal";
+}
+
+/// Mirror the null-safe option setters from `render_terminal.h`.
+export proc vitte_diagnostic_terminal_set_sources(
+    options: *mut DiagnosticTerminalOptions,
+    sources: *const SourceManager
+) -> void {
+    if options != null {
+        set (*options).sources = sources;
+    }
+}
+
+export proc vitte_diagnostic_terminal_set_color(
+    options: *mut DiagnosticTerminalOptions,
+    enabled: bool
+) -> void {
+    if options != null {
+        set (*options).color = enabled;
+    }
+}
+
+export proc vitte_diagnostic_terminal_set_compact(
+    options: *mut DiagnosticTerminalOptions,
+    enabled: bool
+) -> void {
+    if options != null {
+        set (*options).compact = enabled;
+    }
+}
+
+export proc vitte_diagnostic_terminal_set_tab_width(
+    options: *mut DiagnosticTerminalOptions,
+    width: usize
+) -> void {
+    if options != null {
+        if width != 0 {
+            set (*options).tab_width = width;
+        } else {
+            set (*options).tab_width = VITTE_DIAGNOSTIC_TERMINAL_DEFAULT_TAB_WIDTH;
+        }
+    }
+}
+
+export proc vitte_diagnostic_terminal_set_context_lines(
+    options: *mut DiagnosticTerminalOptions,
+    lines: usize
+) -> void {
+    if options != null {
+        set (*options).context_lines = lines;
+    }
+}
+
+/// Reset options to the ordinary human-facing defaults.
+export proc vitte_diagnostic_terminal_preset_human(
+    options: *mut DiagnosticTerminalOptions
+) -> void {
+    if options != null {
+        vitte_diagnostic_terminal_options_init(options);
+    }
+}
+
+/// Configure compact build output.
+export proc vitte_diagnostic_terminal_preset_compact(
+    options: *mut DiagnosticTerminalOptions
+) -> void {
+    if options == null {
+        return;
+    }
+
+    vitte_diagnostic_terminal_options_init(options);
+    set (*options).compact = true;
+    set (*options).color = false;
+    set (*options).show_category = false;
+    set (*options).show_cascade = false;
+    set (*options).show_fingerprint = false;
+}
+
+/// Configure diagnostic-engine debug output.
+export proc vitte_diagnostic_terminal_preset_debug(
+    options: *mut DiagnosticTerminalOptions
+) -> void {
+    if options == null {
+        return;
+    }
+
+    vitte_diagnostic_terminal_options_init(options);
+    set (*options).show_cascade = true;
+    set (*options).show_fingerprint = true;
+    set (*options).include_suppressed = true;
+}
+
+/// Configure plain text output without ANSI styling.
+export proc vitte_diagnostic_terminal_preset_plain(
+    options: *mut DiagnosticTerminalOptions
+) -> void {
+    if options == null {
+        return;
+    }
+
+    vitte_diagnostic_terminal_options_init(options);
+    set (*options).color = false;
+}

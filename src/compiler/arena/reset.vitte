@@ -1,0 +1,2146 @@
+/*
+ * Vitte Compiler
+ * src/arena/reset.vit
+ *
+ * Coordinated arena/pool reset engine.
+ *
+ * The coordinator does not own registered targets.
+ * External synchronization is required for concurrent mutation.
+ */
+
+space compiler::arena::reset;
+
+use compiler::arena::arena::{
+    ArenaContext,
+    ArenaContextError,
+    arena_context_allocation_count,
+    arena_context_generation,
+    arena_context_is_valid,
+    arena_context_last_error,
+    arena_context_requested_bytes,
+    arena_context_reserved_bytes,
+    arena_context_reset,
+    arena_context_reset_and_trim,
+    arena_context_trim,
+    arena_context_used_bytes,
+    arena_context_validate,
+};
+use compiler::arena::pool::{
+    Pool,
+    PoolError,
+    PoolStats,
+    pool_capacity,
+    pool_free_count,
+    pool_generation,
+    pool_is_valid,
+    pool_last_error,
+    pool_live_count,
+    pool_page_count,
+    pool_reset,
+    pool_reset_and_trim,
+    pool_reserved_bytes,
+    pool_stats,
+    pool_trim,
+    pool_validate,
+};
+/* ========================================================================= */
+/* Constants                                                                 */
+/* ========================================================================= */
+
+const RESET_MAGIC: u64 = 0x5649545445525354;
+const RESET_DEAD_MAGIC: u64 = 0x4445414452534554;
+
+const RESET_MAX_POOLS: usize = 1024;
+const RESET_MAX_SIZE: usize = usize.MAX;
+const RESET_MAX_GENERATION: u64 = 18446744073709551615;
+
+/* ========================================================================= */
+/* Enumerations                                                              */
+/* ========================================================================= */
+
+pub pick ResetMode {
+    Retain,
+    Trim,
+    Release,
+}
+
+pub pick ResetState {
+    Uninitialized,
+    Ready,
+    Running,
+    Completed,
+    Failed,
+    Destroyed,
+}
+
+pub pick ResetError {
+    None,
+    InvalidReset,
+    InvalidArgument,
+    InvalidState,
+    InvalidArena,
+    InvalidPool,
+    TooManyPools,
+    DuplicatePool,
+    ArenaResetFailed,
+    PoolResetFailed,
+    ValidationFailed,
+    CallbackFailed,
+    Overflow,
+    Corruption,
+}
+
+pub pick ResetCallbackPhase {
+    Before,
+    After,
+}
+
+/* ========================================================================= */
+/* Configuration                                                             */
+/* ========================================================================= */
+
+pub form ResetConfig {
+    mode: ResetMode,
+
+    reset_arena: bool,
+    reset_pools: bool,
+
+    validate_before: bool,
+    validate_after: bool,
+
+    stop_on_pool_error: bool,
+    invoke_callbacks: bool,
+}
+
+pub proc reset_config_default() -> ResetConfig {
+    return ResetConfig {
+        mode: ResetMode.Retain,
+
+        reset_arena: true,
+        reset_pools: true,
+
+        validate_before: false,
+        validate_after: false,
+
+        stop_on_pool_error: true,
+        invoke_callbacks: true,
+    };
+}
+
+pub proc reset_config_validate(config: &ResetConfig) -> bool {
+    match config.mode {
+        case ResetMode.Retain => return true;
+        case ResetMode.Trim => return true;
+        case ResetMode.Release => return true;
+    }
+}
+
+/* ========================================================================= */
+/* Report                                                                    */
+/* ========================================================================= */
+
+pub form ResetReport {
+    success: bool,
+    error: ResetError,
+
+    arena_generation_before: u64,
+    arena_generation_after: u64,
+
+    arena_reserved_before: usize,
+    arena_reserved_after: usize,
+    arena_reserved_released: usize,
+
+    arena_used_before: usize,
+    arena_used_after: usize,
+    arena_used_released: usize,
+
+    arena_requested_before: usize,
+    arena_requested_after: usize,
+    arena_requested_released: usize,
+
+    arena_allocations_before: usize,
+    arena_allocations_after: usize,
+
+    pool_capacity_before: usize,
+    pool_capacity_after: usize,
+    pool_capacity_released: usize,
+
+    pool_live_before: usize,
+    pool_live_after: usize,
+    pool_live_released: usize,
+
+    pool_reserved_before: usize,
+    pool_reserved_after: usize,
+    pool_reserved_released: usize,
+
+    pool_pages_before: usize,
+    pool_pages_after: usize,
+    pool_pages_released: usize,
+}
+
+pub proc reset_report_init() -> ResetReport {
+    return ResetReport {
+        success: false,
+        error: ResetError.None,
+
+        arena_generation_before: 0,
+        arena_generation_after: 0,
+
+        arena_reserved_before: 0,
+        arena_reserved_after: 0,
+        arena_reserved_released: 0,
+
+        arena_used_before: 0,
+        arena_used_after: 0,
+        arena_used_released: 0,
+
+        arena_requested_before: 0,
+        arena_requested_after: 0,
+        arena_requested_released: 0,
+
+        arena_allocations_before: 0,
+        arena_allocations_after: 0,
+
+        pool_capacity_before: 0,
+        pool_capacity_after: 0,
+        pool_capacity_released: 0,
+
+        pool_live_before: 0,
+        pool_live_after: 0,
+        pool_live_released: 0,
+
+        pool_reserved_before: 0,
+        pool_reserved_after: 0,
+        pool_reserved_released: 0,
+
+        pool_pages_before: 0,
+        pool_pages_after: 0,
+        pool_pages_released: 0,
+    };
+}
+
+/* ========================================================================= */
+/* Callback                                                                  */
+/* ========================================================================= */
+
+/*
+ * Callback ABI.
+ *
+ * A callback returns true on success.
+ * The coordinator remains in Running state during callbacks.
+ */
+
+pub type ResetCallback = proc(
+    reset: *mut Reset,
+    phase: ResetCallbackPhase,
+    user_data: *mut u8
+) -> bool;
+
+/* ========================================================================= */
+/* Coordinator                                                               */
+/* ========================================================================= */
+
+pub form Reset {
+    magic: u64,
+    state: ResetState,
+
+    config: ResetConfig,
+
+    arena: *mut ArenaContext,
+
+    pools: [*mut Pool; RESET_MAX_POOLS],
+    pool_count: usize,
+
+    before_callback: ?ResetCallback,
+    after_callback: ?ResetCallback,
+    callback_user_data: *mut u8,
+
+    execution_count: usize,
+    successful_execution_count: usize,
+    failed_execution_count: usize,
+
+    last_error: ResetError,
+    report: ResetReport,
+}
+
+/* ========================================================================= */
+/* Arithmetic                                                                */
+/* ========================================================================= */
+
+proc reset_add_checked(
+    left: usize,
+    right: usize
+) -> ?usize {
+    if left > RESET_MAX_SIZE - right {
+        return null;
+    }
+
+    return left + right;
+}
+
+proc reset_saturating_add(
+    left: usize,
+    right: usize
+) -> usize {
+    let result = reset_add_checked(left, right);
+
+    if result == null {
+        return RESET_MAX_SIZE;
+    }
+
+    return result?;
+}
+
+proc reset_saturating_increment(value: usize) -> usize {
+    if value == RESET_MAX_SIZE {
+        return RESET_MAX_SIZE;
+    }
+
+    return value + 1;
+}
+
+proc reset_nonnegative_difference(
+    before: usize,
+    after: usize
+) -> usize {
+    if before <= after {
+        return 0;
+    }
+
+    return before - after;
+}
+
+proc reset_expected_next_generation(
+    generation: u64
+) -> u64 {
+    if generation == 0  or 
+       generation == RESET_MAX_GENERATION {
+        return 1;
+    }
+
+    return generation + 1;
+}
+
+/* ========================================================================= */
+/* Names                                                                     */
+/* ========================================================================= */
+
+pub proc reset_mode_name(mode: ResetMode) -> str {
+    match mode {
+        case ResetMode.Retain => return "retain";
+        case ResetMode.Trim => return "trim";
+        case ResetMode.Release => return "release";
+    }
+}
+
+pub proc reset_state_name(state: ResetState) -> str {
+    match state {
+        case ResetState.Uninitialized => return "uninitialized";
+        case ResetState.Ready => return "ready";
+        case ResetState.Running => return "running";
+        case ResetState.Completed => return "completed";
+        case ResetState.Failed => return "failed";
+        case ResetState.Destroyed => return "destroyed";
+    }
+}
+
+pub proc reset_error_name(error: ResetError) -> str {
+    match error {
+        case ResetError.None => return "none";
+        case ResetError.InvalidReset => return "invalid-reset";
+        case ResetError.InvalidArgument => return "invalid-argument";
+        case ResetError.InvalidState => return "invalid-state";
+        case ResetError.InvalidArena => return "invalid-arena";
+        case ResetError.InvalidPool => return "invalid-pool";
+        case ResetError.TooManyPools => return "too-many-pools";
+        case ResetError.DuplicatePool => return "duplicate-pool";
+        case ResetError.ArenaResetFailed => return "arena-reset-failed";
+        case ResetError.PoolResetFailed => return "pool-reset-failed";
+        case ResetError.ValidationFailed => return "validation-failed";
+        case ResetError.CallbackFailed => return "callback-failed";
+        case ResetError.Overflow => return "overflow";
+        case ResetError.Corruption => return "corruption";
+    }
+}
+
+/* ========================================================================= */
+/* Validity                                                                  */
+/* ========================================================================= */
+
+proc reset_magic_valid(reset: &Reset) -> bool {
+    return reset.magic == RESET_MAGIC;
+}
+
+proc reset_state_operable(reset: &Reset) -> bool {
+    if not reset_magic_valid(reset) {
+        return false;
+    }
+
+    match reset.state {
+        case ResetState.Ready => return true;
+        case ResetState.Completed => return true;
+        case ResetState.Failed => return true;
+        case ResetState.Running => return false;
+        case ResetState.Uninitialized => return false;
+        case ResetState.Destroyed => return false;
+    }
+}
+
+pub proc reset_is_valid(reset: &Reset) -> bool {
+    return reset_magic_valid(reset);
+}
+
+pub proc reset_is_running(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and 
+           reset.state == ResetState.Running;
+}
+
+pub proc reset_succeeded(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and 
+           reset.state == ResetState.Completed  and 
+           reset.report.success  and 
+           reset.report.error == ResetError.None;
+}
+
+pub proc reset_failed(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and 
+           reset.state == ResetState.Failed;
+}
+
+pub proc reset_state(reset: &Reset) -> ResetState {
+    if not reset_magic_valid(reset) {
+        return ResetState.Uninitialized;
+    }
+
+    return reset.state;
+}
+
+/* ========================================================================= */
+/* Errors                                                                    */
+/* ========================================================================= */
+
+proc reset_set_error(
+    reset: &mut Reset,
+    error: ResetError
+) {
+    if not reset_magic_valid(reset) {
+        return;
+    }
+
+    set reset.last_error = error;
+}
+
+pub proc reset_last_error(reset: &Reset) -> ResetError {
+    if not reset_magic_valid(reset) {
+        return ResetError.InvalidReset;
+    }
+
+    return reset.last_error;
+}
+
+pub proc reset_clear_error(reset: &mut Reset) {
+    if not reset_magic_valid(reset) {
+        return;
+    }
+
+    set reset.last_error = ResetError.None;
+}
+
+/* ========================================================================= */
+/* Initialization                                                            */
+/* ========================================================================= */
+
+pub proc reset_init(
+    arena: *mut ArenaContext,
+    config: ResetConfig
+) -> ?Reset {
+    if not reset_config_validate(&config) {
+        return null;
+    }
+
+    if arena != null {
+        if not arena_context_is_valid(&*arena) {
+            return null;
+        }
+    }
+
+    return Reset {
+        magic: RESET_MAGIC,
+        state: ResetState.Ready,
+
+        config: config,
+
+        arena: arena,
+
+        pool_count: 0,
+
+        before_callback: null,
+        after_callback: null,
+        callback_user_data: null,
+
+        execution_count: 0,
+        successful_execution_count: 0,
+        failed_execution_count: 0,
+
+        last_error: ResetError.None,
+        report: reset_report_init(),
+    };
+}
+
+pub proc reset_init_default(
+    arena: *mut ArenaContext
+) -> ?Reset {
+    return reset_init(
+        arena,
+        reset_config_default()
+    );
+}
+
+/* ========================================================================= */
+/* Destruction                                                               */
+/* ========================================================================= */
+
+pub proc reset_destroy(reset: &mut Reset) {
+    if not reset_magic_valid(reset) {
+        return;
+    }
+
+    set reset.arena = null;
+
+    let mut index: usize = 0;
+
+    while index < RESET_MAX_POOLS {
+        set reset.pools[index] = null;
+        set index = index + 1;
+    }
+
+    set reset.pool_count = 0;
+
+    set reset.before_callback = null;
+    set reset.after_callback = null;
+    set reset.callback_user_data = null;
+
+    set reset.state = ResetState.Destroyed;
+    set reset.last_error = ResetError.InvalidReset;
+    set reset.magic = RESET_DEAD_MAGIC;
+}
+
+/* ========================================================================= */
+/* Arena registration                                                        */
+/* ========================================================================= */
+
+pub proc reset_set_arena(
+    reset: &mut Reset,
+    arena: *mut ArenaContext
+) -> bool {
+    if not reset_magic_valid(reset) {
+        return false;
+    }
+
+    if reset.state == ResetState.Running {
+        reset_set_error(reset, ResetError.InvalidState);
+        return false;
+    }
+
+    if arena != null  and  not arena_context_is_valid(&*arena) {
+        reset_set_error(reset, ResetError.InvalidArena);
+        return false;
+    }
+
+    set reset.arena = arena;
+    reset_clear_error(reset);
+
+    return true;
+}
+
+pub proc reset_arena(
+    reset: &Reset
+) -> *mut ArenaContext {
+    if not reset_magic_valid(reset) {
+        return null;
+    }
+
+    return reset.arena;
+}
+
+/* ========================================================================= */
+/* Pool registration                                                         */
+/* ========================================================================= */
+
+proc reset_pool_registered(
+    reset: &Reset,
+    pool: *mut Pool
+) -> bool {
+    if not reset_magic_valid(reset)  or  pool == null {
+        return false;
+    }
+
+    if reset.pool_count > RESET_MAX_POOLS {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < reset.pool_count {
+        if reset.pools[index] == pool {
+            return true;
+        }
+
+        set index = index + 1;
+    }
+
+    return false;
+}
+
+pub proc reset_add_pool(
+    reset: &mut Reset,
+    pool: *mut Pool
+) -> bool {
+    if not reset_magic_valid(reset) {
+        return false;
+    }
+
+    if reset.state == ResetState.Running {
+        reset_set_error(reset, ResetError.InvalidState);
+        return false;
+    }
+
+    if pool == null  or  not pool_is_valid(&*pool) {
+        reset_set_error(reset, ResetError.InvalidPool);
+        return false;
+    }
+
+    if reset.pool_count > RESET_MAX_POOLS {
+        reset_set_error(reset, ResetError.Corruption);
+        return false;
+    }
+
+    if reset_pool_registered(reset, pool) {
+        reset_set_error(reset, ResetError.DuplicatePool);
+        return false;
+    }
+
+    if reset.pool_count == RESET_MAX_POOLS {
+        reset_set_error(reset, ResetError.TooManyPools);
+        return false;
+    }
+
+    set reset.pools[reset.pool_count] = pool;
+    set reset.pool_count = reset.pool_count + 1;
+
+    reset_clear_error(reset);
+
+    return true;
+}
+
+pub proc reset_remove_pool(
+    reset: &mut Reset,
+    pool: *mut Pool
+) -> bool {
+    if not reset_magic_valid(reset) {
+        return false;
+    }
+
+    if reset.state == ResetState.Running {
+        reset_set_error(reset, ResetError.InvalidState);
+        return false;
+    }
+
+    if pool == null {
+        reset_set_error(reset, ResetError.InvalidArgument);
+        return false;
+    }
+
+    if reset.pool_count > RESET_MAX_POOLS {
+        reset_set_error(reset, ResetError.Corruption);
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < reset.pool_count {
+        if reset.pools[index] == pool {
+            let mut cursor = index;
+
+            while cursor + 1 < reset.pool_count {
+                set reset.pools[cursor] =
+                    reset.pools[cursor + 1];
+
+                set cursor = cursor + 1;
+            }
+
+            set reset.pool_count = reset.pool_count - 1;
+            set reset.pools[reset.pool_count] = null;
+
+            reset_clear_error(reset);
+
+            return true;
+        }
+
+        set index = index + 1;
+    }
+
+    reset_set_error(reset, ResetError.InvalidArgument);
+    return false;
+}
+
+pub proc reset_clear_pools(reset: &mut Reset) {
+    if not reset_magic_valid(reset) {
+        return;
+    }
+
+    if reset.state == ResetState.Running {
+        reset_set_error(reset, ResetError.InvalidState);
+        return;
+    }
+
+    let mut index: usize = 0;
+
+    while index < RESET_MAX_POOLS {
+        set reset.pools[index] = null;
+        set index = index + 1;
+    }
+
+    set reset.pool_count = 0;
+    reset_clear_error(reset);
+}
+
+pub proc reset_pool_count(reset: &Reset) -> usize {
+    if not reset_magic_valid(reset)  or 
+       reset.pool_count > RESET_MAX_POOLS {
+        return 0;
+    }
+
+    return reset.pool_count;
+}
+
+pub proc reset_pool_at(
+    reset: &Reset,
+    index: usize
+) -> *mut Pool {
+    if not reset_magic_valid(reset)  or 
+       reset.pool_count > RESET_MAX_POOLS  or 
+       index >= reset.pool_count {
+        return null;
+    }
+
+    return reset.pools[index];
+}
+
+/* ========================================================================= */
+/* Callbacks                                                                 */
+/* ========================================================================= */
+
+pub proc reset_set_callbacks(
+    reset: &mut Reset,
+    before_callback: ?ResetCallback,
+    after_callback: ?ResetCallback,
+    user_data: *mut u8
+) {
+    if not reset_magic_valid(reset) {
+        return;
+    }
+
+    if reset.state == ResetState.Running {
+        reset_set_error(reset, ResetError.InvalidState);
+        return;
+    }
+
+    set reset.before_callback = before_callback;
+    set reset.after_callback = after_callback;
+    set reset.callback_user_data = user_data;
+
+    reset_clear_error(reset);
+}
+
+/* ========================================================================= */
+/* Arena snapshots                                                           */
+/* ========================================================================= */
+
+proc reset_capture_arena_before(reset: &mut Reset) {
+    if not reset_magic_valid(reset)  or 
+       reset.arena == null {
+        return;
+    }
+
+    if not arena_context_is_valid(&*reset.arena) {
+        return;
+    }
+
+    set reset.report.arena_generation_before =
+        arena_context_generation(&*reset.arena);
+
+    set reset.report.arena_reserved_before =
+        arena_context_reserved_bytes(&*reset.arena);
+
+    set reset.report.arena_used_before =
+        arena_context_used_bytes(&*reset.arena);
+
+    set reset.report.arena_requested_before =
+        arena_context_requested_bytes(&*reset.arena);
+
+    set reset.report.arena_allocations_before =
+        arena_context_allocation_count(&*reset.arena);
+}
+
+proc reset_capture_arena_after(reset: &mut Reset) {
+    if not reset_magic_valid(reset)  or 
+       reset.arena == null {
+        return;
+    }
+
+    if not arena_context_is_valid(&*reset.arena) {
+        return;
+    }
+
+    set reset.report.arena_generation_after =
+        arena_context_generation(&*reset.arena);
+
+    set reset.report.arena_reserved_after =
+        arena_context_reserved_bytes(&*reset.arena);
+
+    set reset.report.arena_used_after =
+        arena_context_used_bytes(&*reset.arena);
+
+    set reset.report.arena_requested_after =
+        arena_context_requested_bytes(&*reset.arena);
+
+    set reset.report.arena_allocations_after =
+        arena_context_allocation_count(&*reset.arena);
+
+    set reset.report.arena_reserved_released =
+        reset_nonnegative_difference(
+            reset.report.arena_reserved_before,
+            reset.report.arena_reserved_after
+        );
+
+    set reset.report.arena_used_released =
+        reset_nonnegative_difference(
+            reset.report.arena_used_before,
+            reset.report.arena_used_after
+        );
+
+    set reset.report.arena_requested_released =
+        reset_nonnegative_difference(
+            reset.report.arena_requested_before,
+            reset.report.arena_requested_after
+        );
+}
+
+/* ========================================================================= */
+/* Pool snapshots                                                            */
+/* ========================================================================= */
+
+proc reset_capture_pools_before(reset: &mut Reset) {
+    if not reset_magic_valid(reset)  or 
+       reset.pool_count > RESET_MAX_POOLS {
+        return;
+    }
+
+    let mut index: usize = 0;
+
+    while index < reset.pool_count {
+        let pool = reset.pools[index];
+
+        if pool != null  and  pool_is_valid(&*pool) {
+            let stats = pool_stats(&*pool);
+
+            set reset.report.pool_capacity_before =
+                reset_saturating_add(
+                    reset.report.pool_capacity_before,
+                    stats.capacity
+                );
+
+            set reset.report.pool_live_before =
+                reset_saturating_add(
+                    reset.report.pool_live_before,
+                    stats.live_count
+                );
+
+            set reset.report.pool_reserved_before =
+                reset_saturating_add(
+                    reset.report.pool_reserved_before,
+                    stats.reserved_bytes
+                );
+
+            set reset.report.pool_pages_before =
+                reset_saturating_add(
+                    reset.report.pool_pages_before,
+                    stats.page_count
+                );
+        }
+
+        set index = index + 1;
+    }
+}
+
+proc reset_capture_pools_after(reset: &mut Reset) {
+    if not reset_magic_valid(reset)  or 
+       reset.pool_count > RESET_MAX_POOLS {
+        return;
+    }
+
+    let mut index: usize = 0;
+
+    while index < reset.pool_count {
+        let pool = reset.pools[index];
+
+        if pool != null  and  pool_is_valid(&*pool) {
+            let stats = pool_stats(&*pool);
+
+            set reset.report.pool_capacity_after =
+                reset_saturating_add(
+                    reset.report.pool_capacity_after,
+                    stats.capacity
+                );
+
+            set reset.report.pool_live_after =
+                reset_saturating_add(
+                    reset.report.pool_live_after,
+                    stats.live_count
+                );
+
+            set reset.report.pool_reserved_after =
+                reset_saturating_add(
+                    reset.report.pool_reserved_after,
+                    stats.reserved_bytes
+                );
+
+            set reset.report.pool_pages_after =
+                reset_saturating_add(
+                    reset.report.pool_pages_after,
+                    stats.page_count
+                );
+        }
+
+        set index = index + 1;
+    }
+
+    set reset.report.pool_capacity_released =
+        reset_nonnegative_difference(
+            reset.report.pool_capacity_before,
+            reset.report.pool_capacity_after
+        );
+
+    set reset.report.pool_live_released =
+        reset_nonnegative_difference(
+            reset.report.pool_live_before,
+            reset.report.pool_live_after
+        );
+
+    set reset.report.pool_reserved_released =
+        reset_nonnegative_difference(
+            reset.report.pool_reserved_before,
+            reset.report.pool_reserved_after
+        );
+
+    set reset.report.pool_pages_released =
+        reset_nonnegative_difference(
+            reset.report.pool_pages_before,
+            reset.report.pool_pages_after
+        );
+}
+
+/* ========================================================================= */
+/* Registration validation                                                   */
+/* ========================================================================= */
+
+proc reset_validate_target_registration(
+    reset: &mut Reset
+) -> bool {
+    if not reset_magic_valid(reset) {
+        return false;
+    }
+
+    if reset.pool_count > RESET_MAX_POOLS {
+        reset_set_error(reset, ResetError.Corruption);
+        return false;
+    }
+
+    let mut left: usize = 0;
+
+    while left < reset.pool_count {
+        if reset.pools[left] == null {
+            reset_set_error(reset, ResetError.InvalidPool);
+            return false;
+        }
+
+        let mut right = left + 1;
+
+        while right < reset.pool_count {
+            if reset.pools[left] == reset.pools[right] {
+                reset_set_error(reset, ResetError.DuplicatePool);
+                return false;
+            }
+
+            set right = right + 1;
+        }
+
+        set left = left + 1;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Pre-validation                                                            */
+/* ========================================================================= */
+
+proc reset_validate_targets(reset: &mut Reset) -> bool {
+    if not reset_validate_target_registration(reset) {
+        return false;
+    }
+
+    if reset.config.reset_arena  and 
+       reset.arena != null {
+        if not arena_context_is_valid(&*reset.arena) {
+            reset_set_error(reset, ResetError.InvalidArena);
+            return false;
+        }
+
+        if reset.config.validate_before  and 
+           not arena_context_validate(&*reset.arena) {
+            reset_set_error(reset, ResetError.ValidationFailed);
+            return false;
+        }
+    }
+
+    if not reset.config.reset_pools {
+        return true;
+    }
+
+    let mut index: usize = 0;
+
+    while index < reset.pool_count {
+        let pool = reset.pools[index];
+
+        if pool == null  or  not pool_is_valid(&*pool) {
+            reset_set_error(reset, ResetError.InvalidPool);
+            return false;
+        }
+
+        if reset.config.validate_before  and 
+           not pool_validate(&*pool) {
+            reset_set_error(reset, ResetError.ValidationFailed);
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Post-validation                                                           */
+/* ========================================================================= */
+
+proc reset_validate_after(reset: &mut Reset) -> bool {
+    if not reset.config.validate_after {
+        return true;
+    }
+
+    if reset.config.reset_arena  and 
+       reset.arena != null {
+        if not arena_context_is_valid(&*reset.arena)  or 
+           not arena_context_validate(&*reset.arena) {
+            reset_set_error(reset, ResetError.ValidationFailed);
+            return false;
+        }
+    }
+
+    if not reset.config.reset_pools {
+        return true;
+    }
+
+    let mut index: usize = 0;
+
+    while index < reset.pool_count {
+        let pool = reset.pools[index];
+
+        if pool == null  or 
+           not pool_is_valid(&*pool)  or 
+           not pool_validate(&*pool) {
+            reset_set_error(reset, ResetError.ValidationFailed);
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Arena execution                                                           */
+/* ========================================================================= */
+
+proc reset_execute_arena(reset: &mut Reset) -> bool {
+    if not reset.config.reset_arena  or 
+       reset.arena == null {
+        return true;
+    }
+
+    let arena = reset.arena;
+
+    if not arena_context_is_valid(&*arena) {
+        reset_set_error(reset, ResetError.InvalidArena);
+        return false;
+    }
+
+    let generation_before =
+        arena_context_generation(&*arena);
+
+    if generation_before == 0 {
+        reset_set_error(reset, ResetError.Corruption);
+        return false;
+    }
+
+    let expected_generation =
+        reset_expected_next_generation(generation_before);
+
+    match reset.config.mode {
+        case ResetMode.Retain => {
+            arena_context_reset(&mut *arena);
+        }
+
+        case ResetMode.Trim => {
+            arena_context_reset(&mut *arena);
+
+            if not arena_context_is_valid(&*arena)  or 
+               arena_context_last_error(&*arena) !=
+                   ArenaContextError.None {
+                reset_set_error(
+                    reset,
+                    ResetError.ArenaResetFailed
+                );
+
+                return false;
+            }
+
+            arena_context_trim(&mut *arena);
+        }
+
+        case ResetMode.Release => {
+            arena_context_reset_and_trim(&mut *arena);
+        }
+    }
+
+    if not arena_context_is_valid(&*arena) {
+        reset_set_error(reset, ResetError.ArenaResetFailed);
+        return false;
+    }
+
+    if arena_context_last_error(&*arena) !=
+       ArenaContextError.None {
+        reset_set_error(reset, ResetError.ArenaResetFailed);
+        return false;
+    }
+
+    if arena_context_generation(&*arena) !=
+       expected_generation {
+        reset_set_error(reset, ResetError.ArenaResetFailed);
+        return false;
+    }
+
+    if arena_context_allocation_count(&*arena) != 0  or 
+       arena_context_requested_bytes(&*arena) != 0  or 
+       arena_context_used_bytes(&*arena) != 0 {
+        reset_set_error(reset, ResetError.ArenaResetFailed);
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Pool execution                                                            */
+/* ========================================================================= */
+
+proc reset_execute_one_pool(
+    reset: &mut Reset,
+    pool: *mut Pool
+) -> bool {
+    if pool == null  or  not pool_is_valid(&*pool) {
+        reset_set_error(reset, ResetError.InvalidPool);
+        return false;
+    }
+
+    let generation_before = pool_generation(&*pool);
+
+    if generation_before == 0 {
+        reset_set_error(reset, ResetError.Corruption);
+        return false;
+    }
+
+    let expected_generation =
+        reset_expected_next_generation(generation_before);
+
+    match reset.config.mode {
+        case ResetMode.Retain => {
+            pool_reset(&mut *pool);
+        }
+
+        case ResetMode.Trim => {
+            pool_reset(&mut *pool);
+
+            if not pool_is_valid(&*pool)  or 
+               pool_last_error(&*pool) != PoolError.None {
+                reset_set_error(
+                    reset,
+                    ResetError.PoolResetFailed
+                );
+
+                return false;
+            }
+
+            pool_trim(&mut *pool);
+        }
+
+        case ResetMode.Release => {
+            pool_reset_and_trim(&mut *pool);
+        }
+    }
+
+    if not pool_is_valid(&*pool)  or 
+       pool_last_error(&*pool) != PoolError.None {
+        reset_set_error(reset, ResetError.PoolResetFailed);
+        return false;
+    }
+
+    if pool_generation(&*pool) != expected_generation {
+        reset_set_error(reset, ResetError.PoolResetFailed);
+        return false;
+    }
+
+    if pool_live_count(&*pool) != 0 {
+        reset_set_error(reset, ResetError.PoolResetFailed);
+        return false;
+    }
+
+    if pool_free_count(&*pool) != pool_capacity(&*pool) {
+        reset_set_error(reset, ResetError.PoolResetFailed);
+        return false;
+    }
+
+    if reset.config.mode == ResetMode.Release {
+        if pool_capacity(&*pool) != 0  or 
+           pool_page_count(&*pool) != 0  or 
+           pool_reserved_bytes(&*pool) != 0 {
+            reset_set_error(
+                reset,
+                ResetError.PoolResetFailed
+            );
+
+            return false;
+        }
+    }
+
+    return true;
+}
+
+proc reset_execute_pools(reset: &mut Reset) -> bool {
+    if not reset.config.reset_pools {
+        return true;
+    }
+
+    let mut success = true;
+    let mut first_error = ResetError.None;
+
+    let mut index: usize = 0;
+
+    while index < reset.pool_count {
+        if not reset_execute_one_pool(
+            reset,
+            reset.pools[index]
+        ) {
+            set success = false;
+
+            if first_error == ResetError.None {
+                set first_error = reset.last_error;
+            }
+
+            if reset.config.stop_on_pool_error {
+                return false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    if not success {
+        if first_error != ResetError.None {
+            set reset.last_error = first_error;
+        } else {
+            set reset.last_error = ResetError.PoolResetFailed;
+        }
+    }
+
+    return success;
+}
+
+/* ========================================================================= */
+/* Failure handling                                                          */
+/* ========================================================================= */
+
+proc reset_mark_failed(reset: &mut Reset) {
+    if not reset_magic_valid(reset) {
+        return;
+    }
+
+    set reset.state = ResetState.Failed;
+    set reset.report.success = false;
+
+    if reset.last_error == ResetError.None {
+        set reset.last_error = ResetError.Corruption;
+    }
+
+    set reset.report.error = reset.last_error;
+
+    set reset.failed_execution_count =
+        reset_saturating_increment(
+            reset.failed_execution_count
+        );
+}
+
+proc reset_capture_after(reset: &mut Reset) {
+    reset_capture_arena_after(reset);
+    reset_capture_pools_after(reset);
+}
+
+/* ========================================================================= */
+/* Main execution                                                            */
+/* ========================================================================= */
+
+pub proc reset_execute(reset: &mut Reset) -> bool {
+    if not reset_magic_valid(reset) {
+        return false;
+    }
+
+    if not reset_state_operable(reset) {
+        reset_set_error(reset, ResetError.InvalidState);
+        return false;
+    }
+
+    if not reset_config_validate(&reset.config) {
+        reset_set_error(reset, ResetError.InvalidArgument);
+        set reset.state = ResetState.Failed;
+        return false;
+    }
+
+    set reset.report = reset_report_init();
+    set reset.last_error = ResetError.None;
+    set reset.state = ResetState.Running;
+
+    set reset.execution_count =
+        reset_saturating_increment(reset.execution_count);
+
+    /*
+     * Validate registration and selected targets before callbacks.
+     */
+
+    if not reset_validate_targets(reset) {
+        reset_mark_failed(reset);
+        return false;
+    }
+
+    /*
+     * Capture baseline before user callbacks.
+     */
+
+    reset_capture_arena_before(reset);
+    reset_capture_pools_before(reset);
+
+    /*
+     * Before callback.
+     */
+
+    if reset.config.invoke_callbacks  and 
+       reset.before_callback != null {
+        let callback = reset.before_callback?;
+
+        if not callback(
+            reset,
+            ResetCallbackPhase.Before,
+            reset.callback_user_data
+        ) {
+            reset_set_error(reset, ResetError.CallbackFailed);
+
+            reset_capture_after(reset);
+            reset_mark_failed(reset);
+
+            return false;
+        }
+    }
+
+    /*
+     * Pools must be reset before arena storage.
+     */
+
+    let pools_success = reset_execute_pools(reset);
+
+    if not pools_success  and 
+       reset.config.stop_on_pool_error {
+        reset_capture_after(reset);
+        reset_mark_failed(reset);
+
+        return false;
+    }
+
+    /*
+     * If stop_on_pool_error is false, continue with arena reset.
+     * Preserve the first pool error if arena execution succeeds.
+     */
+
+    let saved_pool_error = reset.last_error;
+
+    if not reset_execute_arena(reset) {
+        reset_capture_after(reset);
+        reset_mark_failed(reset);
+
+        return false;
+    }
+
+    if not pools_success {
+        set reset.last_error = saved_pool_error;
+
+        reset_capture_after(reset);
+        reset_mark_failed(reset);
+
+        return false;
+    }
+
+    /*
+     * Optional post-validation.
+     */
+
+    if not reset_validate_after(reset) {
+        reset_capture_after(reset);
+        reset_mark_failed(reset);
+
+        return false;
+    }
+
+    /*
+     * Capture successful reset state.
+     */
+
+    reset_capture_after(reset);
+
+    /*
+     * After callback sees the completed report,
+     * but success remains false until callback completion.
+     */
+
+    if reset.config.invoke_callbacks  and 
+       reset.after_callback != null {
+        let callback = reset.after_callback?;
+
+        if not callback(
+            reset,
+            ResetCallbackPhase.After,
+            reset.callback_user_data
+        ) {
+            reset_set_error(reset, ResetError.CallbackFailed);
+            reset_mark_failed(reset);
+
+            return false;
+        }
+    }
+
+    set reset.report.success = true;
+    set reset.report.error = ResetError.None;
+
+    set reset.state = ResetState.Completed;
+    set reset.last_error = ResetError.None;
+
+    set reset.successful_execution_count =
+        reset_saturating_increment(
+            reset.successful_execution_count
+        );
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Direct helpers                                                            */
+/* ========================================================================= */
+
+pub proc reset_arena_only(
+    arena: *mut ArenaContext,
+    mode: ResetMode
+) -> bool {
+    if arena == null  or  not arena_context_is_valid(&*arena) {
+        return false;
+    }
+
+    let mut config = reset_config_default();
+
+    set config.mode = mode;
+    set config.reset_arena = true;
+    set config.reset_pools = false;
+
+    if not reset_config_validate(&config) {
+        return false;
+    }
+
+    let coordinator = reset_init(arena, config);
+
+    if coordinator == null {
+        return false;
+    }
+
+    let mut reset = coordinator?;
+
+    let result = reset_execute(&mut reset);
+
+    reset_destroy(&mut reset);
+
+    return result;
+}
+
+pub proc reset_pool_only(
+    pool: *mut Pool,
+    mode: ResetMode
+) -> bool {
+    if pool == null  or  not pool_is_valid(&*pool) {
+        return false;
+    }
+
+    let mut config = reset_config_default();
+
+    set config.mode = mode;
+    set config.reset_arena = false;
+    set config.reset_pools = true;
+
+    if not reset_config_validate(&config) {
+        return false;
+    }
+
+    let coordinator = reset_init(null, config);
+
+    if coordinator == null {
+        return false;
+    }
+
+    let mut reset = coordinator?;
+
+    if not reset_add_pool(&mut reset, pool) {
+        reset_destroy(&mut reset);
+        return false;
+    }
+
+    let result = reset_execute(&mut reset);
+
+    reset_destroy(&mut reset);
+
+    return result;
+}
+
+/* ========================================================================= */
+/* Configuration                                                             */
+/* ========================================================================= */
+
+pub proc reset_set_mode(
+    reset: &mut Reset,
+    mode: ResetMode
+) -> bool {
+    if not reset_magic_valid(reset) {
+        return false;
+    }
+
+    if reset.state == ResetState.Running {
+        reset_set_error(reset, ResetError.InvalidState);
+        return false;
+    }
+
+    let mut candidate = reset.config;
+
+    set candidate.mode = mode;
+
+    if not reset_config_validate(&candidate) {
+        reset_set_error(reset, ResetError.InvalidArgument);
+        return false;
+    }
+
+    set reset.config = candidate;
+
+    reset_clear_error(reset);
+
+    return true;
+}
+
+pub proc reset_mode(reset: &Reset) -> ResetMode {
+    if not reset_magic_valid(reset) {
+        return ResetMode.Retain;
+    }
+
+    return reset.config.mode;
+}
+
+/* ========================================================================= */
+/* Report access                                                             */
+/* ========================================================================= */
+
+pub proc reset_report(reset: &Reset) -> ?&ResetReport {
+    if not reset_magic_valid(reset) {
+        return null;
+    }
+
+    return &reset.report;
+}
+
+/* ========================================================================= */
+/* Execution counters                                                        */
+/* ========================================================================= */
+
+pub proc reset_execution_count(reset: &Reset) -> usize {
+    if not reset_magic_valid(reset) {
+        return 0;
+    }
+
+    return reset.execution_count;
+}
+
+pub proc reset_successful_execution_count(
+    reset: &Reset
+) -> usize {
+    if not reset_magic_valid(reset) {
+        return 0;
+    }
+
+    return reset.successful_execution_count;
+}
+
+pub proc reset_failed_execution_count(
+    reset: &Reset
+) -> usize {
+    if not reset_magic_valid(reset) {
+        return 0;
+    }
+
+    return reset.failed_execution_count;
+}
+
+/* ========================================================================= */
+/* Deep validation                                                          */
+/* ========================================================================= */
+
+pub proc reset_validate(reset: &Reset) -> bool {
+    if not reset_magic_valid(reset) {
+        return false;
+    }
+
+    if not reset_config_validate(&reset.config) {
+        return false;
+    }
+
+    if reset.pool_count > RESET_MAX_POOLS {
+        return false;
+    }
+
+    match reset.state {
+        case ResetState.Ready => {}
+        case ResetState.Running => {}
+        case ResetState.Completed => {}
+        case ResetState.Failed => {}
+
+        case ResetState.Uninitialized => {
+            return false;
+        }
+
+        case ResetState.Destroyed => {
+            return false;
+        }
+    }
+
+    /*
+     * Arena validity.
+     */
+
+    if reset.arena != null  and 
+       not arena_context_is_valid(&*reset.arena) {
+        return false;
+    }
+
+    /*
+     * Registered pools must be valid and unique.
+     */
+
+    let mut left: usize = 0;
+
+    while left < reset.pool_count {
+        if reset.pools[left] == null  or 
+           not pool_is_valid(&*reset.pools[left]) {
+            return false;
+        }
+
+        let mut right = left + 1;
+
+        while right < reset.pool_count {
+            if reset.pools[left] == reset.pools[right] {
+                return false;
+            }
+
+            set right = right + 1;
+        }
+
+        set left = left + 1;
+    }
+
+    /*
+     * Unused registration slots must be null.
+     */
+
+    set left = reset.pool_count;
+
+    while left < RESET_MAX_POOLS {
+        if reset.pools[left] != null {
+            return false;
+        }
+
+        set left = left + 1;
+    }
+
+    /*
+     * Lifetime counters.
+     */
+
+    if reset.successful_execution_count >
+       reset.execution_count {
+        return false;
+    }
+
+    if reset.failed_execution_count >
+       reset.execution_count {
+        return false;
+    }
+
+    if reset.execution_count != RESET_MAX_SIZE  and 
+       reset.successful_execution_count != RESET_MAX_SIZE  and 
+       reset.failed_execution_count != RESET_MAX_SIZE {
+        let resolved =
+            reset_add_checked(
+                reset.successful_execution_count,
+                reset.failed_execution_count
+            );
+
+        if resolved == null {
+            return false;
+        }
+
+        if reset.state == ResetState.Running {
+            if reset.execution_count == 0 {
+                return false;
+            }
+
+            if resolved? != reset.execution_count - 1 {
+                return false;
+            }
+        } else {
+            if resolved? != reset.execution_count {
+                return false;
+            }
+        }
+    }
+
+    /*
+     * State/report consistency.
+     */
+
+    if reset.state == ResetState.Completed {
+        if not reset.report.success  or 
+           reset.report.error != ResetError.None  or 
+           reset.last_error != ResetError.None {
+            return false;
+        }
+    }
+
+    if reset.state == ResetState.Failed {
+        if reset.report.success  or 
+           reset.last_error == ResetError.None {
+            return false;
+        }
+    }
+
+    if reset.state == ResetState.Ready  and 
+       reset.report.success {
+        return false;
+    }
+
+    /*
+     * Released-byte arithmetic.
+     */
+
+    if reset.state == ResetState.Completed  or 
+       reset.state == ResetState.Failed {
+        if reset.report.arena_reserved_released !=
+           reset_nonnegative_difference(
+               reset.report.arena_reserved_before,
+               reset.report.arena_reserved_after
+           ) {
+            return false;
+        }
+
+        if reset.report.arena_used_released !=
+           reset_nonnegative_difference(
+               reset.report.arena_used_before,
+               reset.report.arena_used_after
+           ) {
+            return false;
+        }
+
+        if reset.report.arena_requested_released !=
+           reset_nonnegative_difference(
+               reset.report.arena_requested_before,
+               reset.report.arena_requested_after
+           ) {
+            return false;
+        }
+
+        if reset.report.pool_capacity_released !=
+           reset_nonnegative_difference(
+               reset.report.pool_capacity_before,
+               reset.report.pool_capacity_after
+           ) {
+            return false;
+        }
+
+        if reset.report.pool_live_released !=
+           reset_nonnegative_difference(
+               reset.report.pool_live_before,
+               reset.report.pool_live_after
+           ) {
+            return false;
+        }
+
+        if reset.report.pool_reserved_released !=
+           reset_nonnegative_difference(
+               reset.report.pool_reserved_before,
+               reset.report.pool_reserved_after
+           ) {
+            return false;
+        }
+
+        if reset.report.pool_pages_released !=
+           reset_nonnegative_difference(
+               reset.report.pool_pages_before,
+               reset.report.pool_pages_after
+           ) {
+            return false;
+        }
+    }
+
+    /*
+     * Successful reset target invariants.
+     */
+
+    if reset.state == ResetState.Completed  and 
+       reset.report.success {
+        if reset.config.reset_arena  and 
+           reset.arena != null {
+            if not arena_context_is_valid(&*reset.arena) {
+                return false;
+            }
+
+            if arena_context_allocation_count(&*reset.arena) != 0  or 
+               arena_context_requested_bytes(&*reset.arena) != 0  or 
+               arena_context_used_bytes(&*reset.arena) != 0 {
+                return false;
+            }
+
+            if reset.report.arena_generation_before != 0 {
+                let expected =
+                    reset_expected_next_generation(
+                        reset.report.arena_generation_before
+                    );
+
+                if reset.report.arena_generation_after != expected {
+                    return false;
+                }
+            }
+        }
+
+        if reset.config.reset_pools {
+            set left = 0;
+
+            while left < reset.pool_count {
+                let pool = reset.pools[left];
+
+                if pool == null  or  not pool_is_valid(&*pool) {
+                    return false;
+                }
+
+                if pool_live_count(&*pool) != 0 {
+                    return false;
+                }
+
+                if pool_free_count(&*pool) !=
+                   pool_capacity(&*pool) {
+                    return false;
+                }
+
+                if reset.config.mode == ResetMode.Release {
+                    if pool_page_count(&*pool) != 0  or 
+                       pool_capacity(&*pool) != 0  or 
+                       pool_reserved_bytes(&*pool) != 0 {
+                        return false;
+                    }
+                }
+
+                set left = left + 1;
+            }
+        }
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Convenience predicates and accessors                                      */
+/* ========================================================================= */
+
+pub proc reset_has_error(reset: &Reset) -> bool {
+    return reset_last_error(reset) != ResetError.None;
+}
+
+pub proc reset_has_arena(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and reset.arena != null;
+}
+
+pub proc reset_has_pools(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and
+           reset.pool_count != 0  and
+           reset.pool_count <= RESET_MAX_POOLS;
+}
+
+pub proc reset_is_ready(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and
+           reset.state == ResetState.Ready;
+}
+
+pub proc reset_completed(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and
+           reset.state == ResetState.Completed;
+}
+
+pub proc reset_uses_retain(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and
+           reset.config.mode == ResetMode.Retain;
+}
+
+pub proc reset_uses_trim(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and
+           reset.config.mode == ResetMode.Trim;
+}
+
+pub proc reset_uses_release(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and
+           reset.config.mode == ResetMode.Release;
+}
+
+pub proc reset_targets_arena(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and
+           reset.config.reset_arena  and
+           reset.arena != null;
+}
+
+pub proc reset_targets_pools(reset: &Reset) -> bool {
+    return reset_magic_valid(reset)  and
+           reset.config.reset_pools  and
+           reset.pool_count != 0  and
+           reset.pool_count <= RESET_MAX_POOLS;
+}
+
+pub proc reset_has_targets(reset: &Reset) -> bool {
+    return reset_targets_arena(reset)  or
+           reset_targets_pools(reset);
+}
+
+pub proc reset_arena_const(reset: &Reset) -> *const ArenaContext {
+    if not reset_magic_valid(reset) {
+        return null;
+    }
+
+    return reset.arena as *const ArenaContext;
+}
+
+pub proc reset_pool_at_const(
+    reset: &Reset,
+    index: usize
+) -> *const Pool {
+    if not reset_magic_valid(reset)  or
+       reset.pool_count > RESET_MAX_POOLS  or
+       index >= reset.pool_count {
+        return null;
+    }
+
+    return reset.pools[index] as *const Pool;
+}
+
+/* ========================================================================= */
+/* Report arithmetic and aggregation                                         */
+/* ========================================================================= */
+
+pub proc reset_report_saturating_add(left: usize, right: usize) -> usize {
+    return reset_saturating_add(left, right);
+}
+
+pub proc reset_report_nonnegative_difference(
+    before: usize,
+    after: usize
+) -> usize {
+    return reset_nonnegative_difference(before, after);
+}
+
+pub proc reset_total_reserved_before(report: &ResetReport) -> usize {
+    return reset_saturating_add(
+        report.arena_reserved_before,
+        report.pool_reserved_before
+    );
+}
+
+pub proc reset_total_reserved_after(report: &ResetReport) -> usize {
+    return reset_saturating_add(
+        report.arena_reserved_after,
+        report.pool_reserved_after
+    );
+}
+
+pub proc reset_total_reserved_released(report: &ResetReport) -> usize {
+    return reset_saturating_add(
+        report.arena_reserved_released,
+        report.pool_reserved_released
+    );
+}
+
+pub proc reset_total_used_before(report: &ResetReport) -> usize {
+    return report.arena_used_before;
+}
+
+pub proc reset_total_used_after(report: &ResetReport) -> usize {
+    return report.arena_used_after;
+}
+
+pub proc reset_total_used_released(report: &ResetReport) -> usize {
+    return report.arena_used_released;
+}
+
+pub proc reset_total_live_objects_before(report: &ResetReport) -> usize {
+    return report.pool_live_before;
+}
+
+pub proc reset_total_live_objects_after(report: &ResetReport) -> usize {
+    return report.pool_live_after;
+}
+
+pub proc reset_total_live_objects_released(report: &ResetReport) -> usize {
+    return report.pool_live_released;
+}
+
+pub proc reset_released_memory(report: &ResetReport) -> bool {
+    return reset_total_reserved_released(report) != 0;
+}
+
+pub proc reset_released_arena_memory(report: &ResetReport) -> bool {
+    return report.arena_reserved_released != 0;
+}
+
+pub proc reset_released_pool_memory(report: &ResetReport) -> bool {
+    return report.pool_reserved_released != 0;
+}
+
+pub proc reset_released_pool_pages(report: &ResetReport) -> bool {
+    return report.pool_pages_released != 0;
+}
+
+pub proc reset_report_arena_released_consistent(
+    report: &ResetReport
+) -> bool {
+    return report.arena_reserved_released == reset_nonnegative_difference(
+               report.arena_reserved_before,
+               report.arena_reserved_after
+           )  and
+           report.arena_used_released == reset_nonnegative_difference(
+               report.arena_used_before,
+               report.arena_used_after
+           )  and
+           report.arena_requested_released == reset_nonnegative_difference(
+               report.arena_requested_before,
+               report.arena_requested_after
+           );
+}
+
+pub proc reset_report_pool_released_consistent(
+    report: &ResetReport
+) -> bool {
+    return report.pool_capacity_released == reset_nonnegative_difference(
+               report.pool_capacity_before,
+               report.pool_capacity_after
+           )  and
+           report.pool_live_released == reset_nonnegative_difference(
+               report.pool_live_before,
+               report.pool_live_after
+           )  and
+           report.pool_reserved_released == reset_nonnegative_difference(
+               report.pool_reserved_before,
+               report.pool_reserved_after
+           )  and
+           report.pool_pages_released == reset_nonnegative_difference(
+               report.pool_pages_before,
+               report.pool_pages_after
+           );
+}
+
+pub proc reset_report_released_consistent(report: &ResetReport) -> bool {
+    return reset_report_arena_released_consistent(report)  and
+           reset_report_pool_released_consistent(report);
+}
+
+pub proc reset_next_generation(generation: u64) -> u64 {
+    return reset_expected_next_generation(generation);
+}
+
+pub proc reset_report_arena_generation_advanced(
+    report: &ResetReport
+) -> bool {
+    if report.arena_generation_before == 0  or
+       report.arena_generation_after == 0 {
+        return false;
+    }
+
+    return report.arena_generation_after ==
+           reset_expected_next_generation(report.arena_generation_before);
+}
+
+/* ========================================================================= */
+/* Execution conveniences                                                    */
+/* ========================================================================= */
+
+pub proc reset_execute_retain(reset: &mut Reset) -> bool {
+    if not reset_set_mode(reset, ResetMode.Retain) {
+        return false;
+    }
+
+    return reset_execute(reset);
+}
+
+pub proc reset_execute_trim(reset: &mut Reset) -> bool {
+    if not reset_set_mode(reset, ResetMode.Trim) {
+        return false;
+    }
+
+    return reset_execute(reset);
+}
+
+pub proc reset_execute_release(reset: &mut Reset) -> bool {
+    if not reset_set_mode(reset, ResetMode.Release) {
+        return false;
+    }
+
+    return reset_execute(reset);
+}
+
+/* ========================================================================= */
+/* End                                                                       */
+/* ========================================================================= */

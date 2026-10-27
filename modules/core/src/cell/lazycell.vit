@@ -1,0 +1,242 @@
+space core::cell::lazycell
+
+/// États internes d'une cellule à initialisation différée.
+pick LazyCellState {
+    Uninitialized,
+    Initializing,
+    Initialized,
+}
+
+/// Cellule générique à initialisation différée.
+///
+/// L'initialisation est déclenchée lors du premier accès.
+/// Cette version nécessite un accès mutable à la cellule.
+form LazyCell<T> {
+    state: LazyCellState,
+    value: ?T,
+    initializer: proc() -> T,
+}
+
+/// Construit une cellule non initialisée.
+proc lazycell_new<T>(
+    initializer: proc() -> T
+) -> LazyCell[T] {
+    return LazyCell[T] {
+        state: LazyCellState.Uninitialized,
+        value: null,
+        initializer: initializer,
+    };
+}
+
+/// Vérifie si la cellule est initialisée.
+proc lazycell_is_initialized<T>(
+    cell: &LazyCell[T]
+) -> bool {
+    return cell.state == LazyCellState.Initialized;
+}
+
+/// Vérifie si une initialisation est en cours.
+proc lazycell_is_initializing<T>(
+    cell: &LazyCell[T]
+) -> bool {
+    return cell.state == LazyCellState.Initializing;
+}
+
+/// Vérifie si la cellule n'a jamais été initialisée.
+proc lazycell_is_uninitialized<T>(
+    cell: &LazyCell[T]
+) -> bool {
+    return cell.state == LazyCellState.Uninitialized;
+}
+
+/// Initialise la cellule si nécessaire.
+///
+/// Retourne false en cas d'initialisation récursive.
+proc lazycell_force<T>(
+    cell: &mut LazyCell[T]
+) -> bool {
+    if cell.state == LazyCellState.Initialized {
+        return true;
+    }
+
+    if cell.state == LazyCellState.Initializing {
+        return false;
+    }
+
+    set cell.state = LazyCellState.Initializing;
+
+    let value: T = cell.initializer();
+
+    set cell.value = value;
+    set cell.state = LazyCellState.Initialized;
+
+    return true;
+}
+
+/// Retourne une référence vers la valeur initialisée.
+///
+/// L'appelant doit vérifier que l'initialisation
+/// s'est terminée correctement.
+proc lazycell_get<T>(
+    cell: &mut LazyCell[T]
+) -> ?&T {
+    if not lazycell_force(cell) {
+        return null;
+    }
+
+    return &cell.value;
+}
+
+/// Retourne une référence mutable vers la valeur.
+proc lazycell_get_mut<T>(
+    cell: &mut LazyCell[T]
+) -> ?&mut T {
+    if not lazycell_force(cell) {
+        return null;
+    }
+
+    return &mut cell.value;
+}
+
+/// Retourne une référence sans déclencher l'initialisation.
+proc lazycell_try_get<T>(
+    cell: &LazyCell[T]
+) -> ?&T {
+    if cell.state != LazyCellState.Initialized {
+        return null;
+    }
+
+    return &cell.value;
+}
+
+/// Remplace directement la valeur.
+///
+/// Après cette opération, la cellule est initialisée.
+proc lazycell_set<T>(
+    cell: &mut LazyCell[T],
+    value: T
+) {
+    set cell.value = value;
+    set cell.state = LazyCellState.Initialized;
+}
+
+/// Initialise la cellule avec une valeur explicite
+/// uniquement si elle est encore non initialisée.
+proc lazycell_set_if_uninitialized<T>(
+    cell: &mut LazyCell[T],
+    value: T
+) -> bool {
+    if cell.state != LazyCellState.Uninitialized {
+        return false;
+    }
+
+    set cell.value = value;
+    set cell.state = LazyCellState.Initialized;
+
+    return true;
+}
+
+/// Réinitialise la cellule.
+///
+/// Le prochain accès déclenchera une nouvelle initialisation.
+proc lazycell_reset<T>(
+    cell: &mut LazyCell[T]
+) -> bool {
+    if cell.state == LazyCellState.Initializing {
+        return false;
+    }
+
+    set cell.value = null;
+    set cell.state = LazyCellState.Uninitialized;
+
+    return true;
+}
+
+/// Vérifie si une cellule peut être initialisée.
+proc lazycell_can_initialize<T>(
+    cell: &LazyCell[T]
+) -> bool {
+    return cell.state == LazyCellState.Uninitialized;
+}
+
+/// Exécute l'initialisation uniquement si nécessaire.
+proc lazycell_initialize_if_needed<T>(
+    cell: &mut LazyCell[T]
+) -> bool {
+    if cell.state == LazyCellState.Uninitialized {
+        return lazycell_force(cell);
+    } elif cell.state == LazyCellState.Initialized {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+/// Retourne l'état actuel de la cellule.
+proc lazycell_state<T>(
+    cell: &LazyCell[T]
+) -> LazyCellState {
+    return cell.state;
+}
+
+/// Vérifie si deux cellules sont initialisées.
+proc lazycell_both_initialized<T, U>(
+    first: &LazyCell[T],
+    second: &LazyCell[U]
+) -> bool {
+    return lazycell_is_initialized(first)
+        && lazycell_is_initialized(second);
+}
+
+/// Vérifie si au moins une cellule est initialisée.
+proc lazycell_any_initialized<T, U>(
+    first: &LazyCell[T],
+    second: &LazyCell[U]
+) -> bool {
+    return lazycell_is_initialized(first)
+        || lazycell_is_initialized(second);
+}
+
+/// Applique une transformation après initialisation.
+proc lazycell_update<T>(
+    cell: &mut LazyCell[T],
+    transform: proc(&T) -> T
+) -> bool {
+    if not lazycell_force(cell) {
+        return false;
+    }
+
+    let updated: T = transform(&cell.value);
+
+    set cell.value = updated;
+
+    return true;
+}
+
+/// Exécute une fonction sur la valeur initialisée.
+proc lazycell_with<T>(
+    cell: &mut LazyCell[T],
+    callback: proc(&T)
+) -> bool {
+    if not lazycell_force(cell) {
+        return false;
+    }
+
+    callback(&cell.value);
+
+    return true;
+}
+
+/// Exécute une fonction sur la valeur mutable.
+proc lazycell_with_mut<T>(
+    cell: &mut LazyCell[T],
+    callback: proc(&mut T)
+) -> bool {
+    if not lazycell_force(cell) {
+        return false;
+    }
+
+    callback(&mut cell.value);
+
+    return true;
+}

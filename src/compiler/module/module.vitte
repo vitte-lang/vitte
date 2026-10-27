@@ -1,0 +1,432 @@
+/// Vitte declarations ported from `src/src/module/module.h`.
+space compiler::module::module;
+
+const MODULE_MAGIC: u64 = 6217593481612706849;
+
+export pick ModuleError {
+    None,
+    InvalidArgument,
+    InvalidContext,
+    InvalidState,
+    InvalidName,
+    InvalidPath,
+    InvalidModule,
+    InvalidParent,
+    InvalidSymbol,
+    DuplicateModule,
+    DuplicatePath,
+    DuplicateSymbol,
+    ModuleLimit,
+    SymbolLimit,
+    StringLimit,
+    Overflow,
+    OutOfMemory,
+    Validation,
+    Corruption,
+    Unsupported,
+    Internal,
+    Count
+}
+
+export pick ModuleState {
+    Invalid,
+    Building,
+    Validating,
+    Sealed,
+    Failed,
+    Destroyed,
+    Count
+}
+
+export pick ModuleKind {
+    Invalid,
+    Source,
+    Library,
+    Package,
+    Builtin,
+    External,
+    Count
+}
+
+export pick ModuleVisibility {
+    Private,
+    Public,
+    Count
+}
+
+export pick ModuleSymbolKind {
+    Invalid,
+    Const,
+    Static,
+    Type,
+    Form,
+    Pick,
+    Trait,
+    Proc,
+    Macro,
+    Module,
+    Test,
+    Count
+}
+
+export form ModuleSpan {
+    source_id: ModuleSourceId,
+    begin: usize,
+    end: usize,
+    valid: bool
+}
+
+export form ModuleString {
+    id: ModuleStringId,
+    data: string,
+    length: usize,
+    hash: u64
+}
+
+export form ModuleDesc {
+    name: ModuleStringId,
+    path: ModuleStringId,
+    parent: ModuleId,
+    source_id: ModuleSourceId,
+    visibility: ModuleVisibility,
+    kind: ModuleKind,
+    span: ModuleSpan,
+    is_root: bool,
+    is_external: bool
+}
+
+export form Module {
+    id: ModuleId,
+    name: ModuleStringId,
+    path: ModuleStringId,
+    parent: ModuleId,
+    source_id: ModuleSourceId,
+    visibility: ModuleVisibility,
+    kind: ModuleKind,
+    span: ModuleSpan,
+    is_root: bool,
+    is_external: bool,
+    children: *ModuleId,
+    child_count: usize,
+    child_capacity: usize,
+    symbols: *ModuleSymbolId,
+    symbol_count: usize,
+    symbol_capacity: usize
+}
+
+export form ModuleSymbolDesc {
+    module: ModuleId,
+    name: ModuleStringId,
+    kind: ModuleSymbolKind,
+    visibility: ModuleVisibility,
+    span: ModuleSpan,
+    payload: ModulePayload
+}
+
+export form ModuleSymbol {
+    id: ModuleSymbolId,
+    module: ModuleId,
+    name: ModuleStringId,
+    kind: ModuleSymbolKind,
+    visibility: ModuleVisibility,
+    span: ModuleSpan,
+    payload: ModulePayload
+}
+
+export form ModuleStats {
+    modules_registered: u64,
+    symbols_registered: u64,
+    strings_interned: u64,
+    string_bytes: u64,
+    external_modules: u64,
+    duplicate_modules: u64,
+    duplicate_symbols: u64,
+    validation_runs: u64,
+    validation_failures: u64,
+    hash_runs: u64,
+    allocations: u64,
+    reallocations: u64,
+    allocation_failures: u64
+}
+
+export form ModuleContext {
+    magic: u64,
+    state: ModuleState,
+    last_error: ModuleError,
+    strings: *ModuleString,
+    string_count: usize,
+    string_capacity: usize,
+    string_bytes: usize,
+    modules: *Module,
+    module_count: usize,
+    module_capacity: usize,
+    symbols: *ModuleSymbol,
+    symbol_count: usize,
+    symbol_capacity: usize,
+    max_modules: usize,
+    max_symbols: usize,
+    max_string_bytes: usize,
+    stats: ModuleStats,
+    generation: u64
+}
+
+export type ModuleId = u64;
+
+export type ModuleStringId = u64;
+
+export type ModuleSymbolId = u64;
+
+export type ModuleSourceId = u64;
+
+export type ModulePayload = u64;
+
+export proc vitte_module_error_name(error: ModuleError) -> string {
+    match error {
+        case ModuleError.None => return "none";
+        case ModuleError.InvalidArgument => return "invalid_argument";
+        case ModuleError.InvalidContext => return "invalid_context";
+        case ModuleError.InvalidState => return "invalid_state";
+        case ModuleError.InvalidName => return "invalid_name";
+        case ModuleError.InvalidPath => return "invalid_path";
+        case ModuleError.InvalidModule => return "invalid_module";
+        case ModuleError.InvalidParent => return "invalid_parent";
+        case ModuleError.InvalidSymbol => return "invalid_symbol";
+        case ModuleError.DuplicateModule => return "duplicate_module";
+        case ModuleError.DuplicatePath => return "duplicate_path";
+        case ModuleError.DuplicateSymbol => return "duplicate_symbol";
+        case ModuleError.ModuleLimit => return "module_limit";
+        case ModuleError.SymbolLimit => return "symbol_limit";
+        case ModuleError.StringLimit => return "string_limit";
+        case ModuleError.Overflow => return "overflow";
+        case ModuleError.OutOfMemory => return "out_of_memory";
+        case ModuleError.Validation => return "validation";
+        case ModuleError.Corruption => return "corruption";
+        case ModuleError.Unsupported => return "unsupported";
+        case ModuleError.Internal => return "internal";
+        case ModuleError.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_module_state_name(state: ModuleState) -> string {
+    match state {
+        case ModuleState.Invalid => return "invalid";
+        case ModuleState.Building => return "building";
+        case ModuleState.Validating => return "validating";
+        case ModuleState.Sealed => return "sealed";
+        case ModuleState.Failed => return "failed";
+        case ModuleState.Destroyed => return "destroyed";
+        case ModuleState.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_module_kind_name(kind: ModuleKind) -> string {
+    match kind {
+        case ModuleKind.Invalid => return "invalid";
+        case ModuleKind.Source => return "source";
+        case ModuleKind.Library => return "library";
+        case ModuleKind.Package => return "package";
+        case ModuleKind.Builtin => return "builtin";
+        case ModuleKind.External => return "external";
+        case ModuleKind.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_module_symbol_kind_name(kind: ModuleSymbolKind) -> string {
+    match kind {
+        case ModuleSymbolKind.Invalid => return "invalid";
+        case ModuleSymbolKind.Const => return "const";
+        case ModuleSymbolKind.Static => return "static";
+        case ModuleSymbolKind.Type => return "type";
+        case ModuleSymbolKind.Form => return "form";
+        case ModuleSymbolKind.Pick => return "pick";
+        case ModuleSymbolKind.Trait => return "trait";
+        case ModuleSymbolKind.Proc => return "proc";
+        case ModuleSymbolKind.Macro => return "macro";
+        case ModuleSymbolKind.Module => return "module";
+        case ModuleSymbolKind.Test => return "test";
+        case ModuleSymbolKind.Count => return "count";
+    }
+    return "unknown";
+}
+
+export extern proc vitte_module_init(context: *ModuleContext) -> bool;
+
+export extern proc vitte_module_reset(context: *ModuleContext) -> bool;
+
+export extern proc vitte_module_destroy(context: *ModuleContext);
+
+export proc vitte_module_is_valid(context: *ModuleContext) -> bool {
+    if context == null or (*context).magic != MODULE_MAGIC { return false; }
+    if (*context).state <= ModuleState.Invalid or (*context).state >= ModuleState.Destroyed { return false; }
+    if (*context).module_count > (*context).module_capacity or
+       (*context).string_count > (*context).string_capacity or
+       (*context).symbol_count > (*context).symbol_capacity { return false; }
+    if ((*context).module_count != 0 and (*context).modules == null) or
+       ((*context).string_count != 0 and (*context).strings == null) or
+       ((*context).symbol_count != 0 and (*context).symbols == null) { return false; }
+    if (*context).string_bytes > (*context).max_string_bytes { return false; }
+    return true;
+}
+
+export extern proc vitte_module_intern_string(context: *ModuleContext, data: string, length: usize) -> ModuleStringId;
+
+export proc vitte_module_get_string(context: *ModuleContext, id: ModuleStringId) -> *ModuleString {
+    if not vitte_module_is_valid(context) or id == 0 or id > (*context).string_count as u64 { return null; }
+    let index = (id - 1) as usize;
+    if (*context).strings[index].id != id { return null; }
+    return &(*context).strings[index];
+}
+
+export extern proc vitte_module_add(context: *ModuleContext, description: *ModuleDesc) -> ModuleId;
+
+export proc vitte_module_get(context: *ModuleContext, id: ModuleId) -> *Module {
+    if not vitte_module_is_valid(context) or id == 0 or id > (*context).module_count as u64 { return null; }
+    let index = (id - 1) as usize;
+    if (*context).modules[index].id != id { return null; }
+    return &(*context).modules[index];
+}
+
+export proc vitte_module_get_mut(context: *ModuleContext, id: ModuleId) -> *Module {
+    if not vitte_module_is_valid(context) or (*context).state != ModuleState.Building or
+       id == 0 or id > (*context).module_count as u64 { return null; }
+    let index = (id - 1) as usize;
+    if (*context).modules[index].id != id { return null; }
+    return &(*context).modules[index];
+}
+
+export proc vitte_module_find_by_name(context: *ModuleContext, name: ModuleStringId) -> ModuleId {
+    if not vitte_module_is_valid(context) or name == 0 { return 0; }
+    let mut index: usize = 0;
+    while index < (*context).module_count {
+        if (*context).modules[index].name == name { return (*context).modules[index].id; }
+        set index += 1;
+    }
+    return 0;
+}
+
+export proc vitte_module_find_by_name_bytes(context: *ModuleContext, name: string, length: usize) -> ModuleId {
+    if not vitte_module_is_valid(context) or length == 0 or length > name.as_bytes().len() { return 0; }
+    let bytes = name.as_bytes();
+    let mut index: usize = 0;
+    while index < (*context).module_count {
+        let string_value = vitte_module_get_string(context, (*context).modules[index].name);
+        if string_value != null and (*string_value).length == length {
+            let mut equal = true;
+            let mut cursor: usize = 0;
+            while cursor < length {
+                if (*string_value).data.as_bytes()[cursor] != bytes[cursor] { set equal = false; break; }
+                set cursor += 1;
+            }
+            if equal { return (*context).modules[index].id; }
+        }
+        set index += 1;
+    }
+    return 0;
+}
+
+export proc vitte_module_find_by_path(context: *ModuleContext, path: ModuleStringId) -> ModuleId {
+    if not vitte_module_is_valid(context) or path == 0 { return 0; }
+    let mut index: usize = 0;
+    while index < (*context).module_count {
+        if (*context).modules[index].path == path { return (*context).modules[index].id; }
+        set index += 1;
+    }
+    return 0;
+}
+
+export proc vitte_module_parent(context: *ModuleContext, module: ModuleId) -> ModuleId {
+    let item = vitte_module_get(context, module);
+    if item == null { return 0; }
+    return (*item).parent;
+}
+
+export proc vitte_module_child_count(context: *ModuleContext, module: ModuleId) -> usize {
+    let item = vitte_module_get(context, module);
+    if item == null { return 0; }
+    return (*item).child_count;
+}
+
+export proc vitte_module_child_at(context: *ModuleContext, module: ModuleId, index: usize) -> ModuleId {
+    let item = vitte_module_get(context, module);
+    if item == null or index >= (*item).child_count or (*item).children == null { return 0; }
+    return (*item).children[index];
+}
+
+export extern proc vitte_module_add_symbol(context: *ModuleContext, description: *ModuleSymbolDesc) -> ModuleSymbolId;
+
+export proc vitte_module_get_symbol(context: *ModuleContext, id: ModuleSymbolId) -> *ModuleSymbol {
+    if not vitte_module_is_valid(context) or id == 0 or id > (*context).symbol_count as u64 { return null; }
+    let index = (id - 1) as usize;
+    if (*context).symbols[index].id != id { return null; }
+    return &(*context).symbols[index];
+}
+
+export proc vitte_module_get_symbol_mut(context: *ModuleContext, id: ModuleSymbolId) -> *ModuleSymbol {
+    if not vitte_module_is_valid(context) or (*context).state != ModuleState.Building or
+       id == 0 or id > (*context).symbol_count as u64 { return null; }
+    let index = (id - 1) as usize;
+    if (*context).symbols[index].id != id { return null; }
+    return &(*context).symbols[index];
+}
+
+export proc vitte_module_find_symbol(context: *ModuleContext, module: ModuleId, name: ModuleStringId) -> ModuleSymbolId {
+    let item = vitte_module_get(context, module);
+    if item == null or name == 0 or (*item).symbol_count > (*item).symbol_capacity or
+       ((*item).symbol_count != 0 and (*item).symbols == null) { return 0; }
+    let mut index: usize = 0;
+    while index < (*item).symbol_count {
+        let symbol = vitte_module_get_symbol(context, (*item).symbols[index]);
+        if symbol != null and (*symbol).name == name { return (*symbol).id; }
+        set index += 1;
+    }
+    return 0;
+}
+
+export proc vitte_module_symbol_count(context: *ModuleContext, module: ModuleId) -> usize {
+    let item = vitte_module_get(context, module);
+    if item == null { return 0; }
+    return (*item).symbol_count;
+}
+
+export proc vitte_module_symbol_at(context: *ModuleContext, module: ModuleId, index: usize) -> ModuleSymbolId {
+    let item = vitte_module_get(context, module);
+    if item == null or index >= (*item).symbol_count or (*item).symbols == null { return 0; }
+    return (*item).symbols[index];
+}
+
+export extern proc vitte_module_validate(context: *ModuleContext) -> bool;
+
+export extern proc vitte_module_seal(context: *ModuleContext) -> bool;
+
+export extern proc vitte_module_fingerprint(context: *ModuleContext) -> u64;
+
+export proc vitte_module_set_limits(context: *ModuleContext, max_modules: usize, max_symbols: usize, max_string_bytes: usize) -> bool {
+    if not vitte_module_is_valid(context) or (*context).state != ModuleState.Building {
+        if context != null and (*context).magic == MODULE_MAGIC { set (*context).last_error = ModuleError.InvalidState; }
+        return false;
+    }
+    if max_modules == 0 or max_symbols == 0 or max_string_bytes == 0 {
+        set (*context).last_error = ModuleError.InvalidArgument;
+        return false;
+    }
+    if max_modules < (*context).module_count or max_symbols < (*context).symbol_count or
+       max_string_bytes < (*context).string_bytes {
+        set (*context).last_error = ModuleError.InvalidArgument;
+        return false;
+    }
+    set (*context).max_modules = max_modules;
+    set (*context).max_symbols = max_symbols;
+    set (*context).max_string_bytes = max_string_bytes;
+    set (*context).last_error = ModuleError.None;
+    return true;
+}
+
+export proc vitte_module_stats(context: *ModuleContext) -> ModuleStats {
+    if not vitte_module_is_valid(context) { return ModuleStats {}; }
+    return (*context).stats;
+}
+
+export extern proc vitte_module_translation_unit_anchor();

@@ -1,0 +1,613 @@
+/// Vitte Compiler
+/// Native compiler driver.
+/// Reference: src/driver/driver.c
+///
+/// The driver coordinates compiler subsystems.
+/// It does not implement lexer, parser, HIR, IR or codegen algorithms.
+
+space compiler::driver::driver;
+
+use compiler::cli::cli::{
+    Cli,
+    CliBackend,
+    CliCommand,
+    CliOptimization,
+    CliState,
+    vitte_cli_is_valid
+};
+
+use compiler::driver::pipeline::{
+    NativePipelineResult,
+    native_pipeline_run
+};
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+export const DRIVER_MAGIC: u64 = 0x5649545445445256;
+export const DRIVER_DEAD_MAGIC: u64 = 0x4445414444525621;
+
+export const DRIVER_FNV_OFFSET: u64 = 14695981039346656037;
+export const DRIVER_FNV_PRIME: u64 = 1099511628211;
+
+export const DRIVER_DEFAULT_MAX_INPUTS: usize = 65536;
+export const DRIVER_DEFAULT_INITIAL_INPUT_CAPACITY: usize = 16;
+export const DRIVER_DEFAULT_MAX_ERRORS: usize = 100;
+export const DRIVER_DEFAULT_MAX_WARNINGS: usize = 0;
+export const DRIVER_DEFAULT_MAX_OUTPUT_BYTES: usize = 0;
+
+// ============================================================================
+// ERRORS
+// ============================================================================
+
+export pick DriverError {
+    None,
+    InvalidDriver,
+    InvalidArgument,
+    InvalidState,
+    InvalidConfig,
+
+    NoInput,
+    DuplicateInput,
+    TooManyInputs,
+
+    Source,
+    Lexer,
+    Parser,
+    Import,
+    NameResolution,
+    TypeCheck,
+    Contract,
+    ConstantFold,
+
+    Hir,
+    Ir,
+    Optimization,
+    Codegen,
+    Backend,
+    Toolchain,
+    Link,
+    Execution,
+
+    TooManyErrors,
+    OutputLimit,
+    Cancelled,
+
+    Overflow,
+    OutOfMemory,
+
+    Unsupported,
+    Internal,
+    Corruption,
+
+    Count
+}
+
+// ============================================================================
+// STATES
+// ============================================================================
+
+export pick DriverState {
+    Invalid,
+    Ready,
+    Preparing,
+    Prepared,
+    Running,
+    Finished,
+    Failed,
+    Cancelled,
+    Destroyed,
+    Count
+}
+
+// ============================================================================
+// COMMANDS
+// ============================================================================
+
+export pick DriverCommand {
+    Invalid,
+    Build,
+    Check,
+    Run,
+    Test,
+    Count
+}
+
+// ============================================================================
+// PHASES
+// ============================================================================
+
+export pick DriverPhase {
+    None,
+    Prepare,
+
+    LoadSource,
+    Lex,
+    Parse,
+
+    Imports,
+    Names,
+    Types,
+    Contracts,
+    ConstantFold,
+
+    Hir,
+    Ir,
+    Optimize,
+
+    Codegen,
+    Backend,
+    Toolchain,
+    Link,
+    Execute,
+
+    Finalize,
+    Count
+}
+
+// ============================================================================
+// SEVERITY
+// ============================================================================
+
+export pick DriverSeverity {
+    Invalid,
+    Note,
+    Warning,
+    Error,
+    Count
+}
+
+// ============================================================================
+// OPTIMIZATION
+// ============================================================================
+
+export pick DriverOptimization {
+    Default,
+    None,
+    Debug,
+    Balanced,
+    Speed,
+    Size,
+    Aggressive,
+    Count
+}
+
+// ============================================================================
+// BACKENDS
+// ============================================================================
+
+export pick DriverBackend {
+    Default,
+    C17,
+    Native,
+    Bytecode,
+    Count
+}
+
+// ============================================================================
+// SOURCE LOCATION
+// ============================================================================
+
+export form DriverSourceLocation {
+    file_id: u32,
+    begin: usize,
+    end: usize,
+    valid: bool
+}
+
+// ============================================================================
+// INPUT
+// ============================================================================
+
+export form DriverInput {
+    id: u64,
+    name: string,
+    user_data: *u8,
+    primary: bool
+}
+
+// ============================================================================
+// DIAGNOSTIC
+// ============================================================================
+
+export form DriverDiagnostic {
+    severity: DriverSeverity,
+    phase: DriverPhase,
+    code: string,
+    message: string,
+    location: DriverSourceLocation
+}
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+export form DriverConfig {
+    command: DriverCommand,
+
+    backend: DriverBackend,
+    optimization: DriverOptimization,
+
+    max_inputs: usize,
+    max_errors: usize,
+    max_warnings: usize,
+    max_output_bytes: usize,
+
+    deterministic: bool,
+
+    warnings_as_errors: bool,
+    fail_fast: bool,
+
+    emit_debug_info: bool,
+    emit_source_map: bool,
+    emit_comments: bool,
+
+    runtime_checks: bool,
+    bounds_checks: bool,
+    null_checks: bool,
+    overflow_checks: bool,
+
+    incremental: bool,
+
+    stop_after_parse: bool,
+    stop_after_semantic: bool,
+    stop_after_ir: bool,
+    stop_after_codegen: bool,
+
+    execute_after_build: bool
+}
+
+// ============================================================================
+// PHASE STATISTICS
+// ============================================================================
+
+export form DriverPhaseStats {
+    invocations: u64,
+    successes: u64,
+    failures: u64,
+    elapsed_nanoseconds: u64
+}
+
+// ============================================================================
+// STATISTICS
+// ============================================================================
+
+export form DriverStats {
+    input_count: usize,
+    processed_input_count: usize,
+
+    error_count: usize,
+    warning_count: usize,
+    note_count: usize,
+
+    output_bytes: usize,
+
+    phase_count: u64,
+
+    input_fingerprint: u64,
+    configuration_fingerprint: u64,
+
+    elapsed_nanoseconds: u64,
+
+    phases: [DriverPhaseStats; DriverPhase.Count],
+
+    prepared: bool,
+    finished: bool,
+    failed: bool,
+    cancelled: bool
+}
+
+// ============================================================================
+// DEFAULT CONFIGURATION
+// ============================================================================
+
+export proc vitte_driver_config_default() -> DriverConfig {
+    return DriverConfig {
+        command: DriverCommand.Build,
+
+        backend: DriverBackend.Default,
+        optimization: DriverOptimization.Default,
+
+        max_inputs: DRIVER_DEFAULT_MAX_INPUTS,
+        max_errors: DRIVER_DEFAULT_MAX_ERRORS,
+        max_warnings: DRIVER_DEFAULT_MAX_WARNINGS,
+        max_output_bytes: DRIVER_DEFAULT_MAX_OUTPUT_BYTES,
+
+        deterministic: true,
+
+        warnings_as_errors: false,
+        fail_fast: false,
+
+        emit_debug_info: false,
+        emit_source_map: true,
+        emit_comments: false,
+
+        runtime_checks: true,
+        bounds_checks: true,
+        null_checks: true,
+        overflow_checks: true,
+
+        incremental: true,
+
+        stop_after_parse: false,
+        stop_after_semantic: false,
+        stop_after_ir: false,
+        stop_after_codegen: false,
+
+        execute_after_build: false
+    };
+}
+
+// ============================================================================
+// CONFIGURATION VALIDATION
+// ============================================================================
+
+export proc vitte_driver_config_validate(
+    config: &DriverConfig
+) -> bool {
+
+    if config.command == DriverCommand.Invalid
+        or config.command == DriverCommand.Count {
+        return false;
+    }
+
+    if config.backend == DriverBackend.Count {
+        return false;
+    }
+
+    if config.optimization == DriverOptimization.Count {
+        return false;
+    }
+
+    if config.max_inputs == 0 {
+        return false;
+    }
+
+    if config.max_errors == 0 {
+        return false;
+    }
+
+    let mut stop_count: u32 = 0;
+
+    if config.stop_after_parse {
+        set stop_count = stop_count + 1;
+    }
+
+    if config.stop_after_semantic {
+        set stop_count = stop_count + 1;
+    }
+
+    if config.stop_after_ir {
+        set stop_count = stop_count + 1;
+    }
+
+    if config.stop_after_codegen {
+        set stop_count = stop_count + 1;
+    }
+
+    if stop_count > 1 {
+        return false;
+    }
+
+    if config.command == DriverCommand.Check
+        and config.execute_after_build {
+        return false;
+    }
+
+    if stop_count > 0 and config.execute_after_build {
+        return false;
+    }
+
+    return true;
+}
+
+// ============================================================================
+// CLI CONFIGURATION
+// ============================================================================
+
+export proc vitte_driver_config_apply_cli(
+    driver_config: &mut DriverConfig,
+    cli: *Cli
+) -> bool {
+
+    if cli == null {
+        return false;
+    }
+
+    if (*cli).state != CliState.Parsed {
+        return false;
+    }
+
+    if not vitte_cli_is_valid(cli) {
+        return false;
+    }
+
+    if (*cli).config.command == CliCommand.Build {
+        set driver_config.command = DriverCommand.Build;
+
+    } else if (*cli).config.command == CliCommand.Check {
+        set driver_config.command = DriverCommand.Check;
+
+    } else if (*cli).config.command == CliCommand.Run {
+        set driver_config.command = DriverCommand.Run;
+
+    } else if (*cli).config.command == CliCommand.Test {
+        set driver_config.command = DriverCommand.Test;
+
+    } else {
+        return false;
+    }
+
+    if (*cli).config.backend == CliBackend.Default {
+        set driver_config.backend = DriverBackend.Default;
+
+    } else if (*cli).config.backend == CliBackend.C17 {
+        set driver_config.backend = DriverBackend.C17;
+
+    } else if (*cli).config.backend == CliBackend.Native {
+        set driver_config.backend = DriverBackend.Native;
+
+    } else if (*cli).config.backend == CliBackend.Bytecode {
+        set driver_config.backend = DriverBackend.Bytecode;
+
+    } else {
+        return false;
+    }
+
+    if (*cli).config.optimization == CliOptimization.Default {
+        set driver_config.optimization = DriverOptimization.Default;
+
+    } else if (*cli).config.optimization == CliOptimization.None {
+        set driver_config.optimization = DriverOptimization.None;
+
+    } else if (*cli).config.optimization == CliOptimization.Debug {
+        set driver_config.optimization = DriverOptimization.Debug;
+
+    } else if (*cli).config.optimization == CliOptimization.Balanced {
+        set driver_config.optimization = DriverOptimization.Balanced;
+
+    } else if (*cli).config.optimization == CliOptimization.Speed {
+        set driver_config.optimization = DriverOptimization.Speed;
+
+    } else if (*cli).config.optimization == CliOptimization.Size {
+        set driver_config.optimization = DriverOptimization.Size;
+
+    } else if (*cli).config.optimization == CliOptimization.Aggressive {
+        set driver_config.optimization = DriverOptimization.Aggressive;
+
+    } else {
+        return false;
+    }
+
+    set driver_config.max_inputs = (*cli).max_inputs;
+    set driver_config.max_errors = (*cli).config.max_errors;
+
+    set driver_config.deterministic =
+        (*cli).config.deterministic;
+
+    set driver_config.warnings_as_errors =
+        (*cli).config.warnings_as_errors;
+
+    set driver_config.emit_debug_info =
+        (*cli).config.emit_debug_info;
+
+    set driver_config.emit_source_map =
+        (*cli).config.emit_source_map;
+
+    set driver_config.emit_comments =
+        (*cli).config.emit_comments;
+
+    set driver_config.runtime_checks =
+        (*cli).config.runtime_checks;
+
+    set driver_config.bounds_checks =
+        (*cli).config.bounds_checks;
+
+    set driver_config.null_checks =
+        (*cli).config.null_checks;
+
+    set driver_config.overflow_checks =
+        (*cli).config.overflow_checks;
+
+    set driver_config.incremental =
+        (*cli).config.incremental;
+
+    set driver_config.execute_after_build =
+        (*cli).config.command == CliCommand.Run
+        or (*cli).config.command == CliCommand.Test;
+
+    return vitte_driver_config_validate(driver_config);
+}
+
+// ============================================================================
+// ERROR MAPPING
+// ============================================================================
+
+export proc vitte_driver_phase_error(
+    phase: DriverPhase
+) -> DriverError {
+
+    if phase == DriverPhase.LoadSource {
+        return DriverError.Source;
+    }
+
+    if phase == DriverPhase.Lex {
+        return DriverError.Lexer;
+    }
+
+    if phase == DriverPhase.Parse {
+        return DriverError.Parser;
+    }
+
+    if phase == DriverPhase.Imports {
+        return DriverError.Import;
+    }
+
+    if phase == DriverPhase.Names {
+        return DriverError.NameResolution;
+    }
+
+    if phase == DriverPhase.Types {
+        return DriverError.TypeCheck;
+    }
+
+    if phase == DriverPhase.Contracts {
+        return DriverError.Contract;
+    }
+
+    if phase == DriverPhase.ConstantFold {
+        return DriverError.ConstantFold;
+    }
+
+    if phase == DriverPhase.Hir {
+        return DriverError.Hir;
+    }
+
+    if phase == DriverPhase.Ir {
+        return DriverError.Ir;
+    }
+
+    if phase == DriverPhase.Optimize {
+        return DriverError.Optimization;
+    }
+
+    if phase == DriverPhase.Codegen {
+        return DriverError.Codegen;
+    }
+
+    if phase == DriverPhase.Backend {
+        return DriverError.Backend;
+    }
+
+    if phase == DriverPhase.Toolchain {
+        return DriverError.Toolchain;
+    }
+
+    if phase == DriverPhase.Link {
+        return DriverError.Link;
+    }
+
+    if phase == DriverPhase.Execute {
+        return DriverError.Execution;
+    }
+
+    return DriverError.Internal;
+}
+
+// ============================================================================
+// NATIVE FRONTEND
+// ============================================================================
+
+export proc vitte_driver_run_native_frontend(
+    source: ?str,
+    source_length: usize,
+    file_id: u64
+) -> NativePipelineResult {
+
+    return native_pipeline_run(
+        source,
+        source_length,
+        file_id
+    );
+}

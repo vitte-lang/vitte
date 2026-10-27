@@ -1,0 +1,328 @@
+space core::cell::refcell
+
+/// États possibles du système d'emprunts.
+pick RefCellBorrowState {
+    Unborrowed,
+    Shared,
+    Exclusive,
+}
+
+/// Codes de résultat des opérations d'emprunt.
+pick RefCellBorrowError {
+    None,
+    AlreadyMutablyBorrowed,
+    AlreadyBorrowed,
+    BorrowOverflow,
+    InvalidRelease,
+}
+
+/// Cellule générique avec suivi dynamique des emprunts.
+///
+/// Le champ value doit bénéficier d'une primitive
+/// de mutabilité intérieure fournie par Vitte.
+form RefCell<T> {
+    value: T,
+    shared_borrows: usize,
+    exclusive_borrow: bool,
+}
+
+/// Garde représentant un emprunt partagé.
+form Ref<T> {
+    cell: *mut RefCell[T],
+    active: bool,
+}
+
+/// Garde représentant un emprunt exclusif.
+form RefMut<T> {
+    cell: *mut RefCell[T],
+    active: bool,
+}
+
+/// Construit une cellule.
+proc refcell_new<T>(
+    value: T
+) -> RefCell[T] {
+    return RefCell[T] {
+        value: value,
+        shared_borrows: 0,
+        exclusive_borrow: false,
+    };
+}
+
+/// Vérifie si la cellule ne possède aucun emprunt actif.
+proc refcell_is_unborrowed<T>(
+    cell: &RefCell[T]
+) -> bool {
+    return cell.shared_borrows == 0
+        && not cell.exclusive_borrow;
+}
+
+/// Vérifie si la cellule possède des emprunts partagés.
+proc refcell_is_shared<T>(
+    cell: &RefCell[T]
+) -> bool {
+    return cell.shared_borrows > 0;
+}
+
+/// Vérifie si la cellule possède un emprunt exclusif.
+proc refcell_is_exclusive<T>(
+    cell: &RefCell[T]
+) -> bool {
+    return cell.exclusive_borrow;
+}
+
+/// Retourne le nombre d'emprunts partagés.
+proc refcell_shared_count<T>(
+    cell: &RefCell[T]
+) -> usize {
+    return cell.shared_borrows;
+}
+
+/// Retourne l'état courant des emprunts.
+proc refcell_borrow_state<T>(
+    cell: &RefCell[T]
+) -> RefCellBorrowState {
+    if cell.exclusive_borrow {
+        return RefCellBorrowState.Exclusive;
+    } elif cell.shared_borrows > 0 {
+        return RefCellBorrowState.Shared;
+    } else {
+        return RefCellBorrowState.Unborrowed;
+    }
+}
+
+/// Vérifie si un emprunt partagé est possible.
+proc refcell_can_borrow<T>(
+    cell: &RefCell[T]
+) -> bool {
+    return not cell.exclusive_borrow;
+}
+
+/// Vérifie si un emprunt exclusif est possible.
+proc refcell_can_borrow_mut<T>(
+    cell: &RefCell[T]
+) -> bool {
+    return cell.shared_borrows == 0
+        && not cell.exclusive_borrow;
+}
+
+/// Tente d'acquérir un emprunt partagé.
+///
+/// Cette fonction nécessite une primitive de
+/// mutabilité intérieure pour modifier le compteur.
+proc refcell_try_borrow<T>(
+    cell: &RefCell[T]
+) -> RefCellBorrowError {
+    if cell.exclusive_borrow {
+        return RefCellBorrowError.AlreadyMutablyBorrowed;
+    }
+
+    if cell.shared_borrows == usize.MAX {
+        return RefCellBorrowError.BorrowOverflow;
+    }
+
+    set cell.shared_borrows = cell.shared_borrows + 1;
+
+    return RefCellBorrowError.None;
+}
+
+/// Tente d'acquérir un emprunt exclusif.
+proc refcell_try_borrow_mut<T>(
+    cell: &RefCell[T]
+) -> RefCellBorrowError {
+    if cell.exclusive_borrow {
+        return RefCellBorrowError.AlreadyMutablyBorrowed;
+    }
+
+    if cell.shared_borrows > 0 {
+        return RefCellBorrowError.AlreadyBorrowed;
+    }
+
+    set cell.exclusive_borrow = true;
+
+    return RefCellBorrowError.None;
+}
+
+/// Libère un emprunt partagé.
+proc refcell_release_borrow<T>(
+    cell: &RefCell[T]
+) -> RefCellBorrowError {
+    if cell.shared_borrows == 0 {
+        return RefCellBorrowError.InvalidRelease;
+    }
+
+    set cell.shared_borrows = cell.shared_borrows - 1;
+
+    return RefCellBorrowError.None;
+}
+
+/// Libère un emprunt exclusif.
+proc refcell_release_borrow_mut<T>(
+    cell: &RefCell[T]
+) -> RefCellBorrowError {
+    if not cell.exclusive_borrow {
+        return RefCellBorrowError.InvalidRelease;
+    }
+
+    set cell.exclusive_borrow = false;
+
+    return RefCellBorrowError.None;
+}
+
+/// Retourne une référence en lecture seule.
+///
+/// L'appelant doit posséder un emprunt partagé actif.
+proc refcell_get<T>(
+    cell: &RefCell[T]
+) -> &T {
+    return &cell.value;
+}
+
+/// Retourne une référence mutable.
+///
+/// L'appelant doit posséder un emprunt exclusif actif.
+proc refcell_get_mut<T>(
+    cell: &RefCell[T]
+) -> &mut T {
+    return &mut cell.value;
+}
+
+/// Remplace la valeur lorsque la cellule n'est pas empruntée.
+proc refcell_replace<T>(
+    cell: &RefCell[T],
+    value: T
+) -> bool {
+    if not refcell_is_unborrowed(cell) {
+        return false;
+    }
+
+    set cell.value = value;
+
+    return true;
+}
+
+/// Échange les valeurs de deux cellules non empruntées.
+proc refcell_swap<T>(
+    left: &RefCell[T],
+    right: &RefCell[T]
+) -> bool {
+    if not refcell_is_unborrowed(left) {
+        return false;
+    }
+
+    if not refcell_is_unborrowed(right) {
+        return false;
+    }
+
+    let temporary: T = left.value;
+
+    set left.value = right.value;
+    set right.value = temporary;
+
+    return true;
+}
+
+/// Applique une transformation lorsque la cellule
+/// ne possède aucun emprunt actif.
+proc refcell_update<T>(
+    cell: &RefCell[T],
+    transform: proc(&T) -> T
+) -> bool {
+    if not refcell_is_unborrowed(cell) {
+        return false;
+    }
+
+    let updated: T = transform(&cell.value);
+
+    set cell.value = updated;
+
+    return true;
+}
+
+/// Consomme une cellule et retourne sa valeur.
+proc refcell_into_inner<T>(
+    cell: RefCell[T]
+) -> T {
+    return cell.value;
+}
+
+/// Vérifie la cohérence des compteurs d'emprunts.
+proc refcell_validate<T>(
+    cell: &RefCell[T]
+) -> bool {
+    if cell.exclusive_borrow && cell.shared_borrows > 0 {
+        return false;
+    }
+
+    return true;
+}
+
+/// Retourne un code d'erreur correspondant à l'état.
+proc refcell_borrow_error<T>(
+    cell: &RefCell[T],
+    mutable: bool
+) -> RefCellBorrowError {
+    if mutable {
+        if cell.exclusive_borrow {
+            return RefCellBorrowError.AlreadyMutablyBorrowed;
+        } elif cell.shared_borrows > 0 {
+            return RefCellBorrowError.AlreadyBorrowed;
+        } else {
+            return RefCellBorrowError.None;
+        }
+    }
+
+    if cell.exclusive_borrow {
+        return RefCellBorrowError.AlreadyMutablyBorrowed;
+    }
+
+    if cell.shared_borrows == usize.MAX {
+        return RefCellBorrowError.BorrowOverflow;
+    }
+
+    return RefCellBorrowError.None;
+}
+
+/// Réinitialise les compteurs uniquement si aucun
+/// emprunt n'est actif.
+proc refcell_reset_borrow_state<T>(
+    cell: &mut RefCell[T]
+) -> bool {
+    if not refcell_is_unborrowed(cell) {
+        return false;
+    }
+
+    set cell.shared_borrows = 0;
+    set cell.exclusive_borrow = false;
+
+    return true;
+}
+
+/// Retourne le nombre de cellules actuellement
+/// empruntées dans un tableau.
+proc refcell_count_borrowed<T>(
+    cells: &[RefCell[T]]
+) -> usize {
+    let mut count: usize = 0;
+
+    for i in 0..cells.len() {
+        if not refcell_is_unborrowed(&cells[i]) {
+            set count = count + 1;
+        }
+    }
+
+    return count;
+}
+
+/// Vérifie si toutes les cellules sont disponibles.
+proc refcell_all_unborrowed<T>(
+    cells: &[RefCell[T]]
+) -> bool {
+    for i in 0..cells.len() {
+        if not refcell_is_unborrowed(&cells[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}

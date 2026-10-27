@@ -1,0 +1,2685 @@
+///
+/// Vitte Compiler
+/// src/arena/allocator.vit
+///
+/// Canonical high-performance arena allocator.
+///
+/// - O(1) allocation fast path
+/// - Deterministic ownership
+/// - Configurable block capacity
+/// - Power-of-two alignment
+/// - Overflow-safe arithmetic
+/// - Dedicated oversized allocations
+/// - Retained-block reuse
+/// - Transactional marks and rewind
+/// - Zero-initialized allocations
+/// - Memory and string duplication
+/// - Deterministic statistics
+/// - Structural corruption detection
+/// - Optional memory poisoning
+///
+/// Individual allocations are reclaimed through arena operations.
+///
+
+space compiler::arena::allocator;
+
+use compiler::arena::block::{arena_block_scaled_ratio};
+use vitte::core::memory::{allocate, copy, cstring_length, deallocate, fill};
+use vitte::core::pointer;
+
+/// =========================================================================
+/// Configuration
+/// =========================================================================
+
+pub const ARENA_DEFAULT_BLOCK_SIZE: usize = 65536;
+pub const ARENA_MIN_BLOCK_SIZE: usize = 1024;
+const ARENA_LARGE_ALLOCATION_DIVISOR: usize = 2;
+
+const ARENA_MAGIC: u64 = 0x564954544541524E;
+const ARENA_DEAD_MAGIC: u64 = 0x444541444152454E;
+
+const ARENA_ALLOC_BLOCK_MAGIC: u64 = 0x5649545445424C4B;
+const ARENA_ALLOC_DEAD_BLOCK_MAGIC: u64 = 0x44454144424C4B21;
+
+const ARENA_POISON_ALLOCATED: bool = false;
+const ARENA_POISON_RESET: bool = false;
+
+const ARENA_ALLOC_PATTERN: u8 = 0xCD;
+const ARENA_RESET_PATTERN: u8 = 0xDD;
+
+const ARENA_DEFAULT_ALIGNMENT: usize = alignof(usize);
+
+proc arena_configuration_valid() -> bool {
+    return ARENA_MIN_BLOCK_SIZE != 0 and
+           ARENA_DEFAULT_BLOCK_SIZE != 0 and
+           ARENA_LARGE_ALLOCATION_DIVISOR != 0;
+}
+
+
+/// =========================================================================
+/// Errors
+/// =========================================================================
+
+pub pick ArenaError {
+    None,
+    InvalidArena,
+    InvalidArgument,
+    InvalidAlignment,
+    Overflow,
+    OutOfMemory,
+    InvalidMark,
+    Corruption,
+}
+
+proc arena_error_name(
+    error: ArenaError
+) -> str {
+    match error {
+        case ArenaError.None => "none",
+        case ArenaError.InvalidArena => "invalid-arena",
+        case ArenaError.InvalidArgument => "invalid-argument",
+        case ArenaError.InvalidAlignment => "invalid-alignment",
+        case ArenaError.Overflow => "overflow",
+        case ArenaError.OutOfMemory => "out-of-memory",
+        case ArenaError.InvalidMark => "invalid-mark",
+        case ArenaError.Corruption => "corruption",
+    }
+}
+
+
+/// =========================================================================
+/// Internal block
+/// =========================================================================
+
+form ArenaAllocationBlock {
+    magic: u64,
+
+    next: ?&mut ArenaAllocationBlock,
+    previous: ?&mut ArenaAllocationBlock,
+
+    data: *mut u8,
+
+    capacity: usize,
+    used: usize,
+
+    generation: u64,
+
+    dedicated: bool,
+}
+
+
+/// =========================================================================
+/// Arena
+/// =========================================================================
+
+pub form Arena {
+    magic: u64,
+
+    block_size: usize,
+
+    first_block: ?&mut ArenaAllocationBlock,
+    last_block: ?&mut ArenaAllocationBlock,
+    current_block: ?&mut ArenaAllocationBlock,
+
+    block_count: usize,
+    peak_block_count: usize,
+
+    reserved_bytes: usize,
+    peak_reserved_bytes: usize,
+
+    used_bytes: usize,
+    peak_used_bytes: usize,
+
+    requested_bytes: usize,
+    allocation_count: usize,
+
+    generation: u64,
+
+    last_error: ArenaError,
+}
+
+
+/// =========================================================================
+/// Marks
+/// =========================================================================
+
+pub form ArenaMark {
+    arena: ?&Arena,
+    block: ?&mut ArenaAllocationBlock,
+
+    used: usize,
+    used_bytes: usize,
+
+    requested_bytes: usize,
+    allocation_count: usize,
+
+    generation: u64,
+}
+
+
+/// =========================================================================
+/// Statistics
+/// =========================================================================
+
+pub form ArenaStats {
+    block_size: usize,
+
+    block_count: usize,
+    peak_block_count: usize,
+
+    reserved_bytes: usize,
+    peak_reserved_bytes: usize,
+
+    used_bytes: usize,
+    peak_used_bytes: usize,
+
+    requested_bytes: usize,
+    allocation_count: usize,
+
+    unused_bytes: usize,
+    padding_bytes: usize,
+
+    generation: u64,
+}
+
+
+/// =========================================================================
+/// Arithmetic
+/// =========================================================================
+
+proc arena_add_overflow(
+    left: usize,
+    right: usize
+) -> bool {
+    return left > usize.MAX - right;
+}
+
+proc arena_mul_overflow(
+    left: usize,
+    right: usize
+) -> bool {
+    if left == 0 {
+        return false;
+    }
+
+    return right > usize.MAX / left;
+}
+
+proc arena_is_power_of_two(
+    value: usize
+) -> bool {
+    return value != 0  and 
+           (value & (value - 1)) == 0;
+}
+
+proc arena_normalize_alignment(
+    alignment: usize
+) -> usize {
+    if alignment == 0 {
+        return ARENA_DEFAULT_ALIGNMENT;
+    }
+
+    return alignment;
+}
+
+proc arena_alignment_valid(
+    alignment: usize
+) -> bool {
+    return arena_is_power_of_two(alignment);
+}
+
+proc arena_align_up(
+    value: usize,
+    alignment: usize,
+    aligned: &mut usize
+) -> bool {
+    if not arena_alignment_valid(alignment) {
+        return false;
+    }
+
+    let mask: usize = alignment - 1;
+
+    if value > usize.MAX - mask {
+        return false;
+    }
+
+    set *aligned = (value + mask) & ~mask;
+    return true;
+}
+
+
+/// =========================================================================
+/// Error handling
+/// =========================================================================
+
+proc arena_magic_valid(
+    arena: &Arena
+) -> bool {
+    return arena.magic == ARENA_MAGIC;
+}
+
+proc arena_set_error(
+    arena: &mut Arena,
+    error: ArenaError
+) {
+    if arena_magic_valid(arena) {
+        set arena.last_error = error;
+    }
+}
+
+proc arena_set_success(
+    arena: &mut Arena
+) {
+    arena_set_error(
+        arena,
+        ArenaError.None
+    );
+}
+
+pub proc arena_last_error(
+    arena: &Arena
+) -> ArenaError {
+    if not arena_magic_valid(arena) {
+        return ArenaError.InvalidArena;
+    }
+
+    return arena.last_error;
+}
+
+pub proc arena_clear_error(
+    arena: &mut Arena
+) {
+    arena_set_success(arena);
+}
+
+
+/// =========================================================================
+/// Block validation
+/// =========================================================================
+
+proc arena_block_valid(
+    arena_block_value: &ArenaAllocationBlock
+) -> bool {
+    if arena_block_value.magic != ARENA_ALLOC_BLOCK_MAGIC {
+        return false;
+    }
+
+    if arena_block_value.used > arena_block_value.capacity {
+        return false;
+    }
+
+    return true;
+}
+
+proc arena_block_can_fit(
+    arena_block_value: &ArenaAllocationBlock,
+    size: usize,
+    alignment: usize
+) -> bool {
+    if not arena_block_valid(arena_block_value) {
+        return false;
+    }
+
+    if not arena_alignment_valid(alignment) {
+        return false;
+    }
+
+    let base: usize =
+        pointer.address(arena_block_value.data as *const u8);
+
+    if arena_add_overflow(base, arena_block_value.used) {
+        return false;
+    }
+
+    let current: usize =
+        base + arena_block_value.used;
+
+    let mut address: usize = 0;
+    if not arena_align_up(
+            current,
+            alignment,
+            &mut address
+        ) {
+        return false;
+    }
+
+    if address < base {
+        return false;
+    }
+
+    let offset: usize =
+        address - base;
+
+    if arena_add_overflow(offset, size) {
+        return false;
+    }
+
+    return offset + size <= arena_block_value.capacity;
+}
+
+
+/// =========================================================================
+/// Memory poisoning
+/// =========================================================================
+
+proc arena_poison_allocated(
+    memory_ptr: *mut u8,
+    size: usize
+) {
+    if not ARENA_POISON_ALLOCATED {
+        return;
+    }
+
+    if size == 0 {
+        return;
+    }
+
+    fill(
+        memory_ptr,
+        ARENA_ALLOC_PATTERN,
+        size
+    );
+}
+
+proc arena_poison_reset_region(
+    memory_ptr: *mut u8,
+    size: usize
+) {
+    if not ARENA_POISON_RESET {
+        return;
+    }
+
+    if size == 0 {
+        return;
+    }
+
+    fill(
+        memory_ptr,
+        ARENA_RESET_PATTERN,
+        size
+    );
+}
+
+
+/// =========================================================================
+/// Block allocation
+/// =========================================================================
+
+proc arena_allocation_block_create(
+    arena: &mut Arena,
+    capacity: usize,
+    dedicated: bool
+) -> ?&mut ArenaAllocationBlock {
+    if not arena_magic_valid(arena) {
+        return null;
+    }
+
+    if capacity == 0 {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidArgument
+        );
+
+        return null;
+    }
+
+    let header_size: usize =
+        sizeof(ArenaAllocationBlock);
+
+    if arena_add_overflow(
+        header_size,
+        capacity
+    ) {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return null;
+    }
+
+    let total_size: usize =
+        header_size + capacity;
+
+    let raw: *mut u8 =
+        allocate(total_size);
+
+    if pointer.is_null(raw) {
+        arena_set_error(
+            arena,
+            ArenaError.OutOfMemory
+        );
+
+        return null;
+    }
+
+    let block: &mut ArenaAllocationBlock =
+        &mut *(raw as *mut ArenaAllocationBlock);
+
+    set block.magic = ARENA_ALLOC_BLOCK_MAGIC;
+
+    set block.next = null;
+    set block.previous = null;
+
+    set block.data =
+        pointer.add_bytes(
+            raw,
+            header_size
+        );
+
+    set block.capacity = capacity;
+    set block.used = 0;
+
+    set block.generation =
+        arena.generation;
+
+    set block.dedicated =
+        dedicated;
+
+    arena_poison_reset_region(
+        block.data,
+        capacity
+    );
+
+    return block;
+}
+
+proc arena_allocation_block_destroy(
+    arena_block_value: &mut ArenaAllocationBlock
+) {
+    if not arena_block_valid(arena_block_value) {
+        return;
+    }
+
+    arena_poison_reset_region(
+        arena_block_value.data,
+        arena_block_value.capacity
+    );
+
+    set arena_block_value.magic =
+        ARENA_ALLOC_DEAD_BLOCK_MAGIC;
+
+    set arena_block_value.next = null;
+    set arena_block_value.previous = null;
+
+    set arena_block_value.capacity = 0;
+    set arena_block_value.used = 0;
+
+    set arena_block_value.generation = 0;
+    set arena_block_value.dedicated = false;
+
+    deallocate(
+        arena_block_value as *mut ArenaAllocationBlock as *mut u8
+    );
+}
+
+
+/// =========================================================================
+/// Statistics helpers
+/// =========================================================================
+
+proc arena_update_peak_blocks(
+    arena: &mut Arena
+) {
+    if arena.block_count >
+       arena.peak_block_count {
+        set arena.peak_block_count =
+            arena.block_count;
+    }
+}
+
+proc arena_update_peak_reserved(
+    arena: &mut Arena
+) {
+    if arena.reserved_bytes >
+       arena.peak_reserved_bytes {
+        set arena.peak_reserved_bytes =
+            arena.reserved_bytes;
+    }
+}
+
+proc arena_update_peak_used(
+    arena: &mut Arena
+) {
+    if arena.used_bytes >
+       arena.peak_used_bytes {
+        set arena.peak_used_bytes =
+            arena.used_bytes;
+    }
+}
+
+proc arena_record_request(
+    arena: &mut Arena,
+    requested_size: usize
+) {
+    if arena_add_overflow(
+        arena.requested_bytes,
+        requested_size
+    ) {
+        set arena.requested_bytes =
+            usize.MAX;
+    } else {
+        set arena.requested_bytes =
+            arena.requested_bytes +
+            requested_size;
+    }
+
+    if arena.allocation_count != usize.MAX {
+        set arena.allocation_count =
+            arena.allocation_count + 1;
+    }
+}
+
+
+/// =========================================================================
+/// Linked-list management
+/// =========================================================================
+
+proc arena_append_block(
+    arena: &mut Arena,
+    arena_block_value: &mut ArenaAllocationBlock
+) -> bool {
+    if not arena_magic_valid(arena) {
+        return false;
+    }
+
+    if not arena_block_valid(arena_block_value) {
+        arena_set_error(
+            arena,
+            ArenaError.Corruption
+        );
+
+        return false;
+    }
+
+    if arena.block_count == usize.MAX {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return false;
+    }
+
+    if arena_add_overflow(
+        arena.reserved_bytes,
+        arena_block_value.capacity
+    ) {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return false;
+    }
+
+    set arena_block_value.previous =
+        arena.last_block;
+
+    set arena_block_value.next = null;
+
+    if arena.last_block != null {
+        let last: &mut ArenaAllocationBlock = arena.last_block?;
+
+        if not arena_block_valid(last) {
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            set arena_block_value.previous = null;
+
+            return false;
+        }
+
+        set last.next = &mut *arena_block_value;
+    } else {
+        set arena.first_block = &mut *arena_block_value;
+    }
+
+    set arena.last_block = &mut *arena_block_value;
+    set arena.current_block = &mut *arena_block_value;
+
+    set arena.block_count =
+        arena.block_count + 1;
+
+    set arena.reserved_bytes =
+        arena.reserved_bytes +
+        arena_block_value.capacity;
+
+    arena_update_peak_blocks(arena);
+    arena_update_peak_reserved(arena);
+
+    return true;
+}
+
+proc arena_unlink_block(
+    arena: &mut Arena,
+    arena_block_value: &mut ArenaAllocationBlock
+) -> bool {
+    if not arena_magic_valid(arena) {
+        return false;
+    }
+
+    if not arena_block_valid(arena_block_value) {
+        arena_set_error(
+            arena,
+            ArenaError.Corruption
+        );
+
+        return false;
+    }
+
+    if arena_block_value.used > arena.used_bytes  or 
+       arena_block_value.capacity > arena.reserved_bytes  or 
+       arena.block_count == 0 {
+        arena_set_error(
+            arena,
+            ArenaError.Corruption
+        );
+
+        return false;
+    }
+
+    let mut replacement: ?&mut ArenaAllocationBlock = arena_block_value.next;
+    if arena_block_value.previous != null {
+        set replacement = arena_block_value.previous;
+    }
+
+    if arena_block_value.previous != null {
+        let previous: &mut ArenaAllocationBlock = arena_block_value.previous?;
+
+        if not arena_block_valid(previous) {
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            return false;
+        }
+
+        set previous.next = arena_block_value.next;
+    } else {
+        set arena.first_block = arena_block_value.next;
+    }
+
+    if arena_block_value.next != null {
+        let next: &mut ArenaAllocationBlock = arena_block_value.next?;
+
+        if not arena_block_valid(next) {
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            return false;
+        }
+
+        set next.previous = arena_block_value.previous;
+    } else {
+        set arena.last_block = arena_block_value.previous;
+    }
+
+    if arena.current_block == arena_block_value {
+        set arena.current_block = replacement;
+    }
+
+    set arena.block_count =
+        arena.block_count - 1;
+
+    set arena.reserved_bytes =
+        arena.reserved_bytes -
+        arena_block_value.capacity;
+
+    set arena.used_bytes =
+        arena.used_bytes -
+        arena_block_value.used;
+
+    set arena_block_value.next = null;
+    set arena_block_value.previous = null;
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Allocation inside a block
+/// =========================================================================
+
+proc arena_try_allocate_from_block(
+    arena: &mut Arena,
+    arena_block_value: &mut ArenaAllocationBlock,
+    size: usize,
+    alignment: usize,
+    consumed_bytes: &mut usize
+) -> ?*mut u8 {
+    set *consumed_bytes = 0;
+
+    if not arena_magic_valid(arena) {
+        return null;
+    }
+
+    if not arena_block_valid(arena_block_value) {
+        arena_set_error(
+            arena,
+            ArenaError.Corruption
+        );
+
+        return null;
+    }
+
+    if not arena_alignment_valid(alignment) {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidAlignment
+        );
+
+        return null;
+    }
+
+    let old_used: usize =
+        arena_block_value.used;
+
+    let base: usize =
+        pointer.address(arena_block_value.data as *const u8);
+
+    if arena_add_overflow(base, old_used) {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return null;
+    }
+
+    let current: usize =
+        base + old_used;
+
+    let mut address: usize = 0;
+    if not arena_align_up(
+            current,
+            alignment,
+            &mut address
+        ) {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return null;
+    }
+
+    if address < base {
+        arena_set_error(
+            arena,
+            ArenaError.Corruption
+        );
+
+        return null;
+    }
+
+    let offset: usize =
+        address - base;
+
+    if arena_add_overflow(offset, size) {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return null;
+    }
+
+    let end: usize =
+        offset + size;
+
+    if end > arena_block_value.capacity {
+        return null;
+    }
+
+    set arena_block_value.used = end;
+
+    set *consumed_bytes =
+        end - old_used;
+
+    return pointer.from_address_mut(address);
+}
+
+
+/// =========================================================================
+/// Retained-block reuse
+/// =========================================================================
+
+proc arena_find_reusable_block(
+    arena: &mut Arena,
+    size: usize,
+    alignment: usize
+) -> ?&mut ArenaAllocationBlock {
+    if not arena_magic_valid(arena) {
+        return null;
+    }
+
+    let mut block: ?&mut ArenaAllocationBlock = arena.first_block;
+    if arena.current_block != null {
+        set block = arena.current_block?.next;
+    }
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            return null;
+        }
+
+        if not current.dedicated  and 
+           current.used == 0  and 
+           arena_block_can_fit(
+               current,
+               size,
+               alignment
+           ) {
+            return current;
+        }
+
+        set block = current.next;
+    }
+
+    return null;
+}
+
+
+/// =========================================================================
+/// Lifecycle
+/// =========================================================================
+
+pub proc arena_init(
+    arena: &mut Arena,
+    block_size: usize
+) -> bool {
+    if not arena_configuration_valid() {
+        return false;
+    }
+
+    let mut normalized_size: usize =
+        block_size;
+
+    if normalized_size == 0 {
+        set normalized_size =
+            ARENA_DEFAULT_BLOCK_SIZE;
+    }
+
+    if normalized_size <
+       ARENA_MIN_BLOCK_SIZE {
+        set normalized_size =
+            ARENA_MIN_BLOCK_SIZE;
+    }
+
+    set arena.magic = ARENA_MAGIC;
+
+    set arena.block_size =
+        normalized_size;
+
+    set arena.first_block = null;
+    set arena.last_block = null;
+    set arena.current_block = null;
+
+    set arena.block_count = 0;
+    set arena.peak_block_count = 0;
+
+    set arena.reserved_bytes = 0;
+    set arena.peak_reserved_bytes = 0;
+
+    set arena.used_bytes = 0;
+    set arena.peak_used_bytes = 0;
+
+    set arena.requested_bytes = 0;
+    set arena.allocation_count = 0;
+
+    set arena.generation = 1;
+
+    set arena.last_error =
+        ArenaError.None;
+
+    return true;
+}
+
+proc arena_init_default(
+    arena: &mut Arena
+) -> bool {
+    return arena_init(
+        arena,
+        ARENA_DEFAULT_BLOCK_SIZE
+    );
+}
+
+pub proc arena_destroy(
+    arena: &mut Arena
+) {
+    if not arena_magic_valid(arena) {
+        return;
+    }
+
+    let mut block: ?&mut ArenaAllocationBlock =
+        arena.first_block;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            break;
+        }
+
+        let next: ?&mut ArenaAllocationBlock = current.next;
+
+        arena_allocation_block_destroy(current);
+
+        set block = next;
+    }
+
+    set arena.first_block = null;
+    set arena.last_block = null;
+    set arena.current_block = null;
+
+    set arena.block_count = 0;
+    set arena.peak_block_count = 0;
+
+    set arena.reserved_bytes = 0;
+    set arena.peak_reserved_bytes = 0;
+
+    set arena.used_bytes = 0;
+    set arena.peak_used_bytes = 0;
+
+    set arena.requested_bytes = 0;
+    set arena.allocation_count = 0;
+
+    set arena.block_size = 0;
+    set arena.generation = 0;
+
+    set arena.last_error =
+        ArenaError.InvalidArena;
+
+    set arena.magic =
+        ARENA_DEAD_MAGIC;
+}
+
+
+/// =========================================================================
+/// Core allocation
+/// =========================================================================
+
+pub proc arena_alloc_aligned(
+    arena: &mut Arena,
+    size: usize,
+    alignment: usize
+) -> ?*mut u8 {
+    if not arena_magic_valid(arena) {
+        return null;
+    }
+
+    arena_set_success(arena);
+
+    let requested_size: usize = size;
+
+    let mut effective_size: usize = size;
+    if size == 0 {
+        set effective_size = 1;
+    }
+
+    let normalized_alignment: usize =
+        arena_normalize_alignment(
+            alignment
+        );
+
+    if not arena_alignment_valid(
+        normalized_alignment
+    ) {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidAlignment
+        );
+
+        return null;
+    }
+
+    if arena_add_overflow(
+        effective_size,
+        normalized_alignment - 1
+    ) {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return null;
+    }
+
+    let mut minimum_capacity: usize =
+        effective_size +
+        normalized_alignment - 1;
+
+    let mut block: ?&mut ArenaAllocationBlock =
+        arena.current_block;
+
+    let mut memory_ptr: ?*mut u8 = null;
+    let mut consumed: usize = 0;
+
+    ///
+    /// Fast path.
+    ///
+
+    if block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            return null;
+        }
+
+        if not current.dedicated {
+            set memory_ptr =
+                arena_try_allocate_from_block(
+                    arena,
+                    current,
+                    effective_size,
+                    normalized_alignment,
+                    &mut consumed
+                );
+
+            if memory_ptr != null {
+                if arena_add_overflow(
+                    arena.used_bytes,
+                    consumed
+                ) {
+                    set current.used =
+                        current.used - consumed;
+
+                    arena_set_error(
+                        arena,
+                        ArenaError.Corruption
+                    );
+
+                    return null;
+                }
+
+                set arena.used_bytes =
+                    arena.used_bytes + consumed;
+
+                arena_update_peak_used(arena);
+
+                arena_record_request(
+                    arena,
+                    requested_size
+                );
+
+                arena_poison_allocated(
+                    memory_ptr?,
+                    effective_size
+                );
+
+                arena_set_success(arena);
+
+                return memory_ptr;
+            }
+
+            if arena.last_error != ArenaError.None {
+                return null;
+            }
+        }
+    }
+
+    ///
+    /// Retained-block reuse.
+    ///
+
+    set block =
+        arena_find_reusable_block(
+            arena,
+            effective_size,
+            normalized_alignment
+        );
+
+    if block != null {
+        let reusable: &mut ArenaAllocationBlock = block?;
+
+        set arena.current_block =
+            reusable;
+
+        set consumed = 0;
+
+        set memory_ptr =
+            arena_try_allocate_from_block(
+                arena,
+                reusable,
+                effective_size,
+                normalized_alignment,
+                &mut consumed
+            );
+
+        if memory_ptr == null {
+            if arena.last_error == ArenaError.None {
+                arena_set_error(
+                    arena,
+                    ArenaError.Corruption
+                );
+            }
+
+            return null;
+        }
+
+        if arena_add_overflow(
+            arena.used_bytes,
+            consumed
+        ) {
+            set reusable.used =
+                reusable.used - consumed;
+
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            return null;
+        }
+
+        set arena.used_bytes =
+            arena.used_bytes + consumed;
+
+        arena_update_peak_used(arena);
+
+        arena_record_request(
+            arena,
+            requested_size
+        );
+
+        arena_poison_allocated(
+            memory_ptr?,
+            effective_size
+        );
+
+        arena_set_success(arena);
+
+        return memory_ptr;
+    }
+
+    if arena.last_error != ArenaError.None {
+        return null;
+    }
+
+    ///
+    /// New block.
+    ///
+
+    let dedicated: bool =
+        minimum_capacity >
+        arena.block_size /
+        ARENA_LARGE_ALLOCATION_DIVISOR;
+
+    if not dedicated  and 
+       minimum_capacity < arena.block_size {
+        set minimum_capacity =
+            arena.block_size;
+    }
+
+    let new_block =
+        arena_allocation_block_create(
+            arena,
+            minimum_capacity,
+            dedicated
+        );
+
+    if new_block == null {
+        return null;
+    }
+
+    let created: &mut ArenaAllocationBlock = new_block?;
+
+    if not arena_append_block(
+        arena,
+        created
+    ) {
+        arena_allocation_block_destroy(created);
+
+        return null;
+    }
+
+    set consumed = 0;
+
+    set memory_ptr =
+        arena_try_allocate_from_block(
+            arena,
+            created,
+            effective_size,
+            normalized_alignment,
+            &mut consumed
+        );
+
+    if memory_ptr == null {
+        let mut failure: ArenaError =
+            arena.last_error;
+
+        if failure == ArenaError.None {
+            set failure =
+                ArenaError.Corruption;
+        }
+
+        if not arena_unlink_block(
+            arena,
+            created
+        ) {
+            set failure =
+                arena.last_error;
+        }
+
+        arena_allocation_block_destroy(created);
+
+        arena_set_error(
+            arena,
+            failure
+        );
+
+        return null;
+    }
+
+    if arena_add_overflow(
+        arena.used_bytes,
+        consumed
+    ) {
+        set created.used =
+            created.used - consumed;
+
+        let mut failure: ArenaError =
+            ArenaError.Corruption;
+
+        if not arena_unlink_block(
+            arena,
+            created
+        ) {
+            set failure =
+                arena.last_error;
+        }
+
+        arena_allocation_block_destroy(created);
+
+        arena_set_error(
+            arena,
+            failure
+        );
+
+        return null;
+    }
+
+    set arena.used_bytes =
+        arena.used_bytes + consumed;
+
+    arena_update_peak_used(arena);
+
+    arena_record_request(
+        arena,
+        requested_size
+    );
+
+    arena_poison_allocated(
+        memory_ptr?,
+        effective_size
+    );
+
+    arena_set_success(arena);
+
+    return memory_ptr;
+}
+
+proc arena_alloc(
+    arena: &mut Arena,
+    size: usize
+) -> ?*mut u8 {
+    return arena_alloc_aligned(
+        arena,
+        size,
+        ARENA_DEFAULT_ALIGNMENT
+    );
+}
+
+
+/// =========================================================================
+/// Array allocation
+/// =========================================================================
+
+proc arena_alloc_array(
+    arena: &mut Arena,
+    count: usize,
+    element_size: usize,
+    alignment: usize
+) -> ?*mut u8 {
+    if not arena_magic_valid(arena) {
+        return null;
+    }
+
+    arena_set_success(arena);
+
+    if arena_mul_overflow(
+        count,
+        element_size
+    ) {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return null;
+    }
+
+    return arena_alloc_aligned(
+        arena,
+        count * element_size,
+        alignment
+    );
+}
+
+
+/// =========================================================================
+/// Zero-initialized allocation
+/// =========================================================================
+
+proc arena_calloc(
+    arena: &mut Arena,
+    count: usize,
+    element_size: usize
+) -> ?*mut u8 {
+    return arena_calloc_aligned(
+        arena,
+        count,
+        element_size,
+        ARENA_DEFAULT_ALIGNMENT
+    );
+}
+
+proc arena_calloc_aligned(
+    arena: &mut Arena,
+    count: usize,
+    element_size: usize,
+    alignment: usize
+) -> ?*mut u8 {
+    if not arena_magic_valid(arena) {
+        return null;
+    }
+
+    arena_set_success(arena);
+
+    if arena_mul_overflow(
+        count,
+        element_size
+    ) {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return null;
+    }
+
+    let size: usize =
+        count * element_size;
+
+    let result =
+        arena_alloc_aligned(
+            arena,
+            size,
+            alignment
+        );
+
+    if result == null {
+        return null;
+    }
+
+    if size != 0 {
+        fill(
+            result?,
+            0,
+            size
+        );
+    }
+
+    return result;
+}
+
+
+/// =========================================================================
+/// Duplication
+/// =========================================================================
+
+proc arena_memdup(
+    arena: &mut Arena,
+    data: *const u8,
+    size: usize
+) -> ?*mut u8 {
+    if not arena_magic_valid(arena) {
+        return null;
+    }
+
+    arena_set_success(arena);
+
+    if pointer.is_null(data)  and 
+       size != 0 {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidArgument
+        );
+
+        return null;
+    }
+
+    let copied =
+        arena_alloc(
+            arena,
+            size
+        );
+
+    if copied == null {
+        return null;
+    }
+
+    if size != 0 {
+        copy(
+            copied?,
+            data,
+            size
+        );
+    }
+
+    return copied;
+}
+
+proc arena_strndup(
+    arena: &mut Arena,
+    text: *const u8,
+    length: usize
+) -> ?*mut u8 {
+    if not arena_magic_valid(arena) {
+        return null;
+    }
+
+    arena_set_success(arena);
+
+    if pointer.is_null(text)  and 
+       length != 0 {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidArgument
+        );
+
+        return null;
+    }
+
+    if arena_add_overflow(
+        length,
+        1
+    ) {
+        arena_set_error(
+            arena,
+            ArenaError.Overflow
+        );
+
+        return null;
+    }
+
+    let copied =
+        arena_alloc_aligned(
+            arena,
+            length + 1,
+            alignof(u8)
+        );
+
+    if copied == null {
+        return null;
+    }
+
+    if length != 0 {
+        copy(
+            copied?,
+            text,
+            length
+        );
+    }
+
+    pointer.write(
+        pointer.add_bytes(
+            copied?,
+            length
+        ),
+        0
+    );
+
+    return copied;
+}
+
+proc arena_strdup(
+    arena: &mut Arena,
+    text: *const u8
+) -> ?*mut u8 {
+    if not arena_magic_valid(arena) {
+        return null;
+    }
+
+    if pointer.is_null(text) {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidArgument
+        );
+
+        return null;
+    }
+
+    let length: usize =
+        cstring_length(text);
+
+    return arena_strndup(
+        arena,
+        text,
+        length
+    );
+}
+
+
+/// =========================================================================
+/// Marks
+/// =========================================================================
+
+pub proc arena_mark(
+    arena: &Arena
+) -> ArenaMark {
+    let mut mark: ArenaMark = ArenaMark {
+        arena: null,
+        block: null,
+
+        used: 0,
+        used_bytes: 0,
+
+        requested_bytes: 0,
+        allocation_count: 0,
+
+        generation: 0,
+    };
+
+    if not arena_magic_valid(arena) {
+        return mark;
+    }
+
+    set mark.arena = &*arena;
+    set mark.block = arena.current_block;
+
+    if arena.current_block != null {
+        set mark.used =
+            arena.current_block?.used;
+    }
+
+    set mark.used_bytes =
+        arena.used_bytes;
+
+    set mark.requested_bytes =
+        arena.requested_bytes;
+
+    set mark.allocation_count =
+        arena.allocation_count;
+
+    set mark.generation =
+        arena.generation;
+
+    return mark;
+}
+
+proc arena_mark_block_reachable(
+    arena: &Arena,
+    target: &ArenaAllocationBlock
+) -> bool {
+    if not arena_magic_valid(arena) {
+        return false;
+    }
+
+    let mut block = arena.first_block;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            return false;
+        }
+
+        if current == target {
+            return true;
+        }
+
+        set block = current.next;
+    }
+
+    return false;
+}
+
+
+/// =========================================================================
+/// Rewind
+/// =========================================================================
+
+pub proc arena_rewind(
+    arena: &mut Arena,
+    mark: ArenaMark
+) -> bool {
+    if not arena_magic_valid(arena) {
+        return false;
+    }
+
+    arena_set_success(arena);
+
+    if mark.arena != arena  or 
+       mark.generation != arena.generation {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidMark
+        );
+
+        return false;
+    }
+
+    if mark.used_bytes > arena.used_bytes  or 
+       mark.requested_bytes > arena.requested_bytes  or 
+       mark.allocation_count > arena.allocation_count {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidMark
+        );
+
+        return false;
+    }
+
+    if mark.block == null {
+        if mark.used != 0  or 
+           mark.used_bytes != 0 {
+            arena_set_error(
+                arena,
+                ArenaError.InvalidMark
+            );
+
+            return false;
+        }
+
+        let mut block = arena.first_block;
+
+        while block != null {
+            let current: &mut ArenaAllocationBlock = block?;
+
+            if not arena_block_valid(current) {
+                arena_set_error(
+                    arena,
+                    ArenaError.Corruption
+                );
+
+                return false;
+            }
+
+            set block = current.next;
+        }
+
+        set block = arena.first_block;
+
+        while block != null {
+            let current: &mut ArenaAllocationBlock = block?;
+
+            arena_poison_reset_region(
+                current.data,
+                current.used
+            );
+
+            set current.used = 0;
+
+            set block = current.next;
+        }
+
+        set arena.current_block =
+            arena.first_block;
+
+        set arena.used_bytes =
+            mark.used_bytes;
+
+        set arena.requested_bytes =
+            mark.requested_bytes;
+
+        set arena.allocation_count =
+            mark.allocation_count;
+
+        arena_set_success(arena);
+
+        return true;
+    }
+
+    let marked_block: &mut ArenaAllocationBlock = mark.block?;
+
+    if not arena_mark_block_reachable(
+        arena,
+        marked_block
+    ) {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidMark
+        );
+
+        return false;
+    }
+
+    if not arena_block_valid(marked_block)  or 
+       mark.used > marked_block.used  or 
+       mark.used > marked_block.capacity {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidMark
+        );
+
+        return false;
+    }
+
+    ///
+    /// Validate the tail before mutation.
+    ///
+
+    let mut block = marked_block.next;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            return false;
+        }
+
+        set block = current.next;
+    }
+
+    ///
+    /// Recompute aggregate usage.
+    ///
+
+    let mut recomputed_used: usize = 0;
+
+    set block = arena.first_block;
+
+    while block != null  and 
+          block != marked_block {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if arena_add_overflow(
+            recomputed_used,
+            current.used
+        ) {
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            return false;
+        }
+
+        set recomputed_used =
+            recomputed_used + current.used;
+
+        set block = current.next;
+    }
+
+    if block != marked_block {
+        arena_set_error(
+            arena,
+            ArenaError.Corruption
+        );
+
+        return false;
+    }
+
+    if arena_add_overflow(
+        recomputed_used,
+        mark.used
+    ) {
+        arena_set_error(
+            arena,
+            ArenaError.Corruption
+        );
+
+        return false;
+    }
+
+    set recomputed_used =
+        recomputed_used + mark.used;
+
+    if recomputed_used != mark.used_bytes {
+        arena_set_error(
+            arena,
+            ArenaError.InvalidMark
+        );
+
+        return false;
+    }
+
+    ///
+    /// Commit rewind.
+    ///
+
+    if marked_block.used > mark.used {
+        arena_poison_reset_region(
+            pointer.add_bytes(
+                marked_block.data,
+                mark.used
+            ),
+            marked_block.used - mark.used
+        );
+    }
+
+    set marked_block.used =
+        mark.used;
+
+    set block = marked_block.next;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        arena_poison_reset_region(
+            current.data,
+            current.used
+        );
+
+        set current.used = 0;
+
+        set block = current.next;
+    }
+
+    set arena.current_block =
+        marked_block;
+
+    set arena.used_bytes =
+        mark.used_bytes;
+
+    set arena.requested_bytes =
+        mark.requested_bytes;
+
+    set arena.allocation_count =
+        mark.allocation_count;
+
+    arena_set_success(arena);
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Reset
+/// =========================================================================
+
+pub proc arena_reset(
+    arena: &mut Arena
+) {
+    if not arena_magic_valid(arena) {
+        return;
+    }
+
+    arena_set_success(arena);
+
+    let mut block = arena.first_block;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            return;
+        }
+
+        set block = current.next;
+    }
+
+    let mut next_generation: u64 =
+        arena.generation + 1;
+
+    if next_generation == 0 {
+        set next_generation = 1;
+    }
+
+    set block = arena.first_block;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        arena_poison_reset_region(
+            current.data,
+            current.used
+        );
+
+        set current.used = 0;
+
+        set current.generation =
+            next_generation;
+
+        set block = current.next;
+    }
+
+    set arena.generation =
+        next_generation;
+
+    set arena.current_block =
+        arena.first_block;
+
+    set arena.used_bytes = 0;
+    set arena.requested_bytes = 0;
+    set arena.allocation_count = 0;
+
+    arena_set_success(arena);
+}
+
+
+/// =========================================================================
+/// Trim
+/// =========================================================================
+
+pub proc arena_trim(
+    arena: &mut Arena
+) {
+    if not arena_magic_valid(arena) {
+        return;
+    }
+
+    arena_set_success(arena);
+
+    let mut block = arena.first_block;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            arena_set_error(
+                arena,
+                ArenaError.Corruption
+            );
+
+            return;
+        }
+
+        set block = current.next;
+    }
+
+    set block = arena.first_block;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        let next = current.next;
+
+        if current.used == 0 {
+            if not arena_unlink_block(
+                arena,
+                current
+            ) {
+                return;
+            }
+
+            arena_allocation_block_destroy(current);
+        }
+
+        set block = next;
+    }
+
+    if arena.block_count == 0 {
+        set arena.first_block = null;
+        set arena.last_block = null;
+        set arena.current_block = null;
+    } else {
+        if arena.current_block == null {
+            set arena.current_block =
+                arena.last_block;
+        }
+    }
+
+    arena_set_success(arena);
+}
+
+pub proc arena_reset_and_trim(
+    arena: &mut Arena
+) {
+    if not arena_magic_valid(arena) {
+        return;
+    }
+
+    arena_reset(arena);
+
+    if arena.last_error != ArenaError.None {
+        return;
+    }
+
+    arena_trim(arena);
+}
+
+
+/// =========================================================================
+/// Statistics
+/// =========================================================================
+
+pub proc arena_stats(
+    arena: &Arena
+) -> ArenaStats {
+    let mut stats: ArenaStats = ArenaStats {
+        block_size: 0,
+
+        block_count: 0,
+        peak_block_count: 0,
+
+        reserved_bytes: 0,
+        peak_reserved_bytes: 0,
+
+        used_bytes: 0,
+        peak_used_bytes: 0,
+
+        requested_bytes: 0,
+        allocation_count: 0,
+
+        unused_bytes: 0,
+        padding_bytes: 0,
+
+        generation: 0,
+    };
+
+    if not arena_magic_valid(arena) {
+        return stats;
+    }
+
+    set stats.block_size =
+        arena.block_size;
+
+    set stats.block_count =
+        arena.block_count;
+
+    set stats.peak_block_count =
+        arena.peak_block_count;
+
+    set stats.reserved_bytes =
+        arena.reserved_bytes;
+
+    set stats.peak_reserved_bytes =
+        arena.peak_reserved_bytes;
+
+    set stats.used_bytes =
+        arena.used_bytes;
+
+    set stats.peak_used_bytes =
+        arena.peak_used_bytes;
+
+    set stats.requested_bytes =
+        arena.requested_bytes;
+
+    set stats.allocation_count =
+        arena.allocation_count;
+
+    set stats.generation =
+        arena.generation;
+
+    if arena.reserved_bytes >=
+       arena.used_bytes {
+        set stats.unused_bytes =
+            arena.reserved_bytes -
+            arena.used_bytes;
+    }
+
+    if arena.used_bytes >=
+       arena.requested_bytes {
+        set stats.padding_bytes =
+            arena.used_bytes -
+            arena.requested_bytes;
+    }
+
+    return stats;
+}
+
+proc arena_block_count(
+    arena: &Arena
+) -> usize {
+    if not arena_magic_valid(arena) {
+        return 0;
+    }
+
+    return arena.block_count;
+}
+
+pub proc arena_reserved_bytes(
+    arena: &Arena
+) -> usize {
+    if not arena_magic_valid(arena) {
+        return 0;
+    }
+
+    return arena.reserved_bytes;
+}
+
+pub proc arena_used_bytes(
+    arena: &Arena
+) -> usize {
+    if not arena_magic_valid(arena) {
+        return 0;
+    }
+
+    return arena.used_bytes;
+}
+
+proc arena_requested_bytes(
+    arena: &Arena
+) -> usize {
+    if not arena_magic_valid(arena) {
+        return 0;
+    }
+
+    return arena.requested_bytes;
+}
+
+proc arena_allocation_count(
+    arena: &Arena
+) -> usize {
+    if not arena_magic_valid(arena) {
+        return 0;
+    }
+
+    return arena.allocation_count;
+}
+
+pub proc arena_generation(
+    arena: &Arena
+) -> u64 {
+    if not arena_magic_valid(arena) {
+        return 0;
+    }
+
+    return arena.generation;
+}
+
+
+/// =========================================================================
+/// Pointer ownership
+/// =========================================================================
+
+proc arena_pointer_in_block_capacity(
+    arena_block_value: &ArenaAllocationBlock,
+    address_ptr: *const u8
+) -> bool {
+    if not arena_block_valid(arena_block_value) {
+        return false;
+    }
+
+    if pointer.is_null(address_ptr) {
+        return false;
+    }
+
+    let begin: usize =
+        pointer.address(arena_block_value.data as *const u8);
+
+    if arena_add_overflow(
+        begin,
+        arena_block_value.capacity
+    ) {
+        return false;
+    }
+
+    let end: usize =
+        begin + arena_block_value.capacity;
+
+    let address: usize =
+        pointer.address(address_ptr);
+
+    return address >= begin  and 
+           address < end;
+}
+
+proc arena_pointer_in_block_live(
+    arena_block_value: &ArenaAllocationBlock,
+    address_ptr: *const u8
+) -> bool {
+    if not arena_block_valid(arena_block_value) {
+        return false;
+    }
+
+    if pointer.is_null(address_ptr)  or 
+       arena_block_value.used == 0 {
+        return false;
+    }
+
+    let begin: usize =
+        pointer.address(arena_block_value.data as *const u8);
+
+    if arena_add_overflow(
+        begin,
+        arena_block_value.used
+    ) {
+        return false;
+    }
+
+    let end: usize =
+        begin + arena_block_value.used;
+
+    let address: usize =
+        pointer.address(address_ptr);
+
+    return address >= begin  and 
+           address < end;
+}
+
+pub proc arena_contains(
+    arena: &Arena,
+    address_ptr: *const u8
+) -> bool {
+    if not arena_magic_valid(arena) {
+        return false;
+    }
+
+    if pointer.is_null(address_ptr) {
+        return false;
+    }
+
+    let mut block = arena.first_block;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            return false;
+        }
+
+        if arena_pointer_in_block_capacity(
+            current,
+            address_ptr
+        ) {
+            return true;
+        }
+
+        set block = current.next;
+    }
+
+    return false;
+}
+
+pub proc arena_contains_live(
+    arena: &Arena,
+    address_ptr: *const u8
+) -> bool {
+    if not arena_magic_valid(arena) {
+        return false;
+    }
+
+    if pointer.is_null(address_ptr) {
+        return false;
+    }
+
+    let mut block = arena.first_block;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            return false;
+        }
+
+        if arena_pointer_in_block_live(
+            current,
+            address_ptr
+        ) {
+            return true;
+        }
+
+        set block = current.next;
+    }
+
+    return false;
+}
+
+
+/// =========================================================================
+/// Structural validation
+/// =========================================================================
+
+pub proc arena_validate(
+    arena: &Arena
+) -> bool {
+    if not arena_magic_valid(arena) {
+        return false;
+    }
+
+    if arena.block_size <
+       ARENA_MIN_BLOCK_SIZE {
+        return false;
+    }
+
+    if arena.generation == 0 {
+        return false;
+    }
+
+    if (arena.first_block == null) !=
+       (arena.last_block == null) {
+        return false;
+    }
+
+    if arena.first_block == null {
+        if arena.block_count != 0  or 
+           arena.reserved_bytes != 0  or 
+           arena.used_bytes != 0  or 
+           arena.current_block != null {
+            return false;
+        }
+
+        return arena.peak_block_count >=
+                   arena.block_count  and 
+               arena.peak_reserved_bytes >=
+                   arena.reserved_bytes  and 
+               arena.peak_used_bytes >=
+                   arena.used_bytes;
+    }
+
+    if arena.block_count == 0 {
+        return false;
+    }
+
+    if arena.first_block?.previous != null {
+        return false;
+    }
+
+    if arena.last_block?.next != null {
+        return false;
+    }
+
+    ///
+    /// Floyd cycle detection.
+    ///
+
+    let mut slow = arena.first_block;
+    let mut fast = arena.first_block;
+
+    while fast != null {
+        let fast_block: &mut ArenaAllocationBlock = fast?;
+
+        if fast_block.next == null {
+            break;
+        }
+
+        if not arena_block_valid(fast_block)  or 
+           not arena_block_valid(
+               fast_block.next?
+           ) {
+            return false;
+        }
+
+        set slow = slow?.next;
+
+        set fast =
+            fast_block.next?.next;
+
+        if slow != null  and 
+           slow == fast {
+            return false;
+        }
+    }
+
+    ///
+    /// Full traversal.
+    ///
+
+    let mut count: usize = 0;
+    let mut reserved: usize = 0;
+    let mut used: usize = 0;
+
+    let mut previous: ?&ArenaAllocationBlock = null;
+
+    let mut current_found: bool =
+        arena.current_block == null;
+
+    let mut block = arena.first_block;
+
+    while block != null {
+        let current: &mut ArenaAllocationBlock = block?;
+
+        if not arena_block_valid(current) {
+            return false;
+        }
+
+        if current.previous != previous {
+            return false;
+        }
+
+        if previous != null  and 
+           previous?.next != current {
+            return false;
+        }
+
+        if current.generation == 0  or 
+           current.generation > arena.generation {
+            return false;
+        }
+
+        if current == arena.current_block {
+            set current_found = true;
+        }
+
+        if arena_add_overflow(
+            reserved,
+            current.capacity
+        ) {
+            return false;
+        }
+
+        set reserved =
+            reserved + current.capacity;
+
+        if arena_add_overflow(
+            used,
+            current.used
+        ) {
+            return false;
+        }
+
+        set used =
+            used + current.used;
+
+        if count == usize.MAX {
+            return false;
+        }
+
+        set count = count + 1;
+
+        set previous = current;
+        set block = current.next;
+    }
+
+    if previous != arena.last_block {
+        return false;
+    }
+
+    if not current_found {
+        return false;
+    }
+
+    if count != arena.block_count {
+        return false;
+    }
+
+    if reserved != arena.reserved_bytes {
+        return false;
+    }
+
+    if used != arena.used_bytes {
+        return false;
+    }
+
+    if arena.used_bytes >
+       arena.reserved_bytes {
+        return false;
+    }
+
+    if arena.requested_bytes != usize.MAX  and 
+       arena.requested_bytes >
+       arena.used_bytes {
+        return false;
+    }
+
+    if arena.peak_block_count <
+       arena.block_count {
+        return false;
+    }
+
+    if arena.peak_reserved_bytes <
+       arena.reserved_bytes {
+        return false;
+    }
+
+    if arena.peak_used_bytes <
+       arena.used_bytes {
+        return false;
+    }
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Convenience queries
+/// =========================================================================
+
+proc arena_is_empty(arena: &Arena) -> bool {
+    return arena_used_bytes(arena) == 0;
+}
+
+proc arena_has_allocations(arena: &Arena) -> bool {
+    return arena_allocation_count(arena) != 0;
+}
+
+proc arena_unused_bytes(arena: &Arena) -> usize {
+    let reserved = arena_reserved_bytes(arena);
+    let used = arena_used_bytes(arena);
+
+    if reserved < used {
+        return 0;
+    }
+
+    return reserved - used;
+}
+
+proc arena_padding_bytes(arena: &Arena) -> usize {
+    let used = arena_used_bytes(arena);
+    let requested = arena_requested_bytes(arena);
+
+    if used < requested {
+        return 0;
+    }
+
+    return used - requested;
+}
+
+proc arena_has_error(arena: &Arena) -> bool {
+    return arena_last_error(arena) != ArenaError.None;
+}
+
+proc arena_out_of_memory(arena: &Arena) -> bool {
+    return arena_last_error(arena) == ArenaError.OutOfMemory;
+}
+
+proc arena_is_corrupted(arena: &Arena) -> bool {
+    return arena_last_error(arena) == ArenaError.Corruption;
+}
+
+pub proc arena_utilization_basis_points(arena: &Arena) -> u32 {
+    let reserved = arena_reserved_bytes(arena);
+    let used = arena_used_bytes(arena);
+
+    if reserved == 0 {
+        return 0;
+    }
+
+    return arena_block_scaled_ratio(used, reserved, 10000);
+}
+
+
+/// =========================================================================
+/// Design invariants
+/// =========================================================================
+
+///
+/// A1 — Ownership
+///
+/// Every block reachable from first_block belongs exclusively
+/// to its arena.
+///
+/// A2 — List consistency
+///
+/// first_block.previous == null
+/// last_block.next == null
+///
+/// A3 — Accounting
+///
+/// reserved_bytes == sum(block.capacity)
+/// used_bytes == sum(block.used)
+///
+/// A4 — Block bounds
+///
+/// block.used <= block.capacity
+///
+/// A5 — Allocation lifetime
+///
+/// Individual allocations cannot be freed independently.
+///
+/// A6 — Alignment
+///
+/// Alignment must be a non-zero power of two after normalization.
+///
+/// A7 — Zero-size allocations
+///
+/// A zero-size request consumes one internal byte.
+///
+/// A8 — Dedicated blocks
+///
+/// Dedicated blocks are excluded from normal retained-block reuse.
+///
+/// A9 — Reset
+///
+/// Reset changes the arena generation and invalidates old marks.
+///
+/// A10 — Rewind
+///
+/// Rewind preserves the generation.
+///
+/// A11 — Peak statistics
+///
+/// Reset, rewind and trim never decrease peak values.
+///
+/// A12 — Requested bytes
+///
+/// Requested bytes exclude internal alignment padding.
+///
+/// A13 — Allocation metadata
+///
+/// No per-allocation prefix or header is used.
+///
+/// A14 — Corruption policy
+///
+/// Invalid block metadata must not be traversed or freed.
+///
+/// A15 — Thread safety
+///
+/// Individual arenas are not internally synchronized.
+/// Independent arenas may be used concurrently.
+///
+
+/// =========================================================================
+/// End
+/// =========================================================================

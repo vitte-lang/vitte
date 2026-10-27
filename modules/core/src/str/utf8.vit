@@ -1,0 +1,87 @@
+/// Décodage UTF-8 strict depuis une tranche d'octets.
+space core::str::utf8;
+
+export pick Utf8Error {
+    None,
+    OutOfBounds,
+    InvalidLeadingByte,
+    InvalidContinuationByte,
+    OverlongEncoding,
+    Surrogate,
+    OutOfRange,
+}
+
+/// Décodage d'un scalaire UTF-8. `error_index` est un offset absolu en octets
+/// de l'entrée; succès utilise `error == None` et l'offset zéro.
+export form Utf8DecodeResult {
+    success: bool,
+    codepoint: u32,
+    width: usize,
+    error: Utf8Error,
+    error_index: usize,
+}
+
+proc utf8_failure(error: Utf8Error, error_index: usize) -> Utf8DecodeResult {
+    return Utf8DecodeResult {
+        success: false,
+        codepoint: 0,
+        width: 0,
+        error: error,
+        error_index: error_index,
+    };
+}
+
+proc utf8_continuation(value: u8) -> bool {
+    return value >= 128 && value <= 191;
+}
+
+export proc utf8_decode(bytes: &[u8], offset: usize) -> Utf8DecodeResult {
+    if offset >= bytes.len() { return utf8_failure(Utf8Error.OutOfBounds, offset); }
+    let first: u8 = bytes[offset];
+    if first <= 127 {
+        return Utf8DecodeResult { success: true, codepoint: first as u32, width: 1, error: Utf8Error.None, error_index: 0 };
+    }
+
+    let mut width: usize = 0;
+    let mut codepoint: u32 = 0;
+    if first >= 194 && first <= 223 {
+        set width = 2;
+        set codepoint = (first & 31) as u32;
+    } else if first >= 224 && first <= 239 {
+        set width = 3;
+        set codepoint = (first & 15) as u32;
+    } else if first >= 240 && first <= 244 {
+        set width = 4;
+        set codepoint = (first & 7) as u32;
+    } else {
+        return utf8_failure(Utf8Error.InvalidLeadingByte, offset);
+    }
+
+    if width > bytes.len() - offset { return utf8_failure(Utf8Error.OutOfBounds, bytes.len()); }
+    for index in 1..width {
+        let byte_offset: usize = offset + index;
+        let byte_index: i64 = byte_offset as i64;
+        let next: u8 = bytes[byte_index];
+        if not utf8_continuation(next) { return utf8_failure(Utf8Error.InvalidContinuationByte, offset + index); }
+        set codepoint = (codepoint << 6) | ((next & 63) as u32);
+    }
+
+    let sequence_end: usize = offset + width - 1;
+    if width == 2 && codepoint < 128 { return utf8_failure(Utf8Error.OverlongEncoding, sequence_end); }
+    if width == 3 && codepoint < 2048 { return utf8_failure(Utf8Error.OverlongEncoding, sequence_end); }
+    if width == 4 && codepoint < 65536 { return utf8_failure(Utf8Error.OverlongEncoding, sequence_end); }
+    if codepoint >= 55296 && codepoint <= 57343 { return utf8_failure(Utf8Error.Surrogate, sequence_end); }
+    if codepoint > 1114111 { return utf8_failure(Utf8Error.OutOfRange, sequence_end); }
+
+    return Utf8DecodeResult { success: true, codepoint: codepoint, width: width, error: Utf8Error.None, error_index: 0 };
+}
+
+export proc utf8_validate(bytes: &[u8]) -> bool {
+    let mut offset: usize = 0;
+    while offset < bytes.len() {
+        let decoded: Utf8DecodeResult = utf8_decode(bytes, offset);
+        if not decoded.success { return false; }
+        set offset = offset + decoded.width;
+    }
+    return true;
+}

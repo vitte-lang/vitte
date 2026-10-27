@@ -1,0 +1,89 @@
+/// Plage d'indices demi-ouverte `[start, end)`.
+///
+/// Les bornes sont des `usize`. Une plage dont `end <= start` est vide et sa
+/// longueur vaut zéro.
+space core::types::range;
+
+/// Deux bornes définissant une plage demi-ouverte.
+export form Range {
+    start: usize,
+    end: usize,
+}
+
+/// Construit une plage demi-ouverte.
+export proc range(start: usize, end: usize) -> Range {
+    return Range {
+        start: start,
+        end: end,
+    };
+}
+
+/// Construit la plage vide située à `position`.
+export proc range_empty_at(position: usize) -> Range {
+    return range(position, position);
+}
+
+/// Indique si les bornes forment une plage demi-ouverte valide.
+export proc range_is_valid(value: &Range) -> bool {
+    return value.start <= value.end;
+}
+
+/// Indique si la plage ne contient aucun indice.
+/// Une plage invalide est traitée comme vide.
+export proc range_is_empty(value: &Range) -> bool {
+    return value.end <= value.start;
+}
+
+/// Retourne le nombre d'indices contenus dans la plage.
+export proc range_len(value: &Range) -> usize {
+    if value.end <= value.start {
+        return 0;
+    }
+
+    return value.end - value.start;
+}
+
+/// Vérifie si `index` appartient à la plage.
+export proc range_contains(value: &Range, index: usize) -> bool {
+    return value.start <= index && index < value.end;
+}
+
+/// Vérifie si `inner` est entièrement compris dans `outer`.
+export proc range_contains_range(outer: &Range, inner: &Range) -> bool {
+    if not range_is_valid(outer) || not range_is_valid(inner) {
+        return false;
+    }
+
+    return outer.start <= inner.start && inner.end <= outer.end;
+}
+
+/// Vérifie si deux plages non vides se recouvrent.
+export proc range_overlaps(left: &Range, right: &Range) -> bool {
+    if not range_is_valid(left) || not range_is_valid(right) {
+        return false;
+    }
+    return left.start < right.end && right.start < left.end;
+}
+
+/// Retourne la partie commune des plages, ou `null` si elle est vide.
+export proc range_intersection(left: &Range, right: &Range) -> ?Range {
+    if not range_is_valid(left) || not range_is_valid(right) {
+        return null;
+    }
+
+    let mut start: usize = left.start;
+    if right.start > start {
+        set start = right.start;
+    }
+
+    let mut end: usize = left.end;
+    if right.end < end {
+        set end = right.end;
+    }
+
+    if end <= start {
+        return null;
+    }
+
+    return range(start, end);
+}

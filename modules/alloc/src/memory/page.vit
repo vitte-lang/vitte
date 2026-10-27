@@ -1,0 +1,16 @@
+/// Arrondi de tailles à une granularité de page fournie par l'appelant.
+space alloc::memory::page;
+
+use core::mem::layout::{Layout, layout};
+use core::mem::align::{mem_alignment_is_valid};
+
+export proc page_layout(size: usize, page_size: usize) -> Layout {
+    if not mem_alignment_is_valid(page_size) {
+        return layout(0, 0);
+    }
+    let remainder: usize = size % page_size;
+    if remainder == 0 { return layout(size, page_size); }
+    let padding: usize = page_size - remainder;
+    if size > usize.MAX - padding { return layout(0, 0); }
+    return layout(size + padding, page_size);
+}

@@ -1,0 +1,20 @@
+/// Comparaison lexicographique de deux régions d'octets.
+space alloc::memory::compare;
+
+export form MemoryComparison {
+    valid: bool,
+    ordering: i8,
+}
+
+export proc compare_bytes(left: *const u8, right: *const u8, length: usize) -> MemoryComparison {
+    if length != 0 && (left == null || right == null) {
+        return MemoryComparison { valid: false, ordering: 0 };
+    }
+    let mut index: usize = 0;
+    while index < length {
+        if left[index] < right[index] { return MemoryComparison { valid: true, ordering: -1 }; }
+        if left[index] > right[index] { return MemoryComparison { valid: true, ordering: 1 }; }
+        set index = index + 1;
+    }
+    return MemoryComparison { valid: true, ordering: 0 };
+}

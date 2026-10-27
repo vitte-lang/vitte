@@ -1,0 +1,791 @@
+/// Whole-program dependency, symbol, entry-point and ordering model.
+space compiler::backend::c17::program;
+
+use compiler::backend::c17::module::{C17Module};
+
+const PROGRAM_MAGIC: u64 = 0x5649545445505247;
+const PROGRAM_DEAD_MAGIC: u64 = 0x4445414450524F47;
+const PROGRAM_MAX_MODULES: usize = 1048576;
+const PROGRAM_MAX_EDGES: usize = 16777216;
+const PROGRAM_MAX_SYMBOLS: usize = 16777216;
+const PROGRAM_MAX_NAME_BYTES: usize = 65536;
+const PROGRAM_INITIAL_MODULE_CAPACITY: usize = 16;
+const PROGRAM_INITIAL_DEPENDENCY_CAPACITY: usize = 32;
+const PROGRAM_INITIAL_SYMBOL_CAPACITY: usize = 64;
+const PROGRAM_HASH_OFFSET: u64 = 14695981039346656037;
+const PROGRAM_HASH_PRIME: u64 = 1099511628211;
+const PROGRAM_SYMBOL_KIND_COUNT: usize = 7;
+
+export pick C17ProgramError {
+    None, InvalidProgram, InvalidArgument, InvalidModule, InvalidSymbol,
+    DuplicateModule, DuplicateSymbol, UnknownModule, UnknownSymbol,
+    SelfDependency, DuplicateDependency, DependencyCycle, EntryNotFound,
+    MultipleEntry, LimitExceeded, Overflow, OutOfMemory, Corruption, Count,
+}
+
+export pick C17ProgramSymbolKind { Invalid, Function, Global, Type, Constant, Runtime, Internal, Count }
+export pick C17ProgramSymbolVisibility { Invalid, Private, Public, External, Count }
+
+export form C17ProgramConfig {
+    max_modules: usize,
+    max_dependencies: usize,
+    max_symbols: usize,
+    max_name_bytes: usize,
+    deterministic: bool,
+    require_entry: bool,
+    reject_cycles: bool,
+    reject_duplicate_symbols: bool,
+    reject_duplicate_dependencies: bool,
+    validate_modules: bool,
+    include_unreachable_modules: bool,
+}
+
+export form C17ProgramModule {
+    id: u64,
+    module: *mut C17Module,
+    name: string,
+    name_length: usize,
+    registration_index: usize,
+    is_entry: bool,
+    reachable: bool,
+}
+
+export form C17ProgramDependency { from_module_id: u64, to_module_id: u64, registration_index: usize }
+export form C17ProgramSymbol {
+    id: u64,
+    module_id: u64,
+    source_id: u64,
+    kind: C17ProgramSymbolKind,
+    visibility: C17ProgramSymbolVisibility,
+    source_name: string,
+    source_name_length: usize,
+    generated_name: string,
+    generated_name_length: usize,
+    definition: bool,
+    registration_index: usize,
+}
+
+export form C17ProgramStats {
+    valid: bool,
+    module_count: usize,
+    module_capacity: usize,
+    reachable_module_count: usize,
+    ordered_module_count: usize,
+    module_name_bytes: usize,
+    reachable_module_name_bytes: usize,
+    dependency_count: usize,
+    dependency_capacity: usize,
+    symbol_count: usize,
+    symbol_capacity: usize,
+    definition_count: usize,
+    declaration_count: usize,
+    private_symbol_count: usize,
+    public_symbol_count: usize,
+    external_symbol_count: usize,
+    symbols_by_kind: [usize; PROGRAM_SYMBOL_KIND_COUNT],
+    source_symbol_name_bytes: usize,
+    generated_symbol_name_bytes: usize,
+    has_entry: bool,
+    generation: u64,
+    hash: u64,
+}
+
+export form C17Program {
+    magic: u64,
+    config: C17ProgramConfig,
+    last_error: C17ProgramError,
+    modules: [C17ProgramModule],
+    module_capacity: usize,
+    dependencies: [C17ProgramDependency],
+    dependency_capacity: usize,
+    symbols: [C17ProgramSymbol],
+    symbol_capacity: usize,
+    order: [u64],
+    reachable: [u64],
+    entry_module_id: u64,
+    entry_symbol_id: u64,
+    has_entry: bool,
+    next_module_id: u64,
+    next_symbol_id: u64,
+    generation: u64,
+}
+
+proc program_fail(program: &mut C17Program, error: C17ProgramError) -> bool {
+    if program.magic == PROGRAM_MAGIC { set program.last_error = error; }
+    return false;
+}
+
+pub proc vitte_c17_program_config_default() -> C17ProgramConfig {
+    return C17ProgramConfig { max_modules: PROGRAM_MAX_MODULES, max_dependencies: PROGRAM_MAX_EDGES, max_symbols: PROGRAM_MAX_SYMBOLS, max_name_bytes: PROGRAM_MAX_NAME_BYTES, deterministic: true, require_entry: true, reject_cycles: true, reject_duplicate_symbols: true, reject_duplicate_dependencies: true, validate_modules: true, include_unreachable_modules: false };
+}
+
+proc program_config_valid(config: &C17ProgramConfig) -> bool {
+    return config.max_modules > 0 and config.max_modules <= PROGRAM_MAX_MODULES and
+        config.max_dependencies > 0 and config.max_dependencies <= PROGRAM_MAX_EDGES and
+        config.max_symbols > 0 and config.max_symbols <= PROGRAM_MAX_SYMBOLS and
+        config.max_name_bytes > 0 and config.max_name_bytes <= PROGRAM_MAX_NAME_BYTES;
+}
+
+pub proc vitte_c17_program_error_name(error: C17ProgramError) -> string {
+    match error {
+        case C17ProgramError.None => "none", case C17ProgramError.InvalidProgram => "invalid-program",
+        case C17ProgramError.InvalidArgument => "invalid-argument", case C17ProgramError.InvalidModule => "invalid-module",
+        case C17ProgramError.InvalidSymbol => "invalid-symbol", case C17ProgramError.DuplicateModule => "duplicate-module",
+        case C17ProgramError.DuplicateSymbol => "duplicate-symbol", case C17ProgramError.UnknownModule => "unknown-module",
+        case C17ProgramError.UnknownSymbol => "unknown-symbol", case C17ProgramError.SelfDependency => "self-dependency",
+        case C17ProgramError.DuplicateDependency => "duplicate-dependency", case C17ProgramError.DependencyCycle => "dependency-cycle",
+        case C17ProgramError.EntryNotFound => "entry-not-found", case C17ProgramError.MultipleEntry => "multiple-entry",
+        case C17ProgramError.LimitExceeded => "limit-exceeded", case C17ProgramError.Overflow => "overflow",
+        case C17ProgramError.OutOfMemory => "out-of-memory", case C17ProgramError.Corruption => "corruption",
+        case C17ProgramError.Count => "count",
+    }
+}
+
+pub proc vitte_c17_program_symbol_kind_name(kind: C17ProgramSymbolKind) -> string {
+    match kind {
+        case C17ProgramSymbolKind.Invalid => "invalid", case C17ProgramSymbolKind.Function => "function",
+        case C17ProgramSymbolKind.Global => "global", case C17ProgramSymbolKind.Type => "type",
+        case C17ProgramSymbolKind.Constant => "constant", case C17ProgramSymbolKind.Runtime => "runtime",
+        case C17ProgramSymbolKind.Internal => "internal", case C17ProgramSymbolKind.Count => "count",
+    }
+}
+
+pub proc vitte_c17_program_symbol_visibility_name(visibility: C17ProgramSymbolVisibility) -> string {
+    match visibility {
+        case C17ProgramSymbolVisibility.Invalid => "invalid", case C17ProgramSymbolVisibility.Private => "private",
+        case C17ProgramSymbolVisibility.Public => "public", case C17ProgramSymbolVisibility.External => "external",
+        case C17ProgramSymbolVisibility.Count => "count",
+    }
+}
+
+// Call on fresh storage or after destroy; reinitializing an active program replaces its owned arrays.
+pub proc vitte_c17_program_init(program: &mut C17Program, config: ?&C17ProgramConfig) -> bool {
+    let effective = if config == null { vitte_c17_program_config_default() } else { *config? };
+    if not program_config_valid(&effective) { return false; }
+    set *program = C17Program {
+        magic: PROGRAM_MAGIC, config: effective, last_error: C17ProgramError.None,
+        modules: [], module_capacity: 0, dependencies: [], dependency_capacity: 0,
+        symbols: [], symbol_capacity: 0, order: [], reachable: [],
+        entry_module_id: 0, entry_symbol_id: 0, has_entry: false,
+        next_module_id: 1, next_symbol_id: 1, generation: 1,
+    };
+    return true;
+}
+
+pub proc vitte_c17_program_is_valid(program: &C17Program) -> bool {
+    return program.magic == PROGRAM_MAGIC and
+        program.modules.len() <= program.module_capacity and
+        program.dependencies.len() <= program.dependency_capacity and
+        program.symbols.len() <= program.symbol_capacity;
+}
+
+proc program_growth(current: usize, initial: usize, minimum: usize, maximum: usize) -> usize {
+    if minimum <= current { return current; }
+    if minimum > maximum { return 0; }
+    let mut capacity = if current == 0 { initial } else { current };
+    if capacity > maximum { set capacity = maximum; }
+    while capacity < minimum {
+        if capacity > maximum / 2 { set capacity = maximum; break; }
+        set capacity *= 2;
+    }
+    return capacity;
+}
+
+pub proc vitte_c17_program_reserve_modules(program: &mut C17Program, capacity: usize) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    if capacity <= program.module_capacity { return true; }
+    let next = program_growth(program.module_capacity, PROGRAM_INITIAL_MODULE_CAPACITY, capacity, program.config.max_modules);
+    if next == 0 { return program_fail(program, C17ProgramError.LimitExceeded); }
+    if next > usize.MAX / sizeof(C17ProgramModule) { return program_fail(program, C17ProgramError.Overflow); }
+    if not program.modules.reserve(next) { return program_fail(program, C17ProgramError.OutOfMemory); }
+    set program.module_capacity = next;
+    return true;
+}
+
+pub proc vitte_c17_program_reserve_dependencies(program: &mut C17Program, capacity: usize) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    if capacity <= program.dependency_capacity { return true; }
+    let next = program_growth(program.dependency_capacity, PROGRAM_INITIAL_DEPENDENCY_CAPACITY, capacity, program.config.max_dependencies);
+    if next == 0 { return program_fail(program, C17ProgramError.LimitExceeded); }
+    if next > usize.MAX / sizeof(C17ProgramDependency) { return program_fail(program, C17ProgramError.Overflow); }
+    if not program.dependencies.reserve(next) { return program_fail(program, C17ProgramError.OutOfMemory); }
+    set program.dependency_capacity = next;
+    return true;
+}
+
+pub proc vitte_c17_program_reserve_symbols(program: &mut C17Program, capacity: usize) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    if capacity <= program.symbol_capacity { return true; }
+    let next = program_growth(program.symbol_capacity, PROGRAM_INITIAL_SYMBOL_CAPACITY, capacity, program.config.max_symbols);
+    if next == 0 { return program_fail(program, C17ProgramError.LimitExceeded); }
+    if next > usize.MAX / sizeof(C17ProgramSymbol) { return program_fail(program, C17ProgramError.Overflow); }
+    if not program.symbols.reserve(next) { return program_fail(program, C17ProgramError.OutOfMemory); }
+    set program.symbol_capacity = next;
+    return true;
+}
+
+pub proc vitte_c17_program_reset(program: &mut C17Program) {
+    if not vitte_c17_program_is_valid(program) { return; }
+    program.modules.clear(); program.dependencies.clear(); program.symbols.clear(); program.order.clear(); program.reachable.clear();
+    set program.entry_module_id = 0; set program.entry_symbol_id = 0; set program.has_entry = false;
+    set program.next_module_id = 1; set program.next_symbol_id = 1; set program.last_error = C17ProgramError.None;
+    if program.generation != 18446744073709551615 { set program.generation += 1; }
+}
+
+pub proc vitte_c17_program_destroy(program: &mut C17Program) {
+    if not vitte_c17_program_is_valid(program) { return; }
+    set *program = C17Program {
+        magic: PROGRAM_DEAD_MAGIC,
+        config: C17ProgramConfig {
+            max_modules: 0, max_dependencies: 0, max_symbols: 0, max_name_bytes: 0,
+            deterministic: false, require_entry: false, reject_cycles: false,
+            reject_duplicate_symbols: false, reject_duplicate_dependencies: false,
+            validate_modules: false, include_unreachable_modules: false,
+        },
+        last_error: C17ProgramError.None,
+        modules: [], module_capacity: 0, dependencies: [], dependency_capacity: 0,
+        symbols: [], symbol_capacity: 0, order: [], reachable: [],
+        entry_module_id: 0, entry_symbol_id: 0, has_entry: false,
+        next_module_id: 0, next_symbol_id: 0, generation: 0,
+    };
+}
+
+proc program_module_index(program: &C17Program, id: u64) -> ?usize {
+    let mut index: usize = 0;
+    while index < program.modules.len() { if program.modules[index].id == id { return index; } set index += 1; }
+    return null;
+}
+
+pub proc vitte_c17_program_add_module(program: &mut C17Program, module: &mut C17Module, name: string, name_length: usize) -> u64 {
+    if not vitte_c17_program_is_valid(program) { return 0; }
+    if name_length == 0 { program_fail(program, C17ProgramError.InvalidModule); return 0; }
+    if name_length > name.len() { program_fail(program, C17ProgramError.InvalidArgument); return 0; }
+    if name_length > program.config.max_name_bytes { program_fail(program, C17ProgramError.LimitExceeded); return 0; }
+    if program.modules.len() >= program.config.max_modules { program_fail(program, C17ProgramError.LimitExceeded); return 0; }
+    let name_key = name.slice(0, name_length);
+    let mut index: usize = 0;
+    while index < program.modules.len() {
+        if program.modules[index].module == (module as *mut C17Module) or program.modules[index].name == name_key { program_fail(program, C17ProgramError.DuplicateModule); return 0; }
+        set index += 1;
+    }
+    if program.next_module_id == 0 or program.next_module_id == 18446744073709551615 { program_fail(program, C17ProgramError.Overflow); return 0; }
+    if not vitte_c17_program_reserve_modules(program, program.modules.len() + 1) { return 0; }
+    let id = program.next_module_id;
+    let registration_index = program.modules.len();
+    if not program.modules.push(C17ProgramModule { id: id, module: module as *mut C17Module, name: name_key.to_string(), name_length: name_length, registration_index: registration_index, is_entry: false, reachable: false }) { program_fail(program, C17ProgramError.OutOfMemory); return 0; }
+    set program.next_module_id += 1;
+    set program.last_error = C17ProgramError.None;
+    program.order.clear(); program.reachable.clear();
+    return id;
+}
+
+pub proc vitte_c17_program_find_module_by_id(program: &C17Program, id: u64) -> ?C17ProgramModule {
+    if not vitte_c17_program_is_valid(program) { return null; }
+    let index = program_module_index(program, id); if index == null { return null; } return program.modules[index?];
+}
+
+pub proc vitte_c17_program_find_module_by_name(program: &C17Program, name: string, length: usize) -> ?C17ProgramModule {
+    if not vitte_c17_program_is_valid(program) or length == 0 or length > name.len() { return null; }
+    let key = name.slice(0, length);
+    let mut index: usize = 0; while index < program.modules.len() { if program.modules[index].name == key { return program.modules[index]; } set index += 1; } return null;
+}
+
+pub proc vitte_c17_program_find_module_by_pointer(program: &C17Program, module: &C17Module) -> ?C17ProgramModule {
+    if not vitte_c17_program_is_valid(program) { return null; }
+    let pointer = module as *mut C17Module; let mut index: usize = 0; while index < program.modules.len() { if program.modules[index].module == pointer { return program.modules[index]; } set index += 1; } return null;
+}
+
+pub proc vitte_c17_program_add_dependency(program: &mut C17Program, from_id: u64, to_id: u64) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    if from_id == 0 or to_id == 0 { return program_fail(program, C17ProgramError.InvalidArgument); }
+    if from_id == to_id { return program_fail(program, C17ProgramError.SelfDependency); }
+    if program_module_index(program, from_id) == null or program_module_index(program, to_id) == null { return program_fail(program, C17ProgramError.UnknownModule); }
+    let mut index: usize = 0;
+    while index < program.dependencies.len() { let edge = &program.dependencies[index]; if edge.from_module_id == from_id and edge.to_module_id == to_id { if program.config.reject_duplicate_dependencies { return program_fail(program, C17ProgramError.DuplicateDependency); } set program.last_error = C17ProgramError.None; return true; } set index += 1; }
+    if program.dependencies.len() >= program.config.max_dependencies { return program_fail(program, C17ProgramError.LimitExceeded); }
+    if not vitte_c17_program_reserve_dependencies(program, program.dependencies.len() + 1) { return false; }
+    let registration_index = program.dependencies.len();
+    if not program.dependencies.push(C17ProgramDependency { from_module_id: from_id, to_module_id: to_id, registration_index: registration_index }) { return program_fail(program, C17ProgramError.OutOfMemory); }
+    program.order.clear(); program.reachable.clear(); set program.last_error = C17ProgramError.None; return true;
+}
+
+pub proc vitte_c17_program_has_dependency(program: &C17Program, from_id: u64, to_id: u64) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    let mut index: usize = 0; while index < program.dependencies.len() { if program.dependencies[index].from_module_id == from_id and program.dependencies[index].to_module_id == to_id { return true; } set index += 1; } return false;
+}
+
+pub proc vitte_c17_program_set_entry_module(program: &mut C17Program, id: u64) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    let index = program_module_index(program, id); if index == null { return program_fail(program, C17ProgramError.UnknownModule); }
+    let mut i: usize = 0; while i < program.modules.len() { set program.modules[i].is_entry = false; set i += 1; }
+    set program.modules[index?].is_entry = true; set program.entry_module_id = id; set program.has_entry = true; program.reachable.clear(); program.order.clear(); set program.last_error = C17ProgramError.None; return true;
+}
+
+pub proc vitte_c17_program_clear_entry(program: &mut C17Program) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    let mut i: usize = 0; while i < program.modules.len() { set program.modules[i].is_entry = false; set i += 1; }
+    set program.has_entry = false; set program.entry_module_id = 0; set program.entry_symbol_id = 0; program.reachable.clear(); program.order.clear(); set program.last_error = C17ProgramError.None; return true;
+}
+
+pub proc vitte_c17_program_add_symbol(program: &mut C17Program, module_id: u64, kind: C17ProgramSymbolKind, visibility: C17ProgramSymbolVisibility, source_name: string, source_name_length: usize, generated_name: string, generated_name_length: usize, source_id: u64, definition: bool) -> u64 {
+    if not vitte_c17_program_is_valid(program) { return 0; }
+    if kind <= C17ProgramSymbolKind.Invalid or kind >= C17ProgramSymbolKind.Count or
+       visibility <= C17ProgramSymbolVisibility.Invalid or visibility >= C17ProgramSymbolVisibility.Count or
+       source_name_length == 0 or generated_name_length == 0 {
+        program_fail(program, C17ProgramError.InvalidSymbol); return 0;
+    }
+    if source_name_length > source_name.len() or generated_name_length > generated_name.len() {
+        program_fail(program, C17ProgramError.InvalidArgument); return 0;
+    }
+    if source_name_length > program.config.max_name_bytes or generated_name_length > program.config.max_name_bytes {
+        program_fail(program, C17ProgramError.LimitExceeded); return 0;
+    }
+    let source_key = source_name.slice(0, source_name_length);
+    let generated_key = generated_name.slice(0, generated_name_length);
+    if module_id != 0 and program_module_index(program, module_id) == null { program_fail(program, C17ProgramError.UnknownModule); return 0; }
+    if program.symbols.len() >= program.config.max_symbols { program_fail(program, C17ProgramError.LimitExceeded); return 0; }
+    let mut i: usize = 0;
+    while i < program.symbols.len() {
+        if program.symbols[i].generated_name == generated_key or
+           (program.symbols[i].module_id == module_id and program.symbols[i].kind == kind and program.symbols[i].source_name == source_key) {
+            if program.config.reject_duplicate_symbols { program_fail(program, C17ProgramError.DuplicateSymbol); return 0; }
+            break;
+        }
+        set i += 1;
+    }
+    let id = program.next_symbol_id; if id == 0 or id == 18446744073709551615 { program_fail(program, C17ProgramError.Overflow); return 0; }
+    if not vitte_c17_program_reserve_symbols(program, program.symbols.len() + 1) { return 0; }
+    let registration_index = program.symbols.len();
+    if not program.symbols.push(C17ProgramSymbol { id: id, module_id: module_id, source_id: source_id, kind: kind, visibility: visibility, source_name: source_key.to_string(), source_name_length: source_name_length, generated_name: generated_key.to_string(), generated_name_length: generated_name_length, definition: definition, registration_index: registration_index }) { program_fail(program, C17ProgramError.OutOfMemory); return 0; }
+    set program.next_symbol_id += 1;
+    set program.last_error = C17ProgramError.None;
+    return id;
+}
+
+proc program_symbol_index(program: &C17Program, id: u64) -> ?usize { let mut i: usize = 0; while i < program.symbols.len() { if program.symbols[i].id == id { return i; } set i += 1; } return null; }
+
+pub proc vitte_c17_program_find_symbol_by_id(program: &C17Program, id: u64) -> ?C17ProgramSymbol { if not vitte_c17_program_is_valid(program) { return null; } let i = program_symbol_index(program,id); if i == null { return null; } return program.symbols[i?]; }
+pub proc vitte_c17_program_find_generated_symbol(program: &C17Program, name: string, length: usize) -> ?C17ProgramSymbol { if not vitte_c17_program_is_valid(program) or length == 0 or length > name.len() { return null; } let key = name.slice(0, length); let mut i: usize = 0; while i < program.symbols.len() { if program.symbols[i].generated_name == key { return program.symbols[i]; } set i += 1; } return null; }
+pub proc vitte_c17_program_find_source_symbol(program: &C17Program, module_id: u64, kind: C17ProgramSymbolKind, name: string, length: usize) -> ?C17ProgramSymbol { if not vitte_c17_program_is_valid(program) or length == 0 or length > name.len() { return null; } let key = name.slice(0, length); let mut i: usize = 0; while i < program.symbols.len() { if program.symbols[i].module_id == module_id and program.symbols[i].kind == kind and program.symbols[i].source_name == key { return program.symbols[i]; } set i += 1; } return null; }
+
+pub proc vitte_c17_program_set_entry_symbol(program: &mut C17Program, symbol_id: u64) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    let i = program_symbol_index(program, symbol_id); if i == null { return program_fail(program, C17ProgramError.UnknownSymbol); }
+    let kind = program.symbols[i?].kind;
+    let definition = program.symbols[i?].definition;
+    let module_id = program.symbols[i?].module_id;
+    if kind != C17ProgramSymbolKind.Function or not definition { return program_fail(program, C17ProgramError.InvalidSymbol); }
+    if module_id != 0 and not vitte_c17_program_set_entry_module(program, module_id) { return false; }
+    set program.entry_symbol_id = symbol_id;
+    set program.has_entry = true;
+    set program.last_error = C17ProgramError.None;
+    return true;
+}
+
+pub proc vitte_c17_program_compute_reachability(program: &mut C17Program) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    program.reachable.clear();
+    let mut i: usize = 0;
+    while i < program.modules.len() { set program.modules[i].reachable = false; set i += 1; }
+    if program.modules.len() == 0 { set program.last_error = C17ProgramError.None; return true; }
+    let mut marks: [bool] = [];
+    i = 0;
+    while i < program.modules.len() {
+        if not marks.push(false) { return program_fail(program, C17ProgramError.OutOfMemory); }
+        set i += 1;
+    }
+    let mut queue: [u64] = [];
+    if program.has_entry {
+        let root = program_module_index(program, program.entry_module_id);
+        if root == null { return program_fail(program, C17ProgramError.EntryNotFound); }
+        if not queue.push(program.entry_module_id) { return program_fail(program, C17ProgramError.OutOfMemory); }
+        set marks[root?] = true;
+        let mut cursor: usize = 0;
+        while cursor < queue.len() {
+            let id = queue[cursor];
+            i = 0;
+            while i < program.dependencies.len() {
+                let edge = &program.dependencies[i];
+                if edge.from_module_id == id {
+                    let target = program_module_index(program, edge.to_module_id);
+                    if target == null { return program_fail(program, C17ProgramError.Corruption); }
+                    if not marks[target?] {
+                        if not queue.push(edge.to_module_id) { return program_fail(program, C17ProgramError.OutOfMemory); }
+                        set marks[target?] = true;
+                    }
+                }
+                set i += 1;
+            }
+            set cursor += 1;
+        }
+    } else {
+        i = 0;
+        while i < program.modules.len() { set marks[i] = true; set i += 1; }
+    }
+    let mut reachable_ids: [u64] = [];
+    i = 0;
+    while i < program.modules.len() {
+        if marks[i] and not reachable_ids.push(program.modules[i].id) {
+            return program_fail(program, C17ProgramError.OutOfMemory);
+        }
+        set i += 1;
+    }
+    if reachable_ids.len() != 0 and not program.reachable.reserve(reachable_ids.len()) {
+        return program_fail(program, C17ProgramError.OutOfMemory);
+    }
+    i = 0;
+    while i < reachable_ids.len() {
+        if not program.reachable.push(reachable_ids[i]) {
+            program.reachable.clear();
+            return program_fail(program, C17ProgramError.OutOfMemory);
+        }
+        set i += 1;
+    }
+    i = 0;
+    while i < program.modules.len() {
+        set program.modules[i].reachable = marks[i];
+        set i += 1;
+    }
+    set program.last_error = C17ProgramError.None;
+    return true;
+}
+
+pub proc vitte_c17_program_compute_order(program: &mut C17Program) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    if not vitte_c17_program_compute_reachability(program) { return false; }
+    program.order.clear();
+    let count = program.modules.len();
+    if count == 0 { set program.last_error = C17ProgramError.None; return true; }
+    let mut indegree: [usize] = [];
+    let mut selected: [bool] = [];
+    let mut included: [bool] = [];
+    let mut included_count: usize = 0;
+    let mut i: usize = 0;
+    while i < count {
+        let keep = program.config.include_unreachable_modules or program.modules[i].reachable;
+        if not indegree.push(0 as usize) or not selected.push(false) or not included.push(keep) {
+            return program_fail(program, C17ProgramError.OutOfMemory);
+        }
+        if keep { set included_count += 1; }
+        set i += 1;
+    }
+    i = 0;
+    while i < program.dependencies.len() {
+        let edge = &program.dependencies[i];
+        let from = program_module_index(program, edge.from_module_id);
+        let to = program_module_index(program, edge.to_module_id);
+        if from == null or to == null { return program_fail(program, C17ProgramError.Corruption); }
+        if included[from?] and included[to?] {
+            if indegree[from?] == usize.MAX { return program_fail(program, C17ProgramError.Overflow); }
+            set indegree[from?] += 1;
+        }
+        set i += 1;
+    }
+    let mut ordered: [u64] = [];
+    if not ordered.reserve(included_count) { return program_fail(program, C17ProgramError.OutOfMemory); }
+    while ordered.len() < included_count {
+        let mut ready: ?usize = null;
+        i = 0;
+        while i < count {
+            if included[i] and not selected[i] and indegree[i] == 0 {
+                if ready == null { set ready = i; }
+                elif program.config.deterministic {
+                    let candidate = &program.modules[i];
+                    let best = &program.modules[ready?];
+                    if program_string_before(candidate.name, best.name) or (candidate.name == best.name and candidate.id < best.id) {
+                        set ready = i;
+                    }
+                } elif program.modules[i].registration_index < program.modules[ready?].registration_index {
+                    set ready = i;
+                }
+            }
+            set i += 1;
+        }
+        if ready == null { return program_fail(program, C17ProgramError.DependencyCycle); }
+        let completed_id = program.modules[ready?].id;
+        if not ordered.push(completed_id) { return program_fail(program, C17ProgramError.OutOfMemory); }
+        set selected[ready?] = true;
+        i = 0;
+        while i < program.dependencies.len() {
+            let edge = &program.dependencies[i];
+            if edge.to_module_id == completed_id {
+                let dependent = program_module_index(program, edge.from_module_id);
+                if dependent == null { return program_fail(program, C17ProgramError.Corruption); }
+                if included[dependent?] and not selected[dependent?] {
+                    if indegree[dependent?] == 0 { return program_fail(program, C17ProgramError.Corruption); }
+                    set indegree[dependent?] -= 1;
+                }
+            }
+            set i += 1;
+        }
+    }
+    set program.order = ordered;
+    set program.last_error = C17ProgramError.None;
+    return true;
+}
+
+pub proc vitte_c17_program_finalize(program: &mut C17Program) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    if program.config.require_entry and not program.has_entry { return program_fail(program, C17ProgramError.EntryNotFound); }
+    if not vitte_c17_program_compute_order(program) { return false; }
+    if not vitte_c17_program_validate(program) { return program_fail(program, C17ProgramError.Corruption); }
+    set program.last_error = C17ProgramError.None;
+    return true;
+}
+
+pub proc vitte_c17_program_validate(program: &C17Program) -> bool {
+    if not vitte_c17_program_is_valid(program) { return false; }
+    if not program_config_valid(&program.config) or
+       program.modules.len() > program.config.max_modules or
+       program.dependencies.len() > program.config.max_dependencies or
+       program.symbols.len() > program.config.max_symbols { return false; }
+
+    let mut entry_count: usize = 0;
+    let mut i: usize = 0;
+    while i < program.modules.len() {
+        let module = &program.modules[i];
+        if module.id == 0 or module.module == null or module.name_length == 0 or module.name_length != module.name.len() or
+           module.name_length > program.config.max_name_bytes { return false; }
+        if module.is_entry {
+            set entry_count += 1;
+            if module.id != program.entry_module_id { return false; }
+        }
+        let mut j = i + 1;
+        while j < program.modules.len() {
+            let other = &program.modules[j];
+            if module.id == other.id or module.module == other.module or module.name == other.name { return false; }
+            set j += 1;
+        }
+        set i += 1;
+    }
+    if program.has_entry {
+        if entry_count != 1 or program_module_index(program, program.entry_module_id) == null { return false; }
+        if program.entry_symbol_id != 0 {
+            let symbol_index = program_symbol_index(program, program.entry_symbol_id);
+            if symbol_index == null { return false; }
+            let entry_symbol = &program.symbols[symbol_index?];
+            if entry_symbol.kind != C17ProgramSymbolKind.Function or not entry_symbol.definition { return false; }
+        }
+    } else {
+        if entry_count != 0 or program.entry_module_id != 0 or program.entry_symbol_id != 0 or program.config.require_entry { return false; }
+    }
+
+    i = 0;
+    while i < program.dependencies.len() {
+        let edge = &program.dependencies[i];
+        if edge.from_module_id == 0 or edge.to_module_id == 0 or edge.from_module_id == edge.to_module_id or
+           program_module_index(program, edge.from_module_id) == null or
+           program_module_index(program, edge.to_module_id) == null { return false; }
+        let mut j = i + 1;
+        while j < program.dependencies.len() {
+            let other = &program.dependencies[j];
+            if edge.from_module_id == other.from_module_id and edge.to_module_id == other.to_module_id { return false; }
+            set j += 1;
+        }
+        set i += 1;
+    }
+
+    i = 0;
+    while i < program.symbols.len() {
+        let symbol = &program.symbols[i];
+        if symbol.id == 0 or symbol.kind <= C17ProgramSymbolKind.Invalid or symbol.kind >= C17ProgramSymbolKind.Count or
+           symbol.visibility <= C17ProgramSymbolVisibility.Invalid or symbol.visibility >= C17ProgramSymbolVisibility.Count or
+           symbol.source_name_length == 0 or symbol.source_name_length != symbol.source_name.len() or
+           symbol.generated_name_length == 0 or symbol.generated_name_length != symbol.generated_name.len() or
+           symbol.source_name_length > program.config.max_name_bytes or symbol.generated_name_length > program.config.max_name_bytes { return false; }
+        if symbol.module_id != 0 and program_module_index(program, symbol.module_id) == null { return false; }
+        let mut j = i + 1;
+        while j < program.symbols.len() {
+            let other = &program.symbols[j];
+            if symbol.id == other.id or symbol.generated_name == other.generated_name or
+               (symbol.module_id == other.module_id and symbol.kind == other.kind and symbol.source_name == other.source_name) { return false; }
+            set j += 1;
+        }
+        set i += 1;
+    }
+
+    i = 0;
+    while i < program.order.len() {
+        if program_module_index(program, program.order[i]) == null { return false; }
+        let mut j = i + 1;
+        while j < program.order.len() { if program.order[i] == program.order[j] { return false; } set j += 1; }
+        set i += 1;
+    }
+    i = 0;
+    while i < program.reachable.len() {
+        let index = program_module_index(program, program.reachable[i]);
+        if index == null or not program.modules[index?].reachable { return false; }
+        let mut j = i + 1;
+        while j < program.reachable.len() { if program.reachable[i] == program.reachable[j] { return false; } set j += 1; }
+        set i += 1;
+    }
+    return true;
+}
+
+pub proc vitte_c17_program_ordered_module_count(program: &C17Program) -> usize { if not vitte_c17_program_is_valid(program) { return 0; } return program.order.len(); }
+pub proc vitte_c17_program_ordered_module_at(program: &C17Program, index: usize) -> ?C17ProgramModule { if not vitte_c17_program_is_valid(program) or index >= program.order.len() { return null; } return vitte_c17_program_find_module_by_id(program, program.order[index]); }
+pub proc vitte_c17_program_module_is_root(program: &C17Program, id: u64) -> bool { if not vitte_c17_program_is_valid(program) or program_module_index(program, id) == null { return false; } let mut i: usize = 0; while i < program.dependencies.len() { if program.dependencies[i].to_module_id == id { return false; } set i += 1; } return true; }
+pub proc vitte_c17_program_module_count(program: &C17Program) -> usize { if not vitte_c17_program_is_valid(program) { return 0; } return program.modules.len(); }
+pub proc vitte_c17_program_dependency_count(program: &C17Program) -> usize { if not vitte_c17_program_is_valid(program) { return 0; } return program.dependencies.len(); }
+pub proc vitte_c17_program_symbol_count(program: &C17Program) -> usize { if not vitte_c17_program_is_valid(program) { return 0; } return program.symbols.len(); }
+pub proc vitte_c17_program_module_at(program: &C17Program, index: usize) -> ?C17ProgramModule { if not vitte_c17_program_is_valid(program) or index >= program.modules.len() { return null; } return program.modules[index]; }
+pub proc vitte_c17_program_dependency_at(program: &C17Program, index: usize) -> ?C17ProgramDependency { if not vitte_c17_program_is_valid(program) or index >= program.dependencies.len() { return null; } return program.dependencies[index]; }
+pub proc vitte_c17_program_symbol_at(program: &C17Program, index: usize) -> ?C17ProgramSymbol { if not vitte_c17_program_is_valid(program) or index >= program.symbols.len() { return null; } return program.symbols[index]; }
+pub proc vitte_c17_program_last_error(program: &C17Program) -> C17ProgramError { if not vitte_c17_program_is_valid(program) { return C17ProgramError.InvalidProgram; } return program.last_error; }
+pub proc vitte_c17_program_clear_error(program: &mut C17Program) { if vitte_c17_program_is_valid(program) { set program.last_error = C17ProgramError.None; } }
+pub proc vitte_c17_program_has_modules(program: &C17Program) -> bool { return program.magic == PROGRAM_MAGIC and program.modules.len() != 0; }
+pub proc vitte_c17_program_has_dependencies(program: &C17Program) -> bool { return program.magic == PROGRAM_MAGIC and program.dependencies.len() != 0; }
+pub proc vitte_c17_program_has_symbols(program: &C17Program) -> bool { return program.magic == PROGRAM_MAGIC and program.symbols.len() != 0; }
+pub proc vitte_c17_program_has_entry(program: &C17Program) -> bool { return program.magic == PROGRAM_MAGIC and program.has_entry; }
+pub proc vitte_c17_program_entry_module_id(program: &C17Program) -> u64 { if program.magic != PROGRAM_MAGIC { return 0; } return program.entry_module_id; }
+pub proc vitte_c17_program_entry_symbol_id(program: &C17Program) -> u64 { if program.magic != PROGRAM_MAGIC { return 0; } return program.entry_symbol_id; }
+pub proc vitte_c17_program_generation(program: &C17Program) -> u64 { if program.magic != PROGRAM_MAGIC { return 0; } return program.generation; }
+pub proc vitte_c17_program_has_order(program: &C17Program) -> bool { return program.magic == PROGRAM_MAGIC and program.order.len() != 0; }
+pub proc vitte_c17_program_has_reachability(program: &C17Program) -> bool { return program.magic == PROGRAM_MAGIC and program.reachable.len() != 0; }
+pub proc vitte_c17_program_symbol_is_definition(symbol: &C17ProgramSymbol) -> bool { return symbol.definition; }
+pub proc vitte_c17_program_symbol_is_external(symbol: &C17ProgramSymbol) -> bool { return symbol.visibility == C17ProgramSymbolVisibility.External; }
+pub proc vitte_c17_program_symbol_is_public(symbol: &C17ProgramSymbol) -> bool { return symbol.visibility == C17ProgramSymbolVisibility.Public; }
+pub proc vitte_c17_program_symbol_is_private(symbol: &C17ProgramSymbol) -> bool { return symbol.visibility == C17ProgramSymbolVisibility.Private; }
+pub proc vitte_c17_program_symbol_is_function(symbol: &C17ProgramSymbol) -> bool { return symbol.kind == C17ProgramSymbolKind.Function; }
+pub proc vitte_c17_program_has_error(program: &C17Program) -> bool { return program.magic == PROGRAM_MAGIC and program.last_error != C17ProgramError.None; }
+
+proc program_saturating_add(left: usize, right: usize) -> usize {
+    if left > usize.MAX - right { return usize.MAX; }
+    return left + right;
+}
+
+proc program_hash_byte(hash: u64, byte: u8) -> u64 {
+    return (hash ^ (byte as u64)).wrapping_mul(PROGRAM_HASH_PRIME);
+}
+
+proc program_hash_u64(hash: u64, value: u64) -> u64 {
+    let mut result = hash;
+    let mut i: usize = 0;
+    while i < 8 {
+        set result = program_hash_byte(result, ((value >> ((i * 8) as u32)) & 255) as u8);
+        set i += 1;
+    }
+    return result;
+}
+
+proc program_hash_bool(hash: u64, value: bool) -> u64 {
+    if value { return program_hash_byte(hash, 1); }
+    return program_hash_byte(hash, 0);
+}
+
+proc program_hash_string(hash: u64, value: string) -> u64 {
+    let bytes = value.as_bytes();
+    let mut result = hash;
+    let mut i: usize = 0;
+    while i < bytes.len() { set result = program_hash_byte(result, bytes[i]); set i += 1; }
+    return result;
+}
+
+proc program_string_before(left: string, right: string) -> bool {
+    let left_bytes = left.as_bytes();
+    let right_bytes = right.as_bytes();
+    let common_length = if left_bytes.len() < right_bytes.len() { left_bytes.len() } else { right_bytes.len() };
+    let mut index: usize = 0;
+    while index < common_length {
+        if left_bytes[index] != right_bytes[index] {
+            return left_bytes[index] < right_bytes[index];
+        }
+        set index += 1;
+    }
+    return left_bytes.len() < right_bytes.len();
+}
+
+pub proc vitte_c17_program_stats(program: &C17Program) -> C17ProgramStats {
+    let mut stats = C17ProgramStats {
+        valid: false, module_count: 0, module_capacity: 0, reachable_module_count: 0,
+        ordered_module_count: 0, module_name_bytes: 0, reachable_module_name_bytes: 0,
+        dependency_count: 0, dependency_capacity: 0, symbol_count: 0, symbol_capacity: 0,
+        definition_count: 0, declaration_count: 0, private_symbol_count: 0, public_symbol_count: 0,
+        external_symbol_count: 0, symbols_by_kind: [0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize],
+        source_symbol_name_bytes: 0, generated_symbol_name_bytes: 0,
+        has_entry: false, generation: 0, hash: 0,
+    };
+    if not vitte_c17_program_is_valid(program) { return stats; }
+    set stats.valid = true;
+    set stats.module_count = program.modules.len();
+    set stats.module_capacity = program.module_capacity;
+    set stats.reachable_module_count = program.reachable.len();
+    set stats.ordered_module_count = program.order.len();
+    set stats.dependency_count = program.dependencies.len();
+    set stats.dependency_capacity = program.dependency_capacity;
+    set stats.symbol_count = program.symbols.len();
+    set stats.symbol_capacity = program.symbol_capacity;
+    set stats.has_entry = program.has_entry;
+    set stats.generation = program.generation;
+    let mut i: usize = 0;
+    while i < program.modules.len() {
+        let module = &program.modules[i];
+        set stats.module_name_bytes = program_saturating_add(stats.module_name_bytes, module.name_length);
+        if module.reachable {
+            set stats.reachable_module_name_bytes = program_saturating_add(stats.reachable_module_name_bytes, module.name_length);
+        }
+        set i += 1;
+    }
+    i = 0;
+    while i < program.symbols.len() {
+        let symbol = &program.symbols[i];
+        set stats.source_symbol_name_bytes = program_saturating_add(stats.source_symbol_name_bytes, symbol.source_name_length);
+        set stats.generated_symbol_name_bytes = program_saturating_add(stats.generated_symbol_name_bytes, symbol.generated_name_length);
+        if symbol.definition { set stats.definition_count += 1; } else { set stats.declaration_count += 1; }
+        match symbol.visibility {
+            case C17ProgramSymbolVisibility.Private => set stats.private_symbol_count += 1,
+            case C17ProgramSymbolVisibility.Public => set stats.public_symbol_count += 1,
+            case C17ProgramSymbolVisibility.External => set stats.external_symbol_count += 1,
+            case _ => {},
+        }
+        if symbol.kind > C17ProgramSymbolKind.Invalid and symbol.kind < C17ProgramSymbolKind.Count {
+            set stats.symbols_by_kind[symbol.kind as usize] += 1;
+        }
+        set i += 1;
+    }
+    set stats.hash = vitte_c17_program_hash(program);
+    return stats;
+}
+
+pub proc vitte_c17_program_hash(program: &C17Program) -> u64 {
+    if not vitte_c17_program_is_valid(program) { return 0; }
+    let mut hash: u64 = PROGRAM_HASH_OFFSET;
+    set hash = program_hash_u64(hash, program.modules.len() as u64);
+    set hash = program_hash_u64(hash, program.dependencies.len() as u64);
+    set hash = program_hash_u64(hash, program.symbols.len() as u64);
+    set hash = program_hash_bool(hash, program.has_entry);
+    set hash = program_hash_u64(hash, program.entry_module_id);
+    set hash = program_hash_u64(hash, program.entry_symbol_id);
+    let mut i: usize = 0;
+    while i < program.modules.len() {
+        let module = &program.modules[i];
+        set hash = program_hash_u64(hash, module.id);
+        set hash = program_hash_u64(hash, module.name_length as u64);
+        set hash = program_hash_string(hash, module.name);
+        set hash = program_hash_bool(hash, module.is_entry);
+        set i += 1;
+    }
+    i = 0;
+    while i < program.dependencies.len() {
+        let edge = &program.dependencies[i];
+        set hash = program_hash_u64(hash, edge.from_module_id);
+        set hash = program_hash_u64(hash, edge.to_module_id);
+        set i += 1;
+    }
+    i = 0;
+    while i < program.symbols.len() {
+        let symbol = &program.symbols[i];
+        set hash = program_hash_u64(hash, symbol.id);
+        set hash = program_hash_u64(hash, symbol.module_id);
+        set hash = program_hash_u64(hash, symbol.source_id);
+        set hash = program_hash_u64(hash, symbol.kind as u64);
+        set hash = program_hash_u64(hash, symbol.visibility as u64);
+        set hash = program_hash_u64(hash, symbol.source_name_length as u64);
+        set hash = program_hash_string(hash, symbol.source_name);
+        set hash = program_hash_u64(hash, symbol.generated_name_length as u64);
+        set hash = program_hash_string(hash, symbol.generated_name);
+        set hash = program_hash_bool(hash, symbol.definition);
+        set i += 1;
+    }
+    return hash;
+}

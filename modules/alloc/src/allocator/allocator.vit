@@ -1,0 +1,56 @@
+/// Interface uniforme des stratégies d'allocation natives.
+space alloc::allocator::allocator;
+
+use core::mem::layout::{Layout, layout_is_valid};
+use alloc::allocator::result::{AllocationResult, AllocationError, AllocatorKind};
+use alloc::allocator::system::{system_allocate, system_deallocate};
+use alloc::allocator::null_alloc::{null_allocate, null_deallocate};
+use alloc::allocator::zeroed::{zeroed_allocate, zeroed_deallocate};
+
+export form Allocator {
+    kind: AllocatorKind,
+}
+
+export proc allocator_new(kind: AllocatorKind) -> Allocator {
+    return Allocator { kind: kind };
+}
+
+export proc allocator_allocate(value: &Allocator, layout: Layout) -> AllocationResult {
+    if not layout_is_valid(&layout) {
+        return AllocationResult {
+            success: false,
+            pointer: null,
+            error: AllocationError.InvalidLayout,
+            allocator: value.kind,
+        };
+    }
+    if value.kind == AllocatorKind.System { return system_allocate(layout); }
+    if value.kind == AllocatorKind.Zeroed { return zeroed_allocate(layout); }
+    if value.kind == AllocatorKind.Null { return null_allocate(layout); }
+    return AllocationResult {
+        success: false,
+        pointer: null,
+        error: AllocationError.Unsupported,
+        allocator: value.kind,
+    };
+}
+
+export proc allocator_deallocate(value: &Allocator, pointer: *mut u8, layout: Layout) -> bool {
+    if not layout_is_valid(&layout) { return false; }
+    if value.kind == AllocatorKind.System { return system_deallocate(pointer, layout); }
+    if value.kind == AllocatorKind.Zeroed { return zeroed_deallocate(pointer, layout); }
+    if value.kind == AllocatorKind.Null { return null_deallocate(pointer, layout); }
+    return false;
+}
+
+export proc system_allocator() -> Allocator {
+    return allocator_new(AllocatorKind.System);
+}
+
+export proc null_allocator() -> Allocator {
+    return allocator_new(AllocatorKind.Null);
+}
+
+export proc zeroed_allocator() -> Allocator {
+    return allocator_new(AllocatorKind.Zeroed);
+}

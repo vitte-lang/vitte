@@ -1,0 +1,27 @@
+/// Erreur associée à un intervalle source précis.
+space core::error::located;
+
+use core::error::error::{Error, error_is_valid};
+use core::error::location::{SourceSpan, source_span_is_valid};
+
+export form LocatedError {
+    cause: Error,
+    span: SourceSpan,
+}
+
+export proc located_error_new(cause: Error, span: SourceSpan) -> ?LocatedError {
+    if not error_is_valid(&cause) || not source_span_is_valid(&span) { return null; }
+    return LocatedError { cause: cause, span: span };
+}
+
+export proc located_error_is_valid(value: &LocatedError) -> bool {
+    return error_is_valid(&value.cause) && source_span_is_valid(&value.span);
+}
+
+export proc located_error_cause(value: &LocatedError) -> &Error {
+    return &value.cause;
+}
+
+export proc located_error_span(value: &LocatedError) -> &SourceSpan {
+    return &value.span;
+}

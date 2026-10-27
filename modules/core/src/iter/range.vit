@@ -1,0 +1,23 @@
+/// Itérateur sans allocation sur une plage demi-ouverte d'indices.
+space core::iter::range;
+
+use core::types::range::{Range};
+
+export form RangeIterator {
+    next: usize,
+    end: usize,
+}
+
+export proc range_iterator(range: Range) -> RangeIterator {
+    return RangeIterator {
+        next: range.start,
+        end: range.end,
+    };
+}
+
+export proc range_iterator_next(iterator: &mut RangeIterator) -> ?usize {
+    if iterator.next >= iterator.end { return null; }
+    let value: usize = iterator.next;
+    set iterator.next = iterator.next + 1;
+    return value;
+}

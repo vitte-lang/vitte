@@ -1,0 +1,23 @@
+/// Accès anticipé sur une tranche sans consommer l'élément.
+space core::iter::peekable;
+
+export form Peekable<T> {
+    source: &[T],
+    position: usize,
+}
+
+export proc peekable<T>(source: &[T]) -> Peekable[T] {
+    return Peekable[T] { source: source, position: 0 };
+}
+
+export proc peek<T>(iterator: &Peekable[T]) -> ?&T {
+    if iterator.position >= iterator.source.len() { return null; }
+    return &iterator.source[iterator.position];
+}
+
+export proc peekable_next<T>(iterator: &mut Peekable[T]) -> ?T {
+    if iterator.position >= iterator.source.len() { return null; }
+    let value: T = iterator.source[iterator.position];
+    set iterator.position = iterator.position + 1;
+    return value;
+}

@@ -1,0 +1,1990 @@
+/// Native, arena-backed abstract syntax tree primitives.
+///
+/// The parser's transitional node table remains in parser.vitte. This module
+/// implements the standalone AST contract used by later native frontend
+/// stages; its storage belongs to an externally owned arena context.
+
+space compiler::ast::ast;
+
+use compiler::arena::arena::{
+    ArenaContext,
+    arena_context_alloc_aligned,
+    arena_context_is_valid,
+};
+use vitte::core::memory::{copy, fill};
+use vitte::core::pointer;
+
+export type ASTFlags = u32;
+export type ASTNodeId = u64;
+export type AstNodeFlags = u64;
+
+/// Parser modifier flags retained for the current parser API.
+pub const AST_FLAG_NONE: ASTFlags = 0 as ASTFlags;
+pub const AST_FLAG_PUBLIC: ASTFlags = ((1 as ASTFlags) << 0) as ASTFlags;
+pub const AST_FLAG_MUTABLE: ASTFlags = ((1 as ASTFlags) << 1) as ASTFlags;
+pub const AST_FLAG_EXTERN: ASTFlags = ((1 as ASTFlags) << 2) as ASTFlags;
+pub const AST_FLAG_ASYNC: ASTFlags = ((1 as ASTFlags) << 3) as ASTFlags;
+pub const AST_FLAG_UNSAFE: ASTFlags = ((1 as ASTFlags) << 4) as ASTFlags;
+pub const AST_FLAG_COMPTIME: ASTFlags = ((1 as ASTFlags) << 5) as ASTFlags;
+pub const AST_FLAG_CONTRACT_REQUIRES: ASTFlags = ((1 as ASTFlags) << 6) as ASTFlags;
+pub const AST_FLAG_CONTRACT_ENSURES: ASTFlags = ((1 as ASTFlags) << 7) as ASTFlags;
+pub const AST_FLAG_GLOB_IMPORT: ASTFlags = ((1 as ASTFlags) << 8) as ASTFlags;
+pub const AST_FLAG_HAS_ATTRIBUTES: ASTFlags = ((1 as ASTFlags) << 9) as ASTFlags;
+pub const AST_FLAG_PATTERN_MUTABLE: ASTFlags = ((1 as ASTFlags) << 10) as ASTFlags;
+pub const AST_FLAG_PATTERN_REFERENCE: ASTFlags = ((1 as ASTFlags) << 11) as ASTFlags;
+pub const AST_FLAG_PATTERN_HEAD: ASTFlags = ((1 as ASTFlags) << 12) as ASTFlags;
+pub const AST_FLAG_PATTERN_OR: ASTFlags = ((1 as ASTFlags) << 13) as ASTFlags;
+pub const AST_FLAG_PATTERN_RANGE: ASTFlags = ((1 as ASTFlags) << 14) as ASTFlags;
+pub const AST_FLAG_ALL_KNOWN: ASTFlags = (((1 as ASTFlags) << 15) - 1) as ASTFlags;
+
+/// Flags stored on arena-backed AstNode values.
+pub const AST_NODE_FLAG_NONE: AstNodeFlags = 0 as AstNodeFlags;
+pub const AST_NODE_FLAG_INVALID: AstNodeFlags = ((1 as AstNodeFlags) << 0) as AstNodeFlags;
+pub const AST_NODE_FLAG_SYNTHETIC: AstNodeFlags = ((1 as AstNodeFlags) << 1) as AstNodeFlags;
+pub const AST_NODE_FLAG_PUBLIC: AstNodeFlags = ((1 as AstNodeFlags) << 2) as AstNodeFlags;
+pub const AST_NODE_FLAG_EXPORT: AstNodeFlags = ((1 as AstNodeFlags) << 3) as AstNodeFlags;
+pub const AST_NODE_FLAG_ASYNC: AstNodeFlags = ((1 as AstNodeFlags) << 4) as AstNodeFlags;
+pub const AST_NODE_FLAG_UNSAFE: AstNodeFlags = ((1 as AstNodeFlags) << 5) as AstNodeFlags;
+pub const AST_NODE_FLAG_COMPTIME: AstNodeFlags = ((1 as AstNodeFlags) << 6) as AstNodeFlags;
+pub const AST_NODE_FLAG_MUTABLE: AstNodeFlags = ((1 as AstNodeFlags) << 7) as AstNodeFlags;
+pub const AST_NODE_FLAG_EXTERN: AstNodeFlags = ((1 as AstNodeFlags) << 8) as AstNodeFlags;
+pub const AST_NODE_FLAG_INTRINSIC: AstNodeFlags = ((1 as AstNodeFlags) << 9) as AstNodeFlags;
+pub const AST_NODE_FLAG_TEST: AstNodeFlags = ((1 as AstNodeFlags) << 10) as AstNodeFlags;
+pub const AST_NODE_FLAG_IMPLICIT: AstNodeFlags = ((1 as AstNodeFlags) << 11) as AstNodeFlags;
+pub const AST_NODE_FLAG_RECOVERED: AstNodeFlags = ((1 as AstNodeFlags) << 12) as AstNodeFlags;
+pub const AST_NODE_FLAG_GENERATED: AstNodeFlags = ((1 as AstNodeFlags) << 13) as AstNodeFlags;
+pub const AST_NODE_FLAG_GLOB_IMPORT: AstNodeFlags = ((1 as AstNodeFlags) << 14) as AstNodeFlags;
+pub const AST_NODE_FLAG_TYPE_ALIAS: AstNodeFlags = ((1 as AstNodeFlags) << 15) as AstNodeFlags;
+pub const AST_NODE_FLAG_FUNCTION_TYPE_HAS_RETURN: AstNodeFlags = ((1 as AstNodeFlags) << 16) as AstNodeFlags;
+pub const AST_NODE_FLAG_TYPE_QUERY_TYPE_OPERAND: AstNodeFlags = ((1 as AstNodeFlags) << 17) as AstNodeFlags;
+pub const AST_NODE_FLAG_HAS_ATTRIBUTES: AstNodeFlags = ((1 as AstNodeFlags) << 18) as AstNodeFlags;
+pub const AST_NODE_FLAG_CONTRACT_REQUIRES: AstNodeFlags = ((1 as AstNodeFlags) << 19) as AstNodeFlags;
+pub const AST_NODE_FLAG_CONTRACT_ENSURES: AstNodeFlags = ((1 as AstNodeFlags) << 20) as AstNodeFlags;
+pub const AST_NODE_FLAG_PATTERN_MUTABLE: AstNodeFlags = ((1 as AstNodeFlags) << 21) as AstNodeFlags;
+pub const AST_NODE_FLAG_PATTERN_REFERENCE: AstNodeFlags = ((1 as AstNodeFlags) << 22) as AstNodeFlags;
+pub const AST_NODE_FLAG_PATTERN_HEAD: AstNodeFlags = ((1 as AstNodeFlags) << 23) as AstNodeFlags;
+pub const AST_NODE_FLAG_PATTERN_OR: AstNodeFlags = ((1 as AstNodeFlags) << 24) as AstNodeFlags;
+pub const AST_NODE_FLAG_PATTERN_RANGE: AstNodeFlags = ((1 as AstNodeFlags) << 25) as AstNodeFlags;
+pub const AST_NODE_FLAG_PATTERN_STRUCT: AstNodeFlags = ((1 as AstNodeFlags) << 26) as AstNodeFlags;
+pub const AST_NODE_FLAG_ALL_KNOWN: AstNodeFlags = (((1 as AstNodeFlags) << 27) - 1) as AstNodeFlags;
+
+const AST_MAGIC: u64 = 0x5649545445415354;
+const AST_DEAD_MAGIC: u64 = 0x4445414441535421;
+const AST_NODE_MAGIC: u64 = 0x56495454454E4F44;
+const AST_NODE_DEAD_MAGIC: u64 = 0x444541444E4F4445;
+const AST_INITIAL_CHILD_CAPACITY: usize = 4;
+const AST_INITIAL_ATTRIBUTE_CAPACITY: usize = 2;
+const AST_MAX_DEPTH: usize = 65536;
+
+proc ast_configuration_valid() -> bool {
+    return AST_INITIAL_CHILD_CAPACITY != 0 and
+           AST_INITIAL_ATTRIBUTE_CAPACITY != 0 and
+           AST_MAX_DEPTH != 0;
+}
+
+export form AstSpan {
+    file_id: u32,
+    begin: usize,
+    end: usize,
+
+    source_id: u64,
+    source_name: string,
+
+    start_offset: usize,
+    end_offset: usize,
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32,
+
+    valid: bool,
+}
+
+export pick AstKind {
+    Invalid,
+    Module,
+    SpaceDecl,
+    UseDecl,
+    ConstDecl,
+    StaticDecl,
+    TypeDecl,
+    OpaqueDecl,
+    FormDecl,
+    PickDecl,
+    TraitDecl,
+    ImplDecl,
+    ProcDecl,
+    ExternDecl,
+    MacroDecl,
+    TestDecl,
+    GenericParam,
+    WhereClause,
+    Parameter,
+    Field,
+    Variant,
+    Attribute,
+    BlockStmt,
+    LetStmt,
+    ExprStmt,
+    ReturnStmt,
+    DeferStmt,
+    IfStmt,
+    WhileStmt,
+    LoopStmt,
+    ForStmt,
+    BreakStmt,
+    ContinueStmt,
+    MatchStmt,
+    UnsafeStmt,
+    AsmStmt,
+    AssertStmt,
+    NameExpr,
+    IntegerExpr,
+    FloatExpr,
+    StringExpr,
+    CharExpr,
+    BoolExpr,
+    NullExpr,
+    ArrayExpr,
+    TupleExpr,
+    MapExpr,
+    UnaryExpr,
+    BinaryExpr,
+    AssignExpr,
+    CallExpr,
+    IndexExpr,
+    MemberExpr,
+    CastExpr,
+    RangeExpr,
+    MatchExpr,
+    AwaitExpr,
+    MoveExpr,
+    RefExpr,
+    SizeofExpr,
+    AlignofExpr,
+    OffsetofExpr,
+    TypeofExpr,
+    NamedType,
+    PointerType,
+    ReferenceType,
+    ArrayType,
+    SliceType,
+    TupleType,
+    FunctionType,
+    DynType,
+    InferType,
+    WildcardPattern,
+    BindingPattern,
+    LiteralPattern,
+    TuplePattern,
+    FormPattern,
+    PickPattern,
+    RangePattern,
+    OrPattern,
+    MatchArm,
+    IfExpr,
+    BlockExpr,
+    TryExpr,
+    OptionalType,
+    WherePredicate,
+    Pattern,
+    FormExpr,
+    FieldInit,
+    GroupExpr,
+    KindCount,
+}
+
+export pick AstUnaryOperator {
+    Invalid,
+    Plus,
+    Minus,
+    Not,
+    BitNot,
+    Deref,
+    Ref,
+    OperatorCount,
+}
+
+export pick AstBinaryOperator {
+    Invalid,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    OperatorCount,
+}
+
+export pick AstVisitEvent {
+    Enter,
+    Leave,
+}
+
+export form AstAttribute {
+    name: *const u8,
+    name_length: usize,
+    value: *const u8,
+    value_length: usize,
+    is_inner: bool,
+    span: AstSpan,
+}
+
+export form AstNode {
+    magic: u64,
+    owner: *mut Ast,
+    id: u64,
+    generation: u64,
+    kind: AstKind,
+    span: AstSpan,
+    parent: *mut AstNode,
+    children: *mut *mut AstNode,
+    child_count: usize,
+    child_capacity: usize,
+    attributes: *mut AstAttribute,
+    attribute_count: usize,
+    attribute_capacity: usize,
+    node_flags: AstNodeFlags,
+    name: *const u8,
+    name_length: usize,
+    semantic: *mut u8,
+
+    integer_value: u64,
+    integer_negative: bool,
+    float_value: f64,
+    string_value: *const u8,
+    string_length: usize,
+    bool_value: bool,
+    unary_operator: AstUnaryOperator,
+    binary_operator: AstBinaryOperator,
+}
+
+export form Ast {
+    magic: u64,
+    arena: *mut ArenaContext,
+    root: *mut AstNode,
+    next_node_id: u64,
+    node_count: usize,
+    peak_node_count: usize,
+    generation: u64,
+    error_count: usize,
+}
+
+export form AstStats {
+    node_count: usize,
+    peak_node_count: usize,
+    reachable_nodes: usize,
+    maximum_depth: usize,
+    child_edges: usize,
+    attribute_count: usize,
+    declaration_count: usize,
+    statement_count: usize,
+    expression_count: usize,
+    type_count: usize,
+    pattern_count: usize,
+    invalid_node_count: usize,
+    generation: u64,
+    error_count: usize,
+}
+
+export type AstVisitFn = proc(
+    node: *mut AstNode,
+    event: AstVisitEvent,
+    depth: usize,
+    user_data: *mut u8
+) -> bool;
+
+proc ast_add_overflow(left: usize, right: usize) -> bool {
+    return left > usize.MAX - right;
+}
+
+proc ast_mul_overflow(left: usize, right: usize) -> bool {
+    if left == 0 {
+        return false;
+    }
+
+    return right > usize.MAX / left;
+}
+
+proc ast_saturating_add(left: usize, right: usize) -> usize {
+    if ast_add_overflow(left, right) {
+        return usize.MAX;
+    }
+
+    return left + right;
+}
+
+proc ast_next_generation(generation: u64) -> u64 {
+    if generation == 18446744073709551615 {
+        return 1;
+    }
+
+    let next = generation + 1;
+    if next == 0 {
+        return 1;
+    }
+    return next;
+}
+
+proc ast_kind_known(kind: AstKind) -> bool {
+    return kind != AstKind.Invalid  and
+           (kind as u32) < (AstKind.KindCount as u32);
+}
+
+proc ast_node_flags_valid(node_flags: AstNodeFlags) -> bool {
+    return (node_flags & ~AST_NODE_FLAG_ALL_KNOWN) == 0;
+}
+
+proc ast_child_slot(node: *mut AstNode, index: usize) -> *mut *mut AstNode {
+    return pointer.add_bytes(node.children as *mut u8, index * sizeof(*mut AstNode)) as *mut void as *mut *mut AstNode;
+}
+
+proc ast_child_slot_const(node: *const AstNode, index: usize) -> *const *mut AstNode {
+    return pointer.add_bytes(node.children as *mut u8, index * sizeof(*mut AstNode)) as *const void as *const *mut AstNode;
+}
+
+proc ast_attribute_slot(node: *mut AstNode, index: usize) -> *mut AstAttribute {
+    return pointer.add_bytes(node.attributes as *mut u8, index * sizeof(AstAttribute)) as *mut void as *mut AstAttribute;
+}
+
+proc ast_attribute_slot_const(node: *const AstNode, index: usize) -> *const AstAttribute {
+    return pointer.add_bytes(node.attributes as *mut u8, index * sizeof(AstAttribute)) as *const void as *const AstAttribute;
+}
+
+proc ast_copy_string(ast: *mut Ast, text: *const u8, length: usize) -> *const u8 {
+    if ast == null  or  text == null  or ast_add_overflow(length, 1) {
+        return null;
+    }
+
+    let storage = arena_context_alloc_aligned(
+        &mut *(*ast).arena,
+        length + 1,
+        alignof(u8)
+    );
+
+    if storage == null {
+        return null;
+    }
+
+    if length != 0 {
+        copy(storage?, text, length);
+    }
+
+    pointer.write(pointer.add_bytes(storage?, length), 0);
+    return storage? as *const u8;
+}
+
+proc ast_string_terminated(text: *const u8, length: usize) -> bool {
+    if text == null {
+        return false;
+    }
+
+    return pointer.read(pointer.add_bytes_const(text, length)) == 0;
+}
+
+proc ast_node_belongs_to(ast: *const Ast, node: *const AstNode) -> bool {
+    return ast_is_valid(ast)  and
+           ast_node_is_valid(node)  and
+           (*node).owner == ast  and
+           (*node).generation == (*ast).generation;
+}
+
+proc ast_parent_chain_contains(start: *const AstNode, target: *const AstNode) -> bool {
+    if start == null  or target == null {
+        return false;
+    }
+
+    let mut current = start;
+    let mut depth: usize = 0;
+
+    while current != null {
+        if not ast_node_is_valid(current)  or current == target {
+            return current == target  or not ast_node_is_valid(current);
+        }
+
+        current = (*current).parent as *const AstNode;
+        if depth == AST_MAX_DEPTH {
+            return true;
+        }
+
+        set depth = depth + 1;
+    }
+
+    return false;
+}
+
+proc ast_would_create_cycle(parent: *const AstNode, child: *const AstNode) -> bool {
+    if not ast_node_is_valid(parent)  or not ast_node_is_valid(child)  or
+       (*parent).owner != (*child).owner  or parent == child {
+        return true;
+    }
+
+    return ast_parent_chain_contains(parent, child);
+}
+
+export proc ast_span_invalid() -> AstSpan {
+    return AstSpan {
+        file_id: 0, begin: 0, end: 0,
+        source_id: 0, source_name: "",
+        start_offset: 0, end_offset: 0,
+        start_line: 0, start_column: 0,
+        end_line: 0, end_column: 0,
+        valid: false,
+    };
+}
+
+/// C-contract span constructor. Offsets are half-open byte positions.
+export proc ast_span_make(file_id: u32, begin: usize, end: usize) -> AstSpan {
+    let mut span = ast_span_invalid();
+    if end < begin {
+        return span;
+    }
+
+    set span.file_id = file_id;
+    set span.begin = begin;
+    set span.end = end;
+    set span.start_offset = begin;
+    set span.end_offset = end;
+    set span.valid = true;
+    return span;
+}
+
+/// Rich diagnostic span constructor used by the diagnostic subsystem.
+export proc ast_span_make_rich(
+    source_id: u64,
+    source_name: str,
+    start_offset: usize,
+    end_offset: usize,
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32
+) -> AstSpan {
+    if end_offset < start_offset  or end_line < start_line  or
+       (end_line == start_line and end_column < start_column)  or
+       (source_id == 0 and source_name.length == 0) {
+        return ast_span_invalid();
+    }
+
+    return AstSpan {
+        file_id: 0,
+        begin: start_offset,
+        end: end_offset,
+        source_id: source_id,
+        source_name: string.from(source_name),
+        start_offset: start_offset,
+        end_offset: end_offset,
+        start_line: start_line,
+        start_column: start_column,
+        end_line: end_line,
+        end_column: end_column,
+        valid: true,
+    };
+}
+
+export proc ast_span_is_valid(span: ref AstSpan) -> bool {
+    return span.valid  and span.end >= span.begin  and
+           span.end_offset >= span.start_offset  and
+           span.end_line >= span.start_line  and
+           (span.end_line != span.start_line  or
+            span.end_column >= span.start_column);
+}
+
+export proc ast_span_length(span: ref AstSpan) -> usize {
+    if not ast_span_is_valid(span) {
+        return 0;
+    }
+
+    return span.end - span.begin;
+}
+
+export proc ast_span_same_source(left: ref AstSpan, right: ref AstSpan) -> bool {
+    if left.source_id != 0  and right.source_id != 0 {
+        return left.source_id == right.source_id;
+    }
+
+    if left.source_name.length != 0  and right.source_name.length != 0 {
+        return left.source_name == right.source_name;
+    }
+
+    return left.file_id == right.file_id;
+}
+
+export proc ast_span_join(left: ref AstSpan, right: ref AstSpan) -> AstSpan {
+    if not ast_span_is_valid(left) {
+        return *right;
+    }
+
+    if not ast_span_is_valid(right) {
+        return *left;
+    }
+
+    if not ast_span_same_source(left, right) {
+        return *left;
+    }
+
+    let mut result = *left;
+    if right.begin < result.begin {
+        set result.begin = right.begin;
+        set result.start_offset = right.start_offset;
+        set result.start_line = right.start_line;
+        set result.start_column = right.start_column;
+    }
+
+    if right.end > result.end {
+        set result.end = right.end;
+        set result.end_offset = right.end_offset;
+        set result.end_line = right.end_line;
+        set result.end_column = right.end_column;
+    }
+
+    return result;
+}
+
+export proc ast_flags_has(node_flags: ASTFlags, flag: ASTFlags) -> bool {
+    return flag != AST_FLAG_NONE  and (node_flags & flag) == flag;
+}
+
+export proc ast_flags_valid(node_flags: ASTFlags) -> bool {
+    return (node_flags & ~AST_FLAG_ALL_KNOWN) == 0;
+}
+
+export proc ast_kind_is_declaration(kind: AstKind) -> bool {
+    return kind == AstKind.SpaceDecl  or kind == AstKind.UseDecl  or
+           kind == AstKind.ConstDecl  or kind == AstKind.StaticDecl  or
+           kind == AstKind.TypeDecl  or kind == AstKind.OpaqueDecl  or
+           kind == AstKind.FormDecl  or kind == AstKind.PickDecl  or
+           kind == AstKind.TraitDecl  or kind == AstKind.ImplDecl  or
+           kind == AstKind.ProcDecl  or kind == AstKind.ExternDecl  or
+           kind == AstKind.MacroDecl  or kind == AstKind.TestDecl;
+}
+
+export proc ast_kind_is_statement(kind: AstKind) -> bool {
+    return kind == AstKind.BlockStmt  or kind == AstKind.LetStmt  or
+           kind == AstKind.ExprStmt  or kind == AstKind.ReturnStmt  or
+           kind == AstKind.DeferStmt  or kind == AstKind.IfStmt  or
+           kind == AstKind.WhileStmt  or kind == AstKind.LoopStmt  or
+           kind == AstKind.ForStmt  or kind == AstKind.BreakStmt  or
+           kind == AstKind.ContinueStmt  or kind == AstKind.MatchStmt  or
+           kind == AstKind.UnsafeStmt  or kind == AstKind.AsmStmt  or
+           kind == AstKind.AssertStmt;
+}
+
+export proc ast_kind_is_expression(kind: AstKind) -> bool {
+    return kind == AstKind.NameExpr  or kind == AstKind.IntegerExpr  or
+           kind == AstKind.FloatExpr  or kind == AstKind.StringExpr  or
+           kind == AstKind.CharExpr  or kind == AstKind.BoolExpr  or
+           kind == AstKind.NullExpr  or kind == AstKind.ArrayExpr  or
+           kind == AstKind.TupleExpr  or kind == AstKind.MapExpr  or
+           kind == AstKind.UnaryExpr  or kind == AstKind.BinaryExpr  or
+           kind == AstKind.AssignExpr  or kind == AstKind.CallExpr  or
+           kind == AstKind.IndexExpr  or kind == AstKind.MemberExpr  or
+           kind == AstKind.CastExpr  or kind == AstKind.RangeExpr  or
+           kind == AstKind.MatchExpr  or kind == AstKind.AwaitExpr  or
+           kind == AstKind.MoveExpr  or kind == AstKind.RefExpr  or
+           kind == AstKind.SizeofExpr  or kind == AstKind.AlignofExpr  or
+           kind == AstKind.OffsetofExpr  or kind == AstKind.TypeofExpr  or
+           kind == AstKind.IfExpr  or kind == AstKind.BlockExpr  or
+           kind == AstKind.TryExpr  or kind == AstKind.FormExpr  or
+           kind == AstKind.FieldInit  or kind == AstKind.GroupExpr;
+}
+
+export proc ast_kind_is_type(kind: AstKind) -> bool {
+    return kind == AstKind.NamedType  or kind == AstKind.PointerType  or
+           kind == AstKind.ReferenceType  or kind == AstKind.ArrayType  or
+           kind == AstKind.SliceType  or kind == AstKind.TupleType  or
+           kind == AstKind.FunctionType  or kind == AstKind.DynType  or
+           kind == AstKind.InferType  or kind == AstKind.OptionalType;
+}
+
+export proc ast_kind_is_pattern(kind: AstKind) -> bool {
+    return kind == AstKind.WildcardPattern  or kind == AstKind.BindingPattern  or
+           kind == AstKind.LiteralPattern  or kind == AstKind.TuplePattern  or
+           kind == AstKind.FormPattern  or kind == AstKind.PickPattern  or
+           kind == AstKind.RangePattern  or kind == AstKind.OrPattern  or
+           kind == AstKind.Pattern;
+}
+
+export proc ast_kind_name(kind: AstKind) -> str {
+    match kind {
+        case AstKind.Invalid => return "invalid";
+        case AstKind.Module => return "module";
+        case AstKind.SpaceDecl => return "space-decl";
+        case AstKind.UseDecl => return "use-decl";
+        case AstKind.ConstDecl => return "const-decl";
+        case AstKind.StaticDecl => return "static-decl";
+        case AstKind.TypeDecl => return "type-decl";
+        case AstKind.OpaqueDecl => return "opaque-decl";
+        case AstKind.FormDecl => return "form-decl";
+        case AstKind.PickDecl => return "pick-decl";
+        case AstKind.TraitDecl => return "trait-decl";
+        case AstKind.ImplDecl => return "impl-decl";
+        case AstKind.ProcDecl => return "proc-decl";
+        case AstKind.ExternDecl => return "extern-decl";
+        case AstKind.MacroDecl => return "macro-decl";
+        case AstKind.TestDecl => return "test-decl";
+        case AstKind.GenericParam => return "generic-param";
+        case AstKind.WhereClause => return "where-clause";
+        case AstKind.Parameter => return "parameter";
+        case AstKind.Field => return "field";
+        case AstKind.Variant => return "variant";
+        case AstKind.Attribute => return "attribute";
+        case AstKind.BlockStmt => return "block-stmt";
+        case AstKind.LetStmt => return "let-stmt";
+        case AstKind.ExprStmt => return "expr-stmt";
+        case AstKind.ReturnStmt => return "return-stmt";
+        case AstKind.DeferStmt => return "defer-stmt";
+        case AstKind.IfStmt => return "if-stmt";
+        case AstKind.WhileStmt => return "while-stmt";
+        case AstKind.LoopStmt => return "loop-stmt";
+        case AstKind.ForStmt => return "for-stmt";
+        case AstKind.BreakStmt => return "break-stmt";
+        case AstKind.ContinueStmt => return "continue-stmt";
+        case AstKind.MatchStmt => return "match-stmt";
+        case AstKind.UnsafeStmt => return "unsafe-stmt";
+        case AstKind.AsmStmt => return "asm-stmt";
+        case AstKind.AssertStmt => return "assert-stmt";
+        case AstKind.NameExpr => return "name-expr";
+        case AstKind.IntegerExpr => return "integer-expr";
+        case AstKind.FloatExpr => return "float-expr";
+        case AstKind.StringExpr => return "string-expr";
+        case AstKind.CharExpr => return "char-expr";
+        case AstKind.BoolExpr => return "bool-expr";
+        case AstKind.NullExpr => return "null-expr";
+        case AstKind.ArrayExpr => return "array-expr";
+        case AstKind.TupleExpr => return "tuple-expr";
+        case AstKind.MapExpr => return "map-expr";
+        case AstKind.UnaryExpr => return "unary-expr";
+        case AstKind.BinaryExpr => return "binary-expr";
+        case AstKind.AssignExpr => return "assign-expr";
+        case AstKind.CallExpr => return "call-expr";
+        case AstKind.IndexExpr => return "index-expr";
+        case AstKind.MemberExpr => return "member-expr";
+        case AstKind.CastExpr => return "cast-expr";
+        case AstKind.RangeExpr => return "range-expr";
+        case AstKind.MatchExpr => return "match-expr";
+        case AstKind.AwaitExpr => return "await-expr";
+        case AstKind.MoveExpr => return "move-expr";
+        case AstKind.RefExpr => return "ref-expr";
+        case AstKind.SizeofExpr => return "sizeof-expr";
+        case AstKind.AlignofExpr => return "alignof-expr";
+        case AstKind.OffsetofExpr => return "offsetof-expr";
+        case AstKind.TypeofExpr => return "typeof-expr";
+        case AstKind.NamedType => return "named-type";
+        case AstKind.PointerType => return "pointer-type";
+        case AstKind.ReferenceType => return "reference-type";
+        case AstKind.ArrayType => return "array-type";
+        case AstKind.SliceType => return "slice-type";
+        case AstKind.TupleType => return "tuple-type";
+        case AstKind.FunctionType => return "function-type";
+        case AstKind.DynType => return "dyn-type";
+        case AstKind.InferType => return "infer-type";
+        case AstKind.WildcardPattern => return "wildcard-pattern";
+        case AstKind.BindingPattern => return "binding-pattern";
+        case AstKind.LiteralPattern => return "literal-pattern";
+        case AstKind.TuplePattern => return "tuple-pattern";
+        case AstKind.FormPattern => return "form-pattern";
+        case AstKind.PickPattern => return "pick-pattern";
+        case AstKind.RangePattern => return "range-pattern";
+        case AstKind.OrPattern => return "or-pattern";
+        case AstKind.MatchArm => return "match-arm";
+        case AstKind.IfExpr => return "if-expr";
+        case AstKind.BlockExpr => return "block-expr";
+        case AstKind.TryExpr => return "try-expr";
+        case AstKind.OptionalType => return "optional-type";
+        case AstKind.WherePredicate => return "where-predicate";
+        case AstKind.Pattern => return "pattern";
+        case AstKind.FormExpr => return "form-expr";
+        case AstKind.FieldInit => return "field-init";
+        case AstKind.GroupExpr => return "group-expr";
+        case AstKind.KindCount => return "unknown";
+    }
+}
+
+export proc ast_unary_operator_name(op: AstUnaryOperator) -> str {
+    match op {
+        case AstUnaryOperator.Plus => return "+";
+        case AstUnaryOperator.Minus => return "-";
+        case AstUnaryOperator.Not => return "not";
+        case AstUnaryOperator.BitNot => return "~";
+        case AstUnaryOperator.Deref => return "*";
+        case AstUnaryOperator.Ref => return "ref";
+        case AstUnaryOperator.Invalid => return "invalid";
+        case AstUnaryOperator.OperatorCount => return "invalid";
+    }
+}
+
+export proc ast_binary_operator_name(op: AstBinaryOperator) -> str {
+    match op {
+        case AstBinaryOperator.Add => return "+";
+        case AstBinaryOperator.Sub => return "-";
+        case AstBinaryOperator.Mul => return "*";
+        case AstBinaryOperator.Div => return "/";
+        case AstBinaryOperator.Mod => return "%";
+        case AstBinaryOperator.BitAnd => return "&";
+        case AstBinaryOperator.BitOr => return "|";
+        case AstBinaryOperator.BitXor => return "^";
+        case AstBinaryOperator.Shl => return "<<";
+        case AstBinaryOperator.Shr => return ">>";
+        case AstBinaryOperator.Eq => return "==";
+        case AstBinaryOperator.Ne => return "!=";
+        case AstBinaryOperator.Lt => return "<";
+        case AstBinaryOperator.Le => return "<=";
+        case AstBinaryOperator.Gt => return ">";
+        case AstBinaryOperator.Ge => return ">=";
+        case AstBinaryOperator.And => return "and";
+        case AstBinaryOperator.Or => return "or";
+        case AstBinaryOperator.Invalid => return "invalid";
+        case AstBinaryOperator.OperatorCount => return "invalid";
+    }
+}
+
+export proc ast_is_valid(ast: *const Ast) -> bool {
+    if not ast_configuration_valid() or ast == null or
+       (*ast).magic != AST_MAGIC or (*ast).arena == null {
+        return false;
+    }
+
+    return arena_context_is_valid(&*(*ast).arena)  and
+           (*ast).generation != 0  and (*ast).next_node_id != 0  and
+           (*ast).node_count <= (*ast).peak_node_count;
+}
+
+export proc ast_node_is_valid(node: *const AstNode) -> bool {
+    if node == null  or (*node).magic != AST_NODE_MAGIC  or
+       (*node).owner == null  or (*node).kind == AstKind.Invalid {
+        return false;
+    }
+
+    return ast_is_valid((*node).owner)  and
+           (*node).generation == (*(*node).owner).generation  and
+           ast_kind_known((*node).kind);
+}
+
+export proc ast_init(ast: *mut Ast, arena: *mut ArenaContext) -> bool {
+    if not ast_configuration_valid() or ast == null or arena == null or
+       not arena_context_is_valid(&*arena) {
+        return false;
+    }
+
+    fill(ast as *mut u8, 0, sizeof(Ast));
+    set (*ast).magic = AST_MAGIC;
+    set (*ast).arena = arena;
+    set (*ast).root = null;
+    set (*ast).next_node_id = 1;
+    set (*ast).generation = 1;
+    return true;
+}
+
+export proc ast_destroy(ast: *mut Ast) {
+    if ast == null  or (*ast).magic != AST_MAGIC {
+        return;
+    }
+
+    set (*ast).root = null;
+    set (*ast).arena = null;
+    set (*ast).node_count = 0;
+    set (*ast).peak_node_count = 0;
+    set (*ast).error_count = 0;
+    set (*ast).generation = 0;
+    set (*ast).next_node_id = 0;
+    set (*ast).magic = AST_DEAD_MAGIC;
+}
+
+export proc ast_reset(ast: *mut Ast) {
+    if not ast_is_valid(ast) {
+        return;
+    }
+
+    set (*ast).root = null;
+    set (*ast).node_count = 0;
+    set (*ast).error_count = 0;
+    set (*ast).generation = ast_next_generation((*ast).generation);
+}
+
+proc ast_alloc_bytes(ast: *mut Ast, size: usize, alignment: usize) -> *mut u8 {
+    if not ast_is_valid(ast)  or size == 0  or alignment == 0  or
+       (alignment & (alignment - 1)) != 0 {
+        return null;
+    }
+
+    let result = arena_context_alloc_aligned(&mut *(*ast).arena, size, alignment);
+    if result == null {
+        return null;
+    }
+
+    return result?;
+}
+
+proc ast_alloc_array(
+    ast: *mut Ast,
+    count: usize,
+    element_size: usize,
+    alignment: usize
+) -> *mut u8 {
+    if count == 0  or element_size == 0  or
+       ast_mul_overflow(count, element_size) {
+        return null;
+    }
+
+    return ast_alloc_bytes(ast, count * element_size, alignment);
+}
+
+proc ast_reserve_children(node: *mut AstNode, minimum: usize) -> bool {
+    if not ast_node_is_valid(node) {
+        return false;
+    }
+
+    if minimum <= (*node).child_capacity {
+        return true;
+    }
+
+    let mut capacity: usize = (*node).child_capacity;
+    if capacity == 0 {
+        set capacity = AST_INITIAL_CHILD_CAPACITY;
+    }
+
+    while capacity < minimum {
+        if capacity > usize.MAX / 2 {
+            set capacity = minimum;
+            break;
+        }
+
+        set capacity = capacity * 2;
+    }
+
+    if capacity < minimum  or capacity == 0  or
+       ast_mul_overflow(capacity, sizeof(*mut AstNode)) {
+        return false;
+    }
+
+    let bytes: usize = capacity * sizeof(*mut AstNode);
+    let storage = ast_alloc_array(
+        (*node).owner,
+        capacity,
+        sizeof(*mut AstNode),
+        alignof(*mut AstNode)
+    );
+
+    if storage == null {
+        return false;
+    }
+
+    fill(storage, 0, bytes);
+    let new_children = storage as *mut *mut AstNode;
+    let mut index: usize = 0;
+
+    while index < (*node).child_count {
+        let child: *mut AstNode = pointer.read(ast_child_slot(node, index));
+        pointer.write(pointer.add_bytes(new_children as *mut u8, index * sizeof(*mut AstNode)) as *mut void as *mut *mut AstNode, child);
+        set index = index + 1;
+    }
+
+    set (*node).children = new_children;
+    set (*node).child_capacity = capacity;
+    return true;
+}
+
+proc ast_reserve_attributes(node: *mut AstNode, minimum: usize) -> bool {
+    if not ast_node_is_valid(node) {
+        return false;
+    }
+
+    if minimum <= (*node).attribute_capacity {
+        return true;
+    }
+
+    let mut capacity: usize = (*node).attribute_capacity;
+    if capacity == 0 {
+        set capacity = AST_INITIAL_ATTRIBUTE_CAPACITY;
+    }
+
+    while capacity < minimum {
+        if capacity > usize.MAX / 2 {
+            set capacity = minimum;
+            break;
+        }
+
+        set capacity = capacity * 2;
+    }
+
+    if capacity < minimum  or capacity == 0  or
+       ast_mul_overflow(capacity, sizeof(AstAttribute)) {
+        return false;
+    }
+
+    let bytes: usize = capacity * sizeof(AstAttribute);
+    let storage = ast_alloc_array(
+        (*node).owner,
+        capacity,
+        sizeof(AstAttribute),
+        alignof(AstAttribute)
+    );
+
+    if storage == null {
+        return false;
+    }
+
+    fill(storage, 0, bytes);
+    let new_attributes = storage as *mut AstAttribute;
+    let mut index: usize = 0;
+
+    while index < (*node).attribute_count {
+        let attribute: AstAttribute = pointer.read(ast_attribute_slot(node, index));
+        pointer.write(pointer.add_bytes(new_attributes as *mut u8, index * sizeof(AstAttribute)) as *mut void as *mut AstAttribute, attribute);
+        set index = index + 1;
+    }
+
+    set (*node).attributes = new_attributes;
+    set (*node).attribute_capacity = capacity;
+    return true;
+}
+
+export proc ast_node_create(ast: *mut Ast, kind: AstKind, span: AstSpan) -> *mut AstNode {
+    if not ast_is_valid(ast)  or not ast_kind_known(kind)  or
+       not ast_span_is_valid(&span)  or (*ast).next_node_id == 18446744073709551615  or
+       (*ast).node_count == usize.MAX {
+        return null;
+    }
+
+    let storage = ast_alloc_bytes(ast, sizeof(AstNode), alignof(AstNode));
+    if storage == null {
+        return null;
+    }
+
+    fill(storage, 0, sizeof(AstNode));
+    let node = storage as *mut AstNode;
+
+    set (*node).magic = AST_NODE_MAGIC;
+    set (*node).owner = ast;
+    set (*node).id = (*ast).next_node_id;
+    set (*node).generation = (*ast).generation;
+    set (*node).kind = kind;
+    set (*node).span = span;
+    set (*node).node_flags = AST_NODE_FLAG_NONE;
+    set (*node).unary_operator = AstUnaryOperator.Invalid;
+    set (*node).binary_operator = AstBinaryOperator.Invalid;
+
+    set (*ast).next_node_id = (*ast).next_node_id + 1;
+    set (*ast).node_count = (*ast).node_count + 1;
+    if (*ast).node_count > (*ast).peak_node_count {
+        set (*ast).peak_node_count = (*ast).node_count;
+    }
+
+    return node;
+}
+
+export proc ast_node_create_named(
+    ast: *mut Ast,
+    kind: AstKind,
+    span: AstSpan,
+    name: *const u8,
+    name_length: usize
+) -> *mut AstNode {
+    if name == null {
+        return null;
+    }
+
+    let name_copy = ast_copy_string(ast, name, name_length);
+    if name_copy == null {
+        return null;
+    }
+
+    let node = ast_node_create(ast, kind, span);
+    if node == null {
+        return null;
+    }
+
+    set (*node).name = name_copy;
+    set (*node).name_length = name_length;
+    return node;
+}
+
+export proc ast_node_add_child(parent: *mut AstNode, child: *mut AstNode) -> bool {
+    if not ast_node_is_valid(parent)  or not ast_node_is_valid(child)  or
+       (*parent).owner != (*child).owner  or
+       (*parent).generation != (*child).generation  or
+       (*child).parent != null  or ast_would_create_cycle(parent, child)  or
+       (*parent).child_count == usize.MAX {
+        return false;
+    }
+
+    let minimum: usize = (*parent).child_count + 1;
+    if not ast_reserve_children(parent, minimum) {
+        return false;
+    }
+
+    pointer.write(ast_child_slot(parent, (*parent).child_count), child);
+    set (*parent).child_count = minimum;
+    set (*child).parent = parent;
+    return true;
+}
+
+export proc ast_node_insert_child(
+    parent: *mut AstNode,
+    index: usize,
+    child: *mut AstNode
+) -> bool {
+    if not ast_node_is_valid(parent)  or not ast_node_is_valid(child)  or
+       index > (*parent).child_count  or (*parent).owner != (*child).owner  or
+       (*parent).generation != (*child).generation  or
+       (*child).parent != null  or ast_would_create_cycle(parent, child)  or
+       (*parent).child_count == usize.MAX {
+        return false;
+    }
+
+    let minimum: usize = (*parent).child_count + 1;
+    if not ast_reserve_children(parent, minimum) {
+        return false;
+    }
+
+    let mut cursor: usize = (*parent).child_count;
+    while cursor > index {
+        let previous: *mut AstNode = pointer.read(ast_child_slot(parent, cursor - 1));
+        pointer.write(ast_child_slot(parent, cursor), previous);
+        set cursor = cursor - 1;
+    }
+
+    pointer.write(ast_child_slot(parent, index), child);
+    set (*parent).child_count = minimum;
+    set (*child).parent = parent;
+    return true;
+}
+
+export proc ast_node_child(node: *mut AstNode, index: usize) -> *mut AstNode {
+    if not ast_node_is_valid(node)  or index >= (*node).child_count  or
+       (*node).children == null {
+        return null;
+    }
+
+    let child: *mut AstNode = pointer.read(ast_child_slot(node, index));
+    if not ast_node_is_valid(child)  or (*child).owner != (*node).owner  or
+       (*child).parent != node {
+        return null;
+    }
+
+    return child;
+}
+
+export proc ast_node_child_const(node: *const AstNode, index: usize) -> *const AstNode {
+    if not ast_node_is_valid(node)  or index >= (*node).child_count  or
+       (*node).children == null {
+        return null;
+    }
+
+    let child: *mut AstNode = pointer.read(ast_child_slot_const(node, index));
+    if not ast_node_is_valid(child)  or (*child).owner != (*node).owner  or
+       (*child).parent as *const AstNode != node {
+        return null;
+    }
+
+    return child as *const AstNode;
+}
+
+export proc ast_node_child_count(node: *const AstNode) -> usize {
+    if not ast_node_is_valid(node) {
+        return 0;
+    }
+
+    return (*node).child_count;
+}
+
+export proc ast_node_replace_child(
+    parent: *mut AstNode,
+    index: usize,
+    replacement: *mut AstNode
+) -> bool {
+    if not ast_node_is_valid(parent)  or not ast_node_is_valid(replacement)  or
+       index >= (*parent).child_count  or (*parent).children == null  or
+       (*parent).owner != (*replacement).owner  or
+       (*parent).generation != (*replacement).generation {
+        return false;
+    }
+
+    let old: *mut AstNode = pointer.read(ast_child_slot(parent, index));
+    if not ast_node_is_valid(old)  or (*old).owner != (*parent).owner  or
+       (*old).parent != parent {
+        return false;
+    }
+
+    if old == replacement {
+        return true;
+    }
+
+    if (*replacement).parent != null  or
+       ast_would_create_cycle(parent, replacement) {
+        return false;
+    }
+
+    pointer.write(ast_child_slot(parent, index), replacement);
+    set (*replacement).parent = parent;
+    set (*old).parent = null;
+    return true;
+}
+
+export proc ast_node_detach_child(parent: *mut AstNode, index: usize) -> *mut AstNode {
+    if not ast_node_is_valid(parent)  or index >= (*parent).child_count  or
+       (*parent).children == null {
+        return null;
+    }
+
+    let child: *mut AstNode = pointer.read(ast_child_slot(parent, index));
+    if not ast_node_is_valid(child)  or (*child).owner != (*parent).owner  or
+       (*child).parent != parent {
+        return null;
+    }
+
+    let mut cursor = index;
+    while cursor + 1 < (*parent).child_count {
+        let next: *mut AstNode = pointer.read(ast_child_slot(parent, cursor + 1));
+        pointer.write(ast_child_slot(parent, cursor), next);
+        set cursor = cursor + 1;
+    }
+
+    set (*parent).child_count = (*parent).child_count - 1;
+    pointer.write(
+        ast_child_slot(parent, (*parent).child_count),
+        null as *mut AstNode
+    );
+    set (*child).parent = null;
+    return child;
+}
+
+export proc ast_node_add_attribute_ex(
+    node: *mut AstNode,
+    name: *const u8,
+    name_length: usize,
+    value: *const u8,
+    value_length: usize,
+    is_inner: bool,
+    span: AstSpan
+) -> bool {
+    if not ast_node_is_valid(node)  or name == null  or
+       not ast_span_is_valid(&span)  or
+       (value == null and value_length != 0)  or
+       (*node).attribute_count == usize.MAX {
+        return false;
+    }
+
+    let name_copy = ast_copy_string((*node).owner, name, name_length);
+    if name_copy == null {
+        return false;
+    }
+
+    let mut value_copy: *const u8 = null;
+    if value != null {
+        set value_copy = ast_copy_string((*node).owner, value, value_length);
+        if value_copy == null {
+            return false;
+        }
+    }
+
+    let minimum: usize = (*node).attribute_count + 1;
+    if not ast_reserve_attributes(node, minimum) {
+        return false;
+    }
+
+    let attribute = ast_attribute_slot(node, (*node).attribute_count);
+    let mut stored_value_length = value_length;
+    if value == null {
+        set stored_value_length = 0;
+    }
+    pointer.write(attribute, AstAttribute {
+        name: name_copy,
+        name_length: name_length,
+        value: value_copy,
+        value_length: stored_value_length,
+        is_inner: is_inner,
+        span: span,
+    });
+    set (*node).attribute_count = minimum;
+    return true;
+}
+
+export proc ast_node_add_attribute(
+    node: *mut AstNode,
+    name: *const u8,
+    name_length: usize,
+    value: *const u8,
+    value_length: usize,
+    span: AstSpan
+) -> bool {
+    return ast_node_add_attribute_ex(
+        node, name, name_length, value, value_length, false, span
+    );
+}
+
+export proc ast_node_attribute(node: *const AstNode, index: usize) -> *const AstAttribute {
+    if not ast_node_is_valid(node)  or (*node).attributes == null  or
+       index >= (*node).attribute_count {
+        return null;
+    }
+
+    return ast_attribute_slot_const(node, index);
+}
+
+export proc ast_node_find_attribute(
+    node: *const AstNode,
+    name: *const u8,
+    name_length: usize
+) -> *const AstAttribute {
+    if not ast_node_is_valid(node)  or name == null  or
+       ((*node).attribute_count != 0 and (*node).attributes == null) {
+        return null;
+    }
+
+    let mut index: usize = 0;
+    while index < (*node).attribute_count {
+        let attribute = ast_attribute_slot_const(node, index);
+        if (*attribute).name != null  and
+           (*attribute).name_length == name_length {
+            let mut same = true;
+            let mut byte_index: usize = 0;
+            while byte_index < name_length {
+                if pointer.read(pointer.add_bytes_const((*attribute).name, byte_index)) !=
+                   pointer.read(pointer.add_bytes_const(name, byte_index)) {
+                    set same = false;
+                    break;
+                }
+                set byte_index = byte_index + 1;
+            }
+
+            if same {
+                return attribute;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    return null;
+}
+
+export proc ast_node_set_flag(node: *mut AstNode, flag: AstNodeFlags) {
+    if not ast_node_is_valid(node) {
+        return;
+    }
+
+    set (*node).node_flags = (*node).node_flags | flag;
+}
+
+export proc ast_node_clear_flag(node: *mut AstNode, flag: AstNodeFlags) {
+    if not ast_node_is_valid(node) {
+        return;
+    }
+
+    set (*node).node_flags = (*node).node_flags & ~flag;
+}
+
+export proc ast_node_has_flag(node: *const AstNode, flag: AstNodeFlags) -> bool {
+    return ast_node_is_valid(node)  and ((*node).node_flags & flag) == flag;
+}
+
+export proc ast_set_root(ast: *mut Ast, root: *mut AstNode) -> bool {
+    if not ast_is_valid(ast)  or not ast_node_belongs_to(ast, root)  or
+       (*root).parent != null {
+        return false;
+    }
+
+    set (*ast).root = root;
+    return true;
+}
+
+export proc ast_root(ast: *mut Ast) -> *mut AstNode {
+    if not ast_is_valid(ast) {
+        return null;
+    }
+
+    if (*ast).root != null  and not ast_node_belongs_to(ast, (*ast).root) {
+        return null;
+    }
+
+    return (*ast).root;
+}
+
+export proc ast_root_const(ast: *const Ast) -> *const AstNode {
+    if not ast_is_valid(ast) {
+        return null;
+    }
+
+    if (*ast).root != null  and not ast_node_belongs_to(ast, (*ast).root) {
+        return null;
+    }
+
+    return (*ast).root as *const AstNode;
+}
+
+export proc ast_node_id(node: *const AstNode) -> u64 {
+    if not ast_node_is_valid(node) {
+        return 0;
+    }
+
+    return (*node).id;
+}
+
+export proc ast_node_kind(node: *const AstNode) -> AstKind {
+    if not ast_node_is_valid(node) {
+        return AstKind.Invalid;
+    }
+
+    return (*node).kind;
+}
+
+export proc ast_node_span(node: *const AstNode) -> AstSpan {
+    if not ast_node_is_valid(node) {
+        return ast_span_invalid();
+    }
+
+    return (*node).span;
+}
+
+export proc ast_node_parent(node: *mut AstNode) -> *mut AstNode {
+    if not ast_node_is_valid(node) {
+        return null;
+    }
+
+    let parent: *mut AstNode = (*node).parent;
+    if parent != null  and
+       (not ast_node_is_valid(parent)  or (*parent).owner != (*node).owner) {
+        return null;
+    }
+
+    return parent;
+}
+
+export proc ast_node_parent_const(node: *const AstNode) -> *const AstNode {
+    if not ast_node_is_valid(node) {
+        return null;
+    }
+
+    let parent: *mut AstNode = (*node).parent;
+    if parent != null  and
+       (not ast_node_is_valid(parent)  or (*parent).owner != (*node).owner) {
+        return null;
+    }
+
+    return parent as *const AstNode;
+}
+
+export proc ast_node_name(node: *const AstNode) -> *const u8 {
+    if not ast_node_is_valid(node) {
+        return null;
+    }
+
+    return (*node).name;
+}
+
+export proc ast_node_name_length(node: *const AstNode) -> usize {
+    if not ast_node_is_valid(node) {
+        return 0;
+    }
+
+    return (*node).name_length;
+}
+
+export proc ast_node_set_semantic(node: *mut AstNode, semantic: *mut u8) {
+    if ast_node_is_valid(node) {
+        set (*node).semantic = semantic;
+    }
+}
+
+export proc ast_node_semantic(node: *mut AstNode) -> *mut u8 {
+    if not ast_node_is_valid(node) {
+        return null;
+    }
+
+    return (*node).semantic;
+}
+
+export proc ast_node_semantic_const(node: *const AstNode) -> *const u8 {
+    if not ast_node_is_valid(node) {
+        return null;
+    }
+
+    return (*node).semantic as *const u8;
+}
+
+export proc ast_node_set_integer(node: *mut AstNode, value: u64, negative: bool) {
+    if not ast_node_is_valid(node) {
+        return;
+    }
+
+    set (*node).integer_value = value;
+    set (*node).integer_negative = negative;
+}
+
+export proc ast_node_set_float(node: *mut AstNode, value: f64) {
+    if ast_node_is_valid(node) {
+        set (*node).float_value = value;
+    }
+}
+
+export proc ast_node_set_string(node: *mut AstNode, value: *const u8, length: usize) -> bool {
+    if not ast_node_is_valid(node)  or value == null {
+        return false;
+    }
+
+    let copy = ast_copy_string((*node).owner, value, length);
+    if copy == null {
+        return false;
+    }
+
+    set (*node).string_value = copy;
+    set (*node).string_length = length;
+    return true;
+}
+
+export proc ast_node_set_bool(node: *mut AstNode, value: bool) {
+    if ast_node_is_valid(node) {
+        set (*node).bool_value = value;
+    }
+}
+
+export proc ast_node_set_unary_operator(node: *mut AstNode, op: AstUnaryOperator) {
+    if ast_node_is_valid(node) {
+        set (*node).unary_operator = op;
+    }
+}
+
+export proc ast_node_set_binary_operator(node: *mut AstNode, op: AstBinaryOperator) {
+    if ast_node_is_valid(node) {
+        set (*node).binary_operator = op;
+    }
+}
+
+proc ast_find_id_recursive(node: *mut AstNode, id: u64, depth: usize) -> *mut AstNode {
+    if not ast_node_is_valid(node)  or depth > AST_MAX_DEPTH {
+        return null;
+    }
+
+    if (*node).id == id {
+        return node;
+    }
+
+    if (*node).child_count != 0  and (*node).children == null {
+        return null;
+    }
+
+    let mut index: usize = 0;
+    while index < (*node).child_count {
+        let found = ast_find_id_recursive(ast_node_child(node, index), id, depth + 1);
+        if found != null {
+            return found;
+        }
+        set index = index + 1;
+    }
+
+    return null;
+}
+
+export proc ast_find_id(ast: *mut Ast, id: u64) -> *mut AstNode {
+    if not ast_is_valid(ast)  or (*ast).root == null  or id == 0  or
+       id >= (*ast).next_node_id {
+        return null;
+    }
+
+    return ast_find_id_recursive((*ast).root, id, 0);
+}
+
+proc ast_visit_recursive(
+    node: *mut AstNode,
+    visitor: AstVisitFn,
+    user_data: *mut u8,
+    depth: usize
+) -> bool {
+    if not ast_node_is_valid(node)  or depth > AST_MAX_DEPTH  or
+       ((*node).child_count != 0 and (*node).children == null) {
+        return false;
+    }
+
+    if not visitor(node, AstVisitEvent.Enter, depth, user_data) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index < (*node).child_count {
+        let child = ast_node_child(node, index);
+        if child == null  or
+           not ast_visit_recursive(child, visitor, user_data, depth + 1) {
+            return false;
+        }
+        set index = index + 1;
+    }
+
+    return visitor(node, AstVisitEvent.Leave, depth, user_data);
+}
+
+export proc ast_visit(ast: *mut Ast, visitor: AstVisitFn, user_data: *mut u8) -> bool {
+    if not ast_is_valid(ast) {
+        return false;
+    }
+
+    if (*ast).root == null {
+        return true;
+    }
+
+    if not ast_node_belongs_to(ast, (*ast).root)  or (*(*ast).root).parent != null {
+        return false;
+    }
+
+    return ast_visit_recursive((*ast).root, visitor, user_data, 0);
+}
+
+proc ast_collect_stats_recursive(
+    ast: *const Ast,
+    node: *const AstNode,
+    expected_parent: *const AstNode,
+    depth: usize,
+    stats: &mut AstStats
+) -> bool {
+    if ast == null  or node == null  or depth > AST_MAX_DEPTH  or
+       not ast_node_belongs_to(ast, node)  or
+       (*node).parent as *const AstNode != expected_parent  or
+       (*node).child_count > (*node).child_capacity  or
+       ((*node).child_count != 0 and (*node).children == null) {
+        return false;
+    }
+
+    set stats.reachable_nodes = ast_saturating_add(stats.reachable_nodes, 1);
+    if depth > stats.maximum_depth {
+        set stats.maximum_depth = depth;
+    }
+    set stats.child_edges = ast_saturating_add(stats.child_edges, (*node).child_count);
+    set stats.attribute_count = ast_saturating_add(stats.attribute_count, (*node).attribute_count);
+
+    if ast_kind_is_declaration((*node).kind) {
+        set stats.declaration_count = ast_saturating_add(stats.declaration_count, 1);
+    }
+    if ast_kind_is_statement((*node).kind) {
+        set stats.statement_count = ast_saturating_add(stats.statement_count, 1);
+    }
+    if ast_kind_is_expression((*node).kind) {
+        set stats.expression_count = ast_saturating_add(stats.expression_count, 1);
+    }
+    if ast_kind_is_type((*node).kind) {
+        set stats.type_count = ast_saturating_add(stats.type_count, 1);
+    }
+    if ast_kind_is_pattern((*node).kind) {
+        set stats.pattern_count = ast_saturating_add(stats.pattern_count, 1);
+    }
+    if ((*node).node_flags & AST_NODE_FLAG_INVALID) != 0 {
+        set stats.invalid_node_count = ast_saturating_add(stats.invalid_node_count, 1);
+    }
+
+    let mut index: usize = 0;
+    while index < (*node).child_count {
+        if not ast_collect_stats_recursive(
+            ast,
+            ast_node_child_const(node, index),
+            node,
+            depth + 1,
+            stats
+        ) {
+            return false;
+        }
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+export proc ast_stats(ast: *const Ast) -> AstStats {
+    let mut stats: AstStats = AstStats {
+        node_count: 0,
+        peak_node_count: 0,
+        reachable_nodes: 0,
+        maximum_depth: 0,
+        child_edges: 0,
+        attribute_count: 0,
+        declaration_count: 0,
+        statement_count: 0,
+        expression_count: 0,
+        type_count: 0,
+        pattern_count: 0,
+        invalid_node_count: 0,
+        generation: 0,
+        error_count: 0,
+    };
+
+    if not ast_is_valid(ast) {
+        return stats;
+    }
+
+    set stats.node_count = (*ast).node_count;
+    set stats.peak_node_count = (*ast).peak_node_count;
+    set stats.generation = (*ast).generation;
+    set stats.error_count = (*ast).error_count;
+
+    if (*ast).root != null {
+        ast_collect_stats_recursive(
+            ast,
+            (*ast).root,
+            null,
+            0,
+            &mut stats
+        );
+    }
+
+    return stats;
+}
+
+proc ast_validate_attribute(attribute: *const AstAttribute) -> bool {
+    if attribute == null  or (*attribute).name == null  or
+       not ast_span_is_valid(&(*attribute).span)  or
+       not ast_string_terminated((*attribute).name, (*attribute).name_length) {
+        return false;
+    }
+
+    if (*attribute).value == null {
+        return (*attribute).value_length == 0;
+    }
+
+    return ast_string_terminated((*attribute).value, (*attribute).value_length);
+}
+
+proc ast_validate_node_storage(ast: *const Ast, node: *const AstNode) -> bool {
+    if not ast_node_belongs_to(ast, node)  or
+       not ast_kind_known((*node).kind)  or
+       not ast_span_is_valid(&(*node).span)  or
+       (*node).id == 0  or (*node).id >= (*ast).next_node_id  or
+       (*node).child_count > (*node).child_capacity  or
+       (*node).attribute_count > (*node).attribute_capacity {
+        return false;
+    }
+
+    if (*node).child_capacity == 0 {
+        if (*node).children != null  or (*node).child_count != 0 {
+            return false;
+        }
+    } else if (*node).children == null {
+        return false;
+    }
+
+    if (*node).attribute_capacity == 0 {
+        if (*node).attributes != null  or (*node).attribute_count != 0 {
+            return false;
+        }
+    } else if (*node).attributes == null {
+        return false;
+    }
+
+    if (*node).name == null {
+        if (*node).name_length != 0 {
+            return false;
+        }
+    } else if not ast_string_terminated((*node).name, (*node).name_length) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index < (*node).attribute_count {
+        if not ast_validate_attribute(ast_attribute_slot_const(node, index)) {
+            return false;
+        }
+        set index = index + 1;
+    }
+
+    set index = (*node).child_count;
+    while index < (*node).child_capacity {
+        if pointer.read(ast_child_slot_const(node, index)) != null {
+            return false;
+        }
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+proc ast_subtree_contains_other_id(
+    node: *const AstNode,
+    excluded_node: *const AstNode,
+    id: u64,
+    depth: usize
+) -> bool {
+    if node == null  or depth > AST_MAX_DEPTH {
+        return false;
+    }
+
+    if node != excluded_node  and (*node).id == id {
+        return true;
+    }
+
+    if (*node).children == null {
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index < (*node).child_count {
+        if ast_subtree_contains_other_id(
+            ast_node_child_const(node, index),
+            excluded_node,
+            id,
+            depth + 1
+        ) {
+            return true;
+        }
+        set index = index + 1;
+    }
+
+    return false;
+}
+
+proc ast_validate_node_recursive(
+    ast: *const Ast,
+    root: *const AstNode,
+    node: *const AstNode,
+    expected_parent: *const AstNode,
+    depth: usize,
+    reachable: *mut usize
+) -> bool {
+    if ast == null  or root == null  or node == null  or reachable == null  or
+       depth > AST_MAX_DEPTH  or not ast_validate_node_storage(ast, node)  or
+       (*node).parent as *const AstNode != expected_parent {
+        return false;
+    }
+
+    if node != root {
+        let mut cursor = node;
+        let mut parent_depth: usize = 0;
+        while cursor != root {
+            if cursor == null  or (*cursor).parent == null  or
+               not ast_node_belongs_to(ast, (*cursor).parent) {
+                return false;
+            }
+
+            set cursor = (*cursor).parent as *const AstNode;
+            if parent_depth == AST_MAX_DEPTH {
+                return false;
+            }
+            set parent_depth = parent_depth + 1;
+        }
+    } else if (*node).parent != null {
+        return false;
+    }
+
+    if ast_subtree_contains_other_id(root, node, (*node).id, 0) {
+        return false;
+    }
+
+    if *reachable == usize.MAX {
+        return false;
+    }
+    set *reachable = *reachable + 1;
+    if *reachable > (*ast).node_count {
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index < (*node).child_count {
+        let child: *mut AstNode = pointer.read(ast_child_slot_const(node, index));
+        if child == null  or not ast_node_belongs_to(ast, child)  or
+           (*child).parent as *const AstNode != node  or child == node {
+            return false;
+        }
+
+        let mut duplicate: usize = index + 1;
+        while duplicate < (*node).child_count {
+            if child == pointer.read(ast_child_slot_const(node, duplicate)) {
+                return false;
+            }
+            set duplicate = duplicate + 1;
+        }
+
+        if not ast_validate_node_recursive(ast, root, child, node, depth + 1, reachable) {
+            return false;
+        }
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+export proc ast_validate(ast: *const Ast) -> bool {
+    if not ast_is_valid(ast)  or (*ast).generation == 0  or
+       (*ast).next_node_id == 0  or (*ast).peak_node_count < (*ast).node_count {
+        return false;
+    }
+
+    if (*ast).root == null {
+        return (*ast).node_count == 0;
+    }
+
+    if (*ast).node_count == 0  or
+       not ast_node_belongs_to(ast, (*ast).root)  or (*(*ast).root).parent != null {
+        return false;
+    }
+
+    let mut reachable: usize = 0;
+    if not ast_validate_node_recursive(
+        ast,
+        (*ast).root,
+        (*ast).root,
+        null,
+        0,
+        &mut reachable
+    ) {
+        return false;
+    }
+
+    return reachable == (*ast).node_count;
+}
+
+export proc ast_record_error(ast: *mut Ast) {
+    if not ast_is_valid(ast) {
+        return;
+    }
+
+    if (*ast).error_count != usize.MAX {
+        set (*ast).error_count = (*ast).error_count + 1;
+    }
+}
+
+export proc ast_error_count(ast: *const Ast) -> usize {
+    if not ast_is_valid(ast) {
+        return 0;
+    }
+
+    return (*ast).error_count;
+}
+
+export proc ast_node_count(ast: *const Ast) -> usize {
+    if not ast_is_valid(ast) {
+        return 0;
+    }
+
+    return (*ast).node_count;
+}
+
+export proc ast_peak_node_count(ast: *const Ast) -> usize {
+    if not ast_is_valid(ast) {
+        return 0;
+    }
+
+    return (*ast).peak_node_count;
+}
+
+export proc ast_generation(ast: *const Ast) -> u64 {
+    if not ast_is_valid(ast) {
+        return 0;
+    }
+
+    return (*ast).generation;
+}
+
+export proc ast_arena(ast: *mut Ast) -> *mut ArenaContext {
+    if not ast_is_valid(ast) {
+        return null;
+    }
+
+    return (*ast).arena;
+}
+
+export proc ast_arena_const(ast: *const Ast) -> *const ArenaContext {
+    if not ast_is_valid(ast) {
+        return null;
+    }
+
+    return (*ast).arena as *const ArenaContext;
+}
+
+export proc ast_node_is_ancestor_of(ancestor: *const AstNode, node: *const AstNode) -> bool {
+    if not ast_node_is_valid(ancestor)  or not ast_node_is_valid(node)  or
+       (*ancestor).owner != (*node).owner  or
+       (*ancestor).generation != (*node).generation {
+        return false;
+    }
+
+    let mut cursor: *const AstNode = (*node).parent as *const AstNode;
+    let mut depth: usize = 0;
+    while cursor != null {
+        if not ast_node_is_valid(cursor)  or (*cursor).owner != (*node).owner {
+            return false;
+        }
+        if cursor == ancestor {
+            return true;
+        }
+
+        set cursor = (*cursor).parent as *const AstNode;
+        if depth == AST_MAX_DEPTH {
+            return false;
+        }
+        set depth = depth + 1;
+    }
+
+    return false;
+}
+
+export proc ast_node_depth(node: *const AstNode) -> usize {
+    if not ast_node_is_valid(node) {
+        return usize.MAX;
+    }
+
+    let mut cursor: *const AstNode = node;
+    let mut depth: usize = 0;
+    while (*cursor).parent != null {
+        let parent: *mut AstNode = (*cursor).parent;
+        if not ast_node_is_valid(parent)  or (*parent).owner != (*node).owner {
+            return usize.MAX;
+        }
+
+        set cursor = parent as *const AstNode;
+        if depth == AST_MAX_DEPTH {
+            return usize.MAX;
+        }
+        set depth = depth + 1;
+    }
+
+    return depth;
+}
+
+export proc ast_node_is_root(node: *const AstNode) -> bool {
+    return ast_node_is_valid(node)  and (*node).owner != null  and
+           (*(*node).owner).root as *const AstNode == node  and (*node).parent == null;
+}
+
+export proc ast_node_is_detached(node: *const AstNode) -> bool {
+    return ast_node_is_valid(node)  and (*node).parent == null  and
+           ((*node).owner == null  or (*(*node).owner).root as *const AstNode != node);
+}
+
+export proc ast_node_has_children(node: *const AstNode) -> bool {
+    return ast_node_is_valid(node)  and (*node).child_count != 0;
+}
+
+export proc ast_node_has_attributes(node: *const AstNode) -> bool {
+    return ast_node_is_valid(node)  and (*node).attribute_count != 0;
+}
+
+export proc ast_node_is_named(node: *const AstNode) -> bool {
+    return ast_node_is_valid(node)  and (*node).name != null;
+}
+
+export proc ast_node_is_invalid(node: *const AstNode) -> bool {
+    return ast_node_is_valid(node)  and ((*node).node_flags & AST_NODE_FLAG_INVALID) != 0;
+}
+
+export proc ast_node_is_synthetic(node: *const AstNode) -> bool {
+    return ast_node_is_valid(node)  and ((*node).node_flags & AST_NODE_FLAG_SYNTHETIC) != 0;
+}
+
+export proc ast_node_is_current_generation(node: *const AstNode) -> bool {
+    return node != null  and (*node).owner != null  and
+           ast_is_valid((*node).owner)  and
+           (*node).generation == (*(*node).owner).generation;
+}
+
+export proc ast_is_empty(ast: *const Ast) -> bool {
+    return ast_is_valid(ast)  and (*ast).node_count == 0;
+}

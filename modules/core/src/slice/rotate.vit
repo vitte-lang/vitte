@@ -1,0 +1,33 @@
+/// Rotations en place d'une tranche par inversions successives.
+space core::slice::rotate;
+
+proc slice_reverse_range<T>(value: &mut [T], begin: usize, end: usize) {
+    let mut left: usize = begin;
+    let mut right: usize = end;
+    while left < right {
+        set right = right - 1;
+        if left >= right { break; }
+        let temporary: T = value[left];
+        set value[left] = value[right];
+        set value[right] = temporary;
+        set left = left + 1;
+    }
+}
+
+export proc slice_rotate_left<T>(value: &mut [T], amount: usize) {
+    let length: usize = value.len();
+    if length < 2 { return; }
+    let shift: usize = amount % length;
+    if shift == 0 { return; }
+    slice_reverse_range(value, 0, shift);
+    slice_reverse_range(value, shift, length);
+    slice_reverse_range(value, 0, length);
+}
+
+export proc slice_rotate_right<T>(value: &mut [T], amount: usize) {
+    let length: usize = value.len();
+    if length < 2 { return; }
+    let shift: usize = amount % length;
+    if shift == 0 { return; }
+    slice_rotate_left(value, length - shift);
+}

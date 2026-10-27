@@ -1,0 +1,1771 @@
+///
+/// Vitte Compiler
+/// src/arena/arena.vit
+///
+/// High-level compiler-facing arena interface.
+///
+/// Responsibilities:
+/// - Compiler-facing configuration
+/// - Logical memory limits
+/// - Logical allocation accounting
+/// - Aligned and zeroed allocation
+/// - Overflow-safe arrays
+/// - Memory and string duplication
+/// - Bounded formatted strings
+/// - Transactional checkpoints and rollback
+/// - Reset and trimming policies
+/// - Lifetime statistics
+/// - Ownership queries
+/// - Structural validation
+///
+/// Logical memory limits apply to caller-requested bytes,
+/// including string terminators, but excluding allocator padding.
+///
+
+space compiler::arena::arena;
+
+use compiler::arena::allocator::{
+    ARENA_DEFAULT_BLOCK_SIZE,
+    ARENA_MIN_BLOCK_SIZE,
+    Arena,
+    ArenaError,
+    ArenaMark,
+    ArenaStats,
+    arena_alloc_aligned,
+    arena_clear_error,
+    arena_contains,
+    arena_contains_live,
+    arena_destroy,
+    arena_generation,
+    arena_init,
+    arena_last_error,
+    arena_mark,
+    arena_reset,
+    arena_reset_and_trim,
+    arena_reserved_bytes,
+    arena_rewind,
+    arena_stats,
+    arena_trim,
+    arena_used_bytes,
+    arena_utilization_basis_points,
+    arena_validate,
+};
+use vitte::core::memory::{copy, fill, format};
+use vitte::core::memory::{copy_string_bytes};
+use vitte::core::pointer;
+
+/// =========================================================================
+/// Configuration constants
+/// =========================================================================
+
+const ARENA_CONTEXT_MAGIC: u64 = 0x5649545445414358;
+const ARENA_CONTEXT_DEAD_MAGIC: u64 = 0x4445414441435458;
+
+const ARENA_CONTEXT_DEFAULT_LIMIT: usize = usize.MAX;
+const ARENA_CONTEXT_DEFAULT_STRING_LIMIT: usize = 67108864;
+const ARENA_CONTEXT_MAX_FORMATTED_STRING: usize = 67108864;
+
+
+/// =========================================================================
+/// Context errors
+/// =========================================================================
+
+pub pick ArenaContextError {
+    None,
+    InvalidContext,
+    InvalidArgument,
+    InvalidAlignment,
+    Overflow,
+    LimitExceeded,
+    OutOfMemory,
+    InvalidCheckpoint,
+    Corruption,
+    InvalidState,
+}
+
+pub proc arena_context_error_name(
+    error: ArenaContextError
+) -> str {
+    match error {
+        case ArenaContextError.None => "none",
+        case ArenaContextError.InvalidContext => "invalid-context",
+        case ArenaContextError.InvalidArgument => "invalid-argument",
+        case ArenaContextError.InvalidAlignment => "invalid-alignment",
+        case ArenaContextError.Overflow => "overflow",
+        case ArenaContextError.LimitExceeded => "limit-exceeded",
+        case ArenaContextError.OutOfMemory => "out-of-memory",
+        case ArenaContextError.InvalidCheckpoint => "invalid-checkpoint",
+        case ArenaContextError.Corruption => "corruption",
+        case ArenaContextError.InvalidState => "invalid-state",
+    }
+}
+
+
+/// =========================================================================
+/// Context state
+/// =========================================================================
+
+pub pick ArenaState {
+    Uninitialized,
+    Ready,
+    Failed,
+    Destroyed,
+}
+
+pub proc arena_state_name(
+    state: ArenaState
+) -> str {
+    match state {
+        case ArenaState.Uninitialized => "uninitialized",
+        case ArenaState.Ready => "ready",
+        case ArenaState.Failed => "failed",
+        case ArenaState.Destroyed => "destroyed",
+    }
+}
+
+
+/// =========================================================================
+/// Configuration
+/// =========================================================================
+
+pub form ArenaConfig {
+    block_size: usize,
+    memory_limit: usize,
+    string_limit: usize,
+    retain_blocks_on_reset: bool,
+}
+
+pub proc arena_config_default() -> ArenaConfig {
+    return ArenaConfig {
+        block_size: ARENA_DEFAULT_BLOCK_SIZE,
+        memory_limit: ARENA_CONTEXT_DEFAULT_LIMIT,
+        string_limit: ARENA_CONTEXT_DEFAULT_STRING_LIMIT,
+        retain_blocks_on_reset: true,
+    };
+}
+
+pub proc arena_config_validate(
+    config: &ArenaConfig
+) -> bool {
+    if config.block_size != 0  and 
+       config.block_size < ARENA_MIN_BLOCK_SIZE {
+        return false;
+    }
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Context
+/// =========================================================================
+
+pub form ArenaContext {
+    magic: u64,
+    state: ArenaState,
+
+    config: ArenaConfig,
+    allocator: Arena,
+
+    generation: u64,
+
+    allocation_count: usize,
+    requested_bytes: usize,
+
+    lifetime_allocation_count: usize,
+    lifetime_requested_bytes: usize,
+
+    peak_requested_bytes: usize,
+
+    last_error: ArenaContextError,
+}
+
+
+/// =========================================================================
+/// Checkpoint
+/// =========================================================================
+
+pub form ArenaCheckpoint {
+    context: ?&ArenaContext,
+    mark: ArenaMark,
+
+    generation: u64,
+
+    allocation_count: usize,
+    requested_bytes: usize,
+}
+
+
+/// =========================================================================
+/// Context statistics
+/// =========================================================================
+
+pub form ArenaContextStats {
+    block_size: usize,
+
+    block_count: usize,
+    peak_block_count: usize,
+
+    reserved_bytes: usize,
+    peak_reserved_bytes: usize,
+
+    used_bytes: usize,
+    peak_used_bytes: usize,
+
+    allocator_requested_bytes: usize,
+
+    unused_bytes: usize,
+    padding_bytes: usize,
+
+    requested_bytes: usize,
+    peak_requested_bytes: usize,
+
+    allocation_count: usize,
+
+    lifetime_requested_bytes: usize,
+    lifetime_allocation_count: usize,
+
+    generation: u64,
+
+    memory_limit: usize,
+    string_limit: usize,
+}
+
+
+/// =========================================================================
+/// Arithmetic helpers
+/// =========================================================================
+
+proc arena_context_add_overflow(
+    left: usize,
+    right: usize
+) -> bool {
+    return left > usize.MAX - right;
+}
+
+proc arena_context_mul_overflow(
+    left: usize,
+    right: usize
+) -> bool {
+    if left == 0 {
+        return false;
+    }
+
+    return right > usize.MAX / left;
+}
+
+proc arena_context_saturating_add(
+    left: usize,
+    right: usize
+) -> usize {
+    if arena_context_add_overflow(left, right) {
+        return usize.MAX;
+    }
+
+    return left + right;
+}
+
+proc arena_context_saturating_increment(
+    value: usize
+) -> usize {
+    if value == usize.MAX {
+        return usize.MAX;
+    }
+
+    return value + 1;
+}
+
+proc arena_context_is_power_of_two(
+    value: usize
+) -> bool {
+    return value != 0  and 
+           (value & (value - 1)) == 0;
+}
+
+
+/// =========================================================================
+/// Context validation helpers
+/// =========================================================================
+
+proc arena_context_magic_valid(
+    context: &ArenaContext
+) -> bool {
+    return context.magic == ARENA_CONTEXT_MAGIC;
+}
+
+proc arena_context_operational(
+    context: &ArenaContext
+) -> bool {
+    return arena_context_magic_valid(context)  and 
+           context.state == ArenaState.Ready;
+}
+
+proc arena_context_allocator_valid(
+    context: &ArenaContext
+) -> bool {
+    if not arena_context_magic_valid(context) {
+        return false;
+    }
+
+    return arena_validate(&context.allocator);
+}
+
+
+/// =========================================================================
+/// Error handling
+/// =========================================================================
+
+proc arena_context_set_error(
+    context: &mut ArenaContext,
+    error: ArenaContextError
+) {
+    if not arena_context_magic_valid(context) {
+        return;
+    }
+
+    set context.last_error = error;
+}
+
+proc arena_context_set_invalid_state(
+    context: &mut ArenaContext
+) {
+    arena_context_set_error(
+        context,
+        ArenaContextError.InvalidState
+    );
+}
+
+proc arena_context_import_allocator_error(
+    context: &mut ArenaContext
+) {
+    if not arena_context_magic_valid(context) {
+        return;
+    }
+
+    let error: ArenaError =
+        arena_last_error(&context.allocator);
+
+    match error {
+        case ArenaError.None => {
+            set context.last_error =
+                ArenaContextError.None;
+        }
+
+        case ArenaError.InvalidArena => {
+            set context.last_error =
+                ArenaContextError.Corruption;
+        }
+
+        case ArenaError.InvalidArgument => {
+            set context.last_error =
+                ArenaContextError.InvalidArgument;
+        }
+
+        case ArenaError.InvalidAlignment => {
+            set context.last_error =
+                ArenaContextError.InvalidAlignment;
+        }
+
+        case ArenaError.Overflow => {
+            set context.last_error =
+                ArenaContextError.Overflow;
+        }
+
+        case ArenaError.OutOfMemory => {
+            set context.last_error =
+                ArenaContextError.OutOfMemory;
+        }
+
+        case ArenaError.InvalidMark => {
+            set context.last_error =
+                ArenaContextError.InvalidCheckpoint;
+        }
+
+        case ArenaError.Corruption => {
+            set context.last_error =
+                ArenaContextError.Corruption;
+        }
+    }
+}
+
+pub proc arena_context_last_error(
+    context: &ArenaContext
+) -> ArenaContextError {
+    if not arena_context_magic_valid(context) {
+        return ArenaContextError.InvalidContext;
+    }
+
+    return context.last_error;
+}
+
+pub proc arena_context_clear_error(
+    context: &mut ArenaContext
+) {
+    if not arena_context_magic_valid(context) {
+        return;
+    }
+
+    set context.last_error =
+        ArenaContextError.None;
+
+    arena_clear_error(&mut context.allocator);
+}
+
+
+/// =========================================================================
+/// Lifecycle
+/// =========================================================================
+
+pub proc arena_context_init(
+    context: &mut ArenaContext,
+    config: ?&ArenaConfig
+) -> bool {
+    let mut effective: ArenaConfig =
+        arena_config_default();
+
+    if config != null {
+        set effective = *config?;
+    }
+
+    if not arena_config_validate(&effective) {
+        return false;
+    }
+
+    if effective.block_size == 0 {
+        set effective.block_size =
+            ARENA_DEFAULT_BLOCK_SIZE;
+    }
+
+    if effective.block_size < ARENA_MIN_BLOCK_SIZE {
+        return false;
+    }
+
+    if effective.memory_limit == 0 {
+        set effective.memory_limit =
+            ARENA_CONTEXT_DEFAULT_LIMIT;
+    }
+
+    if effective.string_limit == 0 {
+        set effective.string_limit =
+            ARENA_CONTEXT_DEFAULT_STRING_LIMIT;
+    }
+
+    set context.magic =
+        ARENA_CONTEXT_MAGIC;
+
+    set context.state =
+        ArenaState.Uninitialized;
+
+    set context.config =
+        effective;
+
+    set context.last_error =
+        ArenaContextError.None;
+
+    if not arena_init(
+        &mut context.allocator,
+        effective.block_size
+    ) {
+        set context.state =
+            ArenaState.Failed;
+
+        set context.last_error =
+            ArenaContextError.OutOfMemory;
+
+        return false;
+    }
+
+    set context.generation =
+        arena_generation(&context.allocator);
+
+    set context.allocation_count = 0;
+    set context.requested_bytes = 0;
+
+    set context.lifetime_allocation_count = 0;
+    set context.lifetime_requested_bytes = 0;
+
+    set context.peak_requested_bytes = 0;
+
+    set context.state =
+        ArenaState.Ready;
+
+    return true;
+}
+
+pub proc arena_context_init_default(
+    context: &mut ArenaContext
+) -> bool {
+    return arena_context_init(
+        context,
+        null
+    );
+}
+
+pub proc arena_context_destroy(
+    context: &mut ArenaContext
+) {
+    if not arena_context_magic_valid(context) {
+        return;
+    }
+
+    set context.state =
+        ArenaState.Destroyed;
+
+    arena_destroy(&mut context.allocator);
+
+    set context.generation = 0;
+
+    set context.allocation_count = 0;
+    set context.requested_bytes = 0;
+
+    set context.last_error =
+        ArenaContextError.InvalidContext;
+
+    set context.magic =
+        ARENA_CONTEXT_DEAD_MAGIC;
+}
+
+
+/// =========================================================================
+/// Logical memory limits
+/// =========================================================================
+
+proc arena_context_check_limit(
+    context: &mut ArenaContext,
+    additional: usize
+) -> bool {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return false;
+    }
+
+    if arena_context_add_overflow(
+        context.requested_bytes,
+        additional
+    ) {
+        arena_context_set_error(
+            context,
+            ArenaContextError.Overflow
+        );
+
+        return false;
+    }
+
+    let total: usize =
+        context.requested_bytes + additional;
+
+    if context.config.memory_limit != usize.MAX  and 
+       total > context.config.memory_limit {
+        arena_context_set_error(
+            context,
+            ArenaContextError.LimitExceeded
+        );
+
+        return false;
+    }
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Logical accounting
+/// =========================================================================
+
+proc arena_context_record_allocation(
+    context: &mut ArenaContext,
+    requested: usize
+) {
+    if not arena_context_magic_valid(context) {
+        return;
+    }
+
+    set context.allocation_count =
+        arena_context_saturating_increment(
+            context.allocation_count
+        );
+
+    set context.lifetime_allocation_count =
+        arena_context_saturating_increment(
+            context.lifetime_allocation_count
+        );
+
+    set context.requested_bytes =
+        arena_context_saturating_add(
+            context.requested_bytes,
+            requested
+        );
+
+    set context.lifetime_requested_bytes =
+        arena_context_saturating_add(
+            context.lifetime_requested_bytes,
+            requested
+        );
+
+    if context.requested_bytes >
+       context.peak_requested_bytes {
+        set context.peak_requested_bytes =
+            context.requested_bytes;
+    }
+}
+
+
+/// =========================================================================
+/// Core allocation
+/// =========================================================================
+
+pub proc arena_context_alloc_aligned(
+    context: &mut ArenaContext,
+    size: usize,
+    alignment: usize
+) -> ?*mut u8 {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return null;
+    }
+
+    arena_context_clear_error(context);
+
+    if alignment != 0  and 
+       not arena_context_is_power_of_two(alignment) {
+        arena_context_set_error(
+            context,
+            ArenaContextError.InvalidAlignment
+        );
+
+        return null;
+    }
+
+    if not arena_context_check_limit(
+        context,
+        size
+    ) {
+        return null;
+    }
+
+    let allocated =
+        arena_alloc_aligned(
+            &mut context.allocator,
+            size,
+            alignment
+        );
+
+    if allocated == null {
+        arena_context_import_allocator_error(context);
+        return null;
+    }
+
+    arena_context_record_allocation(
+        context,
+        size
+    );
+
+    set context.last_error =
+        ArenaContextError.None;
+
+    return allocated;
+}
+
+pub proc arena_context_alloc(
+    context: &mut ArenaContext,
+    size: usize
+) -> ?*mut u8 {
+    return arena_context_alloc_aligned(
+        context,
+        size,
+        0
+    );
+}
+
+
+/// =========================================================================
+/// Array allocation
+/// =========================================================================
+
+pub proc arena_context_alloc_array(
+    context: &mut ArenaContext,
+    count: usize,
+    element_size: usize,
+    alignment: usize
+) -> ?*mut u8 {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return null;
+    }
+
+    if arena_context_mul_overflow(
+        count,
+        element_size
+    ) {
+        arena_context_set_error(
+            context,
+            ArenaContextError.Overflow
+        );
+
+        return null;
+    }
+
+    return arena_context_alloc_aligned(
+        context,
+        count * element_size,
+        alignment
+    );
+}
+
+
+/// =========================================================================
+/// Zero-initialized allocation
+/// =========================================================================
+
+pub proc arena_context_calloc(
+    context: &mut ArenaContext,
+    count: usize,
+    element_size: usize
+) -> ?*mut u8 {
+    return arena_context_calloc_aligned(
+        context,
+        count,
+        element_size,
+        0
+    );
+}
+
+pub proc arena_context_calloc_aligned(
+    context: &mut ArenaContext,
+    count: usize,
+    element_size: usize,
+    alignment: usize
+) -> ?*mut u8 {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return null;
+    }
+
+    if arena_context_mul_overflow(
+        count,
+        element_size
+    ) {
+        arena_context_set_error(
+            context,
+            ArenaContextError.Overflow
+        );
+
+        return null;
+    }
+
+    let total: usize =
+        count * element_size;
+
+    let allocated =
+        arena_context_alloc_aligned(
+            context,
+            total,
+            alignment
+        );
+
+    if allocated == null {
+        return null;
+    }
+
+    if total != 0 {
+        fill(
+            allocated?,
+            0,
+            total
+        );
+    }
+
+    return allocated;
+}
+
+
+/// =========================================================================
+/// Memory duplication
+/// =========================================================================
+
+pub proc arena_context_memdup(
+    context: &mut ArenaContext,
+    data: *const u8,
+    size: usize
+) -> ?*mut u8 {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return null;
+    }
+
+    if pointer.is_null(data)  and  size != 0 {
+        arena_context_set_error(
+            context,
+            ArenaContextError.InvalidArgument
+        );
+
+        return null;
+    }
+
+    let copied =
+        arena_context_alloc(
+            context,
+            size
+        );
+
+    if copied == null {
+        return null;
+    }
+
+    if size != 0 {
+        copy(
+            copied?,
+            data,
+            size
+        );
+    }
+
+    return copied;
+}
+
+
+/// =========================================================================
+/// String duplication
+/// =========================================================================
+
+pub proc arena_context_strndup(
+    context: &mut ArenaContext,
+    text: *const u8,
+    length: usize
+) -> ?*mut u8 {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return null;
+    }
+
+    if pointer.is_null(text)  and  length != 0 {
+        arena_context_set_error(
+            context,
+            ArenaContextError.InvalidArgument
+        );
+
+        return null;
+    }
+
+    if length > context.config.string_limit {
+        arena_context_set_error(
+            context,
+            ArenaContextError.LimitExceeded
+        );
+
+        return null;
+    }
+
+    if arena_context_add_overflow(length, 1) {
+        arena_context_set_error(
+            context,
+            ArenaContextError.Overflow
+        );
+
+        return null;
+    }
+
+    let copied =
+        arena_context_alloc_aligned(
+            context,
+            length + 1,
+            alignof(u8)
+        );
+
+    if copied == null {
+        return null;
+    }
+
+    if length != 0 {
+        copy(
+            copied?,
+            text,
+            length
+        );
+    }
+
+    pointer.write(
+        pointer.add_bytes(
+            copied?,
+            length
+        ),
+        0
+    );
+
+    return copied;
+}
+
+pub proc arena_context_strdup(
+    context: &mut ArenaContext,
+    text: *const u8
+) -> ?*mut u8 {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return null;
+    }
+
+    if pointer.is_null(text) {
+        arena_context_set_error(
+            context,
+            ArenaContextError.InvalidArgument
+        );
+
+        return null;
+    }
+
+    let mut length: usize = 0;
+    let limit: usize = context.config.string_limit;
+
+    loop {
+        let current: u8 =
+            pointer.read(
+                pointer.add_bytes_const(text, length)
+            );
+
+        if current == 0 {
+            break;
+        }
+
+        if length == limit {
+            arena_context_set_error(
+                context,
+                ArenaContextError.LimitExceeded
+            );
+
+            return null;
+        }
+
+        set length = length + 1;
+    }
+
+    return arena_context_strndup(
+        context,
+        text,
+        length
+    );
+}
+
+
+/// =========================================================================
+/// Checkpoints
+/// =========================================================================
+
+pub proc arena_context_checkpoint(
+    context: &ArenaContext
+) -> ArenaCheckpoint {
+    let mut checkpoint: ArenaCheckpoint = ArenaCheckpoint {
+        context: null,
+        mark: ArenaMark {
+            arena: null,
+            block: null,
+            used: 0,
+            used_bytes: 0,
+            requested_bytes: 0,
+            allocation_count: 0,
+            generation: 0,
+        },
+        generation: 0,
+        allocation_count: 0,
+        requested_bytes: 0,
+    };
+
+    if not arena_context_operational(context) {
+        return checkpoint;
+    }
+
+    set checkpoint.context = &*context;
+
+    set checkpoint.mark =
+        arena_mark(&context.allocator);
+
+    set checkpoint.generation =
+        context.generation;
+
+    set checkpoint.allocation_count =
+        context.allocation_count;
+
+    set checkpoint.requested_bytes =
+        context.requested_bytes;
+
+    return checkpoint;
+}
+
+proc arena_context_checkpoint_valid(
+    context: &ArenaContext,
+    checkpoint: &ArenaCheckpoint
+) -> bool {
+    if not arena_context_operational(context) {
+        return false;
+    }
+
+    if checkpoint.context != context {
+        return false;
+    }
+
+    if checkpoint.generation != context.generation {
+        return false;
+    }
+
+    if checkpoint.mark.arena != &context.allocator {
+        return false;
+    }
+
+    if checkpoint.mark.generation !=
+       arena_generation(&context.allocator) {
+        return false;
+    }
+
+    if checkpoint.allocation_count >
+       context.allocation_count {
+        return false;
+    }
+
+    if checkpoint.requested_bytes >
+       context.requested_bytes {
+        return false;
+    }
+
+    if checkpoint.mark.allocation_count !=
+       checkpoint.allocation_count {
+        return false;
+    }
+
+    if checkpoint.mark.requested_bytes !=
+       checkpoint.requested_bytes {
+        return false;
+    }
+
+    return true;
+}
+
+pub proc arena_context_rollback(
+    context: &mut ArenaContext,
+    checkpoint: ArenaCheckpoint
+) -> bool {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return false;
+    }
+
+    if not arena_context_checkpoint_valid(
+        context,
+        &checkpoint
+    ) {
+        arena_context_set_error(
+            context,
+            ArenaContextError.InvalidCheckpoint
+        );
+
+        return false;
+    }
+
+    if not arena_rewind(
+        &mut context.allocator,
+        checkpoint.mark
+    ) {
+        arena_context_import_allocator_error(context);
+        return false;
+    }
+
+    set context.allocation_count =
+        checkpoint.allocation_count;
+
+    set context.requested_bytes =
+        checkpoint.requested_bytes;
+
+    set context.last_error =
+        ArenaContextError.None;
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Formatted strings
+/// =========================================================================
+
+///
+/// Native Vitte formatting adapter.
+///
+/// The formatter must return a complete UTF-8 byte sequence.
+/// The arena owns the final NUL-terminated copy.
+///
+
+pub proc arena_context_format(
+    context: &mut ArenaContext,
+    format_text: str,
+    arguments: [string]
+) -> ?*mut u8 {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return null;
+    }
+
+    let rendered: string =
+        format(
+            format_text,
+            arguments
+        );
+
+    let length: usize =
+        rendered.length;
+
+    if length > context.config.string_limit  or 
+       length > ARENA_CONTEXT_MAX_FORMATTED_STRING {
+        arena_context_set_error(
+            context,
+            ArenaContextError.LimitExceeded
+        );
+
+        return null;
+    }
+
+    if arena_context_add_overflow(length, 1) {
+        arena_context_set_error(
+            context,
+            ArenaContextError.Overflow
+        );
+
+        return null;
+    }
+
+    let checkpoint =
+        arena_context_checkpoint(context);
+
+    let buffer =
+        arena_context_alloc_aligned(
+            context,
+            length + 1,
+            alignof(u8)
+        );
+
+    if buffer == null {
+        return null;
+    }
+
+    if not copy_string_bytes(
+        buffer?,
+        rendered,
+        length
+    ) {
+        if not arena_context_rollback(
+            context,
+            checkpoint
+        ) {
+            set context.state =
+                ArenaState.Failed;
+        }
+
+        arena_context_set_error(
+            context,
+            ArenaContextError.Corruption
+        );
+
+        return null;
+    }
+
+    pointer.write(
+        pointer.add_bytes(
+            buffer?,
+            length
+        ),
+        0
+    );
+
+    return buffer;
+}
+
+/// printf-style entry point for the native formatter. Arguments are passed
+/// as a Vitte string array and formatting remains owned by core.memory.
+pub proc arena_context_printf(
+    context: &mut ArenaContext,
+    format_text: str,
+    arguments: [string]
+) -> ?*mut u8 {
+    return arena_context_format(context, format_text, arguments);
+}
+
+/// vprintf-style alias for callers that already collected their arguments.
+pub proc arena_context_vprintf(
+    context: &mut ArenaContext,
+    format_text: str,
+    arguments: [string]
+) -> ?*mut u8 {
+    return arena_context_format(context, format_text, arguments);
+}
+
+
+/// =========================================================================
+/// Reset
+/// =========================================================================
+
+pub proc arena_context_reset(
+    context: &mut ArenaContext
+) {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return;
+    }
+
+    let before_generation: u64 =
+        arena_generation(&context.allocator);
+
+    arena_clear_error(&mut context.allocator);
+
+    if context.config.retain_blocks_on_reset {
+        arena_reset(&mut context.allocator);
+    } else {
+        arena_reset_and_trim(&mut context.allocator);
+    }
+
+    if arena_last_error(&context.allocator) !=
+       ArenaError.None {
+        arena_context_import_allocator_error(context);
+        return;
+    }
+
+    let after_generation: u64 =
+        arena_generation(&context.allocator);
+
+    if after_generation == 0  or 
+       after_generation == before_generation {
+        set context.state = ArenaState.Failed;
+
+        set context.last_error =
+            ArenaContextError.Corruption;
+
+        return;
+    }
+
+    set context.generation =
+        after_generation;
+
+    set context.allocation_count = 0;
+    set context.requested_bytes = 0;
+
+    set context.last_error =
+        ArenaContextError.None;
+}
+
+pub proc arena_context_trim(
+    context: &mut ArenaContext
+) {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return;
+    }
+
+    arena_clear_error(&mut context.allocator);
+
+    arena_trim(&mut context.allocator);
+
+    if arena_last_error(&context.allocator) !=
+       ArenaError.None {
+        arena_context_import_allocator_error(context);
+        return;
+    }
+
+    set context.last_error =
+        ArenaContextError.None;
+}
+
+pub proc arena_context_reset_and_trim(
+    context: &mut ArenaContext
+) {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return;
+    }
+
+    let before_generation: u64 =
+        arena_generation(&context.allocator);
+
+    arena_clear_error(&mut context.allocator);
+
+    arena_reset_and_trim(&mut context.allocator);
+
+    if arena_last_error(&context.allocator) !=
+       ArenaError.None {
+        arena_context_import_allocator_error(context);
+        return;
+    }
+
+    let after_generation: u64 =
+        arena_generation(&context.allocator);
+
+    if after_generation == 0  or 
+       after_generation == before_generation {
+        set context.state = ArenaState.Failed;
+
+        set context.last_error =
+            ArenaContextError.Corruption;
+
+        return;
+    }
+
+    set context.generation =
+        after_generation;
+
+    set context.allocation_count = 0;
+    set context.requested_bytes = 0;
+
+    set context.last_error =
+        ArenaContextError.None;
+}
+
+
+/// =========================================================================
+/// Ownership
+/// =========================================================================
+
+pub proc arena_context_contains(
+    context: &ArenaContext,
+    address_ptr: *const u8
+) -> bool {
+    if not arena_context_operational(context) {
+        return false;
+    }
+
+    return arena_contains(
+        &context.allocator,
+        address_ptr
+    );
+}
+
+pub proc arena_context_contains_live(
+    context: &ArenaContext,
+    address_ptr: *const u8
+) -> bool {
+    if not arena_context_operational(context) {
+        return false;
+    }
+
+    return arena_contains_live(
+        &context.allocator,
+        address_ptr
+    );
+}
+
+
+/// =========================================================================
+/// Statistics
+/// =========================================================================
+
+pub proc arena_context_stats(
+    context: &ArenaContext
+) -> ArenaContextStats {
+    let mut result: ArenaContextStats = ArenaContextStats {
+        block_size: 0,
+
+        block_count: 0,
+        peak_block_count: 0,
+
+        reserved_bytes: 0,
+        peak_reserved_bytes: 0,
+
+        used_bytes: 0,
+        peak_used_bytes: 0,
+
+        allocator_requested_bytes: 0,
+
+        unused_bytes: 0,
+        padding_bytes: 0,
+
+        requested_bytes: 0,
+        peak_requested_bytes: 0,
+
+        allocation_count: 0,
+
+        lifetime_requested_bytes: 0,
+        lifetime_allocation_count: 0,
+
+        generation: 0,
+
+        memory_limit: 0,
+        string_limit: 0,
+    };
+
+    if not arena_context_magic_valid(context) {
+        return result;
+    }
+
+    let stats: ArenaStats =
+        arena_stats(&context.allocator);
+
+    set result.block_size =
+        stats.block_size;
+
+    set result.block_count =
+        stats.block_count;
+
+    set result.peak_block_count =
+        stats.peak_block_count;
+
+    set result.reserved_bytes =
+        stats.reserved_bytes;
+
+    set result.peak_reserved_bytes =
+        stats.peak_reserved_bytes;
+
+    set result.used_bytes =
+        stats.used_bytes;
+
+    set result.peak_used_bytes =
+        stats.peak_used_bytes;
+
+    set result.allocator_requested_bytes =
+        stats.requested_bytes;
+
+    set result.unused_bytes =
+        stats.unused_bytes;
+
+    set result.padding_bytes =
+        stats.padding_bytes;
+
+    set result.requested_bytes =
+        context.requested_bytes;
+
+    set result.peak_requested_bytes =
+        context.peak_requested_bytes;
+
+    set result.allocation_count =
+        context.allocation_count;
+
+    set result.lifetime_requested_bytes =
+        context.lifetime_requested_bytes;
+
+    set result.lifetime_allocation_count =
+        context.lifetime_allocation_count;
+
+    set result.generation =
+        context.generation;
+
+    set result.memory_limit =
+        context.config.memory_limit;
+
+    set result.string_limit =
+        context.config.string_limit;
+
+    return result;
+}
+
+pub proc arena_context_requested_bytes(
+    context: &ArenaContext
+) -> usize {
+    if not arena_context_magic_valid(context) {
+        return 0;
+    }
+
+    return context.requested_bytes;
+}
+
+pub proc arena_context_allocation_count(
+    context: &ArenaContext
+) -> usize {
+    if not arena_context_magic_valid(context) {
+        return 0;
+    }
+
+    return context.allocation_count;
+}
+
+pub proc arena_context_reserved_bytes(
+    context: &ArenaContext
+) -> usize {
+    if not arena_context_magic_valid(context) {
+        return 0;
+    }
+
+    return arena_reserved_bytes(&context.allocator);
+}
+
+pub proc arena_context_used_bytes(
+    context: &ArenaContext
+) -> usize {
+    if not arena_context_magic_valid(context) {
+        return 0;
+    }
+
+    return arena_used_bytes(&context.allocator);
+}
+
+pub proc arena_context_generation(
+    context: &ArenaContext
+) -> u64 {
+    if not arena_context_magic_valid(context) {
+        return 0;
+    }
+
+    return context.generation;
+}
+
+
+/// =========================================================================
+/// Memory limit
+/// =========================================================================
+
+pub proc arena_context_memory_limit(
+    context: &ArenaContext
+) -> usize {
+    if not arena_context_magic_valid(context) {
+        return 0;
+    }
+
+    return context.config.memory_limit;
+}
+
+pub proc arena_context_set_memory_limit(
+    context: &mut ArenaContext,
+    limit: usize
+) -> bool {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return false;
+    }
+
+    let mut normalized_limit: usize = limit;
+    if limit == 0 {
+        set normalized_limit = usize.MAX;
+    }
+
+    if normalized_limit != usize.MAX  and 
+       context.requested_bytes > normalized_limit {
+        arena_context_set_error(
+            context,
+            ArenaContextError.LimitExceeded
+        );
+
+        return false;
+    }
+
+    set context.config.memory_limit =
+        normalized_limit;
+
+    set context.last_error =
+        ArenaContextError.None;
+
+    return true;
+}
+
+
+/// =========================================================================
+/// String limit
+/// =========================================================================
+
+pub proc arena_context_string_limit(
+    context: &ArenaContext
+) -> usize {
+    if not arena_context_magic_valid(context) {
+        return 0;
+    }
+
+    return context.config.string_limit;
+}
+
+pub proc arena_context_set_string_limit(
+    context: &mut ArenaContext,
+    limit: usize
+) -> bool {
+    if not arena_context_operational(context) {
+        arena_context_set_invalid_state(context);
+        return false;
+    }
+
+    if limit == 0 {
+        arena_context_set_error(
+            context,
+            ArenaContextError.InvalidArgument
+        );
+
+        return false;
+    }
+
+    set context.config.string_limit = limit;
+
+    set context.last_error =
+        ArenaContextError.None;
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Structural validation
+/// =========================================================================
+
+pub proc arena_context_validate(
+    context: &ArenaContext
+) -> bool {
+    if not arena_context_magic_valid(context) {
+        return false;
+    }
+
+    if context.state != ArenaState.Ready {
+        return false;
+    }
+
+    if not arena_config_validate(&context.config) {
+        return false;
+    }
+
+    if context.config.block_size <
+       ARENA_MIN_BLOCK_SIZE {
+        return false;
+    }
+
+    if context.config.string_limit == 0 {
+        return false;
+    }
+
+    if not arena_validate(&context.allocator) {
+        return false;
+    }
+
+    if context.generation == 0 {
+        return false;
+    }
+
+    if context.generation !=
+       arena_generation(&context.allocator) {
+        return false;
+    }
+
+    if context.requested_bytes >
+       context.peak_requested_bytes {
+        return false;
+    }
+
+    if context.allocation_count >
+       context.lifetime_allocation_count {
+        return false;
+    }
+
+    if context.requested_bytes >
+       context.lifetime_requested_bytes {
+        return false;
+    }
+
+    if context.peak_requested_bytes >
+       context.lifetime_requested_bytes  and 
+       context.lifetime_requested_bytes != usize.MAX {
+        return false;
+    }
+
+    if context.config.memory_limit != usize.MAX  and 
+       context.requested_bytes >
+       context.config.memory_limit {
+        return false;
+    }
+
+    let stats: ArenaStats =
+        arena_stats(&context.allocator);
+
+    if stats.generation != context.generation {
+        return false;
+    }
+
+    if stats.used_bytes > stats.reserved_bytes {
+        return false;
+    }
+
+    if stats.allocation_count !=
+       context.allocation_count {
+        return false;
+    }
+
+    if stats.requested_bytes !=
+       context.requested_bytes {
+        return false;
+    }
+
+    return true;
+}
+
+pub proc arena_context_is_valid(
+    context: &ArenaContext
+) -> bool {
+    return arena_context_operational(context)  and 
+           arena_context_allocator_valid(context)  and 
+           context.generation ==
+               arena_generation(&context.allocator);
+}
+
+
+/// =========================================================================
+/// Convenience queries
+/// =========================================================================
+
+pub proc arena_context_is_empty(context: &ArenaContext) -> bool {
+    return arena_context_allocation_count(context) == 0;
+}
+
+pub proc arena_context_has_allocations(context: &ArenaContext) -> bool {
+    return arena_context_allocation_count(context) != 0;
+}
+
+pub proc arena_context_has_error(context: &ArenaContext) -> bool {
+    return arena_context_last_error(context) != ArenaContextError.None;
+}
+
+pub proc arena_context_out_of_memory(context: &ArenaContext) -> bool {
+    return arena_context_last_error(context) == ArenaContextError.OutOfMemory;
+}
+
+pub proc arena_context_limit_exceeded(context: &ArenaContext) -> bool {
+    return arena_context_last_error(context) == ArenaContextError.LimitExceeded;
+}
+
+pub proc arena_context_failed(context: &ArenaContext) -> bool {
+    return arena_context_magic_valid(context)  and
+           context.state == ArenaState.Failed;
+}
+
+pub proc arena_context_remaining_limit(context: &ArenaContext) -> usize {
+    if not arena_context_magic_valid(context) {
+        return 0;
+    }
+
+    if context.config.memory_limit == usize.MAX {
+        return usize.MAX;
+    }
+
+    if context.requested_bytes >= context.config.memory_limit {
+        return 0;
+    }
+
+    return context.config.memory_limit - context.requested_bytes;
+}
+
+proc arena_checkpoint_is_valid(
+    checkpoint: &ArenaCheckpoint
+) -> bool {
+    return checkpoint.context != null  and
+           checkpoint.generation != 0  and
+           checkpoint.mark.arena != null  and
+           checkpoint.mark.generation != 0;
+}
+
+pub proc arena_context_unused_bytes(context: &ArenaContext) -> usize {
+    let reserved = arena_context_reserved_bytes(context);
+    let used = arena_context_used_bytes(context);
+
+    if reserved < used {
+        return 0;
+    }
+
+    return reserved - used;
+}
+
+pub proc arena_context_utilization_basis_points(context: &ArenaContext) -> u32 {
+    let reserved = arena_context_reserved_bytes(context);
+
+    if reserved == 0 {
+        return 0;
+    }
+
+    return arena_utilization_basis_points(&context.allocator);
+}
+
+/// =========================================================================
+/// End
+/// =========================================================================

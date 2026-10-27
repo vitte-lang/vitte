@@ -1,0 +1,97 @@
+/// Layout mémoire vérifié, sans réservation de stockage.
+space core::mem::layout;
+
+export form Layout {
+    valid: bool,
+    size: usize,
+    align: usize,
+}
+
+export form LayoutExtension {
+    valid: bool,
+    layout: Layout,
+    offset: usize,
+}
+
+export proc layout_is_valid(value: &Layout) -> bool {
+    return value.valid && value.align != 0 &&
+           (value.align & (value.align - 1)) == 0;
+}
+
+export proc layout(size: usize, alignment: usize) -> Layout {
+    if alignment == 0 || (alignment & (alignment - 1)) != 0 {
+        return Layout { valid: false, size: 0, align: 0 };
+    }
+    return Layout { valid: true, size: size, align: alignment };
+}
+
+export proc layout_of<T>() -> Layout {
+    return layout(sizeof(T), alignof(T));
+}
+
+export proc layout_array(element: Layout, count: usize) -> Layout {
+    if not layout_is_valid(&element) { return Layout { valid: false, size: 0, align: 0 }; }
+    if count == 0 { return Layout { valid: true, size: 0, align: element.align }; }
+
+    let remainder: usize = element.size % element.align;
+    let mut padding: usize = 0;
+    if remainder != 0 { set padding = element.align - remainder; }
+    if element.size > usize.MAX - padding {
+        return Layout { valid: false, size: 0, align: 0 };
+    }
+    let stride: usize = element.size + padding;
+    if stride != 0 && count > usize.MAX / stride {
+        return Layout { valid: false, size: 0, align: 0 };
+    }
+    return Layout { valid: true, size: stride * count, align: element.align };
+}
+
+export proc layout_extend_with_offset(left: Layout, right: Layout) -> LayoutExtension {
+    if not layout_is_valid(&left) || not layout_is_valid(&right) {
+        return LayoutExtension {
+            valid: false,
+            layout: Layout { valid: false, size: 0, align: 0 },
+            offset: 0,
+        };
+    }
+    let alignment: usize = left.align;
+    let offset_remainder: usize = left.size % right.align;
+    let mut offset_padding: usize = 0;
+    if offset_remainder != 0 { set offset_padding = right.align - offset_remainder; }
+    if left.size > usize.MAX - offset_padding {
+        return LayoutExtension {
+            valid: false,
+            layout: Layout { valid: false, size: 0, align: 0 },
+            offset: 0,
+        };
+    }
+    let offset: usize = left.size + offset_padding;
+    if offset > usize.MAX - right.size {
+        return LayoutExtension {
+            valid: false,
+            layout: Layout { valid: false, size: 0, align: 0 },
+            offset: 0,
+        };
+    }
+    let mut size: usize = offset + right.size;
+    let mut combined_align: usize = alignment;
+    if right.align > combined_align { set combined_align = right.align; }
+    let final_remainder: usize = size % combined_align;
+    let mut final_padding: usize = 0;
+    if final_remainder != 0 { set final_padding = combined_align - final_remainder; }
+    if size > usize.MAX - final_padding {
+        return LayoutExtension {
+            valid: false,
+            layout: Layout { valid: false, size: 0, align: 0 },
+            offset: 0,
+        };
+    }
+    set size = size + final_padding;
+    let combined: Layout = Layout { valid: true, size: size, align: combined_align };
+    return LayoutExtension { valid: true, layout: combined, offset: offset };
+}
+
+export proc layout_extend(left: Layout, right: Layout) -> Layout {
+    let extension: LayoutExtension = layout_extend_with_offset(left, right);
+    return extension.layout;
+}

@@ -1,0 +1,38 @@
+/// Verrou tournant générique construit avec les primitives atomiques de `core`.
+space alloc::concurrency::spinlock;
+
+use core::sync::spinlock::{
+    SpinLock as CoreSpinLock,
+    spinlock as core_spinlock,
+    spinlock_try_lock as core_spinlock_try_lock,
+    spinlock_lock as core_spinlock_lock,
+    spinlock_unlock as core_spinlock_unlock,
+    spinlock_is_locked as core_spinlock_is_locked,
+    spinlock_value_mut as core_spinlock_value_mut,
+};
+
+export type AllocSpinLock<T> = CoreSpinLock[T];
+
+export proc alloc_spinlock<T>(value: T) -> AllocSpinLock[T] {
+    return core_spinlock(value);
+}
+
+export proc alloc_spinlock_try_lock<T>(value: &mut AllocSpinLock[T]) -> bool {
+    return core_spinlock_try_lock(value);
+}
+
+export proc alloc_spinlock_lock<T>(value: &mut AllocSpinLock[T]) {
+    core_spinlock_lock(value);
+}
+
+export proc alloc_spinlock_unlock<T>(value: &mut AllocSpinLock[T]) {
+    core_spinlock_unlock(value);
+}
+
+export proc alloc_spinlock_is_locked<T>(value: &AllocSpinLock[T]) -> bool {
+    return core_spinlock_is_locked(value);
+}
+
+export proc alloc_spinlock_value_mut<T>(value: &mut AllocSpinLock[T]) -> &mut T {
+    return core_spinlock_value_mut(value);
+}

@@ -1,0 +1,664 @@
+/// Native Vitte diagnostic suggestions and machine-fix plans.
+space compiler::diagnostic::suggestion;
+
+use compiler::api::error::{Status};
+use compiler::ast::ast::{AstSpan, ast_span_invalid};
+use compiler::diagnostic::diagnostic::{
+    Diagnostic, DiagnosticApplicability, DiagnosticConfidence, DiagnosticSuggestion,
+    diagnostic_add_suggestion, span_valid, span_same
+};
+
+const SUGGESTION_INDEX_NONE: usize = usize.MAX;
+const SUGGESTION_MAX_COUNT: usize = 16;
+const SUGGESTION_FNV_OFFSET: u64 = 1469598103934665603;
+const SUGGESTION_FNV_PRIME: u64 = 1099511628211;
+
+export form DiagnosticFixPlan {
+    edits: [DiagnosticSuggestion],
+    count: usize,
+    machine_applicable: bool,
+    conflict_free: bool
+}
+
+export form DiagnosticSuggestionValidation {
+    valid: bool,
+    conflict_free: bool,
+    suggestion_count: usize,
+    invalid_count: usize,
+    duplicate_count: usize,
+    conflict_count: usize,
+    machine_applicable_count: usize,
+    insertion_count: usize,
+    deletion_count: usize,
+    replacement_count: usize,
+    first_invalid_index: usize
+}
+
+export form DiagnosticFixPlanValidation {
+    valid: bool,
+    machine_applicable: bool,
+    conflict_free: bool,
+    edit_count: usize,
+    invalid_count: usize,
+    conflict_count: usize,
+    first_invalid_index: usize
+}
+
+proc suggestion_has_same_source(left: *const AstSpan, right: *const AstSpan) -> bool {
+    if left == null or right == null { return false; }
+    if (*left).source_id != 0 and (*right).source_id != 0 {
+        return (*left).source_id == (*right).source_id;
+    }
+    return (*left).source_name != "" and (*right).source_name != "" and
+        (*left).source_name == (*right).source_name;
+}
+
+proc suggestion_span_length(span: *const AstSpan) -> usize {
+    if span == null or not span_valid(&*span) { return usize.MAX; }
+    return (*span).end_offset - (*span).start_offset;
+}
+
+proc suggestion_spans_overlap(left: *const AstSpan, right: *const AstSpan) -> bool {
+    if left == null or right == null or not span_valid(&*left) or not span_valid(&*right) or
+       not suggestion_has_same_source(left, right) { return false; }
+    let left_empty = (*left).start_offset == (*left).end_offset;
+    let right_empty = (*right).start_offset == (*right).end_offset;
+    if left_empty and right_empty { return (*left).start_offset == (*right).start_offset; }
+    if left_empty { return (*left).start_offset >= (*right).start_offset and (*left).start_offset <= (*right).end_offset; }
+    if right_empty { return (*right).start_offset >= (*left).start_offset and (*right).start_offset <= (*left).end_offset; }
+    return (*left).start_offset < (*right).end_offset and (*right).start_offset < (*left).end_offset;
+}
+
+proc suggestion_text_order(left: string, right: string) -> i32 {
+    let left_bytes = left.bytes();
+    let right_bytes = right.bytes();
+    let mut index: usize = 0;
+    while index < left_bytes.len() and index < right_bytes.len() {
+        if left_bytes[index] < right_bytes[index] { return -1; }
+        if left_bytes[index] > right_bytes[index] { return 1; }
+        set index += 1;
+    }
+    if left_bytes.len() < right_bytes.len() { return -1; }
+    if left_bytes.len() > right_bytes.len() { return 1; }
+    return 0;
+}
+
+proc suggestion_source_order(left: *const AstSpan, right: *const AstSpan) -> i32 {
+    if (*left).source_id != 0 and (*right).source_id != 0 {
+        if (*left).source_id < (*right).source_id { return -1; }
+        if (*left).source_id > (*right).source_id { return 1; }
+    }
+    if (*left).source_name != "" and (*right).source_name != "" {
+        return suggestion_text_order((*left).source_name, (*right).source_name);
+    }
+    if (*left).source_name != "" { return 1; }
+    if (*right).source_name != "" { return -1; }
+    return 0;
+}
+
+proc suggestion_compare(left: *const DiagnosticSuggestion, right: *const DiagnosticSuggestion) -> i32 {
+    if (*left).has_span != (*right).has_span { return if (*left).has_span { -1 } else { 1 }; }
+    if (*left).has_span {
+        let source_order = suggestion_source_order(&(*left).span, &(*right).span);
+        if source_order != 0 { return source_order; }
+        if (*left).span.start_offset < (*right).span.start_offset { return -1; }
+        if (*left).span.start_offset > (*right).span.start_offset { return 1; }
+        if (*left).span.end_offset > (*right).span.end_offset { return -1; }
+        if (*left).span.end_offset < (*right).span.end_offset { return 1; }
+    }
+    if (*left).applicability < (*right).applicability { return -1; }
+    if (*left).applicability > (*right).applicability { return 1; }
+    let message_order = suggestion_text_order((*left).message, (*right).message);
+    if message_order != 0 { return message_order; }
+    return suggestion_text_order((*left).replacement, (*right).replacement);
+}
+
+proc suggestion_hash_byte(hash: u64, byte: u8) -> u64 {
+    return (hash ^ (byte as u64)) * SUGGESTION_FNV_PRIME;
+}
+
+proc suggestion_hash_usize(hash: u64, value: usize) -> u64 {
+    let mut result = hash;
+    let mut index: usize = 0;
+    while index < sizeof(usize) {
+        set result = suggestion_hash_byte(result, ((value >> (index * 8)) & 255) as u8);
+        set index += 1;
+    }
+    return result;
+}
+
+proc suggestion_hash_text(hash: u64, text: string) -> u64 {
+    let bytes = text.bytes();
+    let mut result = hash;
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        set result = suggestion_hash_byte(result, bytes[index]);
+        set index += 1;
+    }
+    return suggestion_hash_byte(result, 0);
+}
+
+export proc vitte_diagnostic_applicability_name(applicability: DiagnosticApplicability) -> string {
+    match applicability {
+        case DiagnosticApplicability.Machine => return "machine-applicable",
+        case DiagnosticApplicability.Maybe => return "maybe-incorrect",
+        case DiagnosticApplicability.Placeholders => return "has-placeholders",
+        case DiagnosticApplicability.Manual => return "manual",
+        else => return "unknown"
+    }
+}
+
+export proc vitte_diagnostic_applicability_machine_applicable(applicability: DiagnosticApplicability) -> bool {
+    return applicability == DiagnosticApplicability.Machine;
+}
+
+export proc vitte_diagnostic_applicability_requires_review(applicability: DiagnosticApplicability) -> bool {
+    return applicability != DiagnosticApplicability.Machine;
+}
+
+export proc vitte_diagnostic_suggestion_init(suggestion: *DiagnosticSuggestion) {
+    if suggestion == null { return; }
+    set *suggestion = DiagnosticSuggestion {
+        suggestion_id: 0,
+        message: "",
+        span: ast_span_invalid(),
+        has_span: false,
+        replacement: "",
+        has_replacement: false,
+        applicability: DiagnosticApplicability.Manual,
+        confidence: DiagnosticConfidence.None,
+        preferred: false
+    };
+}
+
+export proc vitte_diagnostic_suggestion_reset(suggestion: *DiagnosticSuggestion) {
+    vitte_diagnostic_suggestion_init(suggestion);
+}
+
+export proc vitte_diagnostic_suggestion_set(
+    suggestion: *DiagnosticSuggestion,
+    message: string,
+    span: *const AstSpan,
+    replacement: ?string,
+    applicability: DiagnosticApplicability
+) -> Status {
+    if suggestion == null { return Status.ErrorInvalidArgument; }
+    vitte_diagnostic_suggestion_init(suggestion);
+    set (*suggestion).message = message;
+    if span != null {
+        if not span_valid(&*span) { return Status.ErrorInvalidArgument; }
+        set (*suggestion).span = *span;
+        set (*suggestion).has_span = true;
+    }
+    if replacement != null {
+        set (*suggestion).replacement = replacement?;
+        set (*suggestion).has_replacement = true;
+    }
+    set (*suggestion).applicability = applicability;
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_suggestion_is_valid(suggestion: *const DiagnosticSuggestion) -> bool {
+    if suggestion == null { return false; }
+    if (*suggestion).message.len() == 0 and not (*suggestion).has_replacement { return false; }
+    if (*suggestion).has_span and not span_valid(&(*suggestion).span) { return false; }
+    if (*suggestion).has_replacement and not (*suggestion).has_span { return false; }
+    return true;
+}
+
+export proc vitte_diagnostic_suggestion_has_edit(suggestion: *const DiagnosticSuggestion) -> bool {
+    return suggestion != null and (*suggestion).has_span and (*suggestion).has_replacement;
+}
+
+export proc vitte_diagnostic_suggestion_is_insertion(suggestion: *const DiagnosticSuggestion) -> bool {
+    return vitte_diagnostic_suggestion_has_edit(suggestion) and
+        (*suggestion).span.start_offset == (*suggestion).span.end_offset and
+        (*suggestion).replacement.len() != 0;
+}
+
+export proc vitte_diagnostic_suggestion_is_deletion(suggestion: *const DiagnosticSuggestion) -> bool {
+    return vitte_diagnostic_suggestion_has_edit(suggestion) and
+        (*suggestion).span.end_offset > (*suggestion).span.start_offset and
+        (*suggestion).replacement.len() == 0;
+}
+
+export proc vitte_diagnostic_suggestion_is_replacement(suggestion: *const DiagnosticSuggestion) -> bool {
+    return vitte_diagnostic_suggestion_has_edit(suggestion) and
+        (*suggestion).span.end_offset > (*suggestion).span.start_offset and
+        (*suggestion).replacement.len() != 0;
+}
+
+export proc vitte_diagnostic_suggestion_equal(left: *const DiagnosticSuggestion, right: *const DiagnosticSuggestion) -> bool {
+    if left == null or right == null or (*left).applicability != (*right).applicability or
+       (*left).has_span != (*right).has_span or (*left).has_replacement != (*right).has_replacement or
+       (*left).message != (*right).message or (*left).replacement != (*right).replacement { return false; }
+    if (*left).has_span and not span_same(&(*left).span, &(*right).span) { return false; }
+    return true;
+}
+
+export proc vitte_diagnostic_suggestion_conflicts(left: *const DiagnosticSuggestion, right: *const DiagnosticSuggestion) -> bool {
+    return vitte_diagnostic_suggestion_has_edit(left) and vitte_diagnostic_suggestion_has_edit(right) and
+        suggestion_spans_overlap(&(*left).span, &(*right).span);
+}
+
+export proc vitte_diagnostic_suggestion_compatible_with(candidate: *const DiagnosticSuggestion, other: *const DiagnosticSuggestion) -> bool {
+    if candidate == null or other == null { return false; }
+    return vitte_diagnostic_suggestion_equal(candidate, other) or
+        not vitte_diagnostic_suggestion_conflicts(candidate, other);
+}
+
+export proc vitte_diagnostic_suggestion_find(diagnostic_value: *const Diagnostic, suggestion: *const DiagnosticSuggestion) -> usize {
+    if diagnostic_value == null or suggestion == null { return SUGGESTION_INDEX_NONE; }
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).suggestions.len() {
+        if vitte_diagnostic_suggestion_equal(&(*diagnostic_value).suggestions[index], suggestion) { return index; }
+        set index += 1;
+    }
+    return SUGGESTION_INDEX_NONE;
+}
+
+export proc vitte_diagnostic_add_suggestion_object(diagnostic_value: *Diagnostic, suggestion: *const DiagnosticSuggestion) -> Status {
+    if diagnostic_value == null or suggestion == null or not vitte_diagnostic_suggestion_is_valid(suggestion) {
+        return Status.ErrorInvalidArgument;
+    }
+    if vitte_diagnostic_suggestion_find(diagnostic_value, suggestion) != SUGGESTION_INDEX_NONE { return Status.Ok; }
+    if (*diagnostic_value).suggestions.len() >= SUGGESTION_MAX_COUNT { return Status.ErrorInvalidState; }
+    let mut item = *suggestion;
+    if item.suggestion_id == 0 { set item.suggestion_id = ((*diagnostic_value).suggestions.len() + 1) as u64; }
+    if not (*diagnostic_value).suggestions.push(item) { return Status.ErrorOutOfMemory; }
+    if vitte_diagnostic_suggestion_has_edit(&item) and
+       item.applicability == DiagnosticApplicability.Machine {
+        set (*diagnostic_value).has_machine_fix = true;
+    }
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_suggest(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan, replacement: ?string, applicability: DiagnosticApplicability) -> Status {
+    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
+    if replacement == null {
+        return if diagnostic_add_suggestion(&mut *diagnostic_value, message, span, null, applicability) {
+            Status.Ok
+        } else { Status.ErrorInvalidArgument };
+    }
+    let mut replacement_value = replacement?;
+    return if diagnostic_add_suggestion(&mut *diagnostic_value, message, span, &replacement_value, applicability) {
+        Status.Ok
+    } else { Status.ErrorInvalidArgument };
+}
+
+export proc vitte_diagnostic_suggest_insert(diagnostic_value: *Diagnostic, message: string, position: *const AstSpan, text: string, applicability: DiagnosticApplicability) -> Status {
+    if position == null or not span_valid(&*position) { return Status.ErrorInvalidArgument; }
+    let mut insertion = *position;
+    set insertion.end_offset = insertion.start_offset;
+    set insertion.end = insertion.begin;
+    set insertion.end_line = insertion.start_line;
+    set insertion.end_column = insertion.start_column;
+    return vitte_diagnostic_suggest(diagnostic_value, message, &insertion, text, applicability);
+}
+
+export proc vitte_diagnostic_suggest_replace(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan, replacement: string, applicability: DiagnosticApplicability) -> Status {
+    if span == null or not span_valid(&*span) { return Status.ErrorInvalidArgument; }
+    return vitte_diagnostic_suggest(diagnostic_value, message, span, replacement, applicability);
+}
+
+export proc vitte_diagnostic_suggest_delete(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan, applicability: DiagnosticApplicability) -> Status {
+    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
+    if span == null or not span_valid(&*span) { return Status.ErrorInvalidArgument; }
+    let mut empty = "";
+    return if diagnostic_add_suggestion(&mut *diagnostic_value, message, span, &empty, applicability) {
+        Status.Ok
+    } else { Status.ErrorInvalidArgument };
+}
+
+export proc vitte_diagnostic_suggest_machine_replace(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan, replacement: string) -> Status {
+    return vitte_diagnostic_suggest_replace(diagnostic_value, message, span, replacement, DiagnosticApplicability.Machine);
+}
+
+export proc vitte_diagnostic_suggest_machine_insert(diagnostic_value: *Diagnostic, message: string, position: *const AstSpan, text: string) -> Status {
+    return vitte_diagnostic_suggest_insert(diagnostic_value, message, position, text, DiagnosticApplicability.Machine);
+}
+
+export proc vitte_diagnostic_suggest_machine_delete(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan) -> Status {
+    return vitte_diagnostic_suggest_delete(diagnostic_value, message, span, DiagnosticApplicability.Machine);
+}
+
+export proc vitte_diagnostic_suggestion_at(diagnostic_value: *const Diagnostic, index: usize) -> *const DiagnosticSuggestion {
+    if diagnostic_value == null or index >= (*diagnostic_value).suggestions.len() { return null; }
+    return &(*diagnostic_value).suggestions[index];
+}
+
+export proc vitte_diagnostic_suggestion_at_mut(diagnostic_value: *Diagnostic, index: usize) -> *DiagnosticSuggestion {
+    if diagnostic_value == null or index >= (*diagnostic_value).suggestions.len() { return null; }
+    return &(*diagnostic_value).suggestions[index];
+}
+
+export proc vitte_diagnostic_suggestion_count(diagnostic_value: *const Diagnostic) -> usize {
+    if diagnostic_value == null { return 0; }
+    return (*diagnostic_value).suggestions.len();
+}
+
+export proc vitte_diagnostic_suggestion_remove(diagnostic_value: *Diagnostic, index: usize) -> Status {
+    if diagnostic_value == null or index >= (*diagnostic_value).suggestions.len() { return Status.ErrorInvalidArgument; }
+    let mut retained: [DiagnosticSuggestion] = [];
+    let mut cursor: usize = 0;
+    while cursor < (*diagnostic_value).suggestions.len() {
+        if cursor != index and not retained.push((*diagnostic_value).suggestions[cursor]) { return Status.ErrorOutOfMemory; }
+        set cursor += 1;
+    }
+    set (*diagnostic_value).suggestions = retained;
+    set (*diagnostic_value).has_machine_fix = vitte_diagnostic_machine_suggestion_count(diagnostic_value) != 0;
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_suggestion_clear(diagnostic_value: *Diagnostic) {
+    if diagnostic_value == null { return; }
+    set (*diagnostic_value).suggestions = [];
+    set (*diagnostic_value).has_machine_fix = false;
+}
+
+export proc vitte_diagnostic_suggestions_sort(diagnostic_value: *Diagnostic) {
+    if diagnostic_value == null { return; }
+    let mut index: usize = 1;
+    while index < (*diagnostic_value).suggestions.len() {
+        let key = (*diagnostic_value).suggestions[index];
+        let mut destination = index;
+        while destination > 0 {
+            if suggestion_compare(&(*diagnostic_value).suggestions[destination - 1], &key) <= 0 { break; }
+            set (*diagnostic_value).suggestions[destination] = (*diagnostic_value).suggestions[destination - 1];
+            set destination -= 1;
+        }
+        set (*diagnostic_value).suggestions[destination] = key;
+        set index += 1;
+    }
+}
+
+export proc vitte_diagnostic_suggestions_deduplicate(diagnostic_value: *Diagnostic) -> usize {
+    if diagnostic_value == null { return 0; }
+    let mut removed: usize = 0;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).suggestions.len() {
+        let mut other = index + 1;
+        while other < (*diagnostic_value).suggestions.len() {
+            if vitte_diagnostic_suggestion_equal(&(*diagnostic_value).suggestions[index], &(*diagnostic_value).suggestions[other]) {
+                if vitte_diagnostic_suggestion_remove(diagnostic_value, other) == Status.Ok { set removed += 1; continue; }
+            }
+            set other += 1;
+        }
+        set index += 1;
+    }
+    return removed;
+}
+
+export proc vitte_diagnostic_suggestions_have_conflicts(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_suggestion_conflict_count(diagnostic_value) != 0;
+}
+
+export proc vitte_diagnostic_suggestion_conflict_count(diagnostic_value: *const Diagnostic) -> usize {
+    if diagnostic_value == null { return 0; }
+    let mut count: usize = 0;
+    let mut left: usize = 0;
+    while left < (*diagnostic_value).suggestions.len() {
+        let mut right = left + 1;
+        while right < (*diagnostic_value).suggestions.len() {
+            if vitte_diagnostic_suggestion_conflicts(&(*diagnostic_value).suggestions[left], &(*diagnostic_value).suggestions[right]) { set count += 1; }
+            set right += 1;
+        }
+        set left += 1;
+    }
+    return count;
+}
+
+export proc vitte_diagnostic_machine_suggestion_count(diagnostic_value: *const Diagnostic) -> usize {
+    if diagnostic_value == null { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).suggestions.len() {
+        let suggestion = &(*diagnostic_value).suggestions[index];
+        if vitte_diagnostic_suggestion_has_edit(suggestion) and (*suggestion).applicability == DiagnosticApplicability.Machine { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+export proc vitte_diagnostic_has_machine_suggestions(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_machine_suggestion_count(diagnostic_value) != 0;
+}
+
+export proc vitte_diagnostic_suggestions_machine_safe(diagnostic_value: *const Diagnostic) -> bool {
+    if diagnostic_value == null { return false; }
+    let mut found = false;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).suggestions.len() {
+        let suggestion = &(*diagnostic_value).suggestions[index];
+        if vitte_diagnostic_suggestion_has_edit(suggestion) {
+            set found = true;
+            if (*suggestion).applicability != DiagnosticApplicability.Machine { return false; }
+        }
+        set index += 1;
+    }
+    return found and not vitte_diagnostic_suggestions_have_conflicts(diagnostic_value);
+}
+
+export proc vitte_diagnostic_fix_plan_init(plan: *DiagnosticFixPlan) {
+    if plan == null { return; }
+    set *plan = DiagnosticFixPlan { edits: [], count: 0, machine_applicable: true, conflict_free: true };
+}
+
+export proc vitte_diagnostic_fix_plan_add(plan: *DiagnosticFixPlan, suggestion: *const DiagnosticSuggestion) -> Status {
+    if plan == null or suggestion == null or not vitte_diagnostic_suggestion_is_valid(suggestion) or
+       not vitte_diagnostic_suggestion_has_edit(suggestion) { return Status.ErrorInvalidArgument; }
+    if (*plan).count != (*plan).edits.len() { return Status.ErrorInvalidState; }
+    let mut index: usize = 0;
+    while index < (*plan).edits.len() {
+        if vitte_diagnostic_suggestion_equal(&(*plan).edits[index], suggestion) { return Status.Ok; }
+        if vitte_diagnostic_suggestion_conflicts(&(*plan).edits[index], suggestion) { set (*plan).conflict_free = false; }
+        set index += 1;
+    }
+    if (*plan).count >= SUGGESTION_MAX_COUNT { return Status.ErrorInvalidState; }
+    if not (*plan).edits.push(*suggestion) { return Status.ErrorOutOfMemory; }
+    set (*plan).count = (*plan).edits.len();
+    if (*suggestion).applicability != DiagnosticApplicability.Machine { set (*plan).machine_applicable = false; }
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_build_fix_plan(diagnostic_value: *const Diagnostic, machine_only: bool, plan: *DiagnosticFixPlan) -> Status {
+    if diagnostic_value == null or plan == null { return Status.ErrorInvalidArgument; }
+    vitte_diagnostic_fix_plan_init(plan);
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).suggestions.len() {
+        let suggestion = &(*diagnostic_value).suggestions[index];
+        if vitte_diagnostic_suggestion_has_edit(suggestion) and
+           (not machine_only or (*suggestion).applicability == DiagnosticApplicability.Machine) {
+            let status = vitte_diagnostic_fix_plan_add(plan, suggestion);
+            if status != Status.Ok { return status; }
+        }
+        set index += 1;
+    }
+    return Status.Ok;
+}
+
+proc fix_plan_apply_compare(left: *const DiagnosticSuggestion, right: *const DiagnosticSuggestion) -> i32 {
+    let source_order = suggestion_source_order(&(*left).span, &(*right).span);
+    if source_order != 0 { return source_order; }
+    if (*left).span.start_offset > (*right).span.start_offset { return -1; }
+    if (*left).span.start_offset < (*right).span.start_offset { return 1; }
+    if (*left).span.end_offset > (*right).span.end_offset { return -1; }
+    if (*left).span.end_offset < (*right).span.end_offset { return 1; }
+    return 0;
+}
+
+export proc vitte_diagnostic_fix_plan_sort_for_application(plan: *DiagnosticFixPlan) {
+    if plan == null or (*plan).edits.len() <= 1 { return; }
+    let mut index: usize = 1;
+    while index < (*plan).edits.len() {
+        let key = (*plan).edits[index];
+        let mut destination = index;
+        while destination > 0 {
+            if fix_plan_apply_compare(&(*plan).edits[destination - 1], &key) <= 0 { break; }
+            set (*plan).edits[destination] = (*plan).edits[destination - 1];
+            set destination -= 1;
+        }
+        set (*plan).edits[destination] = key;
+        set index += 1;
+    }
+}
+
+export proc vitte_diagnostic_fix_plan_validate(plan: *const DiagnosticFixPlan) -> DiagnosticFixPlanValidation {
+    let mut result = DiagnosticFixPlanValidation {
+        valid: true, machine_applicable: true, conflict_free: true, edit_count: 0,
+        invalid_count: 0, conflict_count: 0, first_invalid_index: SUGGESTION_INDEX_NONE
+    };
+    if plan == null { set result.valid = false; return result; }
+    set result.edit_count = (*plan).edits.len();
+    if (*plan).count != (*plan).edits.len() or (*plan).count > SUGGESTION_MAX_COUNT { set result.valid = false; }
+    let mut index: usize = 0;
+    while index < (*plan).edits.len() {
+        let item = &(*plan).edits[index];
+        if not vitte_diagnostic_suggestion_has_edit(item) or not vitte_diagnostic_suggestion_is_valid(item) {
+            set result.valid = false; set result.invalid_count += 1;
+            if result.first_invalid_index == SUGGESTION_INDEX_NONE { set result.first_invalid_index = index; }
+        }
+        if (*item).applicability != DiagnosticApplicability.Machine { set result.machine_applicable = false; }
+        let mut other = index + 1;
+        while other < (*plan).edits.len() {
+            if vitte_diagnostic_suggestion_conflicts(item, &(*plan).edits[other]) {
+                set result.conflict_free = false; set result.conflict_count += 1;
+            }
+            set other += 1;
+        }
+        set index += 1;
+    }
+    if not result.conflict_free { set result.valid = false; }
+    return result;
+}
+
+export proc vitte_diagnostic_suggestion_removed_length(suggestion: *const DiagnosticSuggestion) -> usize {
+    if not vitte_diagnostic_suggestion_has_edit(suggestion) { return 0; }
+    return suggestion_span_length(&(*suggestion).span);
+}
+
+export proc vitte_diagnostic_suggestion_inserted_length(suggestion: *const DiagnosticSuggestion) -> usize {
+    if not vitte_diagnostic_suggestion_has_edit(suggestion) { return 0; }
+    return (*suggestion).replacement.bytes().len();
+}
+
+export proc vitte_diagnostic_suggestion_fingerprint(suggestion: *const DiagnosticSuggestion) -> u64 {
+    if suggestion == null { return 0; }
+    let mut hash = SUGGESTION_FNV_OFFSET;
+    set hash = suggestion_hash_usize(hash, (*suggestion).applicability as usize);
+    set hash = suggestion_hash_text(hash, (*suggestion).message);
+    set hash = suggestion_hash_usize(hash, if (*suggestion).has_span { 1 } else { 0 });
+    if (*suggestion).has_span {
+        set hash = suggestion_hash_usize(hash, (*suggestion).span.source_id as usize);
+        set hash = suggestion_hash_text(hash, (*suggestion).span.source_name);
+        set hash = suggestion_hash_usize(hash, (*suggestion).span.start_offset);
+        set hash = suggestion_hash_usize(hash, (*suggestion).span.end_offset);
+    }
+    set hash = suggestion_hash_usize(hash, if (*suggestion).has_replacement { 1 } else { 0 });
+    if (*suggestion).has_replacement { set hash = suggestion_hash_text(hash, (*suggestion).replacement); }
+    return hash;
+}
+
+export proc vitte_diagnostic_suggestions_fingerprint(diagnostic_value: *const Diagnostic) -> u64 {
+    if diagnostic_value == null { return 0; }
+    let mut hash = SUGGESTION_FNV_OFFSET;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).suggestions.len() {
+        let item_hash = vitte_diagnostic_suggestion_fingerprint(&(*diagnostic_value).suggestions[index]);
+        let mut byte_index: usize = 0;
+        while byte_index < sizeof(u64) {
+            set hash = suggestion_hash_byte(hash, ((item_hash >> (byte_index * 8)) & 255) as u8);
+            set byte_index += 1;
+        }
+        set index += 1;
+    }
+    return hash;
+}
+
+export proc vitte_diagnostic_suggestions_validate(diagnostic_value: *const Diagnostic) -> DiagnosticSuggestionValidation {
+    let mut result = DiagnosticSuggestionValidation {
+        valid: true, conflict_free: true, suggestion_count: 0, invalid_count: 0,
+        duplicate_count: 0, conflict_count: 0, machine_applicable_count: 0,
+        insertion_count: 0, deletion_count: 0, replacement_count: 0,
+        first_invalid_index: SUGGESTION_INDEX_NONE
+    };
+    if diagnostic_value == null { set result.valid = false; return result; }
+    set result.suggestion_count = (*diagnostic_value).suggestions.len();
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).suggestions.len() {
+        let item = &(*diagnostic_value).suggestions[index];
+        if not vitte_diagnostic_suggestion_is_valid(item) {
+            set result.valid = false; set result.invalid_count += 1;
+            if result.first_invalid_index == SUGGESTION_INDEX_NONE { set result.first_invalid_index = index; }
+        }
+        if (*item).applicability == DiagnosticApplicability.Machine { set result.machine_applicable_count += 1; }
+        if vitte_diagnostic_suggestion_is_insertion(item) { set result.insertion_count += 1; }
+        elif vitte_diagnostic_suggestion_is_deletion(item) { set result.deletion_count += 1; }
+        elif vitte_diagnostic_suggestion_is_replacement(item) { set result.replacement_count += 1; }
+        let mut other = index + 1;
+        while other < (*diagnostic_value).suggestions.len() {
+            let other_item = &(*diagnostic_value).suggestions[other];
+            if vitte_diagnostic_suggestion_equal(item, other_item) { set result.duplicate_count += 1; }
+            if vitte_diagnostic_suggestion_conflicts(item, other_item) {
+                set result.conflict_count += 1; set result.conflict_free = false;
+            }
+            set other += 1;
+        }
+        set index += 1;
+    }
+    return result;
+}
+
+export proc vitte_diagnostic_best_suggestion(diagnostic_value: *const Diagnostic) -> *const DiagnosticSuggestion {
+    if diagnostic_value == null { return null; }
+    let mut best: *const DiagnosticSuggestion = null;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).suggestions.len() {
+        let candidate = &(*diagnostic_value).suggestions[index];
+        if vitte_diagnostic_suggestion_is_valid(candidate) {
+            if best == null or
+               (vitte_diagnostic_suggestion_has_edit(candidate) and not vitte_diagnostic_suggestion_has_edit(best)) or
+               ((*candidate).applicability < (*best).applicability) or
+               ((*candidate).applicability == (*best).applicability and (*candidate).has_span and (*best).has_span and
+                suggestion_span_length(&(*candidate).span) < suggestion_span_length(&(*best).span)) {
+                set best = candidate;
+            }
+        }
+        set index += 1;
+    }
+    return best;
+}
+
+export proc vitte_diagnostic_suggestion_component_name() -> string { return "diagnostic-suggestion"; }
+
+export proc vitte_diagnostic_suggestion_capacity() -> usize { return SUGGESTION_MAX_COUNT; }
+
+export proc vitte_diagnostic_suggestion_is_machine_applicable(suggestion: *const DiagnosticSuggestion) -> bool {
+    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability.Machine;
+}
+
+export proc vitte_diagnostic_suggestion_is_manual(suggestion: *const DiagnosticSuggestion) -> bool {
+    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability.Manual;
+}
+
+export proc vitte_diagnostic_suggestion_has_placeholders(suggestion: *const DiagnosticSuggestion) -> bool {
+    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability.Placeholders;
+}
+
+export proc vitte_diagnostic_suggestion_is_uncertain(suggestion: *const DiagnosticSuggestion) -> bool {
+    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability.Maybe;
+}
+
+export proc vitte_diagnostic_fix_plan_empty(plan: *const DiagnosticFixPlan) -> bool {
+    return plan == null or (*plan).count == 0;
+}
+
+export proc vitte_diagnostic_fix_plan_count(plan: *const DiagnosticFixPlan) -> usize {
+    if plan == null { return 0; }
+    return (*plan).count;
+}
+
+export proc vitte_diagnostic_fix_plan_at(plan: *const DiagnosticFixPlan, index: usize) -> *const DiagnosticSuggestion {
+    if plan == null or index >= (*plan).count or index >= (*plan).edits.len() { return null; }
+    return &(*plan).edits[index];
+}

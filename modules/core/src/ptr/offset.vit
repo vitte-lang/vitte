@@ -1,0 +1,15 @@
+/// Décalage signé d'un pointeur d'octets sans déréférencement.
+space core::ptr::offset;
+
+export proc ptr_offset(pointer: *mut u8, offset: isize) -> *mut u8 {
+    if pointer == null || offset == 0 { return pointer; }
+    let address: usize = pointer as usize;
+    if offset > 0 {
+        let amount: usize = offset as usize;
+        if amount > usize.MAX - address { return null; }
+        return (address + amount) as *mut u8;
+    }
+    let amount: usize = (-(offset + 1)) as usize + 1;
+    if amount > address { return null; }
+    return (address - amount) as *mut u8;
+}

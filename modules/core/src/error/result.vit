@@ -1,0 +1,24 @@
+/// Accesseurs historiques de `core::types::result`.
+space core::error::result;
+
+use core::types::result::{Result};
+
+export proc error_result_is_ok<T, E>(value: &Result[T, E]) -> bool { return value.success; }
+export proc error_result_is_err<T, E>(value: &Result[T, E]) -> bool { return value.success == false; }
+export proc error_result_value<T, E>(value: &Result[T, E]) -> ?T {
+    if value.success == false { return null; }
+    return value.value;
+}
+export proc error_result_error<T, E>(value: &Result[T, E]) -> ?E {
+    if value.success { return null; }
+    return value.error;
+}
+/// Alias historique de `error_result_error`.
+export proc error_result_cause<T, E>(value: &Result[T, E]) -> ?E {
+    if value.success { return null; }
+    return value.error;
+}
+export proc error_result_is_valid<T, E>(value: &Result[T, E]) -> bool {
+    if value.success { return value.value != null && value.error == null; }
+    return value.value == null && value.error != null;
+}

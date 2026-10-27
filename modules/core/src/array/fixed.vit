@@ -1,0 +1,146 @@
+space core::array::fixed
+
+/// Initialise un tableau de taille fixe avec une valeur.
+proc fixed_fill[T, const N: usize](
+    array: &mut [T; N],
+    value: T
+) {
+    for i in 0..N {
+        set array[i] = value;
+    }
+}
+
+/// Copie un tableau fixe dans un autre.
+proc fixed_copy[T, const N: usize](
+    source: &[T; N],
+    destination: &mut [T; N]
+) {
+    for i in 0..N {
+        set destination[i] = source[i];
+    }
+}
+
+/// Compare deux tableaux fixes.
+proc fixed_equal[T, const N: usize](
+    left: &[T; N],
+    right: &[T; N]
+) -> bool {
+    for i in 0..N {
+        if left[i] != right[i] {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// Recherche une valeur dans un tableau fixe.
+proc fixed_contains[T, const N: usize](
+    array: &[T; N],
+    value: T
+) -> bool {
+    for i in 0..N {
+        if array[i] == value {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// Retourne la première position d'une valeur.
+/// Retourne -1 si la valeur est absente.
+proc fixed_index_of[T, const N: usize](
+    array: &[T; N],
+    value: T
+) -> isize {
+    for i in 0..N {
+        if array[i] == value {
+            return i as isize;
+        }
+    }
+
+    return -1;
+}
+
+/// Inverse les éléments d'un tableau fixe.
+proc fixed_reverse[T, const N: usize](
+    array: &mut [T; N]
+) {
+    for i in 0..(N / 2) {
+        let opposite = N - 1 - i;
+        let temporary = array[i];
+
+        set array[i] = array[opposite];
+        set array[opposite] = temporary;
+    }
+}
+
+/// Vérifie si un tableau fixe est trié en ordre croissant.
+proc fixed_is_sorted[T, const N: usize](
+    array: &[T; N]
+) -> bool {
+    if N < 2 {
+        return true;
+    }
+
+    for i in 1..N {
+        if array[i] < array[i - 1] {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// Effectue une rotation d'une position vers la gauche.
+proc fixed_rotate_left[T, const N: usize](
+    array: &mut [T; N]
+) {
+    if N < 2 {
+        return;
+    }
+
+    let first = array[0];
+
+    for i in 0..(N - 1) {
+        set array[i] = array[i + 1];
+    }
+
+    set array[N - 1] = first;
+}
+
+/// Effectue une rotation d'une position vers la droite.
+proc fixed_rotate_right[T, const N: usize](
+    array: &mut [T; N]
+) {
+    if N < 2 {
+        return;
+    }
+
+    let last = array[N - 1];
+
+    for i in 1..N {
+        let position = N - i;
+
+        set array[position] = array[position - 1];
+    }
+
+    set array[0] = last;
+}
+
+/// Compte les occurrences d'une valeur.
+proc fixed_count[T, const N: usize](
+    array: &[T; N],
+    value: T
+) -> usize {
+    let mut count: usize = 0;
+
+    for i in 0..N {
+        if array[i] == value {
+            set count = count + 1;
+        }
+    }
+
+    return count;
+}

@@ -1,0 +1,46 @@
+/// Résultats et erreurs communs aux allocateurs.
+space alloc::allocator::result;
+
+export pick AllocationError {
+    None,
+    InvalidLayout,
+    SizeOverflow,
+    OutOfMemory,
+    LimitExceeded,
+    InvalidPointer,
+    LockUnavailable,
+    Unsupported,
+}
+
+export pick AllocatorKind {
+    Invalid,
+    System,
+    Zeroed,
+    Null,
+    Custom,
+}
+
+export form AllocationResult {
+    success: bool,
+    pointer: *mut u8,
+    error: AllocationError,
+    allocator: AllocatorKind,
+}
+
+export proc allocation_success(pointer: *mut u8, allocator: AllocatorKind) -> AllocationResult {
+    return AllocationResult {
+        success: true,
+        pointer: pointer,
+        error: AllocationError.None,
+        allocator: allocator,
+    };
+}
+
+export proc allocation_failure(error: AllocationError, allocator: AllocatorKind) -> AllocationResult {
+    return AllocationResult {
+        success: false,
+        pointer: null,
+        error: error,
+        allocator: allocator,
+    };
+}

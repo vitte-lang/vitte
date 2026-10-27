@@ -1,0 +1,1183 @@
+/// Native C17 backend options and profile policy.
+space compiler::backend::c17::options;
+
+use compiler::backend::c17::backend::{C17BackendConfig, vitte_c17_backend_config_default};
+
+const OPTIONS_MAGIC: u64 = 0x56495454454F5054;
+const OPTIONS_DEAD_MAGIC: u64 = 0x444541444F505421;
+const OPTIONS_DEFAULT_INDENT_WIDTH: usize = 4;
+const OPTIONS_DEFAULT_MAX_INDENT_DEPTH: usize = 4096;
+const OPTIONS_DEFAULT_MAX_IDENTIFIER_BYTES: usize = 4096;
+const OPTIONS_DEFAULT_MAX_ERRORS: usize = 100;
+const OPTIONS_DEFAULT_MAX_OUTPUT_BYTES: usize = usize.MAX;
+const OPTIONS_MAX_INDENT_WIDTH: usize = 32;
+const OPTIONS_MAX_INDENT_DEPTH: usize = 1048576;
+const OPTIONS_MAX_IDENTIFIER_BYTES: usize = 1048576;
+const FNV_OFFSET: u64 = 14695981039346656037;
+const FNV_PRIME: u64 = 1099511628211;
+
+export pick C17OptionsError {
+    None, InvalidOptions, InvalidArgument, InvalidProfile, InvalidDialect,
+    InvalidOptimization, InvalidRuntime, InvalidLimit, Conflict, Unsupported,
+    Corruption, Count,
+}
+
+export pick C17Profile { Default, Debug, Release, Size, Sanitize, Freestanding, Count }
+export pick C17Dialect { Invalid, C17, GNU17, Count }
+export pick C17Optimization { Invalid, None, Debug, Balanced, Speed, Size, Aggressive, Count }
+export pick C17RuntimeMode { Invalid, Auto, Embedded, External, None, Count }
+
+export form C17Options {
+    magic: u64,
+    profile: C17Profile,
+    dialect: C17Dialect,
+    optimization: C17Optimization,
+    runtime_mode: C17RuntimeMode,
+    last_error: C17OptionsError,
+    indent_width: usize,
+    pretty: bool,
+    emit_comments: bool,
+    emit_debug_comments: bool,
+    emit_banner: bool,
+    strict_c17: bool,
+    allow_extensions: bool,
+    emit_static_assertions: bool,
+    emit_runtime: bool,
+    runtime_checks: bool,
+    bounds_checks: bool,
+    null_checks: bool,
+    overflow_checks: bool,
+    assertions: bool,
+    debug_info: bool,
+    emit_line_directives: bool,
+    emit_source_map: bool,
+    fail_fast: bool,
+    warnings_as_errors: bool,
+    verbose_diagnostics: bool,
+    deterministic: bool,
+    stable_names: bool,
+    stable_order: bool,
+    stable_hashes: bool,
+    trigraph_safe_strings: bool,
+    escape_non_ascii: bool,
+    native_debug_symbols: bool,
+    native_frame_pointer: bool,
+    native_lto: bool,
+    native_pic: bool,
+    native_pie: bool,
+    sanitize_address: bool,
+    sanitize_undefined: bool,
+    sanitize_leak: bool,
+    sanitize_thread: bool,
+    freestanding: bool,
+    hosted: bool,
+    max_output_bytes: usize,
+    max_identifier_bytes: usize,
+    max_indent_depth: usize,
+    max_errors: usize,
+}
+
+export form C17OptionsStats {
+    valid: bool,
+    boolean_option_count: usize,
+    enabled_boolean_count: usize,
+    has_sanitizer: bool,
+    has_runtime_checks: bool,
+    reproducible: bool,
+    hash: u64,
+}
+
+/* ============================================================
+ * FNV-1a hashing
+ * ============================================================ */
+
+proc options_hash_byte(
+    hash: u64,
+    byte: u8
+) -> u64 {
+    return (hash ^ (byte as u64)).wrapping_mul(FNV_PRIME);
+}
+
+proc options_hash_u64(
+    hash: u64,
+    value: u64
+) -> u64 {
+    let mut result = hash;
+    let mut index: usize = 0;
+
+    while index < 8 {
+        let shift: u32 = (index * 8) as u32;
+
+        set result = options_hash_byte(
+            result,
+            ((value >> shift) & 255) as u8
+        );
+
+        set index += 1;
+    }
+
+    return result;
+}
+
+proc options_hash_bool(
+    hash: u64,
+    value: bool
+) -> u64 {
+    if value {
+        return options_hash_byte(hash, 1);
+    }
+
+    return options_hash_byte(hash, 0);
+}
+
+/* ============================================================
+ * Enum serialization
+ * ============================================================ */
+
+proc options_c17profile_number(
+    value: C17Profile
+) -> u64 {
+    match value {
+        case C17Profile.Default => 0,
+        case C17Profile.Debug => 1,
+        case C17Profile.Release => 2,
+        case C17Profile.Size => 3,
+        case C17Profile.Sanitize => 4,
+        case C17Profile.Freestanding => 5,
+        case C17Profile.Count => 6,
+    }
+}
+
+proc options_c17dialect_number(
+    value: C17Dialect
+) -> u64 {
+    match value {
+        case C17Dialect.Invalid => 0,
+        case C17Dialect.C17 => 1,
+        case C17Dialect.GNU17 => 2,
+        case C17Dialect.Count => 3,
+    }
+}
+
+proc options_c17optimization_number(
+    value: C17Optimization
+) -> u64 {
+    match value {
+        case C17Optimization.Invalid => 0,
+        case C17Optimization.None => 1,
+        case C17Optimization.Debug => 2,
+        case C17Optimization.Balanced => 3,
+        case C17Optimization.Speed => 4,
+        case C17Optimization.Size => 5,
+        case C17Optimization.Aggressive => 6,
+        case C17Optimization.Count => 7,
+    }
+}
+
+proc options_c17runtimemode_number(
+    value: C17RuntimeMode
+) -> u64 {
+    match value {
+        case C17RuntimeMode.Invalid => 0,
+        case C17RuntimeMode.Auto => 1,
+        case C17RuntimeMode.Embedded => 2,
+        case C17RuntimeMode.External => 3,
+        case C17RuntimeMode.None => 4,
+        case C17RuntimeMode.Count => 5,
+    }
+}
+
+/* ============================================================
+ * Stable option hash
+ * ============================================================ */
+
+pub proc vitte_c17_options_hash(
+    options: &C17Options
+) -> u64 {
+    if not vitte_c17_options_is_valid(options) {
+        return 0;
+    }
+
+    let mut hash: u64 = FNV_OFFSET;
+
+    set hash = options_hash_u64(
+        hash,
+        options_c17profile_number(options.profile)
+    );
+
+    set hash = options_hash_u64(
+        hash,
+        options_c17dialect_number(options.dialect)
+    );
+
+    set hash = options_hash_u64(
+        hash,
+        options_c17optimization_number(options.optimization)
+    );
+
+    set hash = options_hash_u64(
+        hash,
+        options_c17runtimemode_number(options.runtime_mode)
+    );
+
+    set hash = options_hash_u64(hash, options.indent_width as u64);
+    set hash = options_hash_u64(hash, options.max_output_bytes as u64);
+    set hash = options_hash_u64(hash, options.max_identifier_bytes as u64);
+    set hash = options_hash_u64(hash, options.max_indent_depth as u64);
+    set hash = options_hash_u64(hash, options.max_errors as u64);
+
+    set hash = options_hash_bool(hash, options.pretty);
+    set hash = options_hash_bool(hash, options.emit_comments);
+    set hash = options_hash_bool(hash, options.emit_debug_comments);
+    set hash = options_hash_bool(hash, options.emit_banner);
+
+    set hash = options_hash_bool(hash, options.strict_c17);
+    set hash = options_hash_bool(hash, options.allow_extensions);
+    set hash = options_hash_bool(hash, options.emit_static_assertions);
+
+    set hash = options_hash_bool(hash, options.emit_runtime);
+    set hash = options_hash_bool(hash, options.runtime_checks);
+    set hash = options_hash_bool(hash, options.bounds_checks);
+    set hash = options_hash_bool(hash, options.null_checks);
+    set hash = options_hash_bool(hash, options.overflow_checks);
+    set hash = options_hash_bool(hash, options.assertions);
+
+    set hash = options_hash_bool(hash, options.debug_info);
+    set hash = options_hash_bool(hash, options.emit_line_directives);
+    set hash = options_hash_bool(hash, options.emit_source_map);
+
+    set hash = options_hash_bool(hash, options.fail_fast);
+    set hash = options_hash_bool(hash, options.warnings_as_errors);
+    set hash = options_hash_bool(hash, options.verbose_diagnostics);
+
+    set hash = options_hash_bool(hash, options.deterministic);
+    set hash = options_hash_bool(hash, options.stable_names);
+    set hash = options_hash_bool(hash, options.stable_order);
+    set hash = options_hash_bool(hash, options.stable_hashes);
+
+    set hash = options_hash_bool(hash, options.trigraph_safe_strings);
+    set hash = options_hash_bool(hash, options.escape_non_ascii);
+
+    set hash = options_hash_bool(hash, options.native_debug_symbols);
+    set hash = options_hash_bool(hash, options.native_frame_pointer);
+    set hash = options_hash_bool(hash, options.native_lto);
+    set hash = options_hash_bool(hash, options.native_pic);
+    set hash = options_hash_bool(hash, options.native_pie);
+
+    set hash = options_hash_bool(hash, options.sanitize_address);
+    set hash = options_hash_bool(hash, options.sanitize_undefined);
+    set hash = options_hash_bool(hash, options.sanitize_leak);
+    set hash = options_hash_bool(hash, options.sanitize_thread);
+
+    set hash = options_hash_bool(hash, options.freestanding);
+    set hash = options_hash_bool(hash, options.hosted);
+
+    return hash;
+}
+
+/* ============================================================
+ * Equality
+ * ============================================================ */
+
+pub proc vitte_c17_options_equal(
+    left: &C17Options,
+    right: &C17Options
+) -> bool {
+    if left as *const C17Options == right as *const C17Options {
+        return true;
+    }
+    if not vitte_c17_options_is_valid(left)  or
+       not vitte_c17_options_is_valid(right) {
+        return false;
+    }
+
+    return
+        left.profile == right.profile  and
+        left.dialect == right.dialect  and
+        left.optimization == right.optimization  and
+        left.runtime_mode == right.runtime_mode  and
+
+        left.indent_width == right.indent_width  and
+        left.max_output_bytes == right.max_output_bytes  and
+        left.max_identifier_bytes == right.max_identifier_bytes  and
+        left.max_indent_depth == right.max_indent_depth  and
+        left.max_errors == right.max_errors  and
+
+        left.pretty == right.pretty  and
+        left.emit_comments == right.emit_comments  and
+        left.emit_debug_comments == right.emit_debug_comments  and
+        left.emit_banner == right.emit_banner  and
+
+        left.strict_c17 == right.strict_c17  and
+        left.allow_extensions == right.allow_extensions  and
+        left.emit_static_assertions == right.emit_static_assertions  and
+
+        left.emit_runtime == right.emit_runtime  and
+        left.runtime_checks == right.runtime_checks  and
+        left.bounds_checks == right.bounds_checks  and
+        left.null_checks == right.null_checks  and
+        left.overflow_checks == right.overflow_checks  and
+        left.assertions == right.assertions  and
+
+        left.debug_info == right.debug_info  and
+        left.emit_line_directives == right.emit_line_directives  and
+        left.emit_source_map == right.emit_source_map  and
+
+        left.fail_fast == right.fail_fast  and
+        left.warnings_as_errors == right.warnings_as_errors  and
+        left.verbose_diagnostics == right.verbose_diagnostics  and
+
+        left.deterministic == right.deterministic  and
+        left.stable_names == right.stable_names  and
+        left.stable_order == right.stable_order  and
+        left.stable_hashes == right.stable_hashes  and
+
+        left.trigraph_safe_strings == right.trigraph_safe_strings  and
+        left.escape_non_ascii == right.escape_non_ascii  and
+
+        left.native_debug_symbols == right.native_debug_symbols  and
+        left.native_frame_pointer == right.native_frame_pointer  and
+        left.native_lto == right.native_lto  and
+        left.native_pic == right.native_pic  and
+        left.native_pie == right.native_pie  and
+
+        left.sanitize_address == right.sanitize_address  and
+        left.sanitize_undefined == right.sanitize_undefined  and
+        left.sanitize_leak == right.sanitize_leak  and
+        left.sanitize_thread == right.sanitize_thread  and
+
+        left.freestanding == right.freestanding  and
+        left.hosted == right.hosted;
+}
+
+/* ============================================================
+ * Feature predicates
+ * ============================================================ */
+
+pub proc vitte_c17_options_has_sanitizer(
+    options: &C17Options
+) -> bool {
+    if not vitte_c17_options_is_valid(options) {
+        return false;
+    }
+
+    return
+        options.sanitize_address  or
+        options.sanitize_undefined  or
+        options.sanitize_leak  or
+        options.sanitize_thread;
+}
+
+pub proc vitte_c17_options_has_runtime_checks(
+    options: &C17Options
+) -> bool {
+    if not vitte_c17_options_is_valid(options) {
+        return false;
+    }
+
+    return
+        options.runtime_checks  or
+        options.bounds_checks  or
+        options.null_checks  or
+        options.overflow_checks  or
+        options.assertions;
+}
+
+pub proc vitte_c17_options_is_reproducible(
+    options: &C17Options
+) -> bool {
+    if not vitte_c17_options_is_valid(options) {
+        return false;
+    }
+
+    return
+        options.deterministic  and
+        options.stable_names  and
+        options.stable_order  and
+        options.stable_hashes;
+}
+
+/* ============================================================
+ * Optimization predicates
+ * ============================================================ */
+
+pub proc vitte_c17_options_optimizes_for_speed(
+    options: &C17Options
+) -> bool {
+    if not vitte_c17_options_is_valid(options) {
+        return false;
+    }
+
+    return
+        options.optimization == C17Optimization.Speed  or
+        options.optimization == C17Optimization.Aggressive;
+}
+
+pub proc vitte_c17_options_optimizes_for_size(
+    options: &C17Options
+) -> bool {
+    if not vitte_c17_options_is_valid(options) {
+        return false;
+    }
+
+    return options.optimization == C17Optimization.Size;
+}
+
+/* ============================================================
+ * Native optimization flags
+ * ============================================================ */
+
+pub proc vitte_c17_options_native_optimization_flag(
+    options: &C17Options
+) -> ?str {
+    if not vitte_c17_options_is_valid(options) {
+        return null;
+    }
+
+    match options.optimization {
+        case C17Optimization.None => "-O0",
+        case C17Optimization.Debug => "-Og",
+        case C17Optimization.Balanced => "-O2",
+        case C17Optimization.Speed => "-O3",
+        case C17Optimization.Size => "-Os",
+        case C17Optimization.Aggressive => "-O3",
+        case C17Optimization.Invalid => null,
+        case C17Optimization.Count => null,
+    }
+}
+
+/* ============================================================
+ * Native dialect flags
+ * ============================================================ */
+
+pub proc vitte_c17_options_native_dialect_flag(
+    options: &C17Options
+) -> ?str {
+    if not vitte_c17_options_is_valid(options) {
+        return null;
+    }
+
+    match options.dialect {
+        case C17Dialect.C17 => "-std=c17",
+        case C17Dialect.GNU17 => "-std=gnu17",
+        case C17Dialect.Invalid => null,
+        case C17Dialect.Count => null,
+    }
+}
+
+/* ============================================================
+ * Statistics
+ * ============================================================ */
+
+pub proc vitte_c17_options_stats(
+    options: &C17Options
+) -> C17OptionsStats {
+    let mut stats = C17OptionsStats {
+        boolean_option_count: 0,
+        enabled_boolean_count: 0,
+
+        hash: 0,
+
+        valid: false,
+        has_sanitizer: false,
+        has_runtime_checks: false,
+        reproducible: false,
+    };
+
+    if not vitte_c17_options_is_valid(options) {
+        return stats;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.pretty {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.emit_comments {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.emit_debug_comments {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.emit_banner {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.strict_c17 {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.allow_extensions {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.emit_static_assertions {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.emit_runtime {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.runtime_checks {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.bounds_checks {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.null_checks {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.overflow_checks {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.assertions {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.debug_info {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.emit_line_directives {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.emit_source_map {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.fail_fast {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.warnings_as_errors {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.verbose_diagnostics {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.deterministic {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.stable_names {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.stable_order {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.stable_hashes {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.trigraph_safe_strings {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.escape_non_ascii {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.native_debug_symbols {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.native_frame_pointer {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.native_lto {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.native_pic {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.native_pie {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.sanitize_address {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.sanitize_undefined {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.sanitize_leak {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.sanitize_thread {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.freestanding {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.boolean_option_count += 1;
+    if options.hosted {
+        set stats.enabled_boolean_count += 1;
+    }
+
+    set stats.hash = vitte_c17_options_hash(options);
+
+    set stats.valid =
+        vitte_c17_options_validate(options) == C17OptionsError.None;
+
+    set stats.has_sanitizer =
+        vitte_c17_options_has_sanitizer(options);
+
+    set stats.has_runtime_checks =
+        vitte_c17_options_has_runtime_checks(options);
+
+    set stats.reproducible =
+        vitte_c17_options_is_reproducible(options);
+
+    return stats;
+}
+
+/* ============================================================
+ * Error accessors
+ * ============================================================ */
+
+pub proc vitte_c17_options_last_error(
+    options: &C17Options
+) -> C17OptionsError {
+    if options.magic != OPTIONS_MAGIC {
+        return C17OptionsError.InvalidOptions;
+    }
+
+    return options.last_error;
+}
+
+pub proc vitte_c17_options_clear_error(
+    options: &mut C17Options
+) {
+    if options.magic == OPTIONS_MAGIC {
+        set options.last_error = C17OptionsError.None;
+    }
+}
+
+/* ============================================================
+ * Error names and lifecycle
+ * ============================================================ */
+
+pub proc vitte_c17_options_error_name(error: C17OptionsError) -> str {
+    match error {
+        case C17OptionsError.None => "none",
+        case C17OptionsError.InvalidOptions => "invalid-options",
+        case C17OptionsError.InvalidArgument => "invalid-argument",
+        case C17OptionsError.InvalidProfile => "invalid-profile",
+        case C17OptionsError.InvalidDialect => "invalid-dialect",
+        case C17OptionsError.InvalidOptimization => "invalid-optimization",
+        case C17OptionsError.InvalidRuntime => "invalid-runtime",
+        case C17OptionsError.InvalidLimit => "invalid-limit",
+        case C17OptionsError.Conflict => "conflict",
+        case C17OptionsError.Unsupported => "unsupported",
+        case C17OptionsError.Corruption => "corruption",
+        case C17OptionsError.Count => "count",
+    }
+}
+
+pub proc vitte_c17_profile_name(profile: C17Profile) -> str {
+    match profile {
+        case C17Profile.Default => "default",
+        case C17Profile.Debug => "debug",
+        case C17Profile.Release => "release",
+        case C17Profile.Size => "size",
+        case C17Profile.Sanitize => "sanitize",
+        case C17Profile.Freestanding => "freestanding",
+        case C17Profile.Count => "count",
+    }
+}
+
+pub proc vitte_c17_dialect_name(dialect: C17Dialect) -> str {
+    match dialect {
+        case C17Dialect.Invalid => "invalid",
+        case C17Dialect.C17 => "c17",
+        case C17Dialect.GNU17 => "gnu17",
+        case C17Dialect.Count => "count",
+    }
+}
+
+pub proc vitte_c17_optimization_name(optimization: C17Optimization) -> str {
+    match optimization {
+        case C17Optimization.Invalid => "invalid",
+        case C17Optimization.None => "none",
+        case C17Optimization.Debug => "debug",
+        case C17Optimization.Balanced => "balanced",
+        case C17Optimization.Speed => "speed",
+        case C17Optimization.Size => "size",
+        case C17Optimization.Aggressive => "aggressive",
+        case C17Optimization.Count => "count",
+    }
+}
+
+pub proc vitte_c17_runtime_mode_name(mode: C17RuntimeMode) -> str {
+    match mode {
+        case C17RuntimeMode.Invalid => "invalid",
+        case C17RuntimeMode.Auto => "auto",
+        case C17RuntimeMode.Embedded => "embedded",
+        case C17RuntimeMode.External => "external",
+        case C17RuntimeMode.None => "none",
+        case C17RuntimeMode.Count => "count",
+    }
+}
+
+proc vitte_c17_options_fail(
+    options: &mut C17Options,
+    error: C17OptionsError
+) -> bool {
+    if options.magic == OPTIONS_MAGIC {
+        set options.last_error = error;
+    }
+    return false;
+}
+
+pub proc vitte_c17_options_default() -> C17Options {
+    return C17Options {
+        magic: OPTIONS_MAGIC,
+        profile: C17Profile.Default,
+        dialect: C17Dialect.C17,
+        optimization: C17Optimization.None,
+        runtime_mode: C17RuntimeMode.Auto,
+        last_error: C17OptionsError.None,
+        indent_width: OPTIONS_DEFAULT_INDENT_WIDTH,
+        pretty: true,
+        emit_comments: true,
+        emit_debug_comments: false,
+        emit_banner: true,
+        strict_c17: true,
+        allow_extensions: false,
+        emit_static_assertions: true,
+        emit_runtime: true,
+        runtime_checks: true,
+        bounds_checks: true,
+        null_checks: true,
+        overflow_checks: true,
+        assertions: true,
+        debug_info: false,
+        emit_line_directives: false,
+        emit_source_map: true,
+        fail_fast: false,
+        warnings_as_errors: false,
+        verbose_diagnostics: false,
+        deterministic: true,
+        stable_names: true,
+        stable_order: true,
+        stable_hashes: true,
+        trigraph_safe_strings: true,
+        escape_non_ascii: true,
+        native_debug_symbols: false,
+        native_frame_pointer: false,
+        native_lto: false,
+        native_pic: false,
+        native_pie: false,
+        sanitize_address: false,
+        sanitize_undefined: false,
+        sanitize_leak: false,
+        sanitize_thread: false,
+        freestanding: false,
+        hosted: true,
+        max_output_bytes: OPTIONS_DEFAULT_MAX_OUTPUT_BYTES,
+        max_identifier_bytes: OPTIONS_DEFAULT_MAX_IDENTIFIER_BYTES,
+        max_indent_depth: OPTIONS_DEFAULT_MAX_INDENT_DEPTH,
+        max_errors: OPTIONS_DEFAULT_MAX_ERRORS,
+    };
+}
+
+proc vitte_c17_options_set_defaults(options: &mut C17Options) {
+    set *options = vitte_c17_options_default();
+}
+
+pub proc vitte_c17_options_is_valid(options: &C17Options) -> bool {
+    if options.magic != OPTIONS_MAGIC {
+        return false;
+    }
+    if options.profile < C17Profile.Default or options.profile >= C17Profile.Count or
+       options.dialect <= C17Dialect.Invalid or options.dialect >= C17Dialect.Count or
+       options.optimization <= C17Optimization.Invalid or options.optimization >= C17Optimization.Count or
+       options.runtime_mode <= C17RuntimeMode.Invalid or options.runtime_mode >= C17RuntimeMode.Count {
+        return false;
+    }
+    return true;
+}
+
+pub proc vitte_c17_options_validate(options: &C17Options) -> C17OptionsError {
+    if not vitte_c17_options_is_valid(options) {
+        return C17OptionsError.InvalidOptions;
+    }
+    if options.indent_width > OPTIONS_MAX_INDENT_WIDTH or
+       options.max_indent_depth == 0 or
+       options.max_indent_depth > OPTIONS_MAX_INDENT_DEPTH or
+       options.max_identifier_bytes == 0 or
+       options.max_identifier_bytes > OPTIONS_MAX_IDENTIFIER_BYTES or
+       options.max_errors == 0 {
+        return C17OptionsError.InvalidLimit;
+    }
+    if (options.strict_c17 and options.allow_extensions) or
+       (options.dialect == C17Dialect.C17 and options.allow_extensions) or
+       (options.dialect == C17Dialect.GNU17 and options.strict_c17) or
+       (options.hosted == options.freestanding) {
+        return C17OptionsError.Conflict;
+    }
+    if options.freestanding and options.runtime_mode == C17RuntimeMode.Embedded {
+        return C17OptionsError.Conflict;
+    }
+    if (options.runtime_mode == C17RuntimeMode.None or
+        options.runtime_mode == C17RuntimeMode.External) and options.emit_runtime {
+        return C17OptionsError.Conflict;
+    }
+    if options.sanitize_thread and
+       (options.sanitize_address or options.sanitize_leak) {
+        return C17OptionsError.Conflict;
+    }
+    if options.native_lto and vitte_c17_options_has_sanitizer(options) {
+        return C17OptionsError.Conflict;
+    }
+    return C17OptionsError.None;
+}
+
+pub proc vitte_c17_options_init(options: &mut C17Options, profile: C17Profile) -> bool {
+    vitte_c17_options_set_defaults(options);
+    return vitte_c17_options_apply_profile(options, profile);
+}
+
+pub proc vitte_c17_options_destroy(options: &mut C17Options) {
+    if options.magic == OPTIONS_MAGIC {
+        set *options = C17Options {
+            magic: OPTIONS_DEAD_MAGIC,
+            profile: C17Profile.Default,
+            dialect: C17Dialect.Invalid,
+            optimization: C17Optimization.Invalid,
+            runtime_mode: C17RuntimeMode.Invalid,
+            last_error: C17OptionsError.None,
+            indent_width: 0,
+            pretty: false,
+            emit_comments: false,
+            emit_debug_comments: false,
+            emit_banner: false,
+            strict_c17: false,
+            allow_extensions: false,
+            emit_static_assertions: false,
+            emit_runtime: false,
+            runtime_checks: false,
+            bounds_checks: false,
+            null_checks: false,
+            overflow_checks: false,
+            assertions: false,
+            debug_info: false,
+            emit_line_directives: false,
+            emit_source_map: false,
+            fail_fast: false,
+            warnings_as_errors: false,
+            verbose_diagnostics: false,
+            deterministic: false,
+            stable_names: false,
+            stable_order: false,
+            stable_hashes: false,
+            trigraph_safe_strings: false,
+            escape_non_ascii: false,
+            native_debug_symbols: false,
+            native_frame_pointer: false,
+            native_lto: false,
+            native_pic: false,
+            native_pie: false,
+            sanitize_address: false,
+            sanitize_undefined: false,
+            sanitize_leak: false,
+            sanitize_thread: false,
+            freestanding: false,
+            hosted: false,
+            max_output_bytes: 0,
+            max_identifier_bytes: 0,
+            max_indent_depth: 0,
+            max_errors: 0,
+        };
+    }
+}
+
+/* ============================================================
+ * Profiles and normalization
+ * ============================================================ */
+
+pub proc vitte_c17_options_apply_profile(
+    options: &mut C17Options,
+    profile: C17Profile
+) -> bool {
+    if options.magic != OPTIONS_MAGIC {
+        return false;
+    }
+    vitte_c17_options_set_defaults(options);
+    set options.profile = profile;
+    if profile < C17Profile.Default or profile >= C17Profile.Count {
+        return vitte_c17_options_fail(options, C17OptionsError.InvalidProfile);
+    }
+    match profile {
+        case C17Profile.Default => {},
+        case C17Profile.Debug => {
+            set options.optimization = C17Optimization.Debug;
+            set options.emit_debug_comments = true;
+            set options.debug_info = true;
+            set options.emit_line_directives = true;
+            set options.native_debug_symbols = true;
+            set options.native_frame_pointer = true;
+        },
+        case C17Profile.Release => {
+            set options.optimization = C17Optimization.Speed;
+            set options.emit_comments = false;
+            set options.native_lto = true;
+            set options.assertions = false;
+        },
+        case C17Profile.Size => {
+            set options.optimization = C17Optimization.Size;
+            set options.pretty = false;
+            set options.emit_comments = false;
+            set options.native_lto = true;
+            set options.assertions = false;
+        },
+        case C17Profile.Sanitize => {
+            set options.optimization = C17Optimization.Debug;
+            set options.emit_debug_comments = true;
+            set options.debug_info = true;
+            set options.emit_line_directives = true;
+            set options.native_debug_symbols = true;
+            set options.native_frame_pointer = true;
+            set options.sanitize_address = true;
+            set options.sanitize_undefined = true;
+        },
+        case C17Profile.Freestanding => {
+            set options.optimization = C17Optimization.Balanced;
+            set options.freestanding = true;
+            set options.hosted = false;
+            set options.runtime_mode = C17RuntimeMode.None;
+            set options.emit_runtime = false;
+            set options.runtime_checks = false;
+            set options.bounds_checks = false;
+            set options.null_checks = false;
+            set options.overflow_checks = false;
+            set options.assertions = false;
+        }
+        case C17Profile.Count => return vitte_c17_options_fail(options, C17OptionsError.InvalidProfile);
+    }
+    set options.last_error = C17OptionsError.None;
+    return true;
+}
+
+pub proc vitte_c17_options_normalize(options: &mut C17Options) -> bool {
+    if options.magic != OPTIONS_MAGIC {
+        return false;
+    }
+    match options.dialect {
+        case C17Dialect.C17 => {
+            set options.strict_c17 = true;
+            set options.allow_extensions = false;
+        },
+        case C17Dialect.GNU17 => {
+            set options.strict_c17 = false;
+            set options.allow_extensions = true;
+        },
+        case C17Dialect.Invalid | C17Dialect.Count =>
+            return vitte_c17_options_fail(options, C17OptionsError.InvalidDialect);
+    }
+    if options.freestanding {
+        set options.hosted = false;
+    } else {
+        set options.hosted = true;
+    }
+    match options.runtime_mode {
+        case C17RuntimeMode.Auto => {},
+        case C17RuntimeMode.Embedded => set options.emit_runtime = true,
+        case C17RuntimeMode.External | C17RuntimeMode.None => set options.emit_runtime = false,
+        case C17RuntimeMode.Invalid | C17RuntimeMode.Count =>
+            return vitte_c17_options_fail(options, C17OptionsError.InvalidRuntime);
+    }
+    if options.runtime_mode == C17RuntimeMode.None {
+        set options.runtime_checks = false;
+        set options.bounds_checks = false;
+        set options.null_checks = false;
+        set options.overflow_checks = false;
+    }
+    if options.debug_info {
+        set options.native_debug_symbols = true;
+    }
+    if options.sanitize_address or options.sanitize_undefined or
+       options.sanitize_leak or options.sanitize_thread {
+        set options.native_frame_pointer = true;
+        set options.native_debug_symbols = true;
+        set options.native_lto = false;
+    }
+    if options.sanitize_thread {
+        set options.sanitize_address = false;
+        set options.sanitize_leak = false;
+    }
+    if options.indent_width > OPTIONS_MAX_INDENT_WIDTH {
+        set options.indent_width = OPTIONS_MAX_INDENT_WIDTH;
+    }
+    if options.max_indent_depth == 0 {
+        set options.max_indent_depth = OPTIONS_DEFAULT_MAX_INDENT_DEPTH;
+    }
+    if options.max_identifier_bytes == 0 {
+        set options.max_identifier_bytes = OPTIONS_DEFAULT_MAX_IDENTIFIER_BYTES;
+    }
+    if options.max_errors == 0 {
+        set options.max_errors = OPTIONS_DEFAULT_MAX_ERRORS;
+    }
+    set options.last_error = vitte_c17_options_validate(options);
+    return options.last_error == C17OptionsError.None;
+}
+
+pub proc vitte_c17_options_to_backend_config(
+    options: &C17Options,
+    config: &mut C17BackendConfig
+) -> bool {
+    if vitte_c17_options_validate(options) != C17OptionsError.None {
+        return false;
+    }
+    set *config = vitte_c17_backend_config_default();
+    set config.indent_width = options.indent_width;
+    set config.max_indent_depth = options.max_indent_depth;
+    set config.max_output_bytes = options.max_output_bytes;
+    set config.max_identifier_bytes = options.max_identifier_bytes;
+    set config.max_errors = options.max_errors;
+    set config.emit_banner = options.emit_banner;
+    set config.emit_line_directives = options.emit_line_directives;
+    set config.emit_source_map = options.emit_source_map;
+    set config.emit_comments = options.emit_comments;
+    set config.emit_debug_comments = options.emit_debug_comments;
+    set config.emit_static_assertions = options.emit_static_assertions;
+    set config.emit_runtime = options.emit_runtime;
+    set config.pretty = options.pretty;
+    set config.deterministic = options.deterministic;
+    set config.strict_c17 = options.strict_c17;
+    set config.fail_fast = options.fail_fast;
+    set config.trigraph_safe_strings = options.trigraph_safe_strings;
+    set config.escape_non_ascii = options.escape_non_ascii;
+    return true;
+}
+
+/* ============================================================
+ * Convenience predicates
+ * ============================================================ */
+
+pub proc vitte_c17_options_has_error(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.last_error != C17OptionsError.None;
+}
+
+pub proc vitte_c17_options_is_debug(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.profile == C17Profile.Debug;
+}
+
+pub proc vitte_c17_options_is_release(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.profile == C17Profile.Release;
+}
+
+pub proc vitte_c17_options_is_freestanding(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.freestanding;
+}
+
+pub proc vitte_c17_options_is_hosted(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.hosted;
+}
+
+pub proc vitte_c17_options_uses_external_runtime(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.runtime_mode == C17RuntimeMode.External;
+}
+
+pub proc vitte_c17_options_embeds_runtime(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.runtime_mode == C17RuntimeMode.Embedded;
+}
+
+pub proc vitte_c17_options_has_runtime(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.runtime_mode != C17RuntimeMode.None;
+}
+
+pub proc vitte_c17_options_uses_strict_c17(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.dialect == C17Dialect.C17 and
+        options.strict_c17 and not options.allow_extensions;
+}
+
+pub proc vitte_c17_options_uses_gnu17(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.dialect == C17Dialect.GNU17;
+}
+
+pub proc vitte_c17_options_has_address_sanitizer(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.sanitize_address;
+}
+
+pub proc vitte_c17_options_has_undefined_sanitizer(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.sanitize_undefined;
+}
+
+pub proc vitte_c17_options_has_leak_sanitizer(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.sanitize_leak;
+}
+
+pub proc vitte_c17_options_has_thread_sanitizer(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.sanitize_thread;
+}
+
+pub proc vitte_c17_options_checks_bounds(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.bounds_checks;
+}
+
+pub proc vitte_c17_options_checks_null(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.null_checks;
+}
+
+pub proc vitte_c17_options_checks_overflow(options: &C17Options) -> bool {
+    return options.magic == OPTIONS_MAGIC and options.overflow_checks;
+}
+
+/* ============================================================
+ * End
+ * ============================================================ */

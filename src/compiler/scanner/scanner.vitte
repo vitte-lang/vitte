@@ -1,0 +1,501 @@
+/// Vitte declarations ported from `src/src/scanner/scanner.h`.
+space compiler::scanner::scanner;
+
+use vitte::core::pointer;
+
+const SCANNER_MAGIC: u64 = 0x564954545343414e;
+const SCANNER_DEAD_MAGIC: u64 = 0x444541445343414e;
+const SCANNER_FNV_OFFSET: u64 = 14695981039346656037;
+const SCANNER_FNV_PRIME: u64 = 1099511628211;
+const SCANNER_DEFAULT_MAX_SOURCE_BYTES: usize = 1073741824;
+const SCANNER_MAX_TAB_WIDTH: usize = 64;
+const SCANNER_UTF8_REPLACEMENT: u32 = 0xfffd;
+
+export pick ScannerError {
+    None,
+    InvalidArgument,
+    InvalidContext,
+    InvalidState,
+    SourceTooLarge,
+    InvalidUtf8,
+    EndOfInput,
+    InvalidOffset,
+    InvalidCheckpoint,
+    Overflow,
+    Validation,
+    Corruption,
+    Internal,
+    Count
+}
+
+export pick ScannerState {
+    Invalid,
+    Ready,
+    Scanning,
+    Done,
+    Failed,
+    Destroyed,
+    Count
+}
+
+export form ScannerPosition {
+    file_id: u32,
+    offset: usize,
+    line: usize,
+    column: usize,
+    display_column: usize,
+    line_start_offset: usize,
+    valid: bool
+}
+
+export form ScannerSpan {
+    file_id: u32,
+    begin: usize,
+    end: usize,
+    line: usize,
+    column: usize,
+    display_column: usize,
+    valid: bool
+}
+
+export form ScannerCheckpoint {
+    generation: u64,
+    offset: usize,
+    line: usize,
+    column: usize,
+    display_column: usize,
+    line_start_offset: usize,
+    valid: bool
+}
+
+export form ScannerStats {
+    bytes_consumed: u64,
+    codepoints_consumed: u64,
+    newlines: u64,
+    crlf_newlines: u64,
+    tabs: u64,
+    invalid_utf8_sequences: u64,
+    boms_skipped: u64,
+    restores: u64,
+    utf8_validation_runs: u64,
+    utf8_validation_failures: u64,
+    validation_runs: u64,
+    validation_failures: u64,
+    hash_runs: u64,
+    failures: u64
+}
+
+export form Scanner {
+    magic: u64,
+    state: ScannerState,
+    last_error: ScannerError,
+    source: *u8,
+    source_length: usize,
+    file_id: u32,
+    offset: usize,
+    line: usize,
+    column: usize,
+    display_column: usize,
+    line_start_offset: usize,
+    tab_width: usize,
+    max_source_bytes: usize,
+    strict_utf8: bool,
+    skip_utf8_bom: bool,
+    stats: ScannerStats,
+    generation: u64
+}
+
+proc scanner_sat_add(value: u64, amount: u64) -> u64 {
+    if value > 18446744073709551615 - amount { return 18446744073709551615; }
+    return value + amount;
+}
+
+proc scanner_hash_byte(hash: u64, byte: u8) -> u64 {
+    return (hash ^ (byte as u64)) * SCANNER_FNV_PRIME;
+}
+
+proc scanner_hash_u64(hash: u64, value: u64) -> u64 {
+    let mut result = hash;
+    let mut shift: u32 = 0;
+    while shift < 64 {
+        set result = scanner_hash_byte(result, ((value >> shift) & 255) as u8);
+        set shift += 8;
+    }
+    return result;
+}
+
+proc scanner_context_valid(scanner: *Scanner) -> bool {
+    if scanner == null || (*scanner).magic != SCANNER_MAGIC { return false; }
+    return (*scanner).state != ScannerState.Invalid &&
+           (*scanner).state != ScannerState.Destroyed &&
+           (*scanner).source_length <= (*scanner).max_source_bytes &&
+           ((*scanner).source != null || (*scanner).source_length == 0);
+}
+
+proc scanner_fail(scanner: *mut Scanner, error: ScannerError) -> bool {
+    if scanner != null && (*scanner).magic == SCANNER_MAGIC {
+        set (*scanner).last_error = error;
+        set (*scanner).state = ScannerState.Failed;
+        set (*scanner).stats.failures = scanner_sat_add((*scanner).stats.failures, 1);
+    }
+    return false;
+}
+
+proc scanner_has_bom(scanner: *Scanner) -> bool {
+    return scanner != null && (*scanner).source_length >= 3 &&
+           (*scanner).source[0] == 0xef && (*scanner).source[1] == 0xbb &&
+           (*scanner).source[2] == 0xbf;
+}
+
+proc scanner_decode(scanner: *Scanner, offset: usize, codepoint: *mut u32, width: *mut usize) -> bool {
+    if scanner == null || codepoint == null || width == null || offset >= (*scanner).source_length { return false; }
+    let first: u8 = (*scanner).source[offset];
+    if first <= 0x7f { set *codepoint = first as u32; set *width = 1; return true; }
+    let remaining = (*scanner).source_length - offset;
+    if first >= 0xc2 && first <= 0xdf {
+        if remaining < 2 { return false; }
+        let second = (*scanner).source[offset + 1];
+        if second < 0x80 || second > 0xbf { return false; }
+        set *codepoint = (((first & 0x1f) as u32) << 6) | ((second & 0x3f) as u32);
+        set *width = 2; return true;
+    }
+    if first >= 0xe0 && first <= 0xef {
+        if remaining < 3 { return false; }
+        let second = (*scanner).source[offset + 1];
+        let third = (*scanner).source[offset + 2];
+        if second < 0x80 || second > 0xbf || third < 0x80 || third > 0xbf { return false; }
+        if (first == 0xe0 && second < 0xa0) || (first == 0xed && second >= 0xa0) { return false; }
+        set *codepoint = (((first & 0x0f) as u32) << 12) |
+                         (((second & 0x3f) as u32) << 6) | ((third & 0x3f) as u32);
+        set *width = 3; return true;
+    }
+    if first >= 0xf0 && first <= 0xf4 {
+        if remaining < 4 { return false; }
+        let second = (*scanner).source[offset + 1];
+        let third = (*scanner).source[offset + 2];
+        let fourth = (*scanner).source[offset + 3];
+        if second < 0x80 || second > 0xbf || third < 0x80 || third > 0xbf || fourth < 0x80 || fourth > 0xbf { return false; }
+        if (first == 0xf0 && second < 0x90) || (first == 0xf4 && second > 0x8f) { return false; }
+        set *codepoint = (((first & 0x07) as u32) << 18) |
+                         (((second & 0x3f) as u32) << 12) |
+                         (((third & 0x3f) as u32) << 6) | ((fourth & 0x3f) as u32);
+        set *width = 4; return true;
+    }
+    return false;
+}
+
+proc scanner_position(scanner: *Scanner) -> ScannerPosition {
+    if not scanner_context_valid(scanner) { return ScannerPosition { file_id: 0, offset: 0, line: 0, column: 0, display_column: 0, line_start_offset: 0, valid: false }; }
+    return ScannerPosition { file_id: (*scanner).file_id, offset: (*scanner).offset, line: (*scanner).line, column: (*scanner).column, display_column: (*scanner).display_column, line_start_offset: (*scanner).line_start_offset, valid: true };
+}
+
+export proc vitte_scanner_error_name(error: ScannerError) -> string {
+    match error {
+        case ScannerError.None => return "none";
+        case ScannerError.InvalidArgument => return "invalid_argument";
+        case ScannerError.InvalidContext => return "invalid_context";
+        case ScannerError.InvalidState => return "invalid_state";
+        case ScannerError.SourceTooLarge => return "source_too_large";
+        case ScannerError.InvalidUtf8 => return "invalid_utf8";
+        case ScannerError.EndOfInput => return "end_of_input";
+        case ScannerError.InvalidOffset => return "invalid_offset";
+        case ScannerError.InvalidCheckpoint => return "invalid_checkpoint";
+        case ScannerError.Overflow => return "overflow";
+        case ScannerError.Validation => return "validation";
+        case ScannerError.Corruption => return "corruption";
+        case ScannerError.Internal => return "internal";
+        case ScannerError.Count => return "count";
+        else => return "unknown";
+    }
+    return "unknown";
+}
+
+export proc vitte_scanner_state_name(state: ScannerState) -> string {
+    match state {
+        case ScannerState.Invalid => return "invalid";
+        case ScannerState.Ready => return "ready";
+        case ScannerState.Scanning => return "scanning";
+        case ScannerState.Done => return "done";
+        case ScannerState.Failed => return "failed";
+        case ScannerState.Destroyed => return "destroyed";
+        case ScannerState.Count => return "count";
+        else => return "unknown";
+    }
+    return "unknown";
+}
+
+export proc vitte_scanner_init(scanner: *mut Scanner, source: string, source_length: usize, file_id: u32) -> bool {
+    if scanner == null { return false; }
+    set *scanner = Scanner { magic: SCANNER_MAGIC, state: ScannerState.Ready, last_error: ScannerError.None,
+        source: source.as_ptr() as *u8, source_length: source_length, file_id: file_id,
+        offset: 0, line: 1, column: 1, display_column: 1, line_start_offset: 0,
+        tab_width: 4, max_source_bytes: SCANNER_DEFAULT_MAX_SOURCE_BYTES,
+        strict_utf8: true, skip_utf8_bom: true, stats: ScannerStats {
+            bytes_consumed: 0, codepoints_consumed: 0, newlines: 0, crlf_newlines: 0, tabs: 0,
+            invalid_utf8_sequences: 0, boms_skipped: 0, restores: 0, utf8_validation_runs: 0,
+            utf8_validation_failures: 0, validation_runs: 0, validation_failures: 0, hash_runs: 0, failures: 0
+        }, generation: 1 };
+    if (source_length > 0 && source.as_ptr() == null) { return scanner_fail(scanner, ScannerError.InvalidArgument); }
+    if source_length > (*scanner).max_source_bytes { return scanner_fail(scanner, ScannerError.SourceTooLarge); }
+    if (*scanner).skip_utf8_bom && scanner_has_bom(scanner) { set (*scanner).offset = 3; set (*scanner).line_start_offset = 3; set (*scanner).stats.boms_skipped = 1; }
+    if (*scanner).offset >= source_length { set (*scanner).state = ScannerState.Done; }
+    return true;
+}
+
+export proc vitte_scanner_reset(scanner: *mut Scanner, source: string, source_length: usize, file_id: u32) -> bool {
+    if not scanner_context_valid(scanner) { return false; }
+    if (*scanner).state == ScannerState.Scanning { return scanner_fail(scanner, ScannerError.InvalidState); }
+    let tab_width = (*scanner).tab_width;
+    let max_source_bytes = (*scanner).max_source_bytes;
+    let strict_utf8 = (*scanner).strict_utf8;
+    let skip_utf8_bom = (*scanner).skip_utf8_bom;
+    let generation = if (*scanner).generation == 18446744073709551615 { (*scanner).generation } else { (*scanner).generation + 1 };
+    if not vitte_scanner_init(scanner, source, source_length, file_id) { return false; }
+    set (*scanner).tab_width = tab_width; set (*scanner).max_source_bytes = max_source_bytes;
+    set (*scanner).strict_utf8 = strict_utf8; set (*scanner).skip_utf8_bom = skip_utf8_bom;
+    set (*scanner).generation = generation;
+    set (*scanner).offset = 0; set (*scanner).line_start_offset = 0; set (*scanner).stats.boms_skipped = 0; set (*scanner).state = ScannerState.Ready;
+    if source_length > max_source_bytes { return scanner_fail(scanner, ScannerError.SourceTooLarge); }
+    if skip_utf8_bom && scanner_has_bom(scanner) { set (*scanner).offset = 3; set (*scanner).line_start_offset = 3; set (*scanner).stats.boms_skipped = 1; }
+    if (*scanner).offset >= source_length { set (*scanner).state = ScannerState.Done; }
+    return true;
+}
+
+export proc vitte_scanner_destroy(scanner: *mut Scanner) {
+    if scanner == null { return; }
+    set (*scanner).magic = SCANNER_DEAD_MAGIC; set (*scanner).state = ScannerState.Destroyed;
+    set (*scanner).source = null; set (*scanner).source_length = 0; set (*scanner).last_error = ScannerError.None;
+}
+
+export proc vitte_scanner_set_tab_width(scanner: *mut Scanner, tab_width: usize) -> bool {
+    if not scanner_context_valid(scanner) { return false; }
+    if tab_width == 0 || tab_width > SCANNER_MAX_TAB_WIDTH { return scanner_fail(scanner, ScannerError.InvalidArgument); }
+    set (*scanner).tab_width = tab_width; set (*scanner).last_error = ScannerError.None; return true;
+}
+
+export proc vitte_scanner_set_max_source_bytes(scanner: *mut Scanner, max_source_bytes: usize) -> bool {
+    if not scanner_context_valid(scanner) { return false; }
+    if max_source_bytes == 0 || (*scanner).source_length > max_source_bytes { return scanner_fail(scanner, ScannerError.InvalidArgument); }
+    set (*scanner).max_source_bytes = max_source_bytes; set (*scanner).last_error = ScannerError.None; return true;
+}
+
+export proc vitte_scanner_set_strict_utf8(scanner: *mut Scanner, strict_utf8: bool) -> bool {
+    if not scanner_context_valid(scanner) { return false; }
+    set (*scanner).strict_utf8 = strict_utf8; set (*scanner).last_error = ScannerError.None; return true;
+}
+
+export proc vitte_scanner_is_valid(scanner: *Scanner) -> bool { return scanner_context_valid(scanner); }
+export proc vitte_scanner_last_error(scanner: *Scanner) -> ScannerError { if scanner == null || (*scanner).magic != SCANNER_MAGIC { return ScannerError.InvalidContext; } return (*scanner).last_error; }
+export proc vitte_scanner_generation(scanner: *Scanner) -> u64 { if not scanner_context_valid(scanner) { return 0; } return (*scanner).generation; }
+export proc vitte_scanner_is_eof(scanner: *Scanner) -> bool { return scanner_context_valid(scanner) && (*scanner).offset >= (*scanner).source_length; }
+export proc vitte_scanner_remaining(scanner: *Scanner) -> usize { if not scanner_context_valid(scanner) || (*scanner).offset >= (*scanner).source_length { return 0; } return (*scanner).source_length - (*scanner).offset; }
+export proc vitte_scanner_position(scanner: *Scanner) -> ScannerPosition { return scanner_position(scanner); }
+
+export proc vitte_scanner_peek_byte(scanner: *Scanner, lookahead: usize, byte: *mut u8) -> bool {
+    if not scanner_context_valid(scanner) || byte == null || (*scanner).offset >= (*scanner).source_length { return false; }
+    if lookahead >= (*scanner).source_length - (*scanner).offset { return false; }
+    let index = (*scanner).offset + lookahead; if index >= (*scanner).source_length { return false; }
+    set *byte = (*scanner).source[index]; return true;
+}
+
+export proc vitte_scanner_current_byte(scanner: *Scanner, byte: *mut u8) -> bool { return vitte_scanner_peek_byte(scanner, 0, byte); }
+
+export proc vitte_scanner_peek_codepoint(scanner: *Scanner, codepoint_lookahead: usize, codepoint: *mut u32, width: *mut usize) -> bool {
+    if not scanner_context_valid(scanner) || codepoint == null || width == null { return false; }
+    let mut offset = (*scanner).offset; let mut index: usize = 0;
+    while index <= codepoint_lookahead {
+        if offset >= (*scanner).source_length { return false; }
+        if ((*scanner).source[offset] == 13) || ((*scanner).source[offset] == 10) {
+            let newline_width: usize = if (*scanner).source[offset] == 13 && offset + 1 < (*scanner).source_length && (*scanner).source[offset + 1] == 10 { 2 as usize } else { 1 as usize };
+            set *codepoint = (*scanner).source[offset] as u32; set *width = newline_width;
+            if index == codepoint_lookahead { return true; }
+            set offset += newline_width;
+            set index += 1; continue;
+        }
+        let mut value: u32 = 0; let mut scalar_width: usize = 0;
+        if scanner_decode(scanner, offset, &mut value, &mut scalar_width) {
+            if index == codepoint_lookahead { set *codepoint = value; set *width = scalar_width; return true; }
+        } else if not (*scanner).strict_utf8 {
+            if index == codepoint_lookahead { set *codepoint = SCANNER_UTF8_REPLACEMENT; set *width = 1; return true; }
+            set scalar_width = 1;
+        } else { return false; }
+        set offset += scalar_width; set index += 1;
+    }
+    return false;
+}
+
+export proc vitte_scanner_current_codepoint(scanner: *Scanner, codepoint: *mut u32, width: *mut usize) -> bool { return vitte_scanner_peek_codepoint(scanner, 0, codepoint, width); }
+
+export proc vitte_scanner_advance(scanner: *mut Scanner, codepoint: *mut u32) -> bool {
+    if not scanner_context_valid(scanner) { return false; }
+    if (*scanner).offset >= (*scanner).source_length { set (*scanner).state = ScannerState.Done; set (*scanner).last_error = ScannerError.EndOfInput; return false; }
+    let offset = (*scanner).offset; let first = (*scanner).source[offset];
+    if first == 10 || first == 13 {
+        let width: usize = if first == 13 && offset + 1 < (*scanner).source_length && (*scanner).source[offset + 1] == 10 { 2 as usize } else { 1 as usize };
+        if (*scanner).line == usize.MAX { return scanner_fail(scanner, ScannerError.Overflow); }
+        set (*scanner).offset += width; set (*scanner).line += 1; set (*scanner).column = 1;
+        set (*scanner).display_column = 1; set (*scanner).line_start_offset = (*scanner).offset;
+        set (*scanner).stats.newlines = scanner_sat_add((*scanner).stats.newlines, 1);
+        set (*scanner).stats.bytes_consumed = scanner_sat_add((*scanner).stats.bytes_consumed, width as u64);
+        set (*scanner).stats.codepoints_consumed = scanner_sat_add((*scanner).stats.codepoints_consumed, 1);
+        if width == 2 { set (*scanner).stats.crlf_newlines = scanner_sat_add((*scanner).stats.crlf_newlines, 1); }
+        if codepoint != null { set *codepoint = first as u32; }
+    } else {
+        let mut value: u32 = 0; let mut width: usize = 0;
+        if not scanner_decode(scanner, offset, &mut value, &mut width) {
+            set (*scanner).stats.invalid_utf8_sequences = scanner_sat_add((*scanner).stats.invalid_utf8_sequences, 1);
+            if (*scanner).strict_utf8 { return scanner_fail(scanner, ScannerError.InvalidUtf8); }
+            set value = SCANNER_UTF8_REPLACEMENT; set width = 1;
+        }
+        if (*scanner).column == usize.MAX || (*scanner).display_column == usize.MAX { return scanner_fail(scanner, ScannerError.Overflow); }
+        set (*scanner).offset += width; set (*scanner).column += 1;
+        if value == 9 {
+            let display_zero = (*scanner).display_column - 1;
+            let next_stop = (display_zero / (*scanner).tab_width) + 1;
+            if next_stop > (usize.MAX - 1) / (*scanner).tab_width { return scanner_fail(scanner, ScannerError.Overflow); }
+            set (*scanner).display_column = next_stop * (*scanner).tab_width + 1;
+            set (*scanner).stats.tabs = scanner_sat_add((*scanner).stats.tabs, 1);
+        } else { set (*scanner).display_column += 1; }
+        set (*scanner).stats.bytes_consumed = scanner_sat_add((*scanner).stats.bytes_consumed, width as u64);
+        set (*scanner).stats.codepoints_consumed = scanner_sat_add((*scanner).stats.codepoints_consumed, 1);
+        if codepoint != null { set *codepoint = value; }
+    }
+    set (*scanner).last_error = ScannerError.None;
+    set (*scanner).state = if (*scanner).offset >= (*scanner).source_length { ScannerState.Done } else { ScannerState.Ready };
+    return true;
+}
+
+export proc vitte_scanner_advance_n(scanner: *mut Scanner, count: usize) -> bool {
+    if not scanner_context_valid(scanner) { return false; }
+    let mut index: usize = 0; while index < count { if not vitte_scanner_advance(scanner, null) { return false; } set index += 1; }
+    return true;
+}
+
+export proc vitte_scanner_ascii_is_space(byte: u8) -> bool { return byte == 32 || byte == 9; }
+export proc vitte_scanner_ascii_is_newline(byte: u8) -> bool { return byte == 10 || byte == 13; }
+export proc vitte_scanner_ascii_is_whitespace(byte: u8) -> bool { return byte == 32 || (byte >= 9 && byte <= 13); }
+export proc vitte_scanner_ascii_is_digit(byte: u8) -> bool { return byte >= 48 && byte <= 57; }
+export proc vitte_scanner_ascii_is_hex_digit(byte: u8) -> bool { return vitte_scanner_ascii_is_digit(byte) || (byte >= 65 && byte <= 70) || (byte >= 97 && byte <= 102); }
+export proc vitte_scanner_ascii_is_binary_digit(byte: u8) -> bool { return byte == 48 || byte == 49; }
+export proc vitte_scanner_ascii_is_octal_digit(byte: u8) -> bool { return byte >= 48 && byte <= 55; }
+export proc vitte_scanner_ascii_is_alpha(byte: u8) -> bool { return (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122); }
+export proc vitte_scanner_ascii_is_identifier_start(byte: u8) -> bool { return vitte_scanner_ascii_is_alpha(byte) || byte == 95; }
+export proc vitte_scanner_ascii_is_identifier_continue(byte: u8) -> bool { return vitte_scanner_ascii_is_identifier_start(byte) || vitte_scanner_ascii_is_digit(byte); }
+
+export proc vitte_scanner_consume_byte(scanner: *mut Scanner, expected: u8) -> bool {
+    let mut byte: u8 = 0; if not vitte_scanner_current_byte(scanner, &mut byte) || byte != expected { return false; }
+    return vitte_scanner_advance(scanner, null);
+}
+
+export proc vitte_scanner_consume_ascii(scanner: *mut Scanner, text: string) -> bool {
+    if not scanner_context_valid(scanner) { return false; }
+    let length: usize = text.length; if length > (*scanner).source_length - (*scanner).offset { return false; }
+    if length == 0 { return true; }
+    let mut index: usize = 0; while index < length { if (*scanner).source[(*scanner).offset + index] != text[index as i64] as u8 { return false; } set index += 1; }
+    let checkpoint = vitte_scanner_checkpoint(scanner);
+    set index = 0; while index < length { if not vitte_scanner_advance(scanner, null) { let _ = vitte_scanner_restore(scanner, checkpoint); return false; } set index += 1; }
+    return true;
+}
+
+export proc vitte_scanner_checkpoint(scanner: *Scanner) -> ScannerCheckpoint {
+    if not scanner_context_valid(scanner) { return ScannerCheckpoint { generation: 0, offset: 0, line: 0, column: 0, display_column: 0, line_start_offset: 0, valid: false }; }
+    return ScannerCheckpoint { generation: (*scanner).generation, offset: (*scanner).offset, line: (*scanner).line, column: (*scanner).column, display_column: (*scanner).display_column, line_start_offset: (*scanner).line_start_offset, valid: true };
+}
+
+export proc vitte_scanner_restore(scanner: *mut Scanner, checkpoint: ScannerCheckpoint) -> bool {
+    if not scanner_context_valid(scanner) || not checkpoint.valid || checkpoint.generation != (*scanner).generation || checkpoint.offset > (*scanner).source_length { return scanner_fail(scanner, ScannerError.InvalidCheckpoint); }
+    let mut reconstructed: ScannerPosition; if not vitte_scanner_position_at(scanner, checkpoint.offset, &mut reconstructed) || reconstructed.line != checkpoint.line || reconstructed.column != checkpoint.column || reconstructed.display_column != checkpoint.display_column || reconstructed.line_start_offset != checkpoint.line_start_offset { return scanner_fail(scanner, ScannerError.InvalidCheckpoint); }
+    set (*scanner).offset = checkpoint.offset; set (*scanner).line = checkpoint.line; set (*scanner).column = checkpoint.column; set (*scanner).display_column = checkpoint.display_column; set (*scanner).line_start_offset = checkpoint.line_start_offset;
+    set (*scanner).state = if checkpoint.offset >= (*scanner).source_length { ScannerState.Done } else { ScannerState.Ready };
+    set (*scanner).last_error = ScannerError.None; set (*scanner).stats.restores = scanner_sat_add((*scanner).stats.restores, 1); return true;
+}
+
+export proc vitte_scanner_span_from_positions(begin: ScannerPosition, end: ScannerPosition) -> ScannerSpan {
+    if not begin.valid || not end.valid || begin.file_id != end.file_id || begin.offset > end.offset { return ScannerSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, display_column: 0, valid: false }; }
+    return ScannerSpan { file_id: begin.file_id, begin: begin.offset, end: end.offset, line: begin.line, column: begin.column, display_column: begin.display_column, valid: true };
+}
+
+export proc vitte_scanner_span_from_checkpoint(scanner: *Scanner, begin: ScannerCheckpoint) -> ScannerSpan {
+    if not scanner_context_valid(scanner) || not begin.valid || begin.generation != (*scanner).generation { return ScannerSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, display_column: 0, valid: false }; }
+    let start = ScannerPosition { file_id: (*scanner).file_id, offset: begin.offset, line: begin.line, column: begin.column, display_column: begin.display_column, line_start_offset: begin.line_start_offset, valid: true };
+    return vitte_scanner_span_from_positions(start, scanner_position(scanner));
+}
+
+export proc vitte_scanner_slice(scanner: *Scanner, span: ScannerSpan, data: *mut string, length: *mut usize) -> bool {
+    if not scanner_context_valid(scanner) || (data as *mut u8) == null || length == null || not span.valid || span.file_id != (*scanner).file_id || span.begin > span.end || span.end > (*scanner).source_length { return false; }
+    set *data = pointer.add_bytes((*scanner).source as *mut u8, span.begin) as string; set *length = span.end - span.begin; return true;
+}
+
+export proc vitte_scanner_line_bounds(scanner: *Scanner, offset: usize, line_begin: *mut usize, line_end: *mut usize) -> bool {
+    if not scanner_context_valid(scanner) || line_begin == null || line_end == null || offset > (*scanner).source_length { return false; }
+    let mut begin = offset; while begin > 0 && (*scanner).source[begin - 1] != 10 && (*scanner).source[begin - 1] != 13 { set begin -= 1; }
+    let mut end = offset; while end < (*scanner).source_length && (*scanner).source[end] != 10 && (*scanner).source[end] != 13 { set end += 1; }
+    set *line_begin = begin; set *line_end = end; return true;
+}
+
+export proc vitte_scanner_current_line(scanner: *Scanner, data: *mut string, length: *mut usize) -> bool {
+    if not scanner_context_valid(scanner) || (data as *mut u8) == null || length == null { return false; }
+    let mut begin: usize = 0; let mut end: usize = 0; if not vitte_scanner_line_bounds(scanner, (*scanner).offset, &mut begin, &mut end) { return false; }
+    set *data = pointer.add_bytes((*scanner).source as *mut u8, begin) as string; set *length = end - begin; return true;
+}
+
+export proc vitte_scanner_position_at(scanner: *Scanner, target_offset: usize, position: *mut ScannerPosition) -> bool {
+    if not scanner_context_valid(scanner) || position == null || target_offset > (*scanner).source_length { return false; }
+    let mut offset: usize = 0; let mut line: usize = 1; let mut column: usize = 1; let mut display_column: usize = 1; let mut line_start: usize = 0;
+    if (*scanner).skip_utf8_bom && scanner_has_bom(scanner) { if target_offset < 3 { return false; } set offset = 3; set line_start = 3; }
+    while offset < target_offset {
+        let byte = (*scanner).source[offset];
+        if byte == 10 || byte == 13 {
+            let width: usize = if byte == 13 && offset + 1 < (*scanner).source_length && (*scanner).source[offset + 1] == 10 { 2 as usize } else { 1 as usize };
+            if target_offset < offset + width { return false; }
+            set offset += width; set line += 1; set column = 1; set display_column = 1; set line_start = offset; continue;
+        }
+        let mut value: u32 = 0; let mut width: usize = 0;
+        if not scanner_decode(scanner, offset, &mut value, &mut width) { if (*scanner).strict_utf8 { return false; } set width = 1; set value = SCANNER_UTF8_REPLACEMENT; }
+        if target_offset < offset + width { return false; }
+        set offset += width; set column += 1;
+        if value == 9 { set display_column = (((display_column - 1) / (*scanner).tab_width) + 1) * (*scanner).tab_width + 1; } else { set display_column += 1; }
+    }
+    set *position = ScannerPosition { file_id: (*scanner).file_id, offset: offset, line: line, column: column, display_column: display_column, line_start_offset: line_start, valid: true }; return true;
+}
+
+export proc vitte_scanner_validate_utf8(scanner: *mut Scanner) -> bool {
+    if not scanner_context_valid(scanner) { return false; }
+    set (*scanner).stats.utf8_validation_runs = scanner_sat_add((*scanner).stats.utf8_validation_runs, 1);
+    let mut offset: usize = if (*scanner).skip_utf8_bom && scanner_has_bom(scanner) { 3 as usize } else { 0 as usize };
+    while offset < (*scanner).source_length { let mut value: u32 = 0; let mut width: usize = 0; if not scanner_decode(scanner, offset, &mut value, &mut width) { set (*scanner).stats.utf8_validation_failures = scanner_sat_add((*scanner).stats.utf8_validation_failures, 1); set (*scanner).last_error = ScannerError.InvalidUtf8; return false; } set offset += width; }
+    set (*scanner).last_error = ScannerError.None; return true;
+}
+
+export proc vitte_scanner_validate(scanner: *mut Scanner) -> bool {
+    if not scanner_context_valid(scanner) { return false; }
+    set (*scanner).stats.validation_runs = scanner_sat_add((*scanner).stats.validation_runs, 1);
+    let mut position: ScannerPosition; if not vitte_scanner_position_at(scanner, (*scanner).offset, &mut position) { set (*scanner).stats.validation_failures = scanner_sat_add((*scanner).stats.validation_failures, 1); return scanner_fail(scanner, ScannerError.Validation); }
+    if position.line != (*scanner).line || position.column != (*scanner).column || position.display_column != (*scanner).display_column || position.line_start_offset != (*scanner).line_start_offset { set (*scanner).stats.validation_failures = scanner_sat_add((*scanner).stats.validation_failures, 1); return scanner_fail(scanner, ScannerError.Corruption); }
+    set (*scanner).last_error = ScannerError.None; return true;
+}
+
+export proc vitte_scanner_source_fingerprint(scanner: *mut Scanner) -> u64 {
+    if not scanner_context_valid(scanner) { return 0; }
+    let mut hash = scanner_hash_u64(SCANNER_FNV_OFFSET, (*scanner).source_length as u64); let mut index: usize = 0;
+    while index < (*scanner).source_length { set hash = scanner_hash_byte(hash, (*scanner).source[index]); set index += 1; }
+    set (*scanner).stats.hash_runs = scanner_sat_add((*scanner).stats.hash_runs, 1); return hash;
+}
+
+export proc vitte_scanner_fingerprint(scanner: *mut Scanner) -> u64 {
+    if not scanner_context_valid(scanner) { return 0; }
+    let mut hash = scanner_hash_u64(SCANNER_FNV_OFFSET, (*scanner).source_length as u64); let mut index: usize = 0;
+    while index < (*scanner).source_length { set hash = scanner_hash_byte(hash, (*scanner).source[index]); set index += 1; }
+    set hash = scanner_hash_u64(hash, (*scanner).file_id as u64); set hash = scanner_hash_u64(hash, (*scanner).tab_width as u64);
+    set hash = scanner_hash_u64(hash, if (*scanner).strict_utf8 { 1 as u64 } else { 0 as u64 }); set hash = scanner_hash_u64(hash, if (*scanner).skip_utf8_bom { 1 as u64 } else { 0 as u64 });
+    set hash = scanner_hash_u64(hash, (*scanner).offset as u64); set hash = scanner_hash_u64(hash, (*scanner).line as u64);
+    set hash = scanner_hash_u64(hash, (*scanner).column as u64); set hash = scanner_hash_u64(hash, (*scanner).display_column as u64);
+    set hash = scanner_hash_u64(hash, (*scanner).line_start_offset as u64); set (*scanner).stats.hash_runs = scanner_sat_add((*scanner).stats.hash_runs, 1); return hash;
+}
+
+export proc vitte_scanner_stats(scanner: *Scanner) -> ScannerStats {
+    if not scanner_context_valid(scanner) { return ScannerStats { bytes_consumed: 0, codepoints_consumed: 0, newlines: 0, crlf_newlines: 0, tabs: 0, invalid_utf8_sequences: 0, boms_skipped: 0, restores: 0, utf8_validation_runs: 0, utf8_validation_failures: 0, validation_runs: 0, validation_failures: 0, hash_runs: 0, failures: 0 }; }
+    return (*scanner).stats;
+}
+
+export proc vitte_scanner_translation_unit_anchor() {}

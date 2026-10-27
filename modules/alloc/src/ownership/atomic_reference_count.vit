@@ -1,0 +1,72 @@
+/// Compteur de références atomique pour les objets partagés entre tâches.
+space alloc::ownership::atomic_reference_count;
+
+use core::num::limits::{USIZE_MAX};
+use core::sync::ordering::{AtomicOrdering};
+use core::sync::atomic::{
+    AtomicUsize,
+    atomic_usize,
+    atomic_usize_load,
+    atomic_usize_compare_exchange,
+    atomic_thread_fence,
+};
+
+export form AtomicReferenceCount {
+    count: AtomicUsize,
+}
+
+/// Construit un compteur avec une référence propriétaire.
+export proc atomic_reference_count_new() -> AtomicReferenceCount {
+    return AtomicReferenceCount { count: atomic_usize(1) };
+}
+
+export proc atomic_reference_count_load(value: &AtomicReferenceCount) -> usize {
+    return atomic_usize_load(&value.count, AtomicOrdering.Acquire);
+}
+
+/// Ajoute une référence, en refusant la résurrection et le débordement.
+export proc atomic_reference_count_increment(value: &mut AtomicReferenceCount) -> bool {
+    let mut observed: usize = atomic_usize_load(&value.count, AtomicOrdering.Relaxed);
+    while observed != 0 {
+        if observed == USIZE_MAX { return false; }
+        let next: usize = observed + 1;
+        if atomic_usize_compare_exchange(
+            &mut value.count,
+            observed,
+            next,
+            AtomicOrdering.Relaxed,
+            AtomicOrdering.Relaxed
+        ) {
+            return true;
+        }
+        set observed = atomic_usize_load(&value.count, AtomicOrdering.Relaxed);
+    }
+    return false;
+}
+
+/// Retire une référence et indique si l'appelant a retiré la dernière.
+export proc atomic_reference_count_decrement(value: &mut AtomicReferenceCount) -> bool {
+    let mut observed: usize = atomic_usize_load(&value.count, AtomicOrdering.Relaxed);
+    while observed != 0 {
+        let next: usize = observed - 1;
+        if atomic_usize_compare_exchange(
+            &mut value.count,
+            observed,
+            next,
+            AtomicOrdering.Release,
+            AtomicOrdering.Relaxed
+        ) {
+            if next == 0 {
+                atomic_thread_fence(AtomicOrdering.Acquire);
+                return true;
+            }
+            return false;
+        }
+        set observed = atomic_usize_load(&value.count, AtomicOrdering.Relaxed);
+    }
+    return false;
+}
+
+export proc atomic_reference_count_is_unique(value: &AtomicReferenceCount) -> bool {
+    return atomic_reference_count_load(value) == 1;
+}
