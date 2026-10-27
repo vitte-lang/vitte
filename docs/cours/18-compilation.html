@@ -3,24 +3,23 @@ title: Lire les limites du compilateur
 permalink: /cours/18-compilation/
 chapter: 18
 duration: 60 minutes
-lead: Pour écrire du Vitte utilisable, il faut savoir où vérifier une construction : dans la grammaire, l’analyseur, le typage ou l’exécution. Cette dernière leçon t’apprend à suivre une fonctionnalité jusqu’à la preuve disponible.
+lead: Pour écrire du Vitte utilisable, il faut savoir où vérifier une construction — dans la grammaire, l’analyseur, le typage ou l’exécution. Cette dernière leçon vous apprend à suivre une fonctionnalité jusqu’à la preuve disponible.
 takeaway: Une forme écrite dans la grammaire ne garantit pas qu’elle compile ni qu’elle s’exécute dans chaque chemin du compilateur.
-practice: Choisis une forme Vitte, trouve sa règle, son diagnostic éventuel et un test qui prouve le niveau de prise en charge atteint.
 ---
-<h2>Quatre questions pour chaque construction</h2>
-<p>Quand tu découvres une syntaxe, ne demande pas seulement « est-ce que le langage l’autorise ? ». Dans le dépôt Vitte, réponds à quatre questions distinctes :</p>
+<h2>Quatre niveaux de preuve pour chaque construction</h2>
+<p>Une syntaxe ne se résume pas à son appartenance au langage. Dans le dépôt Vitte, sa prise en charge se décrit à quatre niveaux complémentaires :</p>
 <ol>
-  <li><strong>La grammaire la décrit-elle ?</strong> Une règle EBNF indique la forme prévue du code.</li>
-  <li><strong>L’analyseur l’accepte-t-il ?</strong> Le parseur peut reconnaître cette forme et construire une représentation.</li>
-  <li><strong>L’analyse sémantique la valide-t-elle ?</strong> Les noms, types et contraintes doivent aussi être cohérents.</li>
-  <li><strong>Le backend la compile-t-il et le programme s’exécute-t-il ?</strong> La preuve la plus concrète est un test qui construit un exécutable et vérifie son résultat.</li>
+  <li><strong>Grammaire.</strong> Une règle EBNF indique la forme prévue du code.</li>
+  <li><strong>Analyse syntaxique.</strong> Le parseur reconnaît cette forme et construit une représentation.</li>
+  <li><strong>Analyse sémantique.</strong> Les noms, les types et les contraintes sont vérifiés.</li>
+  <li><strong>Génération et exécution.</strong> Le backend produit un exécutable qui fournit un résultat observable.</li>
 </ol>
-<p>Ces réponses ne sont pas interchangeables. Une page de grammaire décrit la syntaxe ; une commande de parsing confirme la structure ; un exécutable réussi confirme un cas précis sur un chemin de compilation donné.</p>
+<p>Ces preuves ne sont pas interchangeables. Une page de grammaire décrit la syntaxe ; une commande de parsing confirme la structure ; un exécutable réussi confirme un cas précis sur un chemin de compilation donné.</p>
 
 <h2>Comparer des niveaux de preuve</h2>
 <p>La matrice du projet donne des exemples concrets. Une boucle <code>while</code> apparaît dans les tests runtime ; le compilateur natif la prend donc en charge dans les cas couverts. La déclaration d’une <code>form</code> non générique et le choix <code>pick</code> avec charge utile sont également exercés jusqu’à l’exécution.</p>
 <p>À l’inverse, le test dédié d’une forme générique arrive jusqu’au backend, puis reçoit un diagnostic de génération de code. La forme <code>for</code> sur tableau atteint elle aussi une erreur backend dans le test ciblé. Ces exemples ne signifient pas que toute la syntaxe correspondante est inconnue : ils indiquent précisément que le chemin de compilation testé n’achève pas ces cas.</p>
-<p>Consulte l’<a href="{{ '/reference/support/' | relative_url }}">état du support Vitte</a> avant de bâtir un projet sur une construction avancée. La matrice détaille aussi les différences entre le frontend natif et le chemin de compatibilité.</p>
+<p>Consultez l’<a href="{{ '/reference/support/' | relative_url }}">état du support Vitte</a> avant de bâtir un projet sur une construction avancée. La matrice détaille aussi les différences entre le frontend natif et le chemin de compatibilité.</p>
 
 <h2>Explorer une source avec la CLI</h2>
 <p>Depuis la racine du dépôt, la CLI permet d’inspecter différentes étapes :</p>
@@ -28,41 +27,25 @@ practice: Choisis une forme Vitte, trouve sa règle, son diagnostic éventuel et
 build/bin/vitte parse examples/tutorials/syntaxe.vit
 build/bin/vitte check examples/tutorials/syntaxe.vit
 build/bin/vitte run examples/tutorials/syntaxe.vit --quiet --no-color</code></pre>
-<p><code>lex</code> montre les tokens ; <code>parse</code> vérifie la structure ; <code>check</code> poursuit l’analyse ; <code>run</code> demande la compilation et l’exécution. Pour examiner une étape intermédiaire d’une compilation, la commande documentée accepte aussi <code>compile fichier.vit --stop-after-sema</code>. La disponibilité d’une option ne garantit pas la prise en charge de chaque syntaxe : note la commande et son résultat exact.</p>
+<p><code>lex</code> montre les tokens ; <code>parse</code> vérifie la structure ; <code>check</code> poursuit l’analyse ; <code>run</code> demande la compilation et l’exécution. Pour examiner une étape intermédiaire d’une compilation, la commande documentée accepte aussi <code>compile fichier.vit --stop-after-sema</code>. La disponibilité d’une option ne garantit pas la prise en charge de chaque syntaxe : notez la commande et son résultat exact.</p>
 
 <h2>Réduire un problème à son plus petit exemple</h2>
-<p>Si un programme ne passe pas, enlève temporairement tout ce qui n’est pas nécessaire au diagnostic. Garde une seule déclaration, une procédure courte et la construction en question. Puis avance étape par étape :</p>
+<p>Si un programme ne passe pas, enlevez temporairement tout ce qui n’est pas nécessaire au diagnostic. Gardez une seule déclaration, une procédure courte et la construction en question. Les étapes de diagnostic sont les suivantes :</p>
 <ol>
-  <li>Vérifie que le fichier et la commande ciblent bien le même frontend.</li>
-  <li>Exécute le parseur pour séparer un problème de syntaxe d’un problème plus loin dans le pipeline.</li>
-  <li>Lis le code de diagnostic et l’emplacement, puis corrige une seule cause.</li>
-  <li>Si le parsing et l’analyse passent mais que la génération échoue, compare à un exemple compilé du même type de construction.</li>
-  <li>Ajoute le cas réduit aux notes de projet avec la version de l’outil et le résultat observé.</li>
+  <li>Vérifiez que le fichier et la commande ciblent bien le même frontend.</li>
+  <li>Le parseur permet de séparer un problème de syntaxe d’un problème plus loin dans le pipeline.</li>
+  <li>Lisez le code de diagnostic et l’emplacement, puis corrigez une seule cause.</li>
+  <li>Lorsque le parsing et l’analyse passent mais que la génération échoue, la comparaison avec un exemple compilé du même type de construction précise la limite.</li>
+  <li>Ajoutez le cas réduit aux notes de projet avec la version de l’outil et le résultat observé.</li>
 </ol>
-<p>Une erreur backend n’est pas la preuve que ta syntaxe est mal écrite. Un diagnostic de type ne se corrige pas nécessairement en changeant la grammaire. Identifier la phase te permet de chercher au bon endroit.</p>
+<p>Une erreur backend n’est pas la preuve que votre syntaxe est mal écrite. Un diagnostic de type ne se corrige pas nécessairement en changeant la grammaire. Identifier la phase vous permet de chercher au bon endroit.</p>
 
 <h2>Ne pas transformer un cas réussi en promesse générale</h2>
 <p>Si <code>while</code> fonctionne dans un exemple, cela confirme les opérations exercées dans cet exemple : la condition, le corps, les mises à jour et la sortie testée. Cela ne prouve pas automatiquement que toutes les formes de boucle, tous les types d’indice ou toutes les cibles d’exécution se comportent de la même façon.</p>
-<p>Utilise la même précision quand tu écris de la documentation. Indique la source, la commande, le résultat et le mode de compilation. Si aucun test ne couvre le cas exact, dis qu’il reste à confirmer. Une limite documentée est plus utile qu’une promesse fondée uniquement sur la grammaire.</p>
-
-<section class="practice-block">
-  <h2>Atelier final : enquêter sur une fonctionnalité Vitte</h2>
-  <ol>
-    <li>Choisis <code>while</code>, <code>pick</code>, une forme générique ou <code>for</code>.</li>
-    <li>Ouvre la <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire Vitte</a> et trouve la règle ou note son absence.</li>
-    <li>Consulte la <a href="{{ '/reference/support/' | relative_url }}">matrice du compilateur</a> et repère le test qui donne la meilleure preuve.</li>
-    <li>Écris une note en quatre lignes : syntaxe décrite, acceptation, compilation, exécution.</li>
-    <li>Si la commande ou le résultat ne sont pas clairs, réduis le cas et compare-le à une fixture existante.</li>
-  </ol>
-  <details><summary>Correction de l’enquête</summary>
-    <p>Pour <code>while</code>, les tests runtime du dépôt confirment une exécution de boucle avec la condition et le flot testés. Pour un <code>for</code> sur tableau, le test ciblé atteint le backend puis reçoit un diagnostic de génération ; l’exécution n’est donc pas établie. Pour une forme générique, l’exemple <code>Box&lt;T&gt;</code> produit également <code>VITTE_BACKEND_E_CODEGEN</code>.</p>
-    <p>Une note complète précise la règle décrite, le fichier de test, la commande exacte, le frontend ou le chemin de compatibilité, l’étape finale atteinte et le code de sortie. Elle ne généralise pas une fixture à tous les types ou toutes les cibles.</p>
-    <p>Si la preuve est insuffisante, la conclusion correcte est « non établi », accompagnée de la prochaine expérience minimale à mener. C’est une réponse exploitable : tu sais quoi tester avant de dépendre de la fonctionnalité.</p>
-  </details>
-</section>
+<p>Utilisez la même précision quand vous écrivez de la documentation. Indiquez la source, la commande, le résultat et le mode de compilation. Si aucun test ne couvre le cas exact, dites qu’il reste à confirmer. Une limite documentée est plus utile qu’une promesse fondée uniquement sur la grammaire.</p>
 
 <h2>Tenir un carnet de vérification Vitte</h2>
-<p>Lorsqu’une construction importante entre dans ton projet, garde une fiche que tu peux relire après une mise à jour du compilateur :</p>
+<p>Lorsqu’une construction importante entre dans votre projet, gardez une fiche que vous pouvez relire après une mise à jour du compilateur :</p>
 <pre><code>Construction : import d'un module avec alias
 Version et commit : à renseigner
 Commande : VITTE_MODULE_PATH=examples build/bin/vitte run ...
@@ -70,25 +53,43 @@ Analyse : réussie dans l'exemple ciblé
 Compilation : exécutable produit par le frontend natif
 Exécution : code de sortie 0
 Limite : preuve valable pour les deux modules de la fixture</code></pre>
-<p>La fiche nomme le périmètre de la preuve. Elle permet de distinguer une supposition, une règle de grammaire et une commande réellement exécutée. Lorsqu’un test échoue après une mise à jour, tu sais quelle étape comparer au résultat précédent.</p>
+<p>La fiche nomme le périmètre de la preuve. Elle permet de distinguer une supposition, une règle de grammaire et une commande réellement exécutée. Lorsqu’un test échoue après une mise à jour, vous savez quelle étape comparer au résultat précédent.</p>
 
 <h2>Lire les diagnostics sans les confondre</h2>
 <p>Un code d’erreur peut indiquer la phase qui a refusé le programme. Une erreur lexer ou parser signale souvent qu’une forme n’a pas été reconnue. Une erreur de type signifie que le programme a dépassé ces étapes, mais que les valeurs ou opérations ne concordent pas. Un diagnostic backend peut apparaître après que la syntaxe et une partie de l’analyse ont réussi, lorsque le compilateur ne sait pas produire le code final.</p>
-<p>Dans tous les cas, conserve la commande et le fragment minimal. Ne corrige pas un rejet backend en réécrivant la ponctuation au hasard ; cherche une forme déjà compilée qui répond au même besoin ou reporte la dépendance.</p>
+<p>Dans tous les cas, conservez la commande et le fragment minimal. Ne corrigez pas un rejet backend en réécrivant la ponctuation au hasard ; cherchez une forme déjà compilée qui répond au même besoin ou reporte la dépendance.</p>
 
 <h2>Établir la source d’autorité</h2>
-<p>Pour le langage, commence par la grammaire canonique et la spécification. Pour une capacité d’un frontend, cherche son test de parité ou d’analyse. Pour une affirmation runtime, cherche le programme et la commande qui le lancent. Si plusieurs documents du dépôt se contredisent, note la divergence et privilégie le test ciblé le plus proche de la construction que tu veux utiliser.</p>
+<p>Pour le langage, commencez par la grammaire canonique et la spécification. Pour une capacité d’un frontend, cherchez son test de parité ou d’analyse. Pour une affirmation runtime, recherchez le programme et la commande qui le lancent. Si plusieurs documents du dépôt se contredisent, notez la divergence et privilégiez le test ciblé le plus proche de la construction que vous souhaitez utiliser.</p>
 <p>Une fixture négative est une preuve utile elle aussi : elle indique précisément une limite. Par exemple, le test d’une forme générique rejetée au backend permet d’enseigner la syntaxe et le modèle de type tout en avertissant que ce cas ne fournit pas un exécutable natif.</p>
 
 <h2>Faire une enquête reproductible</h2>
 <ol>
-  <li>Choisis une seule construction Vitte et note le comportement que tu veux obtenir.</li>
-  <li>Écris un fichier minimal, sans bibliothèque ou module non nécessaire.</li>
-  <li>Lance les étapes dans l’ordre : tokens, analyse syntaxique, vérification, compilation, exécution.</li>
-  <li>Garde la sortie de chaque étape et identifie la première qui échoue.</li>
-  <li>Compare avec un exemple positif ou négatif du dépôt et consigne la différence.</li>
+  <li>La fiche identifie une construction Vitte et le comportement attendu.</li>
+  <li>Le fichier minimal ne contient que les déclarations et dépendances nécessaires.</li>
+  <li>Les étapes s’enchaînent dans l’ordre : tokens, analyse syntaxique, vérification, compilation, exécution.</li>
+  <li>La sortie de chaque étape identifie la première qui échoue.</li>
+  <li>La comparaison avec un exemple positif ou négatif du dépôt précise la différence observée.</li>
 </ol>
-<p>Si la CLI n’expose pas une étape ou si une sortie est ambiguë, réduis encore le cas et consulte la documentation de la commande. Le but est de produire une observation que quelqu’un d’autre peut répéter, pas de confirmer l’idée que l’on avait avant l’essai.</p>
+<p>Si la CLI n’expose pas une étape ou si une sortie est ambiguë, réduisez encore le cas et consultez la documentation de la commande. Le but est de produire une observation que quelqu’un d’autre peut répéter, pas de confirmer l’idée que l’on avait avant l’essai.</p>
 
-<div class="callout"><strong>Réponse modèle à « cette fonctionnalité fonctionne-t-elle ? »</strong><p>« La grammaire la décrit ; le test ciblé passe l’analyse ; la compilation atteint le backend puis est rejetée avec <code>VITTE_BACKEND_E_CODEGEN</code> ; aucun runtime n’est donc établi pour ce cas. » Cette réponse est plus précise qu’un oui/non et t’aide à décider ce qui peut entrer dans ton programme.</p></div>
-<div class="callout"><strong>Tu as terminé le parcours approfondi</strong><p>Tu sais maintenant lire du code Vitte, raisonner sur ses valeurs et ses états, organiser ses modules et vérifier la prise en charge d’une forme avant de l’utiliser. Pour continuer, choisis une notion précise dans la <a href="{{ '/reference/' | relative_url }}">référence</a>, puis cherche une fixture correspondante dans le dépôt.</p></div>
+<div class="callout"><strong>Exemple de compte rendu précis pour « cette fonctionnalité fonctionne-t-elle ? »</strong><p>« La grammaire la décrit ; le test ciblé passe l’analyse ; la compilation atteint le backend puis est rejetée avec <code>VITTE_BACKEND_E_CODEGEN</code> ; aucun runtime n’est donc établi pour ce cas. » Cette réponse est plus précise qu’un oui/non et vous aide à décider ce qui peut entrer dans votre programme.</p></div>
+<div class="callout"><strong>Fin du parcours approfondi</strong><p>Le parcours relie la lecture du code Vitte, le raisonnement sur les valeurs et les états, l’organisation des modules et la vérification de la prise en charge. La <a href="{{ '/reference/' | relative_url }}">référence</a> et les fixtures du dépôt détaillent chaque construction à partir de ses sources.</p></div>
+<h2>Une échelle de preuves pour chaque fonctionnalité</h2>
+<p>La preuve la plus faible est une forme présente dans une grammaire : elle établit que la syntaxe est décrite. Le parsing montre que le lexer et le parseur reconnaissent une source donnée. La vérification sémantique montre que les noms et contraintes passent les analyses exécutées. La génération réussie indique que le backend a produit une sortie pour ce cas. L’exécution contrôlée établit enfin un résultat observable. Ces niveaux s’accumulent, mais aucun ne doit être remplacé par le précédent.</p>
+<p>Une preuve runtime n’est pas universelle. Elle dépend du frontend, de la version, du backend, des paramètres et du scénario de la fixture. Un exemple de <code>while</code> qui s’exécute confirme la boucle testée et ses opérations, mais ne confirme pas chaque combinaison de contrôle, type ou cible. Les cas négatifs comptent autant : <code>VITTE_BACKEND_E_CODEGEN</code> est une observation précise du rejet au backend, pas une erreur de grammaire.</p>
+
+<h2>Lire la chaîne de compilation sans confondre les commandes</h2>
+<p><code>lex</code>, <code>parse</code>, <code>check</code>, <code>compile</code> et <code>run</code> suivent différents niveaux du processus. Une commande peut s’arrêter après l’analyse sémantique ; une autre peut demander de produire et de lancer le programme. Les options de diagnostic changent la façon dont les messages sont présentés, non la garantie qu’une construction est prise en charge. La commande exacte est donc une partie du résultat documenté.</p>
+<p>Lorsque la première étape qui échoue est connue, la recherche devient plus ciblée. Une erreur de parsing conduit à la grammaire et à la ponctuation. Une erreur de nom conduit aux déclarations, imports et visibilités. Une erreur de type conduit aux opérandes et signatures. Une erreur de génération conduit au backend, à son codegen et aux tests de parité. Récrire toute la source sans cette distinction peut masquer la phase responsable sans apporter de preuve nouvelle.</p>
+
+<h2>Documenter un résultat reproductible</h2>
+<p>Une fiche de support complète conserve la construction examinée, le fichier source, la version ou le commit, la commande et le code de sortie. Elle note aussi la première phase qui échoue, le diagnostic exact et la cible utilisée. Si un programme s’exécute, la sortie et le comportement observé font partie du constat. Si le test est négatif, le code non nul est attendu et doit être associé au diagnostic précis.</p>
+<p>Cette méthode permet de comparer le dépôt avant et après une évolution du compilateur. Une fixture positive peut changer de résultat ; une fixture négative peut passer après une correction ; un nouveau frontend peut ajouter une autre voie. La documentation conserve alors une observation datée et révisable, au lieu d’un jugement global sur une fonctionnalité. La matrice de support de Vitte applique précisément cette distinction entre grammaire, analyse, compilation et exécution.</p>
+<h2>Maintenir une matrice de support utile</h2>
+<p>Une matrice devient pratique lorsque chaque ligne correspond à une construction et chaque colonne à une étape observable : grammaire, parsing, analyse, génération et runtime. Le statut doit citer un test ou une source et préciser le frontend. Des catégories telles que « supporté » ou « en cours » sont trop générales si elles ne disent pas quelle combinaison a été essayée.</p>
+<p>Une seule construction peut avoir plusieurs résultats selon son contexte. Un paramètre générique sans opération, une forme générique composée et un trait avec implémentation sont trois cas différents. Un tableau parcouru avec une boucle <code>while</code> et le même tableau parcouru avec <code>for</code> sont également différents du point de vue du backend. Des fixtures étroites empêchent de généraliser le résultat d’un cas à tous les autres.</p>
+
+<h2>Signification d’une progression de diagnostic</h2>
+<p>Si un fichier passe du parseur à l’analyse sémantique, puis au backend avant un rejet, la progression donne une information positive sur les phases antérieures. Elle ne garantit pas que la sémantique est complète pour toutes les formes associées, mais elle précise que le problème n’est pas simplement une ponctuation non reconnue. Le code d’erreur, tel que <code>VITTE_BACKEND_E_CODEGEN</code>, nomme la première étape observée qui ne peut pas achever le cas.</p>
+<p>Après une mise à jour, le même fichier peut échouer plus tôt, plus tard ou réussir. La comparaison des diagnostics signale alors une régression, un changement de phase ou une amélioration. Conserver les cas positifs et négatifs dans le dépôt donne un historique vérifiable de la progression réelle du compilateur Vitte.</p>

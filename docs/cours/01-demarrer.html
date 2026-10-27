@@ -1,11 +1,10 @@
 ---
-title: Bien démarrer
+title: Les bases de Vitte
 permalink: /cours/01-demarrer/
 chapter: 1
 duration: 45 minutes
-lead: Avant d’apprendre chaque mot du langage, faisons connaissance avec un programme complet, son fichier et les outils qui l’entourent.
+lead: Cette leçon présente un programme Vitte complet, son fichier source, son point d’entrée et les outils qui permettent de le compiler.
 takeaway: Un programme Vitte se lit comme un ensemble de déclarations, organisé dans un espace de noms.
-practice: Depuis la racine du dépôt, construis le compilateur bootstrap et lance examples/hello.vit pour vérifier l’affichage et le code de sortie.
 ---
 <h2>Notre premier programme</h2>
 <p>Voici le petit programme de départ fourni dans le dépôt. Il affiche un message et annonce au système qu’il s’est terminé sans erreur :</p>
@@ -15,10 +14,10 @@ proc main() -&gt; int {
     print("Hello from Vitte!");
     return 0;
 }</code></pre>
-<p>Prends une minute pour le regarder sans chercher à tout mémoriser. On va le lire de haut en bas, comme on lirait une recette.</p>
+<p>Une première lecture peut se faire de haut en bas, sans chercher à mémoriser chaque détail. La structure générale suffit d’abord : un chemin de module, une procédure principale, un appel puis une valeur de retour.</p>
 
 <h3>La ligne <code>space</code> donne un nom au module</h3>
-<p><code>space examples/hello;</code> déclare l’espace de noms auquel appartient ce fichier. Le chemin est formé de segments ; la grammaire accepte les séparateurs <code>/</code> ou <code>::</code> selon l’endroit où tu l’écris. Dans un petit exercice, il sert surtout à éviter les noms vagues ; dans un vrai projet, il aide à organiser les modules. Le point-virgule termine cette déclaration.</p>
+<p><code>space examples/hello;</code> déclare l’espace de noms auquel appartient ce fichier. Le chemin est formé de segments ; la grammaire accepte les séparateurs <code>/</code> ou <code>::</code> selon la forme de déclaration. Même dans un petit programme, ce chemin évite les noms vagues ; dans un projet plus vaste, il organise les modules. Le point-virgule termine cette déclaration.</p>
 
 <h3><code>proc</code> introduit une procédure</h3>
 <p>Une procédure est un morceau de programme qu’on peut appeler par son nom. <code>main</code> est ici le point d’entrée conventionnel : quand le programme est lancé, l’environnement cherche cette procédure. Les parenthèses sont vides parce que cette première version ne reçoit aucune information. La flèche <code>-&gt; int</code> annonce le type de la valeur renvoyée. Les accolades délimitent le corps.</p>
@@ -26,7 +25,7 @@ proc main() -&gt; int {
 <div class="callout warning"><strong>Quel compilateur vérifie cet exemple ?</strong><p>Dans le dépôt audité, <code>print</code> fonctionne avec le compilateur bootstrap, mais <code>build/bin/vitte</code> (frontend natif) le signale comme nom inconnu. La commande confirmée pour ce fichier utilise donc explicitement <code>build/bin/vitte-bootstrap</code>. Voir aussi <a href="{{ '/reference/support/' | relative_url }}">l’état du support</a>.</p></div>
 
 <h2>Installer et vérifier l’outil</h2>
-<p>Dans ce dépôt, la compilation du compilateur se lance avec <code>make</code>. Une fois le binaire disponible dans ton environnement, vérifie son installation :</p>
+<p>Dans ce dépôt, la compilation du compilateur se lance avec <code>make</code>. Une fois le binaire disponible dans l’environnement, la version peut être consultée avec la commande indiquée dans le README :</p>
 <pre><code>make
 make build/bin/vitte-bootstrap
 build/bin/vitte-bootstrap run examples/hello.vit --quiet --no-color</code></pre>
@@ -41,20 +40,20 @@ build/bin/vitte-bootstrap run examples/hello.vit --quiet --no-color</code></pre>
 </ul>
 <div class="callout"><strong>Un repère important</strong><p>Un message disant que le texte est bien analysé ne garantit pas à lui seul que le programme complet pourra être compilé ou exécuté. Dans ce cours, on distinguera donc toujours la syntaxe du langage et les capacités actuelles de l’outil.</p></div>
 
-<h2>Comment travailler pendant le cours</h2>
-<p>Crée un dossier pour tes exercices et garde un fichier par expérience. Avant de lancer une commande, essaie de prédire ce que le compilateur va accepter et ce que le programme devrait renvoyer. Cette prédiction te donne une question précise à vérifier.</p>
-<p>Quand tu rencontres une erreur, commence par lire le premier diagnostic, sa ligne et le nom de la construction concernée. Corrige une chose à la fois. Une erreur de syntaxe empêche parfois les vérifications suivantes ; il est donc normal qu’une modification fasse disparaître plusieurs messages d’un seul coup.</p>
-<p>La suite reprend le même exemple en observant la ponctuation, les commentaires et les blocs. Tu sauras ainsi lire les petits détails qui rendent un programme Vitte compréhensible à la machine.</p>
+<h2>Lire un résultat de compilation</h2>
+<p>Les fichiers de démonstration peuvent être conservés sous <code>examples/</code> afin de retrouver leur source et leur commande d’exécution. Une commande reproductible précise toujours le binaire, la sous-commande, le chemin du fichier et, lorsque c’est utile, le mode de diagnostic.</p>
+<p>Lorsqu’une erreur apparaît, le premier diagnostic est généralement le meilleur point de départ. Son code, sa ligne et la construction concernée indiquent la phase qui a détecté le problème. Une erreur de syntaxe peut empêcher les vérifications suivantes ; plusieurs messages peuvent donc disparaître après une seule correction structurelle.</p>
+<p>La leçon suivante reprend le même exemple pour expliquer la ponctuation, les commentaires et les blocs, qui constituent l’ossature visible d’un programme Vitte.</p>
 
 <h2>Lire le programme comme une suite de décisions</h2>
-<p>Relis maintenant le fichier en posant une question à chaque ligne : « qu’est-ce que cette ligne apporte au reste du programme ? » <code>space</code> fixe le contexte du fichier. <code>proc main</code> déclare le point de départ. Le type <code>int</code> précise la forme de la réponse finale. L’appel à <code>print</code> produit l’affichage. Enfin, <code>return 0</code> termine cette exécution avec un code que le système peut interpréter.</p>
+<p>Relisez le fichier en observant le rôle de chaque ligne : « qu’est-ce que cette ligne apporte au reste du programme ? » <code>space</code> fixe le contexte du fichier. <code>proc main</code> déclare le point de départ. Le type <code>int</code> précise la forme de la réponse finale. L’appel à <code>print</code> produit l’affichage. Enfin, <code>return 0</code> termine cette exécution avec un code que le système peut interpréter.</p>
 <p>Il faut distinguer trois choses que l’on confond facilement au début :</p>
 <ul>
-  <li>Le <strong>texte source</strong> est ce que tu écris dans le fichier.</li>
+  <li>Le <strong>texte source</strong> est le contenu du fichier Vitte.</li>
   <li>Le <strong>programme compilé</strong> est le résultat produit par l’outil pour une cible donnée.</li>
   <li>Le <strong>résultat d’exécution</strong> est ce que le programme affiche et le code avec lequel il termine.</li>
 </ul>
-<p>Quand le fichier ne fonctionne pas, détermine d’abord à quelle étape le problème apparaît. Une accolade oubliée concerne la lecture de la syntaxe ; une commande inconnue concerne la compilation ou la bibliothèque ; un texte différent de celui attendu concerne le comportement une fois le programme lancé.</p>
+<p>Quand le fichier ne fonctionne pas, déterminez d’abord à quelle étape le problème apparaît. Une accolade oubliée concerne la lecture de la syntaxe ; une commande inconnue concerne la compilation ou la bibliothèque ; un texte différent de celui attendu concerne le comportement une fois le programme lancé.</p>
 
 <h2>Suivre l’exemple du fichier jusqu’au résultat</h2>
 <p>Depuis la racine du dépôt, les commandes du cours sont :</p>
@@ -62,28 +61,32 @@ build/bin/vitte-bootstrap run examples/hello.vit --quiet --no-color</code></pre>
 build/bin/vitte-bootstrap parse examples/hello.vit
 build/bin/vitte-bootstrap run examples/hello.vit --quiet --no-color</code></pre>
 <p>La première prépare l’outil bootstrap utilisé pour cet exemple. La deuxième demande seulement au parseur de reconnaître la structure. La troisième compile puis exécute le programme. Le résultat attendu est le texte <code>Hello from Vitte!</code> et le code de sortie <code>0</code>. Un code de sortie différent de zéro ne signifie pas nécessairement que la syntaxe est incorrecte : il signifie que le programme lancé a renvoyé une autre valeur.</p>
-<p>Le binaire natif <code>build/bin/vitte</code> est une autre voie de compilation. Pour cette leçon, ne remplace pas automatiquement le binaire indiqué par celui-ci : le dépôt audité rejette l’appel à <code>print</code> dans ce cas. La page sur le support explique les différences entre ces voies.</p>
+<p>Le binaire natif <code>build/bin/vitte</code> est une autre voie de compilation. Pour cette leçon, ne remplacez pas automatiquement le binaire indiqué par celui-ci : le dépôt audité rejette l’appel à <code>print</code> dans ce cas. La page sur le support explique les différences entre ces voies.</p>
 
-<h2>Ta première méthode de dépannage</h2>
+<h2>Une première méthode de dépannage</h2>
 <ol>
-  <li>Vérifie que tu es à la racine du dépôt : le chemin <code>examples/hello.vit</code> doit exister depuis cet endroit.</li>
-  <li>Vérifie le nom du binaire, le sous-commande et le chemin du fichier.</li>
-  <li>Lis la première erreur complète, surtout le code, le fichier et la ligne.</li>
-  <li>Ne modifie qu’un élément, puis relance la même commande.</li>
-  <li>Quand le résultat est correct, note la commande exacte ; elle devient une preuve que tu peux reproduire.</li>
+  <li>La commande doit être exécutée depuis la racine du dépôt : le chemin <code>examples/hello.vit</code> est relatif à cet emplacement.</li>
+  <li>Le nom du binaire, la sous-commande et le chemin du fichier doivent correspondre à l’installation présente.</li>
+  <li>Le premier diagnostic complet fournit le code, le fichier et la ligne à examiner.</li>
+  <li>Une seule modification à la fois permet d’identifier la cause d’une erreur.</li>
+  <li>La commande exacte doit être conservée avec le résultat observé afin de rendre l’exécution reproductible.</li>
 </ol>
-<div class="callout"><strong>Point de contrôle</strong><p>Tu peux passer à la suite lorsque tu sais relancer l’exemple, expliquer la valeur de retour et distinguer un échec d’analyse d’un code de sortie non nul.</p></div>
-<section class="practice-block">
-  <h2>Atelier guidé : ton premier fichier</h2>
-  <ol>
-    <li>Depuis la racine du dépôt, lance <code>build/bin/vitte-bootstrap run examples/hello.vit --quiet --no-color</code> et observe le message ainsi que le code de sortie.</li>
-    <li>Change le texte de l’appel à <code>print</code>, puis relance cette même commande. Vérifie que le texte affiché change.</li>
-    <li>Change le retour de <code>0</code> à <code>1</code>. Explique pourquoi l’outil peut accepter la syntaxe même si le code de sortie indique une erreur aux scripts qui lanceront ton programme.</li>
-    <li>Retire une accolade, lance <code>build/bin/vitte-bootstrap parse examples/hello.vit</code>, puis restaure-la. Note le numéro de ligne indiqué par le diagnostic.</li>
-  </ol>
-  <details><summary>Corrigé commenté et critères de réussite</summary>
-    <p><code>space examples/hello;</code> place le fichier dans un chemin de module. <code>proc main()</code> déclare le point d’entrée sans paramètres. <code>-&gt; int</code> annonce la valeur de fin ; les accolades délimitent son corps. <code>print</code> est un appel de procédure. <code>return 0</code> rend zéro au système.</p>
-    <p>Après avoir changé le texte, la sortie attendue suit la nouvelle chaîne. Après avoir changé le retour en 1, le programme peut encore être syntaxiquement valide, mais un outil ou un script qui interprète les codes de sortie voit une fin différente. Après avoir retiré une accolade, <code>parse</code> doit signaler une structure incomplète ou mal formée ; le numéro de ligne peut indiquer l’endroit où l’absence devient visible, pas toujours l’endroit où l’accolade a été supprimée.</p>
-    <p>Tu as réussi si tu peux refaire ces prédictions avant de lancer la commande et expliquer pourquoi cet exemple utilise <code>vitte-bootstrap</code>.</p>
-  </details>
-</section>
+<div class="callout"><strong>Notions essentielles</strong><p>Le programme est compris lorsque le rôle de <code>space</code>, de <code>proc main</code>, de son type de retour, de l’appel à <code>print</code> et de <code>return</code> est clair. Un échec d’analyse et un code de sortie non nul correspondent à deux situations différentes.</p></div>
+<h2>De la source à l’exécution : le trajet complet</h2>
+<p>Un fichier <code>.vit</code> est d’abord du texte. Le lexer transforme ce texte en unités reconnues — mots-clés, noms, littéraux, opérateurs et séparateurs — puis le parseur assemble ces unités en déclarations et en blocs. L’analyse vérifie ensuite les noms, les types et certaines règles sémantiques. La génération produit du code pour un backend, puis les outils de la plateforme peuvent encore intervenir pour l’édition des liens et le lancement. Un échec à chacune de ces étapes a une cause différente.</p>
+<p>Cette succession explique pourquoi les commandes <code>lex</code>, <code>parse</code>, <code>check</code> et <code>run</code> ne répondent pas à la même question. La première montre les éléments lexicaux ; la deuxième la structure ; la troisième les vérifications disponibles ; la dernière cherche à obtenir un programme exécutable et à le lancer. Le succès d’une étape est une preuve limitée à cette étape : un parsing réussi ne garantit ni l’existence d’un symbole externe ni la génération du code final.</p>
+
+<h2>Le point d’entrée est une interface avec le processus</h2>
+<p><code>main</code> relie le programme Vitte au lancement effectué par le système. Dans l’exemple du dépôt, sa signature <code>proc main() -&gt; int</code> annonce une procédure sans paramètre dont le résultat sert de statut de fin. L’instruction <code>return 0</code> termine le corps et fournit ce statut. La valeur n’est pas le texte affiché : l’appel à <code>print</code> agit sur la sortie, tandis que <code>return</code> transmet un résultat au processus appelant.</p>
+<p>Cette distinction compte dans les commandes automatisées. Un terminal peut montrer une ligne de sortie et, indépendamment, signaler un code de sortie. Un programme peut afficher un diagnostic puis renvoyer un statut non nul ; inversement, une procédure peut terminer avec zéro sans afficher quoi que ce soit. Une vérification complète décrit donc les deux observations lorsqu’elles sont pertinentes : ce qui apparaît sur la sortie standard et le statut du processus.</p>
+
+<h2>Le dépôt, le binaire et le fichier forment une seule commande</h2>
+<p>Une commande de compilation est reproductible seulement si elle identifie le répertoire courant, le binaire exact, la sous-commande et le fichier source. Dans cet environnement, les chemins comme <code>examples/hello.vit</code> sont relatifs à la racine du dépôt. Une commande exécutée depuis un autre répertoire peut échouer avant même que Vitte lise le fichier. Le binaire sélectionné est tout aussi important : le bootstrap et le frontend natif n’acceptent pas encore exactement le même ensemble de constructions.</p>
+<p>Pour cette raison, une affirmation comme « cet exemple fonctionne » doit rester attachée au chemin effectivement lancé. Le programme de départ avec <code>print</code> a une commande confirmée avec <code>build/bin/vitte-bootstrap</code> ; le frontend natif refuse actuellement ce nom dans le même contexte. Cette différence ne change pas la lecture de la syntaxe, mais elle change l’outil requis pour obtenir l’exécution annoncée. La page de support documente ces écarts au lieu de les masquer.</p>
+<h2>La commande de lancement distingue source, compilation et processus</h2>
+<p>Le mot <code>run</code> désigne une opération de la CLI, tandis que <code>main</code> désigne une procédure de la source. La CLI décide du compilateur et du mode d’exécution ; le programme décrit son propre point d’entrée. Cette différence apparaît clairement dans une commande telle que <code>build/bin/vitte-bootstrap run examples/hello.vit</code> : le chemin avant <code>run</code> choisit le binaire, le mot suivant choisit l’action de la CLI, et le dernier élément nomme la source.</p>
+<p>Lorsque le résultat n’est pas celui attendu, il est donc utile de distinguer un échec de commande d’un échec du programme. Un chemin source absent empêche la lecture du fichier. Une erreur du parseur empêche la construction de la représentation syntaxique. Une erreur de génération empêche l’obtention du binaire. Une sortie inattendue appartient au comportement du programme lancé. Un code de statut non nul indique l’échec selon la convention de la commande, mais le diagnostic associé permet de déterminer la phase concernée.</p>
+
+<h2>Construire le compilateur est une étape séparée</h2>
+<p><code>make</code> construit le compilateur depuis le dépôt ; il ne compile pas seulement le fichier d’exemple. La commande ciblée <code>make build/bin/vitte-bootstrap</code> prépare le binaire employé par le programme de départ. Cette étape peut dépendre des outils de construction du dépôt, des bibliothèques de l’environnement et du commit courant. Il faut donc distinguer le fait de construire l’outil du fait de construire un programme écrit en Vitte.</p>
+<p>Cette séparation explique les diagnostics possibles avant la première ligne Vitte : une chaîne d’outils manquante ou une construction interrompue relève de l’environnement du dépôt. Une fois le binaire disponible, la commande <code>parse</code> peut examiner la source indépendamment du résultat runtime. Conserver les deux commandes rend la procédure d’apprentissage reproductible et indique précisément quelle étape doit être rejouée après une mise à jour.</p>

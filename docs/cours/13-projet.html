@@ -1,16 +1,15 @@
 ---
-title: Projet fil rouge et suite
+title: Étude du calculateur de panier
 permalink: /cours/13-projet/
 chapter: 13
 duration: 90 minutes
-lead: Mettons ensemble les notions apprises en construisant un petit calculateur de panier. L’objectif est autant de choisir un bon modèle que d’écrire des lignes de code.
-takeaway: Un projet clair commence par un comportement vérifiable, un modèle de données simple et de petits changements validés souvent.
-practice: Implémente les étapes dans l’ordre, ajoute un test à chaque règle métier et note quelles fonctionnalités ton compilateur accepte réellement.
+lead: Cette étude de cas réunit les notions du cours autour d’un calculateur de panier. Le modèle, les règles métier, les limites du parcours et les éléments de vérification sont expliqués ensemble.
+takeaway: Un calculateur de panier rassemble un modèle de ligne, des règles de validation et une accumulation bornée.
 ---
-<h2>Le comportement à construire</h2>
-<p>Notre panier contient des lignes. Chaque ligne a un prix unitaire et une quantité. Le total correspond à la somme des sous-totaux. On va construire un calculateur qui donne un total et refuse les valeurs incohérentes. Cette version reste volontairement petite : aucun fichier, réseau ou affichage n’est nécessaire pour comprendre la logique.</p>
+<h2>Comportement du calculateur</h2>
+<p>Notre panier contient des lignes. Chaque ligne a un prix unitaire et une quantité. Le total correspond à la somme des sous-totaux. Le calculateur étudié produit un total et refuse les valeurs incohérentes. Cette version reste volontairement petite : aucun fichier, réseau ou affichage n’est nécessaire pour comprendre la logique.</p>
 
-<h2>Étape 1 : modéliser une ligne</h2>
+<h2>Modèle de données : une ligne de panier</h2>
 <p>Une ligne possède deux données à la fois. Une <code>form</code> est donc plus claire que deux nombres isolés transmis à toutes les procédures :</p>
 <pre><code>space cours::panier;
 
@@ -24,7 +23,7 @@ proc sous_total(ligne: &amp;Ligne) -&gt; i64 {
 }</code></pre>
 <p>Le nom <code>Ligne</code> représente une idée du domaine. La procédure <code>sous_total</code> reçoit une référence car elle a besoin de lire les champs sans transformer la ligne. La multiplication est au même endroit pour tous les appels ; si la règle change, on sait où la modifier.</p>
 
-<h2>Étape 2 : décrire la règle métier</h2>
+<h2>Règle métier : distinguer une entrée valide</h2>
 <p>Une quantité négative n’a pas de sens pour ce panier. Une première version peut retourner un code simple, mais un code numérique anonyme n’explique pas la nature de l’échec. À mesure que le programme grandit, représente les cas de réussite et d’erreur par un type nommé ou un <code>pick</code>.</p>
 <pre><code>pick ErreurPanier {
     Aucune,
@@ -38,8 +37,8 @@ proc ligne_valide(ligne: &amp;Ligne) -&gt; bool {
 }</code></pre>
 <p>On pourrait aussi imposer les conditions avec des clauses <code>requires</code>. Un contrat est approprié si un appel invalide indique une faute de programmation. Un résultat d’erreur explicite est plus adapté si l’entrée vient d’un utilisateur et que le programme doit continuer après l’avoir refusée.</p>
 
-<h2>Étape 3 : parcourir plusieurs lignes</h2>
-<p>Un panier simple peut être un tableau de taille fixe. Ce choix convient lorsque la capacité est connue, comme dans un petit exercice. Dans un programme réel où le nombre de lignes varie, choisis une collection dont les règles d’allocation sont effectivement disponibles dans la bibliothèque et le backend que tu utilises.</p>
+<h2>Accumulation : calculer le total</h2>
+<p>Un panier simple peut être un tableau de taille fixe. Ce choix convient lorsque la capacité est connue et que le nombre de lignes fait partie des contraintes du domaine. Dans un programme réel où le nombre de lignes varie, choisissez une collection dont les règles d’allocation sont effectivement disponibles dans la bibliothèque et le backend que vous utilisez.</p>
 <pre><code>proc total_panier(lignes: &amp;[3]Ligne) -&gt; i64 {
     let mut total: i64 = 0;
     for index in 0..3 {
@@ -47,10 +46,10 @@ proc ligne_valide(ligne: &amp;Ligne) -&gt; bool {
     }
     return total;
 }</code></pre>
-<p>On parcourt les indices de zéro à trois, sans inclure trois dans la plage. C’est cohérent avec les trois positions <code>0</code>, <code>1</code> et <code>2</code>. Si la taille change, le code ne devrait pas garder un <code>3</code> caché dans plusieurs endroits : introduis une constante ou une abstraction de collection adaptée.</p>
-<div class="callout warning"><strong>Le projet complet est un modèle pédagogique, pas encore une commande confirmée</strong><p>Le parcours utilise une boucle <code>for</code> sur plage et des déclarations <code>test</code>. Ces constructions n’ont pas de preuve d’exécution complète dans le backend audité. Pour lancer des versions confirmées des briques, essaie <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/formes-choix.vit"><code>formes-choix.vit</code></a>, <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/tableaux.vit"><code>tableaux.vit</code></a> et <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/contrats.vit"><code>contrats.vit</code></a>.</p></div>
+<p>On parcourt les indices de zéro à trois, sans inclure trois dans la plage. C’est cohérent avec les trois positions <code>0</code>, <code>1</code> et <code>2</code>. Si la taille change, le code ne devrait pas répéter un <code>3</code> caché à plusieurs endroits : une constante ou une abstraction de collection adaptée.</p>
+<div class="callout warning"><strong>Le projet complet est un modèle pédagogique, pas encore une commande confirmée</strong><p>Le parcours utilise une boucle <code>for</code> sur plage et des déclarations <code>test</code>. Ces constructions n’ont pas de preuve d’exécution complète dans le backend audité. Les versions confirmées de certaines briques sont liées ici : <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/formes-choix.vit"><code>formes-choix.vit</code></a>, <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/tableaux.vit"><code>tableaux.vit</code></a> et <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/contrats.vit"><code>contrats.vit</code></a>.</p></div>
 
-<h2>Étape 4 : couvrir les cas par des tests</h2>
+<h2>Cas de vérification et comportement attendu</h2>
 <pre><code>test "ligne avec prix nul et quantité nulle" {
     let ligne: Ligne = Ligne {
         prix_unitaire: 0,
@@ -66,36 +65,36 @@ test "sous-total de deux articles" {
     };
     assert(sous_total(&amp;ligne) == 12);
 }</code></pre>
-<p>Ces tests donnent un cas de frontière et un cas ordinaire. Ajoute ensuite un cas de plusieurs lignes, une quantité nulle et chaque erreur prévue. Les tests nommés servent aussi de documentation exécutable : quelqu’un qui découvre le module comprend les règles en parcourant les noms et les assertions.</p>
+<p>Ces tests donnent un cas de frontière et un cas ordinaire. Les cas complémentaires pertinents comprennent plusieurs lignes, une quantité nulle et chacune des erreurs prévues. Les tests nommés servent aussi de documentation exécutable : quelqu’un qui découvre le module comprend les règles en parcourant les noms et les assertions.</p>
 
-<h2>Étape 5 : organiser le projet</h2>
-<p>Quand le fichier devient trop long, place le modèle dans un module, les règles de calcul dans un autre et le point d’entrée dans un troisième. Exporte seulement les types et procédures dont les autres modules ont besoin. Garde les tests près du comportement qu’ils protègent et note la version d’outil utilisée.</p>
-<p>Travaille par petites étapes : un modèle, une procédure, un test, puis le changement suivant. Après chaque étape, lance la commande de vérification disponible. Si tu bloques, réduis l’exemple au plus petit fichier qui reproduit le diagnostic et compare-le à une construction existante dans le dépôt.</p>
+<h2>Organisation des modules du projet</h2>
+<p>Quand le fichier devient trop long, le modèle peut se trouver dans un module, les règles de calcul dans un autre et le point d’entrée dans un troisième. Seuls devraient être exportés les types et procédures dont les autres modules ont besoin. Gardez les tests près du comportement qu’ils protègent et notez la version d’outil utilisée.</p>
+<p>Une progression lisible sépare le modèle, le calcul d’une ligne, l’accumulation et le traitement des erreurs. Après chaque ajout, la commande de vérification disponible permet d’attribuer un diagnostic à la construction concernée. En cas de rejet, un petit fichier réduit facilite la comparaison avec les constructions déjà présentes dans le dépôt.</p>
 
-<h2>Continuer après le cours</h2>
-<p>Choisis un petit projet qui t’intéresse : un convertisseur d’unités, un analyseur de texte, un carnet de scores ou un outil en ligne de commande. Écris d’abord deux phrases sur ses comportements ; transforme chaque phrase en procédure et en tests ; puis ajoute les fichiers et les modules nécessaires.</p>
-<p>Pour explorer une notion, pars de la <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire</a> et des <a href="https://github.com/vitte-lang/vitte/tree/main/src/tests">tests du dépôt</a> pour trouver des cas concrets. Consulte aussi les <a href="https://github.com/vitte-lang/vitte/tree/main/modules/core">bibliothèques core</a> et la page <a href="{{ '/reference/support/' | relative_url }}">État du support</a>, qui aide à distinguer ce qui est spécifié de ce qui fonctionne dans le compilateur. Tu sais maintenant lire les éléments essentiels du langage et poser les bonnes questions avant de dépendre d’une fonctionnalité. Pour approfondir, poursuis avec <a href="{{ '/cours/14-invariants/' | relative_url }}">le second cycle</a>, qui développe la preuve des boucles, les modèles d’états, les contrats et les modules.</p>
-<div class="callout"><strong>Tu peux reprendre le cours quand tu veux</strong><p>Si une leçon reste floue, réécris son exemple de mémoire, puis compare avec le cours. Expliquer une idée avec tes propres mots est souvent le meilleur test de compréhension.</p></div>
+<h2>Sources Vitte pour approfondir cette étude</h2>
+<p>Les sources du dépôt permettent de comparer cette étude avec des exemples de conversion, d’analyse, de tableaux, de procédures et de modules. La grammaire décrit les formes prévues ; les tests montrent les cas traités par les différentes étapes ; les bibliothèques <code>core</code> détaillent les contrats de leurs abstractions. La page sur l’état du support relie ces sources aux capacités vérifiées du compilateur.</p>
+<p>La <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire</a> décrit les formes prévues ; les <a href="https://github.com/vitte-lang/vitte/tree/main/src/tests">tests du dépôt</a> montrent les cas traités par les différentes étapes ; les <a href="https://github.com/vitte-lang/vitte/tree/main/modules/core">bibliothèques core</a> précisent leurs contrats ; la page <a href="{{ '/reference/support/' | relative_url }}">État du support</a> distingue ce qui est spécifié de ce qui fonctionne dans le compilateur. Le parcours a présenté les éléments essentiels de Vitte et la différence entre une règle documentée et une fonctionnalité confirmée. Le <a href="{{ '/cours/14-invariants/' | relative_url }}">second cycle</a> approfondit les invariants de boucle, les modèles d’états, les contrats et les modules.</p>
+<div class="callout"><strong>Repère pour lire les exemples du dépôt</strong><p>Un exemple pédagogique explique une idée ; une fixture accompagnée d’une commande et d’un résultat établit un cas exécuté. Le cours signale la différence afin que chaque affirmation reste vérifiable.</p></div>
 <h2>Spécifier le projet avant de coder</h2>
-<p>Un projet ne commence pas par une structure de données. Il commence par une phrase observable : « pour chaque ligne valide, le programme calcule le prix multiplié par la quantité, puis additionne les sous-totaux ». Ensuite, écris les règles qui ne sont pas encore décidées : une quantité nulle est-elle permise ? Un prix négatif est-il une erreur ? Les montants représentent-ils des unités ou des centimes ? La somme peut-elle dépasser le type choisi ?</p>
-<p>Transforme chaque phrase en une attente que tu peux vérifier. Pour une ligne de prix 6 et quantité 2, le sous-total vaut 12. Pour une ligne contenant zéro, le sous-total vaut zéro si cette entrée est autorisée. Pour une valeur négative, le programme doit rejeter l’entrée ou renvoyer un état d’erreur nommé. Cette liste empêche les règles métier de se cacher dans l’implémentation.</p>
+<p>La spécification du panier peut se résumer ainsi : « pour chaque ligne valide, le programme calcule le prix multiplié par la quantité, puis additionne les sous-totaux ». Elle doit également fixer l’acceptation d’une quantité nulle, le sens d’un prix négatif, l’unité des montants et la limite du total dans le type choisi.</p>
+<p>Une ligne de prix 6 et quantité 2 produit un sous-total de 12. Si zéro est autorisé, une ligne contenant zéro produit zéro. Une valeur négative doit être refusée ou représentée par un état d’erreur explicite. Ces résultats donnent un sens concret aux règles métier et montrent pourquoi elles doivent être séparées de la simple multiplication.</p>
 
-<h2>Plan de construction en petites étapes</h2>
-<ol>
-  <li><strong>Modèle.</strong> Déclare une ligne avec ses champs et écris une procédure qui lit ces champs.</li>
-  <li><strong>Règles locales.</strong> Calcule un sous-total pour une ligne, puis vérifie séparément chaque condition de validité.</li>
-  <li><strong>Accumulation.</strong> Ajoute plusieurs sous-totaux en gardant une progression d’indice et une borne explicites.</li>
-  <li><strong>Résultat.</strong> Décide si une entrée invalide constitue une faute d’appel ou une valeur d’erreur attendue.</li>
-  <li><strong>Organisation.</strong> Déplace les types et calculs dans des modules quand le découpage rend les rôles plus clairs.</li>
-</ol>
-<p>Après chaque étape, garde une version qui fonctionne avant d’ajouter une nouvelle idée. Si un cas réduit échoue, retire les éléments récents jusqu’à trouver la première construction qui fait apparaître le problème.</p>
+<h2>Ordre de composition du calculateur</h2>
+<table><thead><tr><th>Responsabilité</th><th>Rôle dans le calculateur</th></tr></thead><tbody>
+<tr><td>Modèle</td><td>La forme <code>Ligne</code> rassemble le prix unitaire et la quantité.</td></tr>
+<tr><td>Règle locale</td><td><code>sous_total</code> multiplie les champs d’une ligne.</td></tr>
+<tr><td>Validation</td><td>La règle métier distingue les valeurs permises des entrées refusées.</td></tr>
+<tr><td>Accumulation</td><td>Le parcours additionne les sous-totaux avec un indice et une borne explicites.</td></tr>
+<tr><td>Interface</td><td>Les modules séparent les déclarations internes de celles utilisées par d’autres fichiers.</td></tr>
+</tbody></table>
+<p>Ce découpage donne des frontières où interpréter un diagnostic. Une erreur dans le prix unitaire appartient au modèle ou à la validation ; une valeur de ligne incorrecte renvoie au calcul local ; un total incomplet renvoie à l’accumulation ou à ses bornes.</p>
 
 <h2>Préparer les vérifications et reconnaître leurs limites</h2>
-<p>La matrice du projet indique que des formes non génériques, des variantes <code>pick</code>, des tableaux fixes, des conditions et des boucles <code>while</code> sont exercés jusqu’à l’exécution dans des fixtures distinctes. Cette preuve ne signifie pas que leur combinaison dans le panier complet a déjà été exécutée. Le projet de cette leçon reste un exercice d’intégration : assemble les blocs progressivement et vérifie le cas exact avec la version installée.</p>
-<p>Le parcours actuel utilise une boucle <code>for</code> sur plage et des déclarations <code>test</code>. Le backend natif audité n’a pas confirmé l’exécution de ces deux éléments sous cette forme. Pour obtenir une version plus proche du sous-ensemble runtime vérifié, remplace le parcours par un <code>while</code> avec un indice, puis place les cas attendus dans des programmes qui renvoient un statut contrôlable. N’affirme pas que le résultat est exécuté tant qu’une commande réelle ne l’a pas établi.</p>
+<p>La matrice du projet confirme l’exécution de formes non génériques, de variantes <code>pick</code>, de tableaux fixes, de conditions et de boucles <code>while</code> dans des fixtures distinctes. Cette preuve ne signifie pas que leur combinaison dans le panier complet a déjà été exécutée. Le calculateur complet constitue une étude d’intégration : la preuve des composants séparés ne vaut pas automatiquement pour leur assemblage.</p>
+<p>Le parcours initial utilise une boucle <code>for</code> sur plage et des déclarations <code>test</code>. Le backend natif audité n’a pas confirmé l’exécution de ces deux éléments sous cette forme. Une variante reposant sur <code>while</code> et sur un statut de retour se rapproche davantage du sous-ensemble runtime vérifié ; elle doit toutefois être lancée dans sa combinaison exacte avant d’être présentée comme une exécution confirmée.</p>
 
-<h2>Définir les critères de livraison</h2>
-<p>Le projet est prêt à être partagé lorsque quelqu’un peut comprendre ses entrées, ses résultats, les erreurs possibles et le modèle des données. Ajoute une fiche de vérification courte :</p>
+<h2>Propriétés qui rendent le projet compréhensible</h2>
+<p>Le projet est prêt à être partagé lorsque quelqu’un peut comprendre ses entrées, ses résultats, les erreurs possibles et le modèle des données. Une fiche de vérification courte peut résumer les propriétés suivantes :</p>
 <ul>
   <li>Chaque procédure a un nom, des paramètres et un type de retour compréhensibles.</li>
   <li>Chaque règle métier a au moins un cas ordinaire et un cas de frontière.</li>
@@ -103,19 +102,22 @@ test "sous-total de deux articles" {
   <li>Chaque fonctionnalité dépendant du compilateur a une commande ou une mention explicite « non confirmée ».</li>
   <li>Les exports se limitent aux noms dont un autre module a besoin.</li>
 </ul>
-<div class="callout"><strong>Correction du total</strong><p>Pour les lignes <code>(6, 2)</code>, <code>(4, 3)</code> et <code>(0, 5)</code>, les sous-totaux sont 12, 12 et 0 ; le total est 24. Si une quantité négative est interdite, ce cas doit être traité avant l’accumulation et ne doit pas devenir silencieusement un total négatif.</p></div>
-<section class="practice-block">
-  <h2>Atelier final : faire une petite livraison</h2>
-  <ol>
-    <li>Écris une courte description du besoin : quelles données entrent, quel résultat doit sortir, et quelles entrées doivent être refusées ?</li>
-    <li>Implémente <code>Ligne</code>, <code>sous_total</code> et la validation. Vérifie chaque changement avant d’ajouter le suivant.</li>
-    <li>Ajoute des tests pour les cas normal, zéro et invalide. Si ton compilateur ne prend pas en charge une construction montrée dans le cours, remplace-la par une forme déjà utilisée par le dépôt et note cette décision.</li>
-    <li>Déplace modèle, calculs et point d’entrée dans des modules distincts. Réduis les exports au minimum utile.</li>
-    <li>Relis ton code comme une autre personne : peut-elle prédire le résultat, comprendre le traitement des erreurs et repérer les limites du programme ?</li>
-  </ol>
-  <details><summary>Corrigé et critères de livraison</summary>
-    <p>Avec les lignes <code>(6, 2)</code>, <code>(4, 3)</code> et <code>(0, 5)</code>, les produits valent 12, 12 et 0 ; leur somme vaut 24. Une entrée négative doit être refusée avant de contribuer au total si la règle métier l’interdit.</p>
-    <p>Un découpage raisonnable conserve <code>Ligne</code> et <code>sous_total</code> près des règles de panier ; le point d’entrée compose les appels. Les tests devraient nommer les cas ordinaires, les zéros, les limites et chaque état d’erreur. Tant que le runner de tests Vitte n’est pas établi pour la construction choisie, utilise les fixtures et commandes du dépôt comme preuve et ne présente pas le bloc <code>test</code> comme exécuté.</p>
-    <p>Le projet est livrable lorsque tu peux reconstruire le résultat attendu, montrer la commande réellement passée, expliquer les limites et indiquer quelles combinaisons de constructions ont été vérifiées ensemble.</p>
-  </details>
-</section>
+<div class="callout"><strong>Calcul détaillé du panier</strong><p>Pour les lignes <code>(6, 2)</code>, <code>(4, 3)</code> et <code>(0, 5)</code>, les sous-totaux sont 12, 12 et 0 ; le total est 24. Si une quantité négative est interdite, ce cas doit être traité avant l’accumulation et ne doit pas devenir silencieusement un total négatif.</p></div>
+<h2>Calcul complet d’une ligne et du panier</h2>
+<p>Une ligne avec un prix unitaire de 6 et une quantité de 2 donne le sous-total <code>6 × 2 = 12</code>. Une deuxième ligne à 4 pour 3 unités donne également 12. Une troisième ligne à 0 pour 5 unités donne 0. L’accumulation produit alors <code>12 + 12 + 0 = 24</code>. Cette trace montre la composition de deux règles différentes : le calcul local à une ligne, puis la somme des lignes.</p>
+<p>Cette séparation permet de localiser une erreur. Si le total est faux mais qu’un sous-total l’est déjà, le problème se trouve dans les données ou dans la multiplication. Si chaque sous-total est juste mais que la somme finale est fausse, l’accumulation, la borne ou la mise à jour mutable est à examiner. La procédure de ligne exprime une responsabilité stable ; la procédure de panier choisit les lignes qu’elle parcourt et rassemble les résultats.</p>
+
+<h2>Validité, erreurs et ordre de calcul</h2>
+<p>Le choix de traiter une valeur négative dépend de la règle métier. Le prix négatif peut être interdit, ou représenter un crédit si le domaine le définit ainsi ; la quantité négative peut être interdite ou être un retour de marchandises. Le type <code>i64</code> permet de représenter les nombres négatifs, mais ne décide pas ce qu’ils signifient. La validation doit traduire la règle du panier, pas seulement la capacité du type.</p>
+<p>Si une entrée invalide est une situation attendue, le résultat doit garder assez d’information pour que l’appelant explique le refus. Si elle indique une faute de programmation entre deux procédures internes, une précondition peut clarifier la responsabilité de l’appelant. Les limites numériques forment un autre cas : le produit prix × quantité, puis la somme des sous-totaux, peuvent dépasser <code>i64</code>. La borne doit être contrôlée au bon niveau, selon les opérations supportées par la cible.</p>
+
+<h2>Pourquoi la composition est séparée de la preuve</h2>
+<p>Le dépôt confirme les briques de formes, de variantes, de tableaux, de contrôles et de contrats dans des fixtures distinctes. Le calculateur présenté ici les assemble en une étude complète, mais cette combinaison n’est pas automatiquement couverte par l’exécution d’une fixture déjà existante. En particulier, le parcours initial emploie <code>for</code> sur une plage et des déclarations <code>test</code>, deux formes dont le chemin runtime n’est pas confirmé dans le backend natif audité.</p>
+<p>Une version adaptée au sous-ensemble vérifié peut remplacer le parcours par <code>while</code> et contrôler le résultat au moyen d’un statut. La distinction entre modèle pédagogique et commande confirmée est une partie de la documentation technique : elle évite de transformer l’assemblage plausible de plusieurs syntaxes en affirmation de compilation. Les exemples de formes, tableaux et contrats liés sur cette page constituent des points de comparaison individuels avec une commande et un résultat publiés.</p>
+<h2>Règles d’erreur et atomicité du total</h2>
+<p>Si la troisième ligne d’un panier est invalide après deux lignes valides, le programme doit définir ce qu’il renvoie. Un total partiel de 24 pourrait être confondu avec un total complet. Une stratégie consiste à refuser le panier entier et à retourner une erreur portant l’indice ou la raison ; une autre peut ignorer les lignes invalides si cette règle est annoncée. Le choix appartient au domaine, mais le résultat doit distinguer total final et total partiel.</p>
+<p>Cette décision influence l’ordre de calcul. Une validation de toutes les lignes avant l’accumulation sépare la détection d’erreurs du calcul. Une validation pendant le parcours peut arrêter immédiatement le traitement, à condition de ne pas exposer l’accumulateur partiel comme s’il était complet. Le type de retour devrait traduire cette distinction plutôt que la laisser dans une convention implicite.</p>
+
+<h2>Capacité fixe et croissance future</h2>
+<p>Le type <code>[3]Ligne</code> rend la capacité statique et la borne du parcours explicite. Il convient à un exemple de taille connue, à un protocole de longueur fixe ou à une représentation compacte. Un panier réel peut contenir un nombre variable de lignes ; ce besoin demande une collection qui gère l’allocation et l’extension selon des règles prises en charge par la bibliothèque et le backend.</p>
+<p>Remplacer le tableau par une abstraction dynamique touche les coûts et les contrats : qui alloue, quand la capacité change, comment les références aux éléments restent valides, et quelles erreurs d’allocation peuvent survenir. La généralisation ne consiste donc pas à remplacer seulement la notation du type ; elle modifie les propriétés de mémoire et d’exécution du programme.</p>

@@ -3,9 +3,8 @@ title: Lire un programme Vitte
 permalink: /cours/02-syntaxe/
 chapter: 2
 duration: 50 minutes
-lead: Apprenons à repérer les déclarations, les blocs et les signes de ponctuation qui structurent le code. Une fois ce squelette visible, les programmes cessent de ressembler à une suite de symboles.
+lead: Les déclarations, les blocs et les signes de ponctuation forment l’ossature des programmes Vitte. Leur rôle permet de distinguer rapidement la structure d’un fichier de son comportement.
 takeaway: Les mots-clés indiquent le rôle du code ; les accolades, parenthèses et points-virgules indiquent comment il s’organise.
-practice: Prends un fichier d’exemple et annote chaque accolade, chaque appel et chaque point-virgule avec son rôle.
 ---
 <h2>Le fichier est une suite de déclarations</h2>
 <p>À la différence d’un script où chaque ligne est nécessairement une instruction immédiate, un fichier Vitte contient surtout des <strong>déclarations</strong> : module, import, constante, forme, procédure, et ainsi de suite. Une déclaration donne un nom ou une structure que d’autres parties du programme peuvent utiliser.</p>
@@ -32,7 +31,7 @@ proc main() -&gt; i64 {
   <li>Le point-virgule <code>;</code> termine plusieurs déclarations et instructions.</li>
   <li><code>::</code> sépare des éléments dans un chemin de module ou un nom qualifié.</li>
 </ul>
-<p>Un bloc peut contenir plusieurs instructions. L’indentation ne remplace pas les accolades : elle sert aux personnes qui lisent le code. Garde une indentation régulière, car elle rend visibles les blocs imbriqués et les erreurs de fermeture.</p>
+<p>Un bloc peut contenir plusieurs instructions. L’indentation ne remplace pas les accolades : elle sert aux personnes qui lisent le code. Gardez une indentation régulière, car elle rend visibles les blocs imbriqués et les erreurs de fermeture.</p>
 
 <h2>Commentaires : écrire pour la prochaine lecture</h2>
 <p>Un commentaire explique une intention, une règle ou une subtilité qu’on ne peut pas déduire facilement du code. Vitte accepte les commentaires de ligne <code>//</code>, les commentaires de documentation <code>///</code> et les commentaires de bloc <code>/* ... */</code>. Les commentaires de bloc peuvent être imbriqués dans la grammaire du dépôt.</p>
@@ -43,15 +42,15 @@ const LIMITE: i64 = 10;
 proc doubler(valeur: i64) -&gt; i64 {
     return valeur * 2;
 }</code></pre>
-<p>Évite de commenter chaque ligne pour la paraphraser. Une bonne explication répond plutôt à « pourquoi cette limite ? », « quelle hypothèse faisons-nous ? » ou « que doit garantir cette procédure ? ».</p>
+<p>Évitez de commenter chaque ligne pour la paraphraser. Une bonne explication répond plutôt à « pourquoi cette limite ? », « quelle hypothèse faisons-nous ? » ou « que doit garantir cette procédure ? ».</p>
 
 <h2>Noms, majuscules et littéraux</h2>
 <p>Les identifiants commencent par une lettre ou un souligné, puis peuvent contenir des chiffres et d’autres caractères autorisés. Les noms sont sensibles à la casse : <code>score</code> et <code>Score</code> sont deux noms différents. Le dépôt emploie souvent <code>snake_case</code> pour les procédures et variables, et des majuscules pour les constantes et les types.</p>
 <p>Un littéral est une valeur écrite directement dans le code : <code>42</code>, <code>3.5</code>, <code>true</code>, <code>'v'</code>, <code>"salut"</code> ou <code>null</code>. Les entiers peuvent également être écrits en binaire (<code>0b1010</code>), en octal (<code>0o12</code>) ou en hexadécimal (<code>0xA</code>). Les caractères spéciaux dans une chaîne se notent avec une barre oblique inversée, par exemple <code>\n</code> pour un saut de ligne.</p>
-<div class="callout"><strong>Lis les signes comme des repères</strong><p>Quand tu bloques, repère d’abord l’endroit où une déclaration commence, puis le bloc qu’elle ouvre, et enfin les expressions qu’elle contient. Ce parcours de l’extérieur vers l’intérieur réduit beaucoup la confusion.</p></div>
+<div class="callout"><strong>Lire les signes comme des repères</strong><p>Lorsqu’un fichier paraît difficile à suivre, les déclarations du niveau supérieur donnent le premier repère. Les blocs imbriqués révèlent ensuite les limites de portée, puis les expressions montrent les calculs réalisés à l’intérieur de ces blocs.</p></div>
 
-<h2>Un exercice de lecture</h2>
-<p>Dans le programme de départ, marque la déclaration de module, le nom et le type de retour de <code>main</code>, l’appel à <code>print</code> et le retour. Puis enlève une accolade ou un point-virgule et lance <code>vitte parse</code>. Le diagnostic te montrera quel morceau de ponctuation manquait et à quel endroit le parseur l’a remarqué.</p>
+<h2>Lecture détaillée d’un programme</h2>
+<p>Dans le programme de départ, la déclaration de module fournit le contexte du fichier ; la signature de <code>main</code> annonce son nom et son type de retour ; l’appel à <code>print</code> produit l’affichage ; l’instruction <code>return</code> termine la procédure. Si une accolade ou un point-virgule manque, la commande <code>vitte parse</code> permet d’observer à quelle étape le parseur détecte la structure incomplète.</p>
 
 <h2>Du texte aux structures : trois niveaux</h2>
 <p>Quand Vitte lit un fichier, le compilateur ne voit pas directement « une fonction qui calcule ». Il avance par niveaux. Le lexer identifie les tokens : mot-clé, identifiant, nombre, opérateur et ponctuation. Le parseur assemble ces tokens selon la grammaire pour reconnaître une déclaration, un bloc ou une expression. L’analyse sémantique relie ensuite des noms aux déclarations et vérifie des contraintes comme les types attendus.</p>
@@ -61,27 +60,32 @@ proc doubler(valeur: i64) -&gt; i64 {
   <li><code>let resultat: i64 = nom_absent;</code> peut avoir une syntaxe correcte, mais l’analyse sémantique doit encore résoudre <code>nom_absent</code>.</li>
   <li><code>let resultat: bool = 3;</code> peut être bien formé, mais le type de la valeur doit correspondre au type annoncé.</li>
 </ul>
-<p>Ces extraits montrent la nature des problèmes, pas une garantie que chaque voie de compilation émettra le même diagnostic. Enquête sur un seul problème à la fois avec <code>lex</code>, puis <code>parse</code>, puis <code>check</code>.</p>
+<p>Ces extraits montrent la nature des problèmes, pas une garantie que chaque voie de compilation émettra le même diagnostic. Examinez un seul problème à la fois avec <code>lex</code>, puis <code>parse</code>, puis <code>check</code>.</p>
 
 <h2>Construire l’arbre de lecture d’une déclaration</h2>
-<p>Dans <code>proc lire_reponse() -&gt; i64 { return REPONSE; }</code>, le bloc appartient à la procédure, le retour appartient au bloc, et <code>REPONSE</code> est l’expression de retour. L’accolade fermante termine d’abord le corps, pas le fichier entier. Pour lire un fichier long, commence par repérer les déclarations du niveau supérieur, puis entre dans une seule procédure à la fois.</p>
-<p>Le point-virgule termine ici l’instruction <code>return</code>. Il ne sert pas à séparer les arguments d’un appel, qui sont séparés par des virgules. Les accolades encadrent un bloc, tandis que les parenthèses encadrent les paramètres ou arguments. Quand le parseur signale une ponctuation manquante, vérifie la paire de signes qui correspond à la structure en cours avant d’ajouter un signe au hasard.</p>
+<p>Dans <code>proc lire_reponse() -&gt; i64 { return REPONSE; }</code>, le bloc appartient à la procédure, le retour appartient au bloc, et <code>REPONSE</code> est l’expression de retour. L’accolade fermante termine d’abord le corps, pas le fichier entier. Dans un fichier long, les déclarations du niveau supérieur constituent une carte de lecture avant l’examen détaillé des corps de procédure.</p>
+<p>Le point-virgule termine ici l’instruction <code>return</code>. Il ne sert pas à séparer les arguments d’un appel, qui sont séparés par des virgules. Les accolades encadrent un bloc, tandis que les parenthèses encadrent les paramètres ou arguments. Lorsqu’un diagnostic signale une ponctuation manquante, la correction dépend de la structure active : une liste de paramètres attend une parenthèse, alors qu’un bloc attend une accolade.</p>
 
 <h2>Repérer les noms et la portée</h2>
 <p>Une constante déclarée au niveau d’un module, comme <code>REPONSE</code>, peut être référencée par une procédure selon les règles de visibilité et de résolution du compilateur. Un paramètre tel que <code>valeur</code> est disponible dans le corps de sa procédure. Une liaison locale est définie à l’intérieur d’un bloc et son usage dépend de la portée que le langage attribue à ce bloc.</p>
-<p>Les noms sont sensibles à la casse : <code>REPONSE</code>, <code>Reponse</code> et <code>reponse</code> ne désignent pas le même identifiant. Si un nom n’est pas reconnu, compare attentivement sa graphie, son module, son import et sa visibilité. Le fait qu’un mot ressemble à un nom de type ne le rend pas automatiquement disponible.</p>
+<p>Les noms sont sensibles à la casse : <code>REPONSE</code>, <code>Reponse</code> et <code>reponse</code> ne désignent pas le même identifiant. Si un nom n’est pas reconnu, comparez attentivement sa graphie, son module, son import et sa visibilité. Le fait qu’un mot ressemble à un nom de type ne le rend pas automatiquement disponible.</p>
 
-<div class="callout"><strong>Mini-correction guidée</strong><p>Pour <code>return lire_reponse() - REPONSE;</code>, le point d’entrée appelle d’abord <code>lire_reponse</code>, récupère sa valeur, puis soustrait la constante. Comme <code>lire_reponse</code> renvoie la même constante, le résultat attendu est zéro. Le fichier d’exemple vérifie ce comportement en se terminant avec le code 0.</p></div>
-<section class="practice-block">
-  <h2>Atelier guidé : annoter et réparer</h2>
-  <ol>
-    <li>Prends un fichier court de <code>examples/</code>. Pour chaque ligne, écris en marge « déclaration », « instruction », « expression » ou « commentaire ».</li>
-    <li>Ajoute un commentaire qui explique une intention, pas le texte déjà visible. Demande-toi si le commentaire restera vrai après une modification du code.</li>
-    <li>Fais trois erreurs séparées : guillemet non fermé, accolade manquante et point-virgule absent. Utilise <code>lex</code> puis <code>parse</code> pour voir à quelle étape chaque erreur devient visible.</li>
-  </ol>
-  <details><summary>Corrigé commenté et critères de réussite</summary>
-    <p>Dans l’exemple, <code>space</code>, <code>const</code>, <code>proc</code> et <code>return</code> sont des mots-clés ; <code>lire_reponse</code> et <code>REPONSE</code> sont des identifiants ; <code>::</code>, <code>()</code>, <code>-&gt;</code>, <code>{}</code> et <code>;</code> sont des signes de structure. Le lexer reconnaît ces unités. Le parseur vérifie que la constante et les deux procédures ont une forme permise. La sémantique doit ensuite relier le nom <code>REPONSE</code> et contrôler les types.</p>
-    <p>Une chaîne non fermée empêche le lexer de reconnaître correctement le littéral. Une accolade manquante apparaît plutôt lors de l’analyse de la structure. Une procédure qui mentionne un nom inexistant peut passer le parsing et échouer plus tard. Ce sont des exemples de phases ; le diagnostic exact dépend de la commande et du chemin de compilation utilisé.</p>
-    <p>Pour l’expression finale, <code>lire_reponse()</code> renvoie 42 et la soustraction donne 0. Une correction utile doit donc réparer la ponctuation tout en conservant ce résultat attendu.</p>
-  </details>
-</section>
+<div class="callout"><strong>Résultat du calcul</strong><p>Pour <code>return lire_reponse() - REPONSE;</code>, le point d’entrée appelle d’abord <code>lire_reponse</code>, récupère sa valeur, puis soustrait la constante. Comme <code>lire_reponse</code> renvoie la même constante, le résultat attendu est zéro. Le fichier d’exemple vérifie ce comportement en se terminant avec le code 0.</p></div>
+<h2>La syntaxe forme une structure imbriquée</h2>
+<p>Les signes de ponctuation indiquent les relations entre les éléments. Dans <code>proc lire_reponse() -&gt; i64 { return REPONSE; }</code>, les parenthèses délimitent les paramètres, la flèche relie la signature au type de retour, les accolades délimitent le corps et le point-virgule termine l’instruction. Cette structure est plus importante que le découpage visuel en lignes : un fichier pourrait être écrit sur une seule ligne et conserver les mêmes relations syntaxiques.</p>
+<p>Le parseur construit une représentation hiérarchique. La déclaration de procédure contient une signature et un corps ; le corps contient une instruction de retour ; le retour contient une expression qui référence un nom. Lire le code comme un arbre évite de confondre la fin d’une instruction avec la fin d’un bloc. Cela explique également pourquoi une accolade manquante peut produire des diagnostics sur plusieurs lignes suivantes : le parseur ne sait plus où le bloc aurait dû se terminer.</p>
+
+<h2>Identifier la première structure incorrecte</h2>
+<p>Une erreur de syntaxe est souvent signalée après le caractère qui aurait permis au parseur de poursuivre, et non exactement à l’endroit où la cause a été introduite. Une parenthèse d’ouverture oubliée peut rendre suspecte la virgule suivante ; une accolade qui manque peut faire paraître invalide la déclaration qui suit. Le premier diagnostic est donc généralement le plus informatif. Les erreurs en cascade disparaissent souvent lorsqu’une seule frontière structurelle est rétablie.</p>
+<p>Il faut distinguer une forme mal construite d’un nom inconnu. <code>let resultat: i64 = nom_absent;</code> peut respecter les règles de ponctuation tout en échouant à la résolution du nom. De la même manière, une déclaration structurée peut référencer un nom valide mais échouer plus tard sur une incompatibilité de type. Les commandes séparées permettent de situer le problème dans le pipeline au lieu de modifier la ponctuation au hasard.</p>
+
+<h2>Les commentaires et les noms font partie de l’interface humaine</h2>
+<p>Un commentaire de ligne <code>//</code> convient à une remarque locale ; <code>///</code> associe une documentation à une déclaration ; <code>/* ... */</code> encadre un commentaire de bloc. Les commentaires ne changent pas le résultat de l’analyse des expressions, mais ils font partie de la maintenance du programme. Une explication utile décrit une intention difficile à déduire — unité, invariant, convention ou raison d’une limite — plutôt que de répéter la ligne qui suit.</p>
+<p>Les identifiants sont sensibles à la casse. Dans un diagnostic « nom inconnu », l’écart peut être une lettre majuscule, un chemin de module, un import absent ou une déclaration privée. Ces causes se situent à des niveaux distincts. La graphie du nom établit son identité ; le chemin établit où chercher ; l’import donne accès au module ; la visibilité détermine ce qui peut être référencé depuis l’extérieur.</p>
+<h2>Les séparateurs établissent les frontières</h2>
+<p>Le point-virgule termine certaines déclarations et instructions ; il ne ferme ni une procédure ni un module. La virgule sépare des éléments dans une liste, comme les paramètres ou les champs d’une forme. Les deux-points associent souvent un nom à une information de type. Les accolades ouvrante et fermante encadrent une région syntaxique complète. Lire ces signes comme des frontières évite de les traiter comme une décoration facultative.</p>
+<p>Dans un bloc imbriqué, chaque accolade fermante correspond à une ouverture précise. L’indentation sert à aligner visuellement ces régions, mais elle ne remplace pas la structure que le parseur lit. Une indentation cohérente permet de repérer plus vite une accolade isolée ; la correction finale dépend néanmoins de la grammaire et des diagnostics de parsing.</p>
+
+<h2>La graphie d’un chemin n’est pas un identifiant isolé</h2>
+<p>Dans <code>space tutorials::syntaxe;</code>, le chemin contient plusieurs segments reliés par <code>::</code>. Chaque segment participe à l’identité logique du module. Le même séparateur peut apparaître dans un appel qualifié, par exemple <code>calcul::additionner</code>, où il exprime une relation entre un alias de module et une déclaration. Le contexte permet au parseur de savoir si la séquence appartient à une déclaration, un import ou une expression.</p>
+<p>Les sources du dépôt montrent aussi des séparateurs de type barre oblique dans certaines déclarations. Les formes acceptées sont décrites dans la grammaire, mais la résolution réelle dépend des règles du frontend et de la configuration de recherche. La ponctuation reconnue ne dit pas, à elle seule, si le chemin désigne un fichier existant ou un nom public.</p>

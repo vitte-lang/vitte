@@ -5,7 +5,6 @@ chapter: 5
 duration: 60 minutes
 lead: Une procédure donne un nom à une tâche bien délimitée. Elle reçoit des paramètres, calcule quelque chose et peut renvoyer un résultat que d’autres procédures réutilisent.
 takeaway: Une bonne procédure a une responsabilité lisible, des entrées explicites et un résultat dont le type est annoncé.
-practice: "Découpe un calcul de prix en trois procédures : calculer le sous-total, appliquer la remise et produire le prix final."
 ---
 <h2>La forme générale d’une procédure</h2>
 <pre><code>proc additionner(gauche: i64, droite: i64) -&gt; i64 {
@@ -21,15 +20,15 @@ practice: "Découpe un calcul de prix en trois procédures : calculer le sous-to
 <div class="callout verified-example"><strong>Exemple vérifié : paramètres, appels et retour</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/procedures.vit"><code>examples/tutorials/procedures.vit</code></a> compose un sous-total puis ajoute la livraison ; le calcul attendu vaut 42.</p><pre><code>build/bin/vitte run examples/tutorials/procedures.vit --quiet --no-color</code></pre><p>Résultat confirmé : code de sortie <code>0</code>.</p></div>
 
 <h2>Décomposer plutôt que tout entasser</h2>
-<p>Une procédure devrait répondre à une question précise. Si une fonction de 80 lignes valide une entrée, calcule plusieurs valeurs, transforme un résultat et affiche un rapport, sépare ces responsabilités. Des procédures courtes rendent les tests plus ciblés et les noms racontent le déroulement.</p>
+<p>Une procédure devrait répondre à une question précise. Si une fonction de 80 lignes valide une entrée, calcule plusieurs valeurs, transforme un résultat et affiche un rapport, ces responsabilités gagnent à être séparées. Des procédures courtes rendent les tests plus ciblés et les noms racontent le déroulement.</p>
 <p>Les paramètres rendent les dépendances visibles. Une procédure qui a besoin d’un taux de remise devrait généralement le recevoir en paramètre plutôt que de dépendre d’une variable globale cachée. Le code d’appel devient alors une petite description de ce qui est calculé.</p>
 
 <h2>Retourner une valeur ou terminer sans valeur</h2>
 <p>Quand le type de retour est renseigné, chaque chemin normal doit produire une valeur compatible. Certaines procédures servent plutôt à effectuer une action, comme écrire un message. Selon les primitives et les conventions du module, elles peuvent avoir un type de retour sans valeur, souvent nommé <code>void</code>. Le point d’entrée d’exemple renvoie un entier comme statut de fin.</p>
-<p>Évite de mélanger plusieurs styles dans une même abstraction. Si une procédure calcule un prix, renvoie le prix ; si elle imprime un rapport, choisis un nom d’action et laisse son effet visible dans le nom ou la documentation.</p>
+<p>Évitez de mélanger plusieurs styles dans une même abstraction. Si une procédure calcule un prix, renvoie le prix ; si elle imprime un rapport, choisissez un nom d’action et laissez son effet visible dans le nom ou la documentation.</p>
 
 <h2>Références en paramètre</h2>
-<p>Pour examiner une valeur composée sans la copier dans chaque appel, la grammaire permet un paramètre de référence comme <code>point: &amp;Point</code>. Le corps peut lire ses champs via <code>point.x</code>. C’est une manière de montrer que la procédure consulte une donnée existante. Les règles détaillées de mutabilité, d’alias et de durée de vie dépendent de l’implémentation disponible ; ne suppose pas un système d’emprunt plus riche que ce que le compilateur vérifie.</p>
+<p>Pour examiner une valeur composée sans la copier dans chaque appel, la grammaire permet un paramètre de référence comme <code>point: &amp;Point</code>. Le corps peut lire ses champs via <code>point.x</code>. C’est une manière de montrer que la procédure consulte une donnée existante. Les règles détaillées de mutabilité, d’alias et de durée de vie dépendent de l’implémentation disponible ; ne supposez pas un système d’emprunt plus riche que ce que le compilateur vérifie.</p>
 <pre><code>form Point {
     x: i64,
     y: i64,
@@ -50,44 +49,42 @@ proc somme(point: &amp;Point) -&gt; i64 {
 <p>Le contrat clarifie l’usage prévu et donne au compilateur des propriétés à analyser. Ici, la précondition empêche un dépassement vers la borne supérieure lors de l’ajout ; la postcondition décrit exactement le résultat promis. Une spécification doit refléter les limites du type et de l’opération. Les contrats peuvent produire des diagnostics ou des vérifications à l’exécution selon ce que le compilateur arrive à prouver.</p>
 
 <h2>Récursion et arrêt</h2>
-<p>Une procédure peut s’appeler elle-même. C’est la récursion. Une version récursive d’un calcul doit avoir un cas de base et un appel qui se rapproche de ce cas ; sans cela, elle ne termine pas. Pour un parcours prévisible et simple, une boucle est parfois plus facile à suivre. Choisis la forme qui rend la condition d’arrêt la plus évidente.</p>
-<div class="callout"><strong>Avant de créer une procédure</strong><p>Dis en une phrase ce qu’elle reçoit, ce qu’elle renvoie et ce qu’elle ne fait pas. Si la phrase contient plusieurs tâches indépendantes, cherche un découpage.</p></div>
+<p>Une procédure peut s’appeler elle-même. C’est la récursion. Une version récursive d’un calcul doit avoir un cas de base et un appel qui se rapproche de ce cas ; sans cela, elle ne termine pas. Pour un parcours prévisible et simple, une boucle est parfois plus facile à suivre. Choisissez la forme qui rend la condition d’arrêt la plus évidente.</p>
+<div class="callout"><strong>Une responsabilité bien délimitée</strong><p>La signature et la documentation résument ce que la procédure reçoit, ce qu’elle renvoie et les effets qu’elle produit. Lorsqu’une description contient plusieurs opérations indépendantes, plusieurs procédures nommées rendent leurs rôles plus faciles à comprendre.</p></div>
 
 <h2>Concevoir une signature avant le corps</h2>
-<p>La signature est le premier contrat lisible d’une procédure. Écris-la avant les instructions et vérifie chacun de ses éléments :</p>
-<ul>
-  <li>Le nom répond-il à une question précise, comme <code>sous_total</code> ou <code>valider_ligne</code> ?</li>
-  <li>Les paramètres nomment-ils les entrées et indiquent-ils leur type ?</li>
-  <li>Le type de retour dit-il exactement quelle information le corps produit ?</li>
-  <li>La procédure a-t-elle besoin de données qu’elle ne reçoit pas explicitement ?</li>
-</ul>
+<p>La signature est le premier contrat lisible d’une procédure. Un nom précis décrit son rôle ; les paramètres nomment les entrées et indiquent leur type ; le type de retour annonce l’information produite. Les dépendances dont elle a besoin apparaissent comme paramètres ou comme imports visibles plutôt que comme état caché. Cette structure donne à l’appelant une description compacte de l’interface avant même la lecture du corps.</p>
 <p>Deux paramètres du même type peuvent être intervertis sans que le compilateur puisse comprendre l’intention métier. Des noms tels que <code>prix</code> et <code>quantite</code> aident donc autant le lecteur que le diagnostic. Si l’ordre est trop facile à inverser, une forme avec des champs nommés peut rendre l’appel plus explicite.</p>
 
 <h2>Suivre un appel et son retour</h2>
 <p>Dans l’exemple vérifié du panier, <code>main</code> appelle d’abord <code>sous_total(6, 6)</code>. La procédure renvoie 36. La procédure appelante transmet ensuite cette valeur à <code>avec_livraison(36, 6, 6)</code>, qui renvoie 42. La valeur ne saute pas directement de la première ligne au résultat : chaque appel possède ses paramètres, son corps et son retour.</p>
-<p>Cette lecture fournit une méthode de débogage. Note les arguments à l’entrée de la procédure, calcule les expressions locales dans l’ordre, puis note la valeur au <code>return</code>. Si le résultat final est faux, compare la première étape où ta trace diverge du résultat observé.</p>
+<p>Cette lecture fournit une méthode de débogage. Notez les arguments à l’entrée de la procédure, calculez les expressions locales dans l’ordre, puis notez la valeur au <code>return</code>. Si le résultat final est faux, la première divergence entre cette trace et le résultat observé localise le problème.</p>
 
 <h2>Valeur de retour et chemins de contrôle</h2>
-<p>Pour une procédure déclarée <code>-&gt; i64</code>, chaque chemin normal doit pouvoir produire un <code>i64</code>. Dans une condition, vérifie toutes les branches : une branche qui ne renvoie rien peut rendre le corps incomplet. Le retour anticipé est utile quand il clarifie un cas particulier, mais trop de sorties dispersées rendent la lecture du résultat plus difficile.</p>
+<p>Pour une procédure déclarée <code>-&gt; i64</code>, chaque chemin normal doit pouvoir produire un <code>i64</code>. Dans une condition, vérifiez toutes les branches : une branche qui ne renvoie rien peut rendre le corps incomplet. Le retour anticipé est utile quand il clarifie un cas particulier, mais trop de sorties dispersées rendent la lecture du résultat plus difficile.</p>
 <p>Une procédure d’action n’a pas le même objectif qu’une procédure de calcul. Une procédure appelée <code>afficher_resume</code> annonce un effet ; une procédure appelée <code>calculer_total</code> annonce une valeur. Garder les noms et les types cohérents aide l’appelant à savoir s’il doit utiliser un résultat ou simplement appeler l’action.</p>
 
 <h2>Récursion : prouver le rapprochement du cas simple</h2>
 <p>Une procédure récursive se rappelle sur un problème plus petit. Pour calculer une somme jusqu’à <code>n</code>, l’idée mathématique est : la somme de 1 à 1 vaut 1 ; pour une valeur supérieure, la somme jusqu’à <code>n</code> est <code>n</code> plus la somme jusqu’à <code>n - 1</code>. Le cas simple empêche les appels de continuer sans fin, et chaque appel doit s’en rapprocher.</p>
-<p>Avant d’écrire une récursion, réponds à trois questions : quel est le cas d’arrêt ? Quelle mesure diminue ? Quel résultat chaque appel promet-il ? Vérifie également la profondeur maximale et le risque de dépassement numérique. Ces questions portent sur l’algorithme ; elles ne garantissent pas que chaque version du backend supporte le cas précis.</p>
-<p>Pour un calcul répétitif simple, une boucle <code>while</code> est souvent plus facile à tracer avec les constructions runtime confirmées. La récursion reste utile lorsque le problème est naturellement défini par des sous-problèmes, mais vérifie la compilation avant d’en faire le fondement d’un programme.</p>
+<p>Une récursion correcte possède un cas d’arrêt, une mesure qui se rapproche de ce cas et un résultat défini pour chaque appel. La profondeur maximale et le risque de dépassement numérique font partie de ses limites. Ces propriétés décrivent l’algorithme ; elles ne garantissent pas que chaque version du backend supporte le cas précis.</p>
+<p>Pour un calcul répétitif simple, une boucle <code>while</code> est souvent plus facile à tracer avec les constructions runtime confirmées. La récursion reste utile lorsque le problème est naturellement défini par des sous-problèmes, mais vérifiez la compilation avant d’en faire le fondement d’un programme.</p>
 
-<div class="callout"><strong>Correction de l’appel en chaîne</strong><p><code>additionner(18, 24)</code> renvoie 42 ; <code>total_du_panier</code> lie cette valeur à <code>sous_total</code>, puis la renvoie. Le nom local ne crée pas une nouvelle opération : il donne un repère à la valeur calculée par l’appel.</p></div>
-<section class="practice-block">
-  <h2>Atelier guidé : transformer une recette en procédures</h2>
-  <ol>
-    <li>Écris <code>sous_total(prix, quantite)</code>. Donne un nom et un type à chaque paramètre et retourne le produit.</li>
-    <li>Écris <code>ajouter_livraison(sous_total, livraison)</code> au lieu de recopier l’addition dans plusieurs endroits.</li>
-    <li>Écris <code>prix_final</code> qui appelle les deux procédures précédentes. Vérifie que les paramètres racontent les données transmises.</li>
-    <li>Ajoute un contrat à la procédure de livraison. Note une hypothèse que l’appelant doit garantir et une propriété attendue de la valeur renvoyée.</li>
-  </ol>
-  <details><summary>Corrigé détaillé de l’atelier</summary>
-    <p><code>sous_total(prix, quantite)</code> reçoit ses deux données et renvoie leur produit. Pour le cas 6 et 2, elle donne 12. <code>ajouter_livraison(sous_total, livraison)</code> reçoit ce résultat et le coût de livraison ; avec une livraison de 5, elle renvoie 17. <code>prix_final</code> compose les deux appels, sans recopier leurs formules.</p>
-    <p>Un contrat possible exige que le sous-total et la livraison soient non négatifs. Une postcondition pourrait préciser que le résultat est la somme de ces deux entrées. Il faut traiter les limites numériques : la non-négativité seule ne garantit pas qu’une addition ne dépasse jamais la plage du type.</p>
-    <p>La correction est bonne si chaque procédure peut être expliquée par une phrase et si ses entrées sont visibles dans la signature. Les exemples de contrats du dépôt passent par le chemin de compatibilité ; vérifie ce chemin avant de conclure que le même contrat s’exécute dans chaque frontend.</p>
-  </details>
-</section>
+<div class="callout"><strong>Lecture de l’appel en chaîne</strong><p><code>additionner(18, 24)</code> renvoie 42 ; <code>total_du_panier</code> lie cette valeur à <code>sous_total</code>, puis la renvoie. Le nom local ne crée pas une nouvelle opération : il donne un repère à la valeur calculée par l’appel.</p></div>
+<h2>Une procédure définit une frontière de calcul</h2>
+<p>Une procédure sépare une responsabilité du reste du programme. Sa signature annonce le nom, les paramètres et le type de résultat ; son corps contient le calcul et les éventuels effets. Dans <code>additionner(gauche: i64, droite: i64) -&gt; i64</code>, l’appelant connaît les deux entrées requises et sait qu’une valeur <code>i64</code> sera renvoyée. Il n’a pas besoin de connaître la manière dont l’addition est écrite pour utiliser cette interface.</p>
+<p>Cette frontière facilite l’évolution du code. Le corps peut être réorganisé sans changer les appels si la signature et le comportement promis restent stables. À l’inverse, modifier le nom, l’ordre des paramètres ou le type de retour touche les appelants. Des noms de paramètres précis sont particulièrement importants lorsque deux entrées ont le même type : l’analyseur peut vérifier leur ordre, mais il ne peut pas toujours deviner une inversion de sens métier.</p>
+
+<h2>Appel, cadre d’exécution et résultat</h2>
+<p>Un appel transmet des arguments à une nouvelle exécution du corps. Dans l’exemple <code>additionner(18, 24)</code>, le paramètre <code>gauche</code> reçoit 18 et <code>droite</code> reçoit 24 ; l’expression du corps produit 42 ; <code>return</code> renvoie cette valeur à l’endroit de l’appel. Si une procédure appelle ensuite une autre procédure, les calculs s’enchaînent : le retour de l’appel intérieur devient une valeur disponible pour la procédure extérieure.</p>
+<p>La trace conceptuelle suit donc quatre éléments : les arguments transmis, les liaisons locales, les branches parcourues et le point de retour. Elle explique pourquoi un résultat doit être suivi à travers chaque appel au lieu d’être attribué uniquement à <code>main</code>. Pour une procédure déclarée avec <code>-&gt; i64</code>, tous les chemins qui terminent normalement doivent produire un entier compatible. Une branche qui atteint la fin sans valeur laisse la promesse de la signature incomplète.</p>
+
+<h2>Effets, références et récursion</h2>
+<p>Une procédure de calcul et une procédure d’action n’expriment pas la même chose. <code>calculer_total</code> indique un résultat ; <code>afficher_resume</code> annonce un effet sur une sortie. Le nom et le type devraient permettre de distinguer ces usages. Une dépendance cachée à un état global rend cette relation moins visible qu’un paramètre explicite.</p>
+<p>Un paramètre de référence, tel que <code>point: &amp;Point</code>, indique que la procédure consulte une valeur existante. Les détails de propriété, de durée de vie et d’alias ne sont pas prouvés par la simple présence de cette syntaxe ; le backend ciblé doit être pris en compte. La récursion suit un autre modèle : chaque appel crée une nouvelle étape conceptuelle qui doit se rapprocher d’un cas d’arrêt. Une mesure décroissante, un cas de base et des limites de profondeur et de représentation permettent d’expliquer ce calcul. Les boucles restent plus simples pour plusieurs répétitions linéaires, surtout lorsque leur support runtime est mieux confirmé.</p>
+<h2>Paramètre par valeur et paramètres référencés</h2>
+<p>Un paramètre typé par une valeur décrit une donnée fournie à l’appel. Une référence comme <code>&amp;Point</code> décrit un accès à un objet existant. Cette différence peut influencer la copie, la propriété et la possibilité de modification, mais les garanties complètes dépendent des règles de compilation appliquées. La signature devrait rester suffisamment simple pour que l’appelant sache s’il transmet une valeur indépendante ou partage un accès à une valeur conservée ailleurs.</p>
+<p>Une référence en lecture est adaptée lorsque la procédure consulte plusieurs champs d’un objet. Une référence mutable indique une intention d’écriture, qui impose de considérer les alias et les autres accès simultanés. Le backend natif audité rejette le cas de référence de l’exemple au stade HIR, tandis que le bootstrap l’exécute ; cette divergence doit être rattachée au chemin précis et non généralisée à toutes les signatures Vitte.</p>
+
+<h2>Quand scinder une procédure</h2>
+<p>Un corps se comprend mieux lorsque ses blocs correspondent à des étapes nommées du domaine. La validation d’une entrée, le calcul d’un résultat et son affichage ont des effets et des attentes différents. Des procédures séparées peuvent être appelées, examinées et vérifiées indépendamment. Une décomposition excessive, en revanche, peut disperser une opération simple entre des noms qui n’apportent aucune distinction.</p>
+<p>Le bon découpage préserve une chaîne de responsabilités : l’appelant fournit des valeurs, la procédure les interprète selon son contrat, puis elle renvoie un résultat ou réalise un effet annoncé. Les types et noms de paramètres constituent la documentation de cette chaîne. Les clauses <code>requires</code> et <code>ensures</code> ajoutent des propriétés formelles lorsqu’elles sont supportées, mais ne rendent pas automatiquement claire une responsabilité qui n’est pas définie.</p>

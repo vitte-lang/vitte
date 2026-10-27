@@ -5,7 +5,6 @@ chapter: 9
 duration: 55 minutes
 lead: Un programme grandit en plusieurs fichiers. Les modules donnent une adresse logique à chaque fichier, tandis que les imports et exports définissent comment les morceaux se parlent.
 takeaway: Un nom qualifié dit d’où vient une déclaration ; une interface exportée indique ce qu’un autre module peut utiliser.
-practice: Sépare une procédure de calcul dans un module, exporte-la, puis importe le module depuis un fichier appelant.
 ---
 <h2>Un module a un chemin</h2>
 <p>Une déclaration <code>space</code> donne au fichier un chemin de module. Le dépôt montre souvent le chemin correspondant à l’arborescence, avec des barres obliques, et les imports utilisent des segments séparés par <code>::</code>. Les deux graphies sont prévues par la grammaire pour les chemins.</p>
@@ -14,7 +13,7 @@ practice: Sépare une procédure de calcul dans un module, exporte-la, puis impo
 export proc doubler(valeur: i64) -&gt; i64 {
     return valeur * 2;
 }</code></pre>
-<p>Garde le chemin logique du module cohérent avec sa place dans le projet. Quand tu reçois une erreur « module introuvable », vérifie le chemin déclaré, le chemin d’import et la racine de recherche configurée par l’outil.</p>
+<p>Conservez le chemin logique du module cohérent avec sa place dans le projet. Lorsqu’une erreur « module introuvable » apparaît, vérifiez le chemin déclaré, le chemin d’import et la racine de recherche configurée par l’outil.</p>
 
 <h2>Importer un nom</h2>
 <p><code>use</code> rend une déclaration ou un module accessible au fichier courant. Le chemin complet garde la provenance visible. <code>as</code> donne un alias local plus court :</p>
@@ -37,47 +36,50 @@ export proc avec_taxe(prix: i64) -&gt; i64 {
 <p>Le nom <code>TAUX</code> reste privé dans cet exemple, tandis que <code>avec_taxe</code> est exporté. Une interface publique stable permet de réorganiser les détails internes sans demander aux appelants de changer. La grammaire accepte aussi des listes d’exports et l’export d’un module entier ; les règles de réexport ne sont pas toutes prises en charge dans chaque profil de compilation.</p>
 
 <h2>Conflits de noms et visibilité</h2>
-<p>Deux modules peuvent publier le même nom. En conservant les noms qualifiés, on distingue <code>comptes::Point</code> de <code>dessin::Point</code>. Les imports globaux rendent les collisions plus probables et cachent la provenance d’un nom. Utilise des alias explicites si deux noms se ressemblent.</p>
-<p>Il faut aussi distinguer un module importé de ses membres visibles. Importer un module ne doit pas automatiquement donner accès à ses déclarations privées. Si un appel qualifié échoue, vérifie que le nom est bien exporté et qu’il n’y a pas de faute dans un segment du chemin.</p>
+<p>Deux modules peuvent publier le même nom. En conservant les noms qualifiés, on distingue <code>comptes::Point</code> de <code>dessin::Point</code>. Les imports globaux rendent les collisions plus probables et cachent la provenance d’un nom. Utilisez des alias explicites si deux noms se ressemblent.</p>
+<p>Il faut aussi distinguer un module importé de ses membres visibles. Importer un module ne doit pas automatiquement donner accès à ses déclarations privées. Si un appel qualifié échoue, vérifiezz que le nom est bien exporté et qu’il n’y a pas de faute dans un segment du chemin.</p>
 
 <h2>Un exemple à deux fichiers</h2>
-<p>Dans <code>calcul.vit</code>, déclare un chemin de module et exporte une procédure <code>additionner</code>. Dans <code>main.vit</code>, importe le module sous un alias puis appelle cette procédure. Les deux fichiers confirmés se trouvent dans <code>examples/tutorials/modules/</code>.</p>
+<p>Dans <code>calcul.vit</code>, un chemin de module est déclaré avec une procédure <code>additionner</code> exportée. Dans <code>main.vit</code>, le module est importé sous un alias puis la procédure est appelée. Les deux fichiers confirmés se trouvent dans <code>examples/tutorials/modules/</code>.</p>
 <p>Le résolveur de modules cherche les sources selon ses chemins configurés et met en cache des résolutions. Pour un programme de production, documente la racine du projet et les conventions de modules au lieu de dépendre d’un chemin local implicite.</p>
 <div class="callout verified-example"><strong>Exemple vérifié : import, alias et appel qualifié</strong><p>Depuis la racine du dépôt, la variable <code>VITTE_MODULE_PATH=examples</code> ajoute le dossier qui contient les sources importées.</p><pre><code>VITTE_MODULE_PATH=examples build/bin/vitte run examples/tutorials/modules/main.vit --quiet --no-color</code></pre><p>Les sources sont <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/modules/main.vit"><code>main.vit</code></a> et <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/modules/calcul.vit"><code>calcul.vit</code></a>. Résultat confirmé : code de sortie <code>0</code>.</p></div>
-<div class="callout"><strong>Une interface est une promesse</strong><p>Avant d’exporter un nom, demande-toi si les autres modules ont vraiment besoin de le connaître. Moins l’interface publique expose de détails, plus le module peut évoluer sereinement.</p></div>
+<div class="callout"><strong>Une interface est une promesse</strong><p>Avant d’exporter un nom, demandez-vous si les autres modules ont vraiment besoin de le connaître. Moins l’interface publique expose de détails, plus le module peut évoluer sereinement.</p></div>
 
 <h2>Tracer la résolution d’un import</h2>
-<p>Pour comprendre un import, écris son chemin segment par segment. Dans <code>use tutorials::modules::calcul as calcul;</code>, le résolveur doit trouver le module <code>tutorials</code>, puis son enfant <code>modules</code>, puis la déclaration <code>calcul</code>. L’alias final <code>calcul</code> est le nom local à utiliser dans le fichier courant.</p>
-<p>Une erreur de chemin se diagnostique plus facilement si tu vérifies ces éléments séparément :</p>
-<ol>
-  <li>La racine fournie au programme contient-elle le premier segment du chemin ?</li>
-  <li>Le fichier source déclare-t-il le chemin logique attendu par son appelant ?</li>
-  <li>Le nom final correspond-il à une procédure, un type ou un module réellement déclaré ?</li>
-  <li>La déclaration est-elle exportée si elle est appelée depuis un autre module ?</li>
-  <li>L’appel utilise-t-il le nom qualifié exact, avec les segments et l’alias attendus ?</li>
-</ol>
+<p>Pour comprendre un import, écrivez son chemin segment par segment. Dans <code>use tutorials::modules::calcul as calcul;</code>, le résolveur doit trouver le module <code>tutorials</code>, puis son enfant <code>modules</code>, puis la déclaration <code>calcul</code>. L’alias final <code>calcul</code> est le nom local à utiliser dans le fichier courant.</p>
+<table><thead><tr><th>Couche</th><th>Information vérifiée</th></tr></thead><tbody>
+<tr><td>Racine de recherche</td><td>La racine fournie à la CLI contient le premier segment du chemin.</td></tr>
+<tr><td>Chemin logique</td><td>Le fichier source déclare le chemin attendu par son appelant.</td></tr>
+<tr><td>Déclaration</td><td>Le nom final correspond à un type, une procédure ou un module existant.</td></tr>
+<tr><td>Visibilité</td><td>La déclaration appelée depuis un autre module est exportée.</td></tr>
+<tr><td>Nom qualifié</td><td>L’appel utilise les segments et l’alias attendus.</td></tr>
+</tbody></table>
 <p>La commande vérifiée de l’exemple donne une racine explicite avec <code>VITTE_MODULE_PATH=examples</code>. Si l’on omet cette racine, la source principale existe toujours mais le compilateur peut ne pas retrouver la source importée. Cela montre pourquoi un échec de résolution n’est pas nécessairement une erreur dans la procédure importée.</p>
 
 <h2>Découper les responsabilités d’un petit projet</h2>
-<p>Un bon découpage suit les raisons de changer le code. Le module de calcul possède les règles numériques. Un module de modèle peut posséder les types et leurs validations. Le point d’entrée choisit les opérations à appeler et gère les entrées ou sorties disponibles. Évite un fichier par procédure : trop de petits modules rendent les chemins plus difficiles à suivre sans apporter une frontière utile.</p>
-<p>Le sens des dépendances doit rester lisible. Un module de bas niveau ne devrait pas dépendre du point d’entrée ; le point d’entrée peut appeler les modules spécialisés. Lorsqu’un import forme un cycle ou que deux modules dépendent mutuellement de détails internes, cherche une interface plus stable ou un module commun qui porte les types partagés.</p>
+<p>Un bon découpage suit les raisons de changer le code. Le module de calcul possède les règles numériques. Un module de modèle peut posséder les types et leurs validations. Le point d’entrée choisit les opérations à appeler et gère les entrées ou sorties disponibles. Un fichier par procédure crée souvent des chemins difficiles à suivre sans apporter de frontière utile.</p>
+<p>Le sens des dépendances doit rester lisible. Un module de bas niveau ne devrait pas dépendre du point d’entrée ; le point d’entrée peut appeler les modules spécialisés. Lorsqu’un import forme un cycle ou que deux modules dépendent mutuellement de détails internes, cherchez une interface plus stable ou un module commun qui porte les types partagés.</p>
 
 <h2>Stabiliser une interface publique</h2>
 <p>Une signature exportée devient une dépendance pour ses appelants. Renommer le module, changer les paramètres ou transformer un type public peut demander des corrections dans plusieurs fichiers. Avant une modification, recherche tous les imports concernés, puis actualise le producteur et les appelants ensemble.</p>
 <p>Expose une constante seulement si sa valeur fait partie du contrat. Si les appels doivent utiliser un comportement et non la valeur interne d’un réglage, exporte plutôt une procédure qui applique ce réglage. Cette séparation permet de changer le détail sans réécrire chaque appelant.</p>
 
-<div class="callout"><strong>Correction du parcours entre deux fichiers</strong><p>Le module <code>calcul</code> exporte <code>additionner</code> ; <code>main</code> importe le chemin sous le nom local <code>calcul</code> ; l’appel est <code>calcul::additionner(20, 22)</code>. Il faut aussi fournir la racine de recherche <code>examples</code>. Le code de sortie confirmé est 0.</p></div>
-<section class="practice-block">
-  <h2>Atelier guidé : deux fichiers, un contrat</h2>
-  <ol>
-    <li>Crée <code>calcul.vit</code> et déclare le module <code>exercice::calcul</code>. Exporte deux procédures : addition et multiplication.</li>
-    <li>Crée <code>main.vit</code> dans un module distinct et importe <code>exercice::calcul</code>.</li>
-    <li>Appelle les deux procédures via leur chemin qualifié et vérifie les résultats attendus avec des assertions ou un point de retour simple.</li>
-    <li>Rends une troisième procédure privée. Tente de l’appeler depuis <code>main</code>, lis le diagnostic, puis décide si elle doit réellement faire partie de l’interface.</li>
-  </ol>
-  <details><summary>Corrigé détaillé de l’atelier</summary>
-    <p>Le fichier producteur porte <code>space exercice::calcul;</code> et exporte les procédures. Le fichier principal déclare son propre chemin, importe <code>exercice::calcul</code> sous un alias et appelle les fonctions avec cet alias suivi de <code>::</code>. La racine de recherche doit contenir le répertoire <code>exercice</code>.</p>
-    <p>Une procédure sans <code>export</code> doit rester inaccessible depuis le module appelant. Si l’appel échoue sur cette procédure, le diagnostic correspond à la frontière de visibilité ; rendre toutes les déclarations publiques n’est pas une correction automatique. N’exporte le helper que si un autre module a réellement besoin de l’appeler.</p>
-    <p>Le cas de référence du dépôt utilise <code>VITTE_MODULE_PATH=examples</code>, importe le module calcul et s’exécute avec le frontend natif. La preuve s’applique à ce chemin et à ces signatures ; les imports groupés ou réexports peuvent suivre un autre niveau de support.</p>
-  </details>
-</section>
+<div class="callout"><strong>Chemin d’import confirmé entre deux fichiers</strong><p>Le module <code>calcul</code> exporte <code>additionner</code> ; <code>main</code> importe le chemin sous le nom local <code>calcul</code> ; l’appel est <code>calcul::additionner(20, 22)</code>. Il faut aussi fournir la racine de recherche <code>examples</code>. Le code de sortie confirmé est 0.</p></div>
+<h2>Identité du module et résolution du fichier</h2>
+<p>Un module possède un nom logique déclaré avec <code>space</code> et se trouve également dans une organisation de fichiers. Ces deux informations doivent rester cohérentes pour l’outil qui résout les imports. Le nom qualifié <code>tutorials::modules::calcul</code> indique un chemin logique ; <code>VITTE_MODULE_PATH=examples</code> indique à la CLI une racine de recherche dans l’exemple vérifié. Le chemin physique du fichier et le chemin utilisé dans le code jouent donc des rôles liés, mais distincts.</p>
+<p>Une erreur « module introuvable » se situe avant l’accès à ses procédures. Une erreur « déclaration inconnue » peut indiquer que le module est présent, mais que le nom demandé n’existe pas sous cette graphie. Une erreur de visibilité indique que la déclaration est trouvée mais pas accessible depuis cet endroit. Enfin, une erreur d’appel peut porter sur les paramètres ou les types. Reconnaître ce classement réduit le nombre de pistes à examiner.</p>
+
+<h2>Les imports explicitent les dépendances</h2>
+<p>Dans <code>use tutorials::modules::calcul as calcul;</code>, le chemin identifie le module importé et l’alias fournit un nom local. L’appel <code>calcul::additionner(20, 22)</code> conserve la provenance de la procédure. Cette qualification aide à distinguer deux déclarations qui porteraient le même nom dans des modules différents et permet au lecteur de voir quelles parties du programme dépendent de quelle interface.</p>
+<p>Les imports globaux, réexports et cycles de dépendances peuvent compliquer cette lecture. Une dépendance circulaire rend plus difficile l’identification du propriétaire d’un type ou d’une règle. Une organisation où les modèles centraux sont importés par des modules de calcul et de présentation, sans dépendance inverse, donne une direction plus claire au graphe. Les capacités précises de la CLI restent à confirmer pour les formes qui dépassent les imports déjà exercés.</p>
+
+<h2>Visibilité et stabilité d’une API</h2>
+<p><code>export</code> expose une déclaration comme partie de l’interface du module. Les paramètres, types référencés et valeur de retour sont alors visibles pour les appelants. Exporter un type dont les champs ou les règles changent fréquemment peut rendre les consommateurs dépendants de détails internes. À l’inverse, une procédure exportée qui exprime une opération métier peut permettre au module de changer sa représentation sans modifier les appels.</p>
+<p>Une API stable se juge par ses promesses : nom compréhensible, types accessibles, comportement documenté et règles d’erreur cohérentes. Lorsqu’une signature évolue, les appels, imports, tests et chemins de résolution concernés doivent évoluer avec elle. L’exemple à deux fichiers du dépôt montre la forme concrète de cette frontière : le module <code>calcul</code> possède le calcul, puis <code>main</code> importe et appelle l’opération qualifiée.</p>
+<h2>Les erreurs d’import se distinguent par étape</h2>
+<p>La résolution commence par la localisation du module. Si le chemin source n’est pas trouvé, l’environnement et la racine de recherche sont en cause. Quand le module est chargé, le compilateur doit résoudre le nom importé et vérifier sa visibilité. Une fois le nom disponible, la vérification de la signature compare les arguments. Ces étapes forment une chaîne : la correction d’un chemin ne peut pas réparer un type de paramètre incorrect, et l’ajout d’un export ne peut pas créer un fichier manquant.</p>
+<p>Dans l’exemple confirmé, <code>VITTE_MODULE_PATH=examples</code> rend le module accessible, l’alias <code>calcul</code> raccourcit son chemin et <code>export</code> publie <code>additionner</code>. Le code de retour 0 établit que cet ensemble précis de fichiers et de paramètres fonctionne avec le binaire natif utilisé. Une structure de modules plus complexe nécessite ses propres preuves.</p>
+
+<h2>Chemins et portabilité</h2>
+<p>Les chemins de module peuvent être affectés par la disposition du dépôt et la manière de lancer la CLI. Un chemin relatif dépend du répertoire de travail ; une variable d’environnement peut modifier la racine ; un système de fichiers peut distinguer les majuscules de manière différente selon la plateforme. Un projet partageable doit documenter la commande qui charge ses modules et éviter les chemins secrets connus seulement de l’environnement du développeur.</p>
+<p>Cette portabilité se vérifie avec des noms cohérents et une configuration explicite. Les noms logiques, les alias et les chemins physiques doivent être examinés séparément. La grammaire définit ce qui est permis dans le source ; l’outil d’importation décide où chercher ; la plateforme détermine les détails des chemins de fichiers.</p>

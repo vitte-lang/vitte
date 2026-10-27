@@ -3,9 +3,8 @@ title: Contrats et validation
 permalink: /cours/16-contrats/
 chapter: 16
 duration: 65 minutes
-lead: Une procédure a des conditions d’entrée et promet un résultat. Apprenons à rendre ces engagements explicites, puis à choisir entre un contrat destiné aux appels incorrects et une erreur que le programme doit traiter.
+lead: Une procédure a des conditions d’entrée et promet un résultat. Cette leçon rend ces engagements explicites, puis à choisir entre un contrat destiné aux appels incorrects et une erreur que le programme doit traiter.
 takeaway: Un contrat décrit les conditions d’utilisation d’une procédure ; une validation transforme une entrée incertaine en décision explicite.
-practice: Écris une précondition et une postcondition pour une procédure de calcul, puis identifie les entrées qui doivent plutôt produire un résultat d’erreur.
 ---
 <h2>Une signature dit déjà quelque chose</h2>
 <p>Dans <code>proc doubler(valeur: i64) -&gt; i64</code>, le type annonce une entrée et une sortie numériques. Il ne dit pas si les valeurs négatives ont un sens, ni quelle relation doit exister entre l’entrée et la sortie. Un contrat peut préciser ces propriétés :</p>
@@ -18,9 +17,9 @@ practice: Écris une précondition et une postcondition pour une procédure de c
 <p><code>requires</code> exprime une condition sur les paramètres avant l’appel. <code>ensures</code> décrit une propriété du résultat après l’exécution ; <code>result</code> désigne la valeur renvoyée. Le corps reste responsable de tenir cette promesse.</p>
 
 <h2>Écrire des engagements utiles</h2>
-<p>Une précondition doit préciser ce que l’appelant est tenu de fournir. Une postcondition doit préciser ce que l’appelant pourra ensuite supposer. Préfère une propriété simple à une formule qui répète tout le corps de la procédure.</p>
-<p>Pour une procédure qui calcule un prix après remise, les questions utiles sont par exemple : le taux doit-il se situer entre 0 et 100 ? Le résultat doit-il rester inférieur ou égal au prix d’origine ? Comment traiter un prix négatif ? Écris d’abord ces règles en français, puis transforme les règles précises en expressions.</p>
-<p>Évite les contrats tautologiques. <code>ensures result == result;</code> est toujours vrai, mais n’apprend rien à l’appelant. Une bonne postcondition relie le résultat aux paramètres ou à une propriété métier.</p>
+<p>Une précondition doit préciser ce que l’appelant est tenu de fournir. Une postcondition doit préciser ce que l’appelant pourra ensuite supposer. Préférez une propriété simple à une formule qui répète tout le corps de la procédure.</p>
+<p>Pour un calcul de prix après remise, le contrat précise notamment que le taux appartient à l’intervalle de 0 à 100, que le résultat respecte la règle métier par rapport au prix d’origine et que les prix négatifs suivent un traitement défini. Ces propriétés se traduisent ensuite en expressions vérifiables.</p>
+<p>Évitez les contrats tautologiques. <code>ensures result == result;</code> est toujours vrai, mais n’apprend rien à l’appelant. Une bonne postcondition relie le résultat aux paramètres ou à une propriété métier.</p>
 
 <h2>Contrat ou erreur à traiter ?</h2>
 <p>Le choix dépend de la source de l’entrée et de la réaction attendue :</p>
@@ -34,45 +33,49 @@ practice: Écris une précondition et une postcondition pour une procédure de c
 <h2>Lire la preuve disponible dans le dépôt</h2>
 <p>Le fichier <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/contrats.vit"><code>contrats.vit</code></a> contient le contrat de <code>doubler</code> et appelle la procédure avec <code>21</code>. Dans le dépôt audité, cet exemple passe par le chemin de compatibilité de la CLI :</p>
 <pre><code>build/bin/vitte run examples/tutorials/contrats.vit --quiet --no-color</code></pre>
-<p>Résultat confirmé : code de sortie <code>0</code>. Cela établit l’exécution de ce cas valide dans ce chemin. Cela ne prouve pas à lui seul le comportement d’une violation de précondition dans chaque frontend. Pour ce détail, consulte la <a href="{{ '/reference/support/' | relative_url }}">matrice de support Vitte</a> et conserve la distinction entre une syntaxe décrite, une procédure vérifiée et un comportement runtime observé.</p>
+<p>Résultat confirmé : code de sortie <code>0</code>. Cela établit l’exécution de ce cas valide dans ce chemin. Cela ne prouve pas à lui seul le comportement d’une violation de précondition dans chaque frontend. Pour ce détail, consultez la <a href="{{ '/reference/support/' | relative_url }}">matrice de support Vitte</a> et conservez la distinction entre une syntaxe décrite, une procédure vérifiée et un comportement runtime observé.</p>
 
 <h2>Décomposer une règle métier</h2>
-<p>Prends la règle « doubler accepte une valeur positive ou nulle et renvoie son double ». Elle se décompose en trois affirmations :</p>
+<p>Prenez la règle « doubler accepte une valeur positive ou nulle et renvoie son double ». Elle se décompose en trois affirmations :</p>
 <ol>
   <li><code>valeur &gt;= 0</code> est une condition d’entrée.</li>
   <li><code>result == valeur * 2</code> est une propriété de sortie.</li>
   <li>Le calcul dans le corps doit produire cette valeur pour toutes les entrées autorisées.</li>
 </ol>
-<p>La troisième affirmation ne découle pas de l’écriture de la première et de la deuxième. Elle demande une vérification adaptée au projet. Pour les petites fonctions, compare des cas simples ; pour des opérations plus délicates, ajoute des tests de frontière et vérifie les risques de dépassement numérique.</p>
+<p>La troisième affirmation ne découle pas de l’écriture de la première et de la deuxième. Elle demande une vérification adaptée au projet. Pour les petites fonctions, comparez des cas simples ; pour des opérations plus délicates, ajoutez des tests de frontière et vérifiez les risques de dépassement numérique.</p>
 
 <h2>Séparer l’obligation de l’appelant de la promesse de la procédure</h2>
-<p>Un contrat a deux côtés. L’appelant doit respecter les conditions d’entrée. La procédure doit respecter sa postcondition si ces conditions sont satisfaites. Si tu ajoutes une condition qui dépend d’une donnée que l’appelant ne peut pas connaître, l’interface devient difficile à utiliser. Si ta postcondition affirme seulement une propriété déjà garantie par le type, elle n’ajoute peut-être rien.</p>
+<p>Un contrat a deux côtés. L’appelant doit respecter les conditions d’entrée. La procédure doit respecter sa postcondition si ces conditions sont satisfaites. Si vous ajoutez une condition qui dépend d’une donnée que l’appelant ne peut pas connaître, l’interface devient difficile à utiliser. Si votre postcondition affirme seulement une propriété déjà garantie par le type, elle n’ajoute peut-être rien.</p>
 <p>Pour <code>doubler</code>, l’appelant fournit une valeur non négative ; la procédure promet le double. Le corps pourrait être remplacé plus tard par une autre implémentation sans changer le contrat, tant que la propriété reste vraie et que les limites numériques sont respectées.</p>
 
 <h2>Contrats et limites numériques</h2>
 <p>Une formule mathématique exacte ne tient pas toujours pour toutes les valeurs d’un entier machine. Le produit <code>valeur * 2</code> peut dépasser la plage représentable. La précondition <code>valeur &gt;= 0</code> ne suffit donc pas à démontrer la postcondition pour toute valeur de type <code>i64</code> si la plage maximale n’est pas également prise en compte.</p>
-<p>Quand la borne dépend du type, vérifie la constante de limite fournie par la bibliothèque ou introduis une condition qui empêche le dépassement selon les opérations prises en charge. Ne suppose pas que l’arithmétique s’enroule, se sature ou lève une erreur sans preuve dans la documentation de la cible.</p>
+<p>Quand la borne dépend du type, vérifiezz la constante de limite fournie par la bibliothèque ou introduisez une condition qui empêche le dépassement selon les opérations prises en charge. Ne supposez pas que l’arithmétique s’enroule, se sature ou lève une erreur sans preuve dans la documentation de la cible.</p>
 
 <h2>Validation contrôlée ou précondition ?</h2>
-<p>Imagine une quantité envoyée par un fichier de configuration. Si le fichier contient une quantité négative, le programme peut afficher une erreur compréhensible et demander une correction : la donnée doit être validée à la frontière. À l’inverse, si une procédure interne ne doit recevoir que des valeurs validées, un contrat peut signaler que l’un de ses appels viole la règle de conception.</p>
+<p>Imaginez une quantité envoyée par un fichier de configuration. Si le fichier contient une quantité négative, le programme peut afficher une erreur compréhensible et demander une correction : la donnée doit être validée à la frontière. À l’inverse, si une procédure interne ne doit recevoir que des valeurs validées, un contrat peut signaler que l’un de ses appels viole la règle de conception.</p>
 <p>La validation transforme une donnée incertaine en un état reconnu. Un contrat décrit la relation entre les procédures qui se font confiance dans le programme. Mélanger les deux rend l’erreur difficile à traiter : une saisie incorrecte ne devrait pas provoquer une panne interne inexpliquée.</p>
 
 <h2>Progresser sans surestimer l’outil</h2>
-<p>Le dépôt confirme l’exécution de <code>contrats.vit</code> par son chemin de compatibilité, avec un appel valide. La preuve ne décrit pas toutes les réactions possibles lors d’une violation, ni ne garantit que chaque frontend traite les clauses de la même manière. Documente séparément le contrat souhaité et le comportement mesuré du compilateur.</p>
-<p>Pour renforcer cette preuve, ajoute au projet un cas valide près de la borne et un cas invalide contrôlé. Si la version de la CLI n’exécute pas la violation comme tu le souhaites, note le résultat et place la validation explicite dans le code d’appel.</p>
+<p>Le dépôt confirme l’exécution de <code>contrats.vit</code> par son chemin de compatibilité, avec un appel valide. La preuve ne décrit pas toutes les réactions possibles lors d’une violation, ni ne garantit que chaque frontend traite les clauses de la même manière. Documentez séparément le contrat souhaité et le comportement mesuré du compilateur.</p>
+<p>La preuve disponible porte sur un appel valide. Le comportement d’une violation reste à établir séparément pour chaque chemin de compilation ; lorsque la CLI ne vérifie pas cette réaction, une validation explicite à la frontière de l’appel reste nécessaire.</p>
 
 <div class="callout"><strong>Vérification du cas de doublement</strong><p>Pour la valeur 21, la précondition est vraie et le résultat attendu vaut 42. Pour une valeur négative, le contrat ne décrit pas un appel autorisé. Pour une valeur proche de la limite de <code>i64</code>, le calcul peut dépasser la représentation : la règle doit tenir compte de cette frontière elle aussi.</p></div>
-<section class="practice-block">
-  <h2>Atelier avancé : concevoir un prix remisé</h2>
-  <ol>
-    <li>Écris en français la règle d’une procédure qui prend un prix et un pourcentage de remise.</li>
-    <li>Propose une condition d’entrée pour un prix et pour un taux compris entre 0 et 100.</li>
-    <li>Décris une propriété de sortie vérifiable sans recopier le corps complet.</li>
-    <li>Décide comment traiter un prix ou un taux reçu d’un utilisateur : précondition ou résultat d’erreur ? Justifie ta décision.</li>
-  </ol>
-  <details><summary>Correction guidée</summary>
-    <p>Pour un appel interne, les conditions <code>prix &gt;= 0</code> et <code>taux &gt;= 0 and taux &lt;= 100</code> décrivent l’entrée autorisée. Une postcondition doit relier le prix final au prix et au taux, après avoir défini l’unité et l’arrondi.</p>
-    <p>Si ces valeurs viennent d’un utilisateur, valide-les avant de calculer et renvoie un état d’erreur explicite : une saisie incorrecte est une situation normale. Pour une procédure interne, un contrat peut documenter les hypothèses que les appelants doivent respecter.</p>
-    <p>Les limites numériques restent à examiner. Le contrat de plage du taux ne suffit pas si le produit intermédiaire dépasse le type entier. La fixture positive de <code>contrats.vit</code> confirme un cas d’exécution par compatibilité ; elle ne prouve pas le comportement de chaque violation ou frontend.</p>
-  </details>
-</section>
+<h2>Précondition et postcondition décrivent une relation</h2>
+<p>Une précondition restreint le domaine des appels autorisés. Une postcondition précise ce qui sera vrai du résultat lorsque l’appel respecte la précondition et que la procédure termine normalement. Pour <code>doubler</code>, <code>valeur &gt;= 0</code> décrit une partie du domaine ; <code>result == valeur * 2</code> décrit une relation entre l’entrée et le résultat. La signature donne les types, tandis que le contrat ajoute les propriétés qui ne sont pas exprimées par ces types seuls.</p>
+<p>Une postcondition utile est plus informative que le corps recopié sous une autre forme. Elle peut rester stable même si l’algorithme change. Si l’implémentation passe d’une multiplication à une autre méthode équivalente, la promesse demeure la même. À l’inverse, une propriété tautologique telle que <code>result == result</code> n’impose aucun lien avec les paramètres ou le domaine métier.</p>
+
+<h2>La frontière d’entrée transforme une donnée incertaine</h2>
+<p>Une donnée lue depuis un fichier, une option de ligne de commande ou une interface utilisateur est incertaine avant validation. Le programme ne peut pas présumer que l’appelant a respecté ses contraintes. Une validation à cette frontière transforme l’entrée en une valeur reconnue ou en un état d’erreur qui peut être affiché et traité. Une précondition convient davantage aux appels internes dont les responsabilités sont établies par la conception du programme.</p>
+<p>La distinction a une conséquence pratique : un contrat violé peut signaler un défaut de programmation, tandis qu’une entrée invalide peut être une situation ordinaire. Les deux peuvent partager une expression logique comme <code>quantite &gt;= 0</code>, mais leur réaction attendue diffère. La première peut interrompre ou diagnostiquer un chemin incorrect ; la seconde doit souvent permettre à l’application de continuer après un message compréhensible.</p>
+
+<h2>La preuve doit tenir compte des entiers machine</h2>
+<p>La propriété mathématique « le double de <code>n</code> vaut <code>n + n</code> » ne garantit pas que le résultat tient dans <code>i64</code>. Une valeur positive proche de la borne supérieure peut dépasser la représentation. Le contrat doit intégrer la limite numérique si l’opération s’effectue dans ce type, et le comportement exact en cas de dépassement dépend de la cible et du runtime.</p>
+<p>Dans le dépôt, l’exemple <code>contrats.vit</code> s’exécute avec une entrée valide et renvoie un statut réussi par le chemin de compatibilité documenté. Cela confirme ce cas précis ; cela ne démontre pas comment une violation est signalée dans chaque frontend ni que toute valeur satisfaisant la précondition simplifiée peut être doublée sans dépassement. La portée exacte de la preuve fait donc partie de l’explication du contrat.</p>
+<h2>Validité, sécurité et confiance entre couches</h2>
+<p>Un contrat formalise la confiance entre une procédure et ses appelants. La couche qui reçoit une donnée externe ne peut pas s’appuyer sur une promesse non encore vérifiée ; elle est responsable de la validation. Une procédure interne peut ensuite recevoir une valeur déjà validée et se concentrer sur son invariant. Cette organisation évite que chaque calcul répète toute la validation tout en gardant une frontière sûre au point d’entrée.</p>
+<p>Un contrat trop strict rejette des valeurs que l’API pourrait traiter ; un contrat trop faible autorise des appels pour lesquels le corps ne peut pas tenir sa promesse. La précision demande de connaître le domaine, les valeurs limites et les opérations numériques. Des clauses lisibles sont préférables à une formule dense que l’appelant ne peut pas interpréter.</p>
+
+<h2>Contrat vérifié et contrat supposé</h2>
+<p>Une spécification dans le code indique l’intention. Une analyse statique peut vérifier certaines propriétés ; un runtime peut évaluer une clause ; des tests peuvent observer des appels particuliers. Ces formes de preuve ne sont pas équivalentes. Un contrat accepté par l’analyseur n’est pas nécessairement prouvé mathématiquement, et un appel valide exécuté ne montre pas le traitement d’une violation.</p>
+<p>Pour Vitte, l’exemple lié sur cette page confirme un appel valide par le chemin de compatibilité disponible. Les réactions exactes aux violations restent dépendantes du frontend et de sa génération. La documentation de l’application doit donc distinguer la garantie de conception, la vérification du compilateur et les comportements effectivement observés.</p>

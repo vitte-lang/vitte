@@ -3,9 +3,8 @@ title: Modéliser les données et les états
 permalink: /cours/15-modelisation/
 chapter: 15
 duration: 70 minutes
-lead: Un bon type rend les états valides faciles à décrire et les états incohérents difficiles à construire. Dans cette leçon, tu vas choisir entre une forme et un choix, puis suivre une valeur de résultat jusque dans son traitement.
-takeaway: Utilise `form` pour des propriétés présentes ensemble et `pick` pour des variantes exclusives.
-practice: Remplace trois indicateurs booléens d’un état métier par un type Vitte qui ne permet que les états prévus.
+lead: Un bon type rend les états valides faciles à décrire et les états incohérents difficiles à construire. Dans cette leçon, vous allez choisir entre une forme et un choix, puis suivre une valeur de résultat jusque dans son traitement.
+takeaway: Utilisez `form` pour des propriétés présentes ensemble et `pick` pour des variantes exclusives.
 ---
 <h2>Décrire les choses qui coexistent avec <code>form</code></h2>
 <p>Une forme rassemble les propriétés d’un même objet. Un point possède une coordonnée horizontale et une coordonnée verticale au même moment :</p>
@@ -37,27 +36,27 @@ proc valeur(resultat: Resultat) -&gt; i64 {
 <p>Dans le bras <code>Ok</code>, <code>nombre</code> reçoit la charge utile. Dans le bras <code>Echec</code>, aucune valeur n’est disponible. Ce modèle distingue un résultat absent d’une valeur numérique ordinaire. Le code <code>-1</code> de cette fonction n’est qu’une convention de l’exemple ; dans une API, renvoyer un autre <code>pick</code> peut préserver la distinction entre résultat et échec.</p>
 
 <h2>La différence de représentation change le raisonnement</h2>
-<p>Suppose qu’un téléchargement puisse être en attente, terminé ou échoué. Trois booléens peuvent représenter huit combinaisons ; plusieurs ne veulent rien dire, comme « terminé et en attente ». Un <code>pick Etat { EnAttente, Termine, Echec }</code> nomme seulement les cas utiles.</p>
-<p>Si une variante doit transporter une information, donne-lui une charge utile adaptée : un échec peut contenir un code ou une position. Garde chaque donnée près de la variante à laquelle elle appartient. Cette structure évite qu’un champ d’erreur reste renseigné alors que l’opération a réussi.</p>
-<p>Dans l’autre sens, ne transforme pas en variantes des propriétés qui peuvent coexister. Un utilisateur qui a un identifiant, un nom et une adresse est une forme, même si chacune de ces valeurs peut être modifiée séparément.</p>
+<p>Supposons qu’un téléchargement puisse être en attente, terminé ou échoué. Trois booléens peuvent représenter huit combinaisons ; plusieurs ne veulent rien dire, comme « terminé et en attente ». Un <code>pick Etat { EnAttente, Termine, Echec }</code> nomme seulement les cas utiles.</p>
+<p>Si une variante doit transporter une information, donnez-lui une charge utile adaptée : un échec peut contenir un code ou une position. Gardez chaque donnée près de la variante à laquelle elle appartient. Cette structure évite qu’un champ d’erreur reste renseigné alors que l’opération a réussi.</p>
+<p>Dans l’autre sens, ne transformez pas en variantes des propriétés qui peuvent coexister. Un utilisateur qui a un identifiant, un nom et une adresse est une forme, même si chacune de ces valeurs peut être modifiée séparément.</p>
 
 <h2>Lire puis décomposer l’exemple vérifié</h2>
 <p>Le fichier <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/formes-choix.vit"><code>formes-choix.vit</code></a> combine les deux idées : il construit un <code>Point</code>, puis construit <code>Resultat::Ok(42)</code> et récupère la charge utile avec <code>match</code>. Le fichier complet s’exécute avec le frontend natif :</p>
 <pre><code>build/bin/vitte run examples/tutorials/formes-choix.vit --quiet --no-color</code></pre>
-<p>Résultat confirmé : code de sortie <code>0</code>. Pour apprendre chaque étape séparément, commente la procédure <code>valeur</code>, vérifie la lecture des champs de <code>Point</code>, puis rétablis la procédure et suis les deux bras de <code>match</code>.</p>
+<p>Résultat confirmé : code de sortie <code>0</code>. La procédure <code>valeur</code> renvoie la charge utile dans le bras <code>Ok</code> et une valeur de repli dans le bras <code>Echec</code>. La lecture des champs du <code>Point</code> constitue l’autre partie de l’exemple.</p>
 
-<h2>Une méthode de conception en quatre questions</h2>
-<ol>
-  <li>Quelles propriétés existent simultanément ? Regroupe-les dans une forme.</li>
-  <li>Quels cas s’excluent mutuellement ? Énumère-les dans un choix.</li>
-  <li>Quelle information est nécessaire dans chaque cas ? Place-la dans la charge utile de la variante concernée.</li>
-  <li>Quelle règle doit toujours rester vraie ? Écris-la en une phrase et décide où la contrôler.</li>
-</ol>
-<p>Quand tu hésites, écris deux ou trois valeurs concrètes que le type devrait pouvoir représenter. Puis cherche une combinaison qui serait invalide. Si elle peut être construite facilement, le modèle peut probablement être amélioré.</p>
+<h2>Une méthode de conception en quatre décisions</h2>
+<ul>
+  <li>Les propriétés présentes simultanément sont regroupées dans une forme.</li>
+  <li>Les états exclusifs sont représentés par les variantes d’un choix.</li>
+  <li>Une information propre à un état est placée dans la charge utile de cette variante.</li>
+  <li>Chaque invariant persistant est associé à un point de validation.</li>
+</ul>
+<p>Deux ou trois valeurs concrètes révèlent ce que le type doit représenter. Les combinaisons qui n’ont pas de sens révèlent les invariants que le modèle devrait rendre explicites. Si une combinaison invalide reste facile à construire, le modèle ou sa procédure de validation peut être amélioré.</p>
 
 <h2>Modéliser une transition, pas seulement un état</h2>
 <p>Un choix décrit les états possibles ; les procédures décrivent les transitions permises entre eux. Pour une réservation, on peut définir une opération <code>confirmer</code> qui accepte l’état disponible et refuse un état déjà annulé. Le type seul ne précise pas quelles transitions sont permises : il faut les écrire dans la logique de l’application et les vérifier avec des exemples.</p>
-<p>Avant d’ajouter une procédure de transition, construis une table :</p>
+<p>Une table de transition résume les états sources, les commandes possibles et les résultats associés :</p>
 <table><thead><tr><th>État courant</th><th>Opération</th><th>Résultat attendu</th></tr></thead><tbody>
 <tr><td>Disponible</td><td>confirmer</td><td>Confirmée</td></tr>
 <tr><td>Confirmée</td><td>annuler</td><td>Annulée</td></tr>
@@ -67,24 +66,28 @@ proc valeur(resultat: Resultat) -&gt; i64 {
 
 <h2>Placer une donnée dans la variante qui la justifie</h2>
 <p>Supposons que seule une annulation ait une raison. Si la raison est un champ de la forme, elle doit recevoir une valeur même quand la réservation est disponible ou confirmée. Un <code>pick</code> peut au contraire placer cette donnée dans la variante qui en a besoin. Les types avec charge utile existent dans le dépôt, comme <code>Resultat::Ok(i64)</code>.</p>
-<p>Évite de dupliquer la même information dans un champ et dans une variante. Deux sources de vérité peuvent diverger après une modification. Choisis l’endroit qui est naturellement propriétaire de la règle et adapte les procédures d’accès à ce modèle.</p>
+<p>Évitez de dupliquer la même information dans un champ et dans une variante. Deux sources de vérité peuvent diverger après une modification. Choisissez l’endroit qui est naturellement propriétaire de la règle et adapte les procédures d’accès à ce modèle.</p>
 
 <h2>Vérifier la construction réelle d’un modèle</h2>
 <p>Le fichier <code>formes-choix.vit</code> fournit une preuve de construction d’une forme, de lecture de ses champs, de construction d’un <code>pick</code> avec charge utile et de récupération de cette charge dans <code>match</code>. Cette preuve est plus forte qu’une déclaration isolée dans la grammaire, mais elle reste limitée aux types et opérations exercés par ce programme.</p>
-<p>Pour une forme imbriquée, un champ mutable, une référence vers une variante ou une correspondance plus complexe, écris un petit fichier distinct. Ne déduis pas qu’une propriété avancée fonctionne parce qu’un exemple voisin fonctionne.</p>
+<p>Pour une forme imbriquée, un champ mutable, une référence vers une variante ou une correspondance plus complexe, écrivez un petit fichier distinct. Ne déduisez pas qu’une propriété avancée fonctionne parce qu’un exemple voisin fonctionne.</p>
 
 <div class="callout"><strong>Une règle de modèle à vérifier</strong><p>Si une réservation est confirmée, elle doit posséder son numéro de confirmation. Un modèle qui garde un numéro facultatif dans toutes les variantes nécessite une règle de validation. Un modèle qui place ce numéro uniquement dans la variante « confirmée » rend la relation plus explicite, sous réserve de vérifier que cette forme est prise en charge par la cible utilisée.</p></div>
-<section class="practice-block">
-  <h2>Atelier avancé : état d’une réservation</h2>
-  <ol>
-    <li>Une réservation possède un numéro et une date : décris ces propriétés avec une forme.</li>
-    <li>Une réservation est disponible, confirmée ou annulée : décris les états exclusifs avec un choix.</li>
-    <li>Ajoute une charge utile à l’annulation pour conserver la raison. Écris les bras d’un <code>match</code> qui traitent les trois variantes.</li>
-    <li>Énumère une règle métier, par exemple « une réservation confirmée possède un numéro de confirmation ». Décide si cette règle appartient au modèle, à une validation ou à un contrat.</li>
-  </ol>
-  <details><summary>Correction détaillée</summary>
-    <p>Le numéro et la date coexistent : ils appartiennent donc à une <code>form Reservation</code>. Les états « disponible », « confirmée » et « annulée » s’excluent : ils forment un <code>pick EtatReservation</code>. La raison ne concerne que l’annulation ; place-la avec cette variante si la syntaxe exacte est acceptée par la cible utilisée.</p>
-    <p>Les transitions autorisées peuvent être disponibles → confirmée, confirmée → annulée, et indisponible → refus. La dernière situation peut être un résultat d’erreur normal ou une précondition violée selon la provenance de l’appel.</p>
-    <p>La preuve du dépôt confirme un <code>pick</code> avec charge utile et un <code>match</code> dans une fixture précise. Elle ne confirme pas automatiquement chaque façon d’imbriquer des types ou des charges utiles.</p>
-  </details>
-</section>
+<h2>Passer des états à leurs transitions</h2>
+<p>Un modèle décrit les états possibles ; le comportement du programme décrit comment passer de l’un à l’autre. Une réservation peut être disponible, confirmée ou annulée. La transition « confirmer » n’a de sens que depuis l’état disponible ; l’appliquer à une réservation déjà annulée doit avoir une issue définie. Le type <code>pick Etat</code> rend les états exclusifs visibles, mais il n’impose pas à lui seul quelles transitions sont autorisées.</p>
+<p>Une procédure de transition exprime cette règle. Elle peut renvoyer un nouvel état ou un résultat distinct lorsque la transition est refusée. Il faut définir si l’opération modifie l’objet existant, produit une nouvelle valeur ou signale une erreur. Ces choix ont un effet sur les paramètres, la mutabilité et le comportement des appels. Le modèle reste plus facile à maintenir lorsque l’état courant, l’action demandée et la nouvelle valeur sont tous discernables.</p>
+
+<h2>Placer chaque donnée là où elle est toujours pertinente</h2>
+<p>Un identifiant, un nom et une adresse coexistent pour un utilisateur ; ils appartiennent naturellement à une <code>form</code>. Une raison d’annulation n’existe que pour une réservation annulée ; la placer parmi les champs communs oblige à lui attribuer une valeur sans sens dans les autres états. Une variante porteuse de données peut associer la raison au cas concerné. Cela réduit les contradictions entre champs et les vérifications nécessaires à chaque lecture.</p>
+<p>Une représentation redondante crée plusieurs sources de vérité. Si l’état indique « confirmé » tandis qu’un booléen séparé indique « non réservé », les mises à jour doivent synchroniser les deux champs. Un seul type <code>pick</code> évite ces combinaisons incompatibles en ne permettant qu’un cas nommé à la fois. Il reste nécessaire de vérifier les garanties réelles du compilateur lorsqu’une variante contient des charges utiles ou est passée par référence.</p>
+
+<h2>Faire évoluer un modèle sans casser ses appelants</h2>
+<p>Ajouter une variante modifie les traitements qui supposent connaître tous les cas. Ajouter un champ peut modifier les sites de construction d’une forme. Renommer un état touche les comparaisons, les <code>match</code>, les exports et potentiellement les valeurs sérialisées par l’application. Le choix d’un nom et d’une représentation est donc aussi une décision d’évolution d’API.</p>
+<p>Les exemples de <code>Point</code> et <code>Resultat</code> montrent deux formes différentes de relation. Les champs d’un point coexistent ; la réussite et l’échec sont exclusifs ; la charge utile du succès appartient à sa variante. Cette lecture permet de préserver les états nommés même lorsque l’outil ne vérifie pas encore toute l’exhaustivité ou chaque forme générique. Une documentation précise alors la règle du modèle et indique à part les limites de compilation confirmées.</p>
+<h2>États invalides et représentation contrôlée</h2>
+<p>Un modèle peut exclure certaines situations par sa structure, ou les laisser représentables et les détecter par validation. Un <code>pick</code> empêche de stocker simultanément deux variantes exclusives si son fonctionnement est correctement imposé. Une <code>form</code> peut encore représenter des champs dont les valeurs se contredisent. La conception doit donc identifier quelles contraintes sont garanties par la forme du type et lesquelles relèvent d’une procédure.</p>
+<p>Une construction centralisée peut réduire le nombre de lieux où l’invariant doit être rétabli après une mutation. Lorsque les champs restent publics ou que l’outil ne prend pas en charge une encapsulation attendue, les appelants peuvent contourner le constructeur. L’invariant doit alors être revérifié aux frontières concernées, ou la représentation doit être adaptée au sous-ensemble supporté.</p>
+
+<h2>Comparaisons et transitions explicites</h2>
+<p>Une transition de réservation peut être décrite comme une relation entre un état initial, une commande et un état résultant. Par exemple, <code>Disponible + Confirmer</code> conduit à <code>Confirmee</code>, alors que <code>Annulee + Confirmer</code> peut produire une erreur. Cette description sépare l’état stocké de l’action demandée et rend visibles les combinaisons autorisées.</p>
+<p>Une table de transition est également une référence utile lorsque l’implémentation évolue. Chaque ligne nomme un état source et chaque colonne une commande ; le résultat explique la règle. Le code peut ensuite exprimer la même relation par un <code>match</code>, des procédures ou une autre structure reconnue par le compilateur. La table décrit la sémantique métier, tandis que la matrice de support décrit ce que l’outil compile.</p>

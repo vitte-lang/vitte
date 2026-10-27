@@ -4,8 +4,7 @@ permalink: /cours/08-memoire/
 chapter: 8
 duration: 70 minutes
 lead: Les données occupent une place en mémoire. Pour manipuler une séquence ou laisser une procédure consulter un objet, Vitte fournit des tableaux, des références et des pointeurs.
-takeaway: Choisis la représentation la plus simple qui exprime le contrat attendu ; un pointeur brut demande une prudence particulière.
-practice: Parcours un tableau avec une plage d’indices et vérifie que ton code traite correctement le premier et le dernier élément.
+takeaway: Choisissez la représentation la plus simple qui exprime le contrat attendu ; un pointeur brut demande une prudence particulière.
 ---
 <h2>Tableaux de taille connue</h2>
 <p>Le type <code>[N]T</code> décrit un tableau de <code>N</code> éléments de type <code>T</code>. Par exemple, <code>[3]i64</code> contient trois entiers signés de 64 bits. On peut écrire la valeur avec une liste littérale puis lire un élément avec un indice entre crochets :</p>
@@ -13,7 +12,7 @@ practice: Parcours un tableau avec une plage d’indices et vérifie que ton cod
     let notes: [3]i64 = [14, 17, 19];
     return notes[1];
 }</code></pre>
-<p>Les indices commencent à zéro dans les exemples Vitte : <code>notes[0]</code> est le premier élément et <code>notes[2]</code> le troisième. L’accès <code>notes[3]</code> dépasse la longueur de ce tableau ; considère les limites comme une condition à vérifier, pas comme une convention facultative.</p>
+<p>Les indices commencent à zéro dans les exemples Vitte : <code>notes[0]</code> est le premier élément et <code>notes[2]</code> le troisième. L’accès <code>notes[3]</code> dépasse la longueur de ce tableau ; considérez les limites comme une condition à vérifier, pas comme une convention facultative.</p>
 <div class="callout verified-example"><strong>Exemple vérifié : tableau fixe, lecture et écriture</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/tableaux.vit"><code>examples/tutorials/tableaux.vit</code></a> remplace le deuxième élément puis vérifie que la somme vaut 42.</p><pre><code>build/bin/vitte run examples/tutorials/tableaux.vit --quiet --no-color</code></pre><p>Résultat confirmé avec le frontend natif : code de sortie <code>0</code>.</p></div>
 <p>La bibliothèque <code>core</code> fournit également des opérations sur des tableaux et des tranches. Les fonctions de tranches attendent une vue empruntée sur une séquence existante au lieu d’allouer une nouvelle collection. Les détails de durée de vie et les opérations disponibles sont documentés dans les modules concernés.</p>
 
@@ -26,16 +25,16 @@ practice: Parcours un tableau avec une plage d’indices et vérifie que ton cod
 proc modifier(premier: &amp;mut i64) {
     set *premier = *premier + 1;
 }</code></pre>
-<p>Les références expriment un accès à des données qui appartiennent ailleurs. Il est utile de les apprendre en séparant deux questions : qui possède la donnée et qui a le droit de la lire ou la changer ? Le compilateur Vitte et ses bibliothèques évoluent encore ; vérifie quelles règles de durée de vie et de mutabilité sont appliquées par la version que tu utilises.</p>
+<p>Les références expriment un accès à des données qui appartiennent ailleurs. Il est utile de les apprendre en séparant deux questions : qui possède la donnée et qui a le droit de la lire ou la changer ? Le compilateur Vitte et ses bibliothèques évoluent encore ; vérifiez quelles règles de durée de vie et de mutabilité sont appliquées par la version que vous utilisez.</p>
 <div class="callout warning"><strong>Références : chemin compilateur testé</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/references.vit"><code>examples/tutorials/references.vit</code></a> vérifie qu’une procédure reçoit un point par référence et calcule 42 avec <code>build/bin/vitte-bootstrap run examples/tutorials/references.vit --quiet --no-color</code> (code de sortie 0). Le frontend natif rejette actuellement ce même cas à l’abaissement HIR (<code>E1011</code>).</p></div>
 
 <h2>Pointeurs : une abstraction plus basse</h2>
 <p>Un type <code>*T</code> est un pointeur vers <code>T</code>. Les pointeurs apparaissent dans les interfaces système, l’interopérabilité et les bibliothèques qui contrôlent directement les adresses mémoire. L’expression <code>*pointeur</code> déréférence un pointeur. Une adresse incorrecte, désalignée ou déjà invalidée peut rendre le programme dangereux ; la syntaxe seule ne rend pas l’opération sûre.</p>
 <p>La grammaire prévoit des blocs <code>unsafe { ... }</code> afin de rendre explicites certaines opérations qui demandent des garanties supplémentaires. Un bloc <code>unsafe</code> ne corrige pas l’adresse et ne prouve pas que l’objet existe : il marque un endroit où la personne qui écrit le programme prend la responsabilité de respecter les invariants mémoire.</p>
-<div class="callout warning"><strong>Repère de prudence</strong><p>N’utilise pas un pointeur brut pour remplacer une référence ou un tableau lorsqu’ils expriment déjà ton besoin. Le code bas niveau doit préciser la durée de vie, l’alignement, la taille de la zone et les règles d’alias qu’il suppose.</p></div>
+<div class="callout warning"><strong>Repère de prudence</strong><p>N’utilisez pas un pointeur brut pour remplacer une référence ou un tableau lorsqu’ils expriment déjà votre besoin. Le code bas niveau doit préciser la durée de vie, l’alignement, la taille de la zone et les règles d’alias qu’il suppose.</p></div>
 
 <h2>Valeurs optionnelles et absence</h2>
-<p>La bibliothèque fondamentale emploie le type nullable <code>?T</code> : il contient soit une valeur de type <code>T</code>, soit <code>null</code>. L’alias générique <code>Option&lt;T&gt;</code> désigne cette représentation dans le module <code>core::types::option</code>. Avant de lire la valeur, teste qu’elle n’est pas <code>null</code>.</p>
+<p>La bibliothèque fondamentale emploie le type nullable <code>?T</code> : il contient soit une valeur de type <code>T</code>, soit <code>null</code>. L’alias générique <code>Option&lt;T&gt;</code> désigne cette représentation dans le module <code>core::types::option</code>. Avant de lire la valeur, vérifiez qu’elle n’est pas <code>null</code>.</p>
 <pre><code>proc valeur_ou_zero(valeur: ?i64) -&gt; i64 {
     if valeur != null {
         return valeur;
@@ -43,46 +42,50 @@ proc modifier(premier: &amp;mut i64) {
     return 0;
 }</code></pre>
 <p>Une option représente l’absence comme une donnée, plutôt que d’inventer une valeur spéciale comme zéro qui pourrait également être un résultat légitime. La représentation nullable ne distingue pas « option absente » et « option présente avec une valeur elle-même nulle » si le type contenu accepte aussi <code>null</code>.</p>
-<p>La grammaire prévoit aussi un point d’interrogation postfixé sur certaines expressions. Ne déduis pas son comportement à partir du symbole seul : vérifie sa sémantique dans la documentation de l’outil et dans les exemples de la bibliothèque installée.</p>
-<p>L’opérateur <code>??</code> représente une autre idée : choisir une valeur de repli lorsque la partie gauche est absente. On peut lire <code>age ?? 0</code> comme « utilise l’âge s’il existe, sinon zéro ». C’est utile quand le repli a réellement du sens dans le domaine ; sinon, traite l’absence comme un cas distinct au lieu de la masquer.</p>
+<p>La grammaire prévoit aussi un point d’interrogation postfixé sur certaines expressions. Ne déduisez pas son comportement à partir du symbole seul : vérifiez sa sémantique dans la documentation de l’outil et dans les exemples de la bibliothèque installée.</p>
+<p>L’opérateur <code>??</code> représente une autre idée : choisir une valeur de repli lorsque la partie gauche est absente. On peut lire <code>age ?? 0</code> comme « utilise l’âge s’il existe, sinon zéro ». C’est utile quand le repli a réellement du sens dans le domaine ; sinon, traitez l’absence comme un cas distinct au lieu de la masquer.</p>
 <div class="callout warning"><strong>Pointeurs et valeurs nullable</strong><p>Les extraits de pointeurs, <code>?T</code>, <code>?</code> et <code>??</code> sur cette page sont explicatifs : les suites exécutées pour le site n’ont pas confirmé un programme complet avec ces constructions. Le tableau fixe et la référence ci-dessus ont des commandes et des résultats testés.</p></div>
 
 <h2>Penser aux frontières</h2>
-<p>Les bugs mémoire se cachent souvent sur les limites : tableau vide, indice égal à la longueur, référence conservée après la durée de vie de la valeur, ou pointeur converti vers un type plus étroit. Décris le contrat d’une procédure qui reçoit une zone mémoire : combien d’éléments sont accessibles, qui peut les modifier et qui garde la propriété de la zone ?</p>
-<div class="callout"><strong>Garde un invariant lisible</strong><p>Quand tu touches à la mémoire directement, écris les conditions requises près de l’opération. Une personne qui relit le code doit pouvoir vérifier la taille, la validité et l’alignement avant de suivre la déréférence.</p></div>
+<p>Les bugs mémoire se cachent souvent sur les limites : tableau vide, indice égal à la longueur, référence conservée après la durée de vie de la valeur, ou pointeur converti vers un type plus étroit. Décrivez le contrat d’une procédure qui reçoit une zone mémoire : combien d’éléments sont accessibles, qui peut les modifier et qui garde la propriété de la zone ?</p>
+<div class="callout"><strong>Conservez un invariant lisible</strong><p>Lorsqu’une opération touche directement à la mémoire, ses conditions requises doivent apparaître à proximité. Une personne qui relit le code doit pouvoir vérifier la taille, la validité et l’alignement avant de suivre la déréférence.</p></div>
 
 <h2>La longueur d’un tableau appartient à son type</h2>
 <p>Avec <code>[3]i64</code>, la longueur est connue : le tableau contient exactement trois valeurs de type <code>i64</code>. Les indices valides sont 0, 1 et 2. L’indice 3 est déjà hors de la plage, même s’il ressemble à une position « après le dernier élément ».</p>
-<p>Pour parcourir les éléments avec un <code>while</code> confirmé, maintiens un indice mutable et teste-le avant l’accès :</p>
+<p>Pour parcourir les éléments avec un <code>while</code> confirmé, le corps maintient un indice mutable et le teste avant l’accès :</p>
 <pre><code>let mut index: i64 = 0;
 while index &lt; 3 {
     let valeur: i64 = notes[index];
     set index = index + 1;
 }</code></pre>
-<p>Ce fragment illustre l’ordre indispensable : tester la borne, lire la case, puis faire progresser l’indice. Le parcours <code>for</code> sur tableau n’est pas confirmé au backend dans l’audit ; ne le substitue pas silencieusement à cette forme lorsque tu veux un exemple exécutable avec le frontend natif.</p>
+<p>Ce fragment illustre l’ordre indispensable : tester la borne, lire la case, puis faire progresser l’indice. Le parcours <code>for</code> sur tableau n’est pas confirmé au backend dans l’audit ; ne le substitue pas silencieusement à cette forme lorsque vous voulez un exemple exécutable avec le frontend natif.</p>
 
 <h2>Choisir entre un tableau, une référence et un pointeur</h2>
 <p>Ces formes ne répondent pas à la même question. Un tableau fixe exprime une séquence dont la taille est connue. Une référence exprime un accès à une valeur existante sans écrire directement une adresse. Un pointeur brut donne accès à une adresse et demande que le programme établisse lui-même davantage de garanties.</p>
-<p>Pour chaque paramètre de données, précise qui garde la valeur, qui peut la lire, qui peut la modifier et combien de temps l’accès reste valide. Le type <code>&amp;T</code> et le type <code>&amp;mut T</code> signalent une différence de contrat d’accès, mais la présence de ces formes ne prouve pas à elle seule que le compilateur vérifie toutes les règles de durée de vie ou d’alias attendues.</p>
+<p>Pour chaque paramètre de données, précisez qui garde la valeur, qui peut la lire, qui peut la modifier et combien de temps l’accès reste valide. Le type <code>&amp;T</code> et le type <code>&amp;mut T</code> signalent une différence de contrat d’accès, mais la présence de ces formes ne prouve pas à elle seule que le compilateur vérifie toutes les règles de durée de vie ou d’alias attendues.</p>
 
 <h2>Absence : garder la distinction avec une valeur normale</h2>
 <p>Une valeur nullable de forme <code>?T</code> peut représenter une donnée présente ou <code>null</code>. Si zéro est une valeur autorisée pour <code>T</code>, elle ne doit pas servir de code implicite pour l’absence : zéro et <code>null</code> expriment deux situations différentes.</p>
-<p>Une valeur de repli, telle que <code>age ?? 0</code>, simplifie le calcul seulement si zéro est réellement le comportement voulu lorsque l’âge manque. Si l’absence change la décision à prendre, conserve-la comme cas distinct et traite-la explicitement. La syntaxe nullable et les opérateurs associés ne sont pas tous prouvés en compilation/exécution dans le backend audité.</p>
+<p>Une valeur de repli, telle que <code>age ?? 0</code>, simplifie le calcul seulement si zéro est réellement le comportement voulu lorsque l’âge manque. Si l’absence change la décision à prendre, conservez-la comme cas distinct et traitez-la explicitement. La syntaxe nullable et les opérateurs associés ne sont pas tous prouvés en compilation/exécution dans le backend audité.</p>
 
 <h2>Contrat mental avant une lecture mémoire</h2>
-<p>Avant une lecture indexée, vérifie l’intervalle ; avant une écriture, vérifie également que le propriétaire autorise la modification ; avant une déréférence, vérifie la validité de l’adresse, l’alignement, la taille accessible et la durée de vie. Pour un tableau fixe, ces questions se ramènent principalement à la borne de l’indice. Pour un pointeur, elles deviennent des obligations explicites de la procédure qui le reçoit.</p>
-<div class="callout"><strong>Correction du parcours sûr</strong><p>Pour un tableau de longueur 3, commence à l’indice 0, continue tant que l’indice est strictement inférieur à 3 et n’accède qu’après le test. La progression doit augmenter l’indice exactement une fois par passage. Le dernier accès a lieu à l’indice 2.</p></div>
-<section class="practice-block">
-  <h2>Atelier guidé : borner un accès</h2>
-  <ol>
-    <li>Crée un tableau de trois entiers et écris une procédure qui renvoie la somme de ses éléments avec trois indices explicites.</li>
-    <li>Réécris le calcul avec une boucle sur <code>0..3</code>. Compare la version la plus facile à modifier si le tableau passe à quatre éléments.</li>
-    <li>Donne un tableau à une procédure par référence en lecture. Explique qui garde la donnée et ce que la procédure est autorisée à faire.</li>
-    <li>Pour un pointeur imaginaire vers le premier élément, écris les invariants à vérifier avant de le déréférencer. Ne tente pas d’utiliser une adresse arbitraire.</li>
-  </ol>
-  <details><summary>Corrigé détaillé de l’atelier</summary>
-    <p>Pour un tableau de trois nombres, les indices valides sont 0, 1 et 2. L’accès au premier, au milieu et au dernier élément est donc respectivement <code>valeurs[0]</code>, <code>valeurs[1]</code> et <code>valeurs[2]</code>. Une boucle <code>while index &lt; 3</code> teste l’indice avant la lecture et l’incrémente une fois après le travail.</p>
-    <p>La version avec trois accès explicites est facile à lire pour une taille fixe ; la boucle évite de recopier les opérations quand la taille change. L’expression <code>for index in 0..3</code> peut exprimer l’intention, mais son exécution dans le backend natif n’est pas confirmée par l’audit du dépôt.</p>
-    <p>Une référence permet à une procédure d’accéder à une valeur existante selon le contrat de la référence. Un pointeur demande des garanties supplémentaires : adresse valide, alignement, zone assez grande, absence de conflit de mutation et durée de vie suffisante. Si tu ne peux pas expliquer chacune de ces conditions, reste sur le tableau ou la référence vérifiée.</p>
-  </details>
-</section>
+<p>Avant une lecture indexée, vérifiez l’intervalle ; avant une écriture, vérifiez également que le propriétaire autorise la modification ; avant une déréférence, vérifiez la validité de l’adresse, l’alignement, la taille accessible et la durée de vie. Pour un tableau fixe, ces questions se ramènent principalement à la borne de l’indice. Pour un pointeur, elles deviennent des obligations explicites de la procédure qui le reçoit.</p>
+<div class="callout"><strong>Déroulement du parcours sûr</strong><p>Pour un tableau de longueur 3, commencez à l’indice 0, continuez tant que l’indice est strictement inférieur à 3 et accédez seulement après le test. La progression doit augmenter l’indice exactement une fois par passage. Le dernier accès a lieu à l’indice 2.</p></div>
+<h2>Longueur, disposition et accès au tableau</h2>
+<p>Le type <code>[N]T</code> décrit une séquence fixe de <code>N</code> valeurs de type <code>T</code>. La longueur fait partie de sa forme, tandis que l’indice désigne une position à l’intérieur de cette longueur. Pour trois valeurs, les indices valides sont 0, 1 et 2. La condition <code>index &lt; 3</code> exprime donc précisément qu’il reste une case accessible ; <code>index &lt;= 3</code> autoriserait une lecture de trop.</p>
+<p>Un tableau fixe se distingue d’une collection dont la taille varie au fil du programme. Les tranches représentent plutôt une vue sur une séquence existante : elles permettent de transmettre un accès à une partie des données sans que le type exprime nécessairement la propriété de toute la collection. Les bibliothèques et backends déterminent quelles opérations sont réellement disponibles. La distinction conceptuelle entre taille fixe, vue empruntée et stockage extensible demeure utile même lorsque l’implémentation ne prend en charge qu’un sous-ensemble.</p>
+
+<h2>Référence et propriété ne sont pas la même chose</h2>
+<p>Une référence donne accès à une valeur existante sans exposer directement son adresse. <code>&amp;T</code> exprime une lecture référencée ; <code>&amp;mut T</code> exprime une intention d’accès modifiable. Cela ne suffit pas à conclure que le compilateur applique toutes les règles de durée de vie et d’exclusivité présentes dans des systèmes d’emprunt plus développés. La version du frontend et le chemin de compilation définissent les vérifications réelles.</p>
+<p>Une question utile reste celle de la propriété : quelle partie du programme est responsable de la durée de vie de l’objet ? Une procédure recevant une référence ne devient pas automatiquement propriétaire de la donnée. Si elle garde un accès au-delà de l’appel ou si plusieurs alias peuvent la modifier, les invariants nécessaires doivent être documentés et vérifiés par les capacités effectivement disponibles.</p>
+
+<h2>Pointeurs et absence demandent des contrats séparés</h2>
+<p>Un pointeur brut <code>*T</code> désigne une adresse. Avant une déréférence, le programme doit établir que l’adresse est valide, alignée, correctement typée et accessible pendant toute l’opération. La taille de la zone, la durée de vie et les autres accès concurrents ou alias font également partie du contrat. Un bloc <code>unsafe</code> rend visible la responsabilité de l’opération, mais ne prouve aucune de ces propriétés.</p>
+<p>À l’opposé de cette représentation basse, <code>?T</code> représente une valeur éventuellement absente. Le cas <code>null</code> est alors un état à traiter, pas une adresse. Cette absence ne doit pas être confondue avec un zéro si zéro reste une valeur légitime du type. Les opérateurs nullable décrits par la grammaire et leur comportement runtime ne sont pas tous confirmés dans le backend audité ; les exemples vérifiés de cette leçon restent ceux des tableaux et du chemin bootstrap de référence.</p>
+<h2>Tranches : une vue sur une séquence</h2>
+<p>Une tranche représente un accès à une portion d’une séquence, souvent sans copier tout le tableau. Elle peut être transmise à une procédure qui n’a besoin que de lire une suite de valeurs. La longueur de cette vue fait partie du raisonnement : l’indice doit rester à l’intérieur de la tranche, même s’il serait valide dans le tableau original. Une vue courte ne doit pas autoriser l’accès à des éléments situés ailleurs dans la mémoire.</p>
+<p>Les modules de <code>core</code> documentent des opérations sur les tableaux et tranches, mais leur disponibilité dépend du backend et du type concret. Un appel de bibliothèque ne rend pas automatiquement une collection dynamique disponible. Le contrat de stockage, de durée de vie et de mutation doit être lu dans le module concerné et comparé à ce que le compilateur sait générer.</p>
+
+<h2>Référence mutable et alias concurrents</h2>
+<p>Une référence mutable implique que l’accès peut modifier la valeur visée. Si un autre accès observe le même objet pendant cette modification, la cohérence dépend des règles d’alias et de synchronisation. Certains langages imposent une exclusivité vérifiée statiquement ; d’autres laissent davantage de responsabilité au programme. La notation <code>&amp;mut T</code> dans la grammaire ne suffit pas à attribuer à Vitte des garanties qui n’ont pas été testées sur le frontend choisi.</p>
+<p>Dans un code système, une opération atomique ou un verrou peut être nécessaire lorsque plusieurs tâches partagent la donnée. Ces mécanismes sont distincts d’une simple référence mutable locale. Ils demandent un contrat de concurrence, une politique d’ordre mémoire et une API de plateforme. La documentation actuelle présente ces questions comme des limites de conception à expliciter, sans prétendre que les exemples bas niveau sont tous exécutables.</p>

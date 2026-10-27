@@ -5,7 +5,6 @@ chapter: 4
 duration: 55 minutes
 lead: Les expressions combinent des valeurs pour en produire d’autres. Savoir lire leur ordre de calcul est essentiel pour éviter les surprises et écrire des conditions limpides.
 takeaway: Les parenthèses rendent explicite le regroupement voulu ; une condition claire vaut mieux qu’une condition compacte.
-practice: Réécris trois calculs en ajoutant des parenthèses explicites, puis explique à voix haute l’ordre dans lequel ils sont évalués.
 ---
 <h2>Une expression produit une valeur</h2>
 <p>Un littéral, un nom, un appel de procédure ou une opération peut former une expression. Dans <code>prix * quantite + frais</code>, les multiplications et additions produisent un résultat. Dans <code>score &gt;= minimum</code>, la comparaison produit un booléen. Cette idée aide à construire un programme : les expressions calculent des valeurs, puis les instructions décident quoi en faire.</p>
@@ -16,7 +15,7 @@ practice: Réécris trois calculs en ajoutant des parenthèses explicites, puis 
 
 <h2>Calculs et priorité</h2>
 <p>Pour les calculs courants, <code>*</code>, <code>/</code> et <code>%</code> se font avant <code>+</code> et <code>-</code>. Les parenthèses se font d’abord. Ainsi, <code>2 + 3 * 4</code> vaut 14, tandis que <code>(2 + 3) * 4</code> vaut 20. Les décalages, les opérations bit à bit, les comparaisons, les égalités et les opérateurs logiques ont eux aussi un ordre de priorité défini par la grammaire.</p>
-<p>Tu n’as pas besoin de mémoriser toute la table pour écrire du code lisible. Dans une expression de plus de deux opérations, ajoute des parenthèses quand elles expliquent ton intention, même si la priorité du langage suffirait.</p>
+<p>vous n’avez pas besoin de mémoriser toute la table pour écrire du code lisible. Dans une expression de plus de deux opérations, ajoutez des parenthèses quand elles expliquent votre intention, même si la priorité du langage suffirait.</p>
 <div class="callout verified-example"><strong>Exemple vérifié : priorité et parenthèses</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/expressions.vit"><code>examples/tutorials/expressions.vit</code></a> vérifie que <code>2 + 3 * 4</code> vaut 14 et que <code>(2 + 3) * 4</code> vaut 20.</p><pre><code>build/bin/vitte run examples/tutorials/expressions.vit --quiet --no-color</code></pre><p>Résultat confirmé : code de sortie <code>0</code> si les deux calculs donnent ces valeurs.</p></div>
 <table>
   <thead><tr><th>Ordre, du moins prioritaire au plus prioritaire</th><th>Opérateurs</th></tr></thead>
@@ -38,18 +37,18 @@ practice: Réécris trois calculs en ajoutant des parenthèses explicites, puis 
     <tr><td>Postfixe</td><td>Appel, indice, champ, <code>?</code></td></tr>
   </tbody>
 </table>
-<p>La table résume les niveaux de la grammaire, du moins prioritaire au plus prioritaire. L’affectation et <code>??</code> s’associent vers la droite ; les autres familles listées se regroupent de gauche à droite selon la grammaire. <code>??</code> exprime une valeur de repli pour une donnée nullable. Comme les opérateurs avancés ne sont pas tous disponibles dans chaque étape du compilateur, vérifie-les sur les sources et l’outil de ta version.</p>
+<p>La table résume les niveaux de la grammaire, du moins prioritaire au plus prioritaire. L’affectation et <code>??</code> s’associent vers la droite ; les autres familles listées se regroupent de gauche à droite selon la grammaire. <code>??</code> exprime une valeur de repli pour une donnée nullable. Comme les opérateurs avancés ne sont pas tous disponibles dans chaque étape du compilateur, vérifiez-les sur les sources et l’outil de votre version.</p>
 
 <h2>Comparer puis combiner</h2>
 <p>Les opérateurs <code>==</code> et <code>!=</code> testent l’égalité ; <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> et <code>&gt;=</code> comparent un ordre. Ils donnent un <code>bool</code>. On combine les résultats avec <code>and</code> ou <code>&amp;&amp;</code>, et avec <code>or</code> ou <code>||</code>. <code>not</code> ou <code>!</code> inverse une condition.</p>
 <pre><code>proc admissible(age: i64, a_un_billet: bool) -&gt; bool {
     return age &gt;= 18 and a_un_billet;
 }</code></pre>
-<p>En lecture, <code>and</code> signifie que les deux conditions sont requises ; <code>or</code> signifie qu’au moins l’une suffit. La grammaire et le compilateur définissent l’évaluation des opérateurs logiques. Quand l’ordre d’un effet de bord compte, évite de cacher un appel qui modifie l’état dans une condition composée.</p>
+<p>En lecture, <code>and</code> signifie que les deux conditions sont requises ; <code>or</code> signifie qu’au moins l’une suffit. La grammaire et le compilateur définissent l’évaluation des opérateurs logiques. Quand l’ordre d’un effet de bord compte, évitez de cacher un appel qui modifie l’état dans une condition composée.</p>
 
 <h2>Opérateurs binaires et affectations</h2>
 <p>Vitte prévoit également des opérateurs bit à bit (<code>&amp;</code>, <code>|</code>, <code>^</code>), des décalages (<code>&lt;&lt;</code>, <code>&gt;&gt;</code>) et des affectations composées dans la grammaire, comme <code>+=</code> ou <code>&lt;&lt;=</code>. Ils sont surtout utiles quand on travaille sur des masques de bits, des drapeaux ou des représentations bas niveau. Ce sont des opérateurs distincts des mots logiques <code>and</code> et <code>or</code>.</p>
-<p>Un opérateur reconnu par la grammaire peut ne pas être disponible dans chaque étape du compilateur. Pour le code ordinaire, commence avec l’arithmétique, les comparaisons et les booléens ; explore les opérations binaires seulement avec les exemples du dépôt et une vérification de l’outil.</p>
+<p>Un opérateur reconnu par la grammaire peut ne pas être disponible dans chaque étape du compilateur. Pour le code ordinaire, commencez avec l’arithmétique, les comparaisons et les booléens ; explorez les opérations binaires seulement avec les exemples du dépôt et une vérification de l’outil.</p>
 
 <h2>Appels, accès et conversions</h2>
 <p>Après une expression, les parenthèses peuvent appeler une procédure, les crochets indexer un tableau, et le point lire un champ de forme. Les chemins qualifiés emploient <code>::</code>. La grammaire prévoit aussi le point d’interrogation postfixé pour certaines expressions optionnelles ainsi que <code>as Type</code> pour une conversion explicite.</p>
@@ -57,14 +56,14 @@ practice: Réécris trois calculs en ajoutant des parenthèses explicites, puis 
     let valeurs: [3]i64 = [8, 13, 21];
     return valeurs[1] + valeurs[2];
 }</code></pre>
-<p>Cette expression fait d’abord deux accès par indice, puis une addition. Si tu dois vérifier les bornes, découpe le calcul en variables nommées et consulte les opérations de la bibliothèque adaptées au type de données.</p>
+<p>Cette expression fait d’abord deux accès par indice, puis une addition. Si vous devez vérifier les bornes, décomposez le calcul en variables nommées et consultez les opérations de la bibliothèque adaptées au type de données.</p>
 
 <h2>Une méthode simple pour déboguer un calcul</h2>
 <ol>
-  <li>Repère les parenthèses déjà présentes.</li>
-  <li>Note le type de chaque littéral, variable et appel.</li>
-  <li>Ajoute des parenthèses temporaires pour écrire l’ordre auquel tu t’attends.</li>
-  <li>Remplace les sous-expressions par des variables nommées si le calcul reste difficile à expliquer.</li>
+  <li>Repérez les parenthèses déjà présentes.</li>
+  <li>Notez le type de chaque littéral, variable et appel.</li>
+  <li>Ajoutez des parenthèses temporaires pour écrire l’ordre de regroupement attendu.</li>
+  <li>Remplacez les sous-expressions par des variables nommées si le calcul reste difficile à expliquer.</li>
 </ol>
 <div class="callout"><strong>Lisibilité d’abord</strong><p>Le meilleur calcul est celui dont une personne peut vérifier le sens sans faire une devinette sur la priorité des opérateurs.</p></div>
 
@@ -83,27 +82,31 @@ practice: Réécris trois calculs en ajoutant des parenthèses explicites, puis 
 
 <h2>Ne pas confondre opérateurs qui se ressemblent</h2>
 <p><code>and</code> et <code>&amp;</code> ne désignent pas la même opération : le premier exprime une combinaison logique ; le second appartient aux opérations bit à bit dans la grammaire. De même, <code>==</code> compare deux valeurs, alors que <code>=</code> apparaît comme opérateur d’affectation dans la syntaxe. Dans les exemples de mise à jour, l’affectation s’écrit avec <code>set</code>.</p>
-<p>Les formes d’affectation composée, les opérateurs de plage, les décalages et les casts sont décrits dans les documents, mais toutes leurs variantes ne sont pas confirmées à chaque étape du compilateur. Sépare donc deux questions : « comment se lit cet opérateur ? » et « ce cas précis est-il compilé par l’outil que j’utilise ? ».</p>
+<p>Les formes d’affectation composée, les opérateurs de plage, les décalages et les casts sont décrits dans les documents, mais toutes leurs variantes ne sont pas confirmées à chaque étape du compilateur. Distinguez donc deux questions : « comment se lit cet opérateur ? » et « ce cas précis est-il compilé par l’outil que j’utilise ? ».</p>
 
 <h2>Rendre un calcul vérifiable</h2>
 <p>Quand une expression devient difficile à expliquer, nomme ses étapes :</p>
 <pre><code>let sous_total: i64 = prix * quantite;
 let remise: i64 = sous_total * taux / 100;
 let prix_final: i64 = sous_total - remise;</code></pre>
-<p>Cette décomposition donne trois endroits où vérifier les types, les valeurs et les règles d’arrondi. Elle rend également un diagnostic plus local : tu peux voir si le problème vient du sous-total, du calcul de remise ou de la soustraction finale. Dans un calcul financier réel, définis explicitement l’unité et l’arrondi ; un type entier n’indique pas à lui seul si une valeur représente des euros, des centimes ou un pourcentage.</p>
+<p>Cette décomposition donne trois endroits où vérifier les types, les valeurs et les règles d’arrondi. Elle rend également un diagnostic plus local : vous pouvez voir si le problème vient du sous-total, du calcul de remise ou de la soustraction finale. Dans un calcul financier réel, définissez explicitement l’unité et l’arrondi ; un type entier n’indique pas à lui seul si une valeur représente des euros, des centimes ou un pourcentage.</p>
 
-<div class="callout"><strong>Trace corrigée</strong><p><code>2 + 3 * 4</code> se regroupe en <code>2 + (3 * 4)</code>, soit <code>2 + 12 = 14</code>. <code>(2 + 3) * 4</code> se regroupe en <code>5 * 4 = 20</code>. Pour une condition entre 10 et 20 inclus, la forme attendue est <code>valeur &gt;= 10 and valeur &lt;= 20</code> ; teste les valeurs 9, 10, 20 et 21.</p></div>
-<section class="practice-block">
-  <h2>Atelier guidé : lire une expression de gauche à droite</h2>
-  <ol>
-    <li>Pour <code>2 + 3 * 4</code>, ajoute les parenthèses correspondant à la priorité puis calcule le résultat.</li>
-    <li>Pour <code>(2 + 3) * 4</code>, recalcule et explique pourquoi le résultat diffère.</li>
-    <li>Écris une procédure qui renvoie vrai si un nombre est entre 10 et 20 inclus. Utilise une comparaison de chaque côté et combine-les avec <code>and</code>.</li>
-    <li>Réécris une condition avec <code>not</code> et une condition inverse, puis vérifie si les deux formulations disent la même chose.</li>
-  </ol>
-  <details><summary>Corrigé pas à pas</summary>
-    <p>La priorité donne <code>2 + (3 * 4)</code> : 3 fois 4 vaut 12, puis 2 plus 12 vaut 14. Les parenthèses de <code>(2 + 3) * 4</code> donnent d’abord 5, puis 5 fois 4 vaut 20.</p>
-    <p>La condition de plage inclusive est <code>valeur &gt;= 10 and valeur &lt;= 20</code>. Les résultats sont : 9 est faux, 10 est vrai, 20 est vrai, 21 est faux. Le cas 10 vérifie la borne inférieure ; le cas 20 vérifie la borne supérieure.</p>
-    <p>La négation de « entre 10 et 20 inclus » est « inférieur à 10 ou supérieur à 20 ». Elle s’écrit conceptuellement <code>valeur &lt; 10 or valeur &gt; 20</code>. Vérifie les frontières : les valeurs 10 et 20 ne satisfont pas la négation.</p>
-  </details>
-</section>
+<div class="callout"><strong>Ordre des opérations : résultat détaillé</strong><p><code>2 + 3 * 4</code> se regroupe en <code>2 + (3 * 4)</code>, soit <code>2 + 12 = 14</code>. <code>(2 + 3) * 4</code> se regroupe en <code>5 * 4 = 20</code>. Pour une condition entre 10 et 20 inclus, la forme attendue est <code>valeur &gt;= 10 and valeur &lt;= 20</code> ; Les valeurs 9, 10, 20 et 21 produisent respectivement faux, vrai, vrai et faux pour cette condition..</p></div>
+<h2>Priorité, associativité et parenthèses</h2>
+<p>Quand une expression contient plusieurs opérateurs, la grammaire précise leur ordre de regroupement. Par exemple, <code>2 + 3 * 4</code> est lu comme <code>2 + (3 * 4)</code>, parce que la multiplication a priorité sur l’addition ; le résultat vaut 14. Les parenthèses changent explicitement ce regroupement : <code>(2 + 3) * 4</code> vaut 20. Elles sont utiles même lorsque la priorité est connue, car elles rendent l’intention visible au lecteur.</p>
+<p>L’associativité décide comment regrouper plusieurs opérateurs de même priorité. Une soustraction en chaîne se lit de gauche à droite : <code>20 - 5 - 3</code> signifie <code>(20 - 5) - 3</code>, soit 12. Changer le regroupement donnerait <code>20 - (5 - 3)</code>, soit 18. Les opérateurs d’affectation ont leurs propres règles et les formes réellement prises en charge dépendent du frontend ; un tableau de précédence décrit la grammaire, pas l’achèvement de chaque chemin de compilation.</p>
+
+<h2>Le type d’une expression se calcule de proche en proche</h2>
+<p>Une expression possède un type produit par sa structure. Une comparaison comme <code>age &gt;= 18</code> produit un booléen. L’opérateur logique <code>and</code> combine des valeurs booléennes ; une addition combine des opérandes compatibles et produit un résultat numérique. Dans <code>prix * quantite + livraison</code>, il faut donc pouvoir expliquer le type de la multiplication avant celui de l’addition finale.</p>
+<p>Cette lecture est utile face à une erreur de type. L’opérateur le plus à gauche n’est pas nécessairement la cause : une sous-expression peut déjà avoir un type inattendu. Les annotations et les variables intermédiaires rendent les nœuds du calcul visibles et rapprochent le diagnostic de la valeur qui pose problème.</p>
+
+<h2>Valeur calculée et effet sur l’état</h2>
+<p>Une expression comme <code>prix * quantite</code> calcule une valeur ; l’instruction <code>set total = total + 1;</code> met à jour une liaison mutable. Les séparer aide à comprendre l’effet d’une ligne : la partie droite calcule ce qui sera assigné, tandis que <code>set</code> annonce le changement. La différence entre <code>==</code>, qui compare, et <code>set</code>, qui modifie, est donc fondamentale pour suivre une condition ou un état.</p>
+<p>Il faut également séparer les opérateurs logiques des opérateurs bit à bit. <code>and</code> travaille sur des conditions booléennes ; <code>&amp;</code> représente une opération sur les bits dans la grammaire. Leur orthographe proche ne leur donne pas le même domaine. Pour toute expression complexe, les parenthèses, les types des sous-expressions et la distinction entre calcul et mise à jour forment une explication reproductible.</p>
+<h2>Conversions et opérateurs de cast</h2>
+<p>Une expression de conversion relie une valeur source à une représentation cible. Le cast <code>valeur as u8</code> est visible dans la syntaxe et apparaît dans un exemple vérifié, mais cette preuve vaut pour ce contexte précis. Elle ne confirme pas automatiquement les conversions de signe, de flottant vers entier, les dépassements ou chaque position où un cast peut apparaître.</p>
+<p>La conversion et la validation répondent à deux questions distinctes. La conversion demande quelle représentation est produite ; la validation demande si la valeur respecte la règle du domaine. Pour une entrée externe comprise entre 0 et 255, la vérification de cette plage doit précéder ou accompagner la conversion vers <code>u8</code>. Sans cela, le programme peut obtenir une valeur typée tout en ayant perdu le sens de l’entrée.</p>
+
+<h2>Expressions composées et variables intermédiaires</h2>
+<p>Une expression longue peut être découpée en valeurs nommées. Dans un panier, <code>sous_total</code>, <code>remise</code> et <code>prix_final</code> donnent des repères entre la multiplication, le pourcentage et la soustraction. Le découpage n’est pas seulement stylistique : chaque liaison reçoit un type, un point de diagnostic et une signification métier. Il devient plus facile de vérifier où une conversion ou un arrondi intervient.</p>
+<p>Lorsque la priorité des opérateurs est complexe, des parenthèses définissent le regroupement et les noms intermédiaires exposent le résultat des sous-calculs. Une affectation mutable devrait rester une instruction identifiable avec <code>set</code>, plutôt que d’être confondue avec une comparaison ou une expression arithmétique. Cette séparation aide à relier la valeur calculée à l’état modifié.</p>

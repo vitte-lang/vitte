@@ -5,11 +5,10 @@ chapter: 11
 duration: 55 minutes
 lead: Un programme fiable explique ses hypothèses, détecte les entrées invalides et vérifie les cas importants. Les diagnostics, contrats et tests sont des outils d’apprentissage autant que de qualité.
 takeaway: Une erreur est une situation à modéliser ; un test est une expérience qui rend une propriété vérifiable.
-practice: "Écris trois tests nommés : cas normal, limite basse, limite haute. Fais ensuite échouer volontairement l’un d’eux et lis le diagnostic."
 ---
 <h2>Lire les diagnostics comme des indices</h2>
-<p>Un diagnostic pointe un problème observé par une étape du compilateur. Il peut concerner la syntaxe, un nom inconnu, un type incohérent, une visibilité invalide ou une contrainte. Lis-le dans cet ordre : le code et le titre, le fichier et la ligne, puis le fragment souligné et les notes associées.</p>
-<p>Corrige d’abord l’erreur la plus proche de la cause. Si l’analyseur n’a pas compris une déclaration, les erreurs suivantes peuvent être des conséquences. Évite de modifier cinq choses à la fois : tu ne sauras plus quelle correction a résolu le problème.</p>
+<p>Un diagnostic pointe un problème observé par une étape du compilateur. Il peut concerner la syntaxe, un nom inconnu, un type incohérent, une visibilité invalide ou une contrainte. Lisez-le dans cet ordre : le code et le titre, le fichier et la ligne, puis le fragment souligné et les notes associées.</p>
+<p>Corrigez d’abord l’erreur la plus proche de la cause. Si l’analyseur n’a pas compris une déclaration, les erreurs suivantes peuvent être des conséquences. Évitez de modifier plusieurs choses à la fois : vous ne saurez plus quelle correction a résolu le problème.</p>
 <div class="callout verified-example"><strong>Diagnostic vérifié : type d’opérande incorrect</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/erreur-type.vit"><code>examples/tutorials/erreur-type.vit</code></a> combine <code>and</code> avec un entier. Pour reproduire le diagnostic :</p><pre><code>build/bin/vitte check examples/tutorials/erreur-type.vit --quiet --no-color --diagnostic=json</code></pre><p>Résultat confirmé : code de sortie <code>1</code>, diagnostic <code>VITTE_TYPE_E_INVALID_OPERAND</code> (l’opérateur logique attend un booléen).</p></div>
 
 <h2>Assertions et contrats</h2>
@@ -32,16 +31,16 @@ test "addition avec zéro" {
 <p>Le nom du test doit décrire le comportement qu’il vérifie, pas seulement le nom de la procédure testée. Un test nommé « addition avec zéro » indique l’hypothèse importante ; « test additionner » est beaucoup moins informatif.</p>
 
 <h2>Choisir les bons cas</h2>
-<p>Pour une procédure qui travaille sur une plage, teste une valeur ordinaire et les deux frontières. Pour une collection, pense aux tailles zéro, un et plusieurs. Pour un calcul entier, considère les valeurs négatives, zéro, les valeurs positives et les risques de dépassement. Pour une condition, couvre chaque branche au moins une fois.</p>
+<p>Pour une procédure qui travaille sur une plage, les cas utiles comprennent une valeur ordinaire et les deux frontières. Pour une collection, les tailles zéro, un et plusieurs révèlent des comportements distincts. Pour un calcul entier, les valeurs négatives, zéro, les valeurs positives et les risques de dépassement couvrent les grandes catégories. Pour une condition, chaque branche devrait apparaître dans au moins un cas.</p>
 <p>Un test prouve seulement qu’un exemple précis se comporte comme attendu. Plusieurs tests bien choisis rendent une régression moins probable, mais ne remplacent ni une spécification ni une revue des hypothèses. Les grands tests du dépôt documentent des contrats précis et sont de bons modèles pour nommer une suite de cas.</p>
 
 <h2>Représenter un échec comme une donnée</h2>
 <p>Quand une opération peut échouer normalement, représente cette possibilité dans son résultat au lieu de cacher l’échec derrière une valeur ambiguë. Un résultat peut porter un booléen de réussite, une valeur et une catégorie d’erreur ; un choix <code>pick</code> peut aussi nommer les issues possibles. La bibliothèque fondamentale fournit des formes de résultat concrètes, même si l’intégration de certains types génériques continue d’évoluer.</p>
 <p>Par exemple, un parseur devrait distinguer « l’entrée représente zéro » de « l’entrée est invalide ». Renvoyer simplement zéro pour les deux cas fait perdre de l’information à l’appelant.</p>
-<div class="callout"><strong>Teste le contrat, pas l’implémentation</strong><p>Un test utile décrit ce que le code doit garantir depuis l’extérieur. Il reste pertinent même si tu réécris le corps de la procédure.</p></div>
+<div class="callout"><strong>Un test durable décrit le contrat</strong><p>Un test utile décrit ce que le code doit garantir depuis l’extérieur. Il reste pertinent même si vous réécris le corps de la procédure.</p></div>
 
 <h2>Construire une matrice de cas</h2>
-<p>Un ensemble de tests devient plus complet quand tu choisis ses cas de manière systématique. Pour une procédure qui reçoit deux nombres, examine leurs plages et leurs rôles avant d’écrire des valeurs arbitraires. Une petite matrice pour un prix et une quantité peut comporter :</p>
+<p>Un ensemble de tests devient plus complet quand vous choisissez ses cas de manière systématique. Pour une procédure qui reçoit deux nombres, examinez leurs plages et leurs rôles avant d’écrire des valeurs arbitraires. Une petite matrice pour un prix et une quantité peut comporter :</p>
 <table><thead><tr><th>Famille</th><th>Exemple de question</th></tr></thead><tbody>
 <tr><td>Cas ordinaire</td><td>Deux valeurs positives donnent-elles le sous-total attendu ?</td></tr>
 <tr><td>Zéro</td><td>Un prix nul ou une quantité nulle donne-t-il zéro ?</td></tr>
@@ -49,32 +48,36 @@ test "addition avec zéro" {
 <tr><td>Entrée invalide</td><td>Une valeur négative est-elle refusée ou représentée comme erreur ?</td></tr>
 <tr><td>Interaction</td><td>Deux limites présentes en même temps déclenchent-elles un résultat défini ?</td></tr>
 </tbody></table>
-<p>Tu n’as pas besoin d’un test pour chaque nombre possible. Choisis des valeurs qui appartiennent à des catégories de comportement distinctes, puis ajoute des cas lorsqu’un défaut est découvert.</p>
+<p>vous n’avez pas besoin d’un test pour chaque nombre possible. Choisissez des valeurs qui appartiennent à des catégories de comportement distinctes, puis ajoutez des cas lorsqu’un défaut est découvert.</p>
 
 <h2>Séparer diagnostic, test et validation</h2>
 <p>Un diagnostic du compilateur répond à la question « cette source peut-elle être acceptée à cette étape ? ». Un test du programme répond à la question « pour cette entrée, le résultat observé respecte-t-il l’attente ? ». Une validation dans l’application répond à la question « cette entrée externe appartient-elle au domaine autorisé ? ».</p>
 <p>Ces trois protections se complètent mais ne se remplacent pas. Un programme peut compiler tout en calculant une mauvaise valeur. Un test peut passer pour un cas particulier alors qu’une autre frontière est incorrecte. Une assertion interne ne doit pas remplacer un message d’erreur pour une saisie utilisateur prévisible.</p>
 
 <h2>Réduire un défaut à une reproduction lisible</h2>
-<p>Quand un résultat surprend, conserve les entrées et la commande, puis supprime le code qui n’intervient pas dans le problème. Une bonne reproduction tient dans un fichier court et permet à quelqu’un d’autre de constater la même chose. Note le frontend, la phase et le diagnostic. Cette information évite d’attribuer à « Vitte » un comportement qui vient en réalité d’un backend particulier ou d’un chemin de compatibilité.</p>
+<p>Quand un résultat surprend, conservez les entrées et la commande, puis supprimez le code qui n’intervient pas dans le problème. Une bonne reproduction tient dans un fichier court et permet à quelqu’un d’autre de constater la même chose. Notez le frontend, la phase et le diagnostic. Cette information évite d’attribuer à « Vitte » un comportement qui vient en réalité d’un backend particulier ou d’un chemin de compatibilité.</p>
 <p>Pour un diagnostic négatif attendu comme <code>VITTE_TYPE_E_INVALID_OPERAND</code>, le test réussi consiste justement à observer le code de sortie non nul et le code de diagnostic prévu. Dans un test positif, un code de sortie 0 ne suffit pas toujours : examine aussi la sortie ou une valeur contrôlée par le programme.</p>
 
 <h2>Quand un échec devient une valeur</h2>
 <p>Un échec d’entrée qui se produit normalement doit apparaître dans l’interface. Un choix <code>pick</code> peut nommer la réussite et différents échecs ; chaque variante peut porter les informations dont l’appelant a besoin. Cette modélisation facilite les tests, car chaque état a un nom et un résultat à vérifier.</p>
-<p>La forme générique de résultat présente dans les bibliothèques du projet n’est pas automatiquement disponible dans toutes les étapes de compilation. Tu peux raisonner sur le modèle, puis vérifier la forme concrète utilisable avec la matrice de support et les exemples runtime.</p>
+<p>La forme générique de résultat présente dans les bibliothèques du projet n’est pas automatiquement disponible à chaque étape de compilation. Le modèle peut être décrit indépendamment, puis rapproché de la forme concrètement utilisable d’après la matrice de support et les exemples runtime.</p>
 
 <div class="callout"><strong>Règle d’évaluation</strong><p>Un cas de test doit préciser une entrée, une action, une attente et une manière d’observer le résultat. Si l’une de ces quatre pièces manque, il est difficile de savoir ce qu’un échec signifie.</p></div>
-<section class="practice-block">
-  <h2>Atelier guidé : transformer une règle en tests</h2>
-  <ol>
-    <li>Choisis une procédure qui calcule une somme ou un sous-total. Écris un test pour un cas ordinaire, puis un cas où l’une des entrées vaut zéro.</li>
-    <li>Repère ses bornes et écris un cas juste avant et juste après chaque borne. Le nom de chaque test doit annoncer ce cas.</li>
-    <li>Provoque une erreur de type et une erreur de syntaxe. Note la différence entre le diagnostic d’analyse et le diagnostic de vérification.</li>
-    <li>Pour une entrée invalide, décide si elle révèle une faute du programme ou une situation normale. Choisis ensuite un contrat ou une valeur d’erreur adaptée.</li>
-  </ol>
-  <details><summary>Corrigé détaillé de l’atelier</summary>
-    <p>Pour une addition, un cas ordinaire peut utiliser 6 et 2 et attendre 8 ; un cas avec zéro vérifie que l’autre opérande est conservé. Si la fonction interdit les valeurs négatives, teste la borne à zéro puis une valeur immédiatement en dessous. Nommer les tests selon ces cas permet de comprendre l’échec sans lire toute l’implémentation.</p>
-    <p>Une erreur de syntaxe est visible au parsing ; un mauvais opérande logique peut être syntaxiquement valide et être rejeté par l’analyse de types. La fixture <code>erreur-type.vit</code> confirme le code <code>VITTE_TYPE_E_INVALID_OPERAND</code> pour un entier utilisé avec <code>and</code>.</p>
-    <p>Une entrée utilisateur négative est une situation à traiter ; un appel interne qui viole une précondition peut révéler un défaut de programmation. Les blocs <code>test</code> sont décrits dans la grammaire, mais leur présence n’établit pas qu’un runner Vitte exécute ces tests. Suis les commandes et fixtures effectivement fournies par le dépôt.</p>
-  </details>
-</section>
+<h2>Un diagnostic décrit une phase et un périmètre</h2>
+<p>Un diagnostic Vitte est plus qu’un texte d’erreur : son code et son emplacement situent la construction refusée. Une erreur lexicale ou syntaxique signifie généralement que la structure attendue n’a pas été reconnue. Une erreur sémantique peut indiquer un nom inaccessible ou un type incompatible après le parsing. Un diagnostic backend peut apparaître plus tard, lorsque la représentation est comprise mais ne peut pas être traduite en code final. La même ligne de source peut donc être acceptée par une commande et refusée par une autre si elles ne parcourent pas les mêmes étapes.</p>
+<p>Le cas vérifié <code>VITTE_TYPE_E_INVALID_OPERAND</code> montre un rejet de typage : <code>and</code> reçoit un entier à la place d’une condition booléenne. Cette précision mène à la cause — le type de l’opérande — et permet de distinguer ce problème d’une faute de ponctuation. Lorsqu’un programme produit plusieurs messages, les premiers peuvent expliquer les suivants ; l’ordre des corrections doit suivre le premier endroit où le compilateur ne peut plus interpréter la source comme prévu.</p>
+
+<h2>Test, contrat et validation couvrent des risques différents</h2>
+<p>Un test exécute un cas et compare le résultat observé à une attente. Un contrat déclare les préconditions nécessaires et les propriétés promises par une procédure. Une validation décide si une entrée provenant du monde extérieur appartient au domaine autorisé. Ces mécanismes ne répondent pas à la même question : le test observe un exemple, le contrat formalise une relation, la validation choisit une réaction compréhensible face à une donnée incertaine.</p>
+<p>Les valeurs de frontière sont particulièrement informatives. Pour un indice, zéro et la dernière position valide se distinguent de l’indice égal à la longueur. Pour une plage, les nombres juste sous, sur et juste au-dessus de la limite révèlent des erreurs de comparaison. Pour un calcul numérique, le type et les dépassements sont des propriétés autant que la formule. Une suite de tests utile couvre les comportements différents plutôt qu’une grande quantité de valeurs semblables.</p>
+
+<h2>Modéliser l’échec sans perdre l’information</h2>
+<p>Une valeur spéciale comme <code>-1</code> peut entrer en conflit avec une valeur métier qui serait autrement valide. Un résultat explicite — booléen avec sortie séparée, type <code>pick</code> à variantes ou résultat documenté — permet à l’appelant de distinguer la réussite de l’échec. Les données associées à une erreur peuvent préciser la raison, la position ou la valeur refusée.</p>
+<p>La forme générique <code>Resultat&lt;T, E&gt;</code> illustre ce modèle conceptuel, mais les types génériques du dépôt ne sont pas tous exécutables avec chaque backend. Lorsque ce support manque, une forme concrète peut transmettre les mêmes cas dans le sous-ensemble disponible. La documentation d’un test ou d’une API gagne à préciser cette limite au lieu de laisser croire que la représentation conceptuelle est nécessairement disponible dans tous les chemins de compilation.</p>
+<h2>Reproduire un défaut avec un contexte suffisant</h2>
+<p>Une reproduction minimale contient la construction en cause et les dépendances indispensables à son diagnostic. Supprimer une partie du contexte peut faire disparaître le défaut ; conserver trop de code rend la cause difficile à isoler. La bonne reproduction reste assez courte pour que le parseur, l’analyseur ou le backend concernés soient clairement identifiables et que la commande puisse être reprise par une autre personne.</p>
+<p>Le contexte de version est essentiel pour un compilateur en évolution. Le chemin bootstrap, le frontend natif, les options de diagnostic et les modules recherchés peuvent produire des résultats différents. Une reproduction fiable conserve ces paramètres et le code complet du diagnostic, y compris les notes utiles. Une différence de backend ne doit pas être présentée comme une règle générale du langage.</p>
+
+<h2>Le rôle distinct des fichiers de test</h2>
+<p>Une fixture peut vérifier que le programme finit avec le statut prévu, que la sortie contient une valeur particulière ou que le compilateur produit un code de diagnostic donné. Ces assertions ne mesurent pas toutes la même chose. Une fixture runtime observe un programme généré ; une fixture négative observe le refus du compilateur ; un test de bibliothèque peut contrôler une propriété d’API sans être un exemple directement exécutable par l’utilisateur.</p>
+<p>Les déclarations <code>test</code> de la grammaire sont décrites dans la documentation, mais l’audit ne confirme pas leur exécution complète comme suite de tests Vitte. Les tests du dépôt peuvent aussi être pilotés par des outils externes. La manière dont un fichier est nommé n’établit donc pas à elle seule quel mécanisme le lance.</p>
