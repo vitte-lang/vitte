@@ -24,7 +24,7 @@ proc summarize(
     owned_items: i64,
     chunked: bool
 ) -> Summary {
-    give Summary {
+    return Summary {
         imports: imports,
         exports: exports,
         owned_items: owned_items,
@@ -33,7 +33,7 @@ proc summarize(
 }
 
 proc requires_chunked_analysis(kind: i64) -> bool {
-    give kind == 1 or kind == 2 or kind == 3;
+    return kind == 1 or kind == 2 or kind == 3;
 }
 
 proc main() -> int {
@@ -45,22 +45,22 @@ proc main() -> int {
     };
 
     if summary.imports != 1 or summary.exports != 1 {
-        give 1;
+        return 1;
     }
     if summary.owned_items != 1 or not summary.chunked {
-        give 2;
+        return 2;
     }
     if facade.exports != 0 or facade.owned_items != 0 or facade.chunked {
-        give 3;
+        return 3;
     }
     if child.boundary_items != 1 or child.unrelated_items != 0 {
-        give 4;
+        return 4;
     }
     if not requires_chunked_analysis(1) or
        not requires_chunked_analysis(2) or
        not requires_chunked_analysis(3) or
        requires_chunked_analysis(0) {
-        give 5;
+        return 5;
     }
-    give 0;
+    return 0;
 }

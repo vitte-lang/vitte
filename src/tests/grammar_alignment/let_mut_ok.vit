@@ -46,14 +46,14 @@ space tests::grammar_alignment::let_mut_ok;
 proc immutable_explicit() -> i64 {
     let value: i64 = 42;
 
-    give value;
+    return value;
 }
 
 /// Basic immutable binding with inferred type.
 proc immutable_inferred() -> i64 {
     let value = 42;
 
-    give value;
+    return value;
 }
 
 /// Basic mutable binding with explicit type.
@@ -62,7 +62,7 @@ proc mutable_explicit() -> i64 {
 
     set value = 42;
 
-    give value;
+    return value;
 }
 
 /// Basic mutable binding with inferred type.
@@ -71,7 +71,7 @@ proc mutable_inferred() -> i64 {
 
     set value = 42;
 
-    give value;
+    return value;
 }
 
 /// Immutable values may participate in expressions used to mutate another
@@ -84,7 +84,7 @@ proc immutable_to_mutable() -> i64 {
 
     set result = left + right;
 
-    give result;
+    return result;
 }
 
 /// A mutable value may be captured by a later immutable binding.
@@ -95,7 +95,7 @@ proc mutable_to_immutable() -> i64 {
 
     let result: i64 = source;
 
-    give result;
+    return result;
 }
 
 /// Repeated assignment to the same mutable binding.
@@ -107,7 +107,7 @@ proc repeated_assignment() -> i64 {
     set value = 30;
     set value = 42;
 
-    give value;
+    return value;
 }
 
 /// Compound arithmetic assignments.
@@ -120,7 +120,7 @@ proc compound_arithmetic() -> i64 {
     set value *= 2;
     set value /= 2;
 
-    give value;
+    return value;
 }
 
 /// Modulo compound assignment.
@@ -129,7 +129,7 @@ proc compound_modulo() -> i64 {
 
     set value %= 58;
 
-    give value;
+    return value;
 }
 
 /// Multiple mutable bindings in the same scope.
@@ -142,7 +142,7 @@ proc multiple_mutable_bindings() -> i64 {
     set right += 2;
     set result = left + right;
 
-    give result;
+    return result;
 }
 
 /// Mutation using another mutable binding.
@@ -156,7 +156,7 @@ proc mutable_dependency() -> i64 {
     set right += left;
     set right -= 20;
 
-    give right;
+    return right;
 }
 
 /// Mutation inside a nested block.
@@ -171,7 +171,7 @@ proc nested_block_mutation() -> i64 {
         }
     }
 
-    give value;
+    return value;
 }
 
 /// A nested binding may shadow an outer binding without changing the outer
@@ -183,11 +183,11 @@ proc nested_shadowing() -> i64 {
         let value: i64 = 100;
 
         if value != 100 {
-            give 0;
+            return 0;
         }
     }
 
-    give value;
+    return value;
 }
 
 /// Mutable shadowing has independent storage.
@@ -200,11 +200,11 @@ proc mutable_shadowing() -> i64 {
         set value += 10;
 
         if value != 20 {
-            give 0;
+            return 0;
         }
     }
 
-    give value;
+    return value;
 }
 
 /// Mutation inside a conditional branch.
@@ -217,7 +217,7 @@ proc conditional_mutation(
         set value += 22;
     }
 
-    give value;
+    return value;
 }
 
 /// Mutation in both branches.
@@ -233,7 +233,7 @@ proc conditional_branch_mutation(
         set value *= 2;
     }
 
-    give value;
+    return value;
 }
 
 /// Boolean mutable binding.
@@ -242,7 +242,7 @@ proc boolean_mutation() -> bool {
 
     set value = true;
 
-    give value;
+    return value;
 }
 
 /// Boolean mutation through an expression.
@@ -252,9 +252,9 @@ proc boolean_expression_mutation() -> bool {
 
     let mut result: bool = false;
 
-    set result = left && right;
+    set result = left and right;
 
-    give result;
+    return result;
 }
 
 /// Mutable counter in a while loop.
@@ -267,7 +267,7 @@ proc while_mutation() -> i64 {
         set result += 1;
     }
 
-    give result;
+    return result;
 }
 
 /// Multiple mutations per loop iteration.
@@ -280,7 +280,7 @@ proc while_accumulator() -> i64 {
         set index += 1;
     }
 
-    give accumulator;
+    return accumulator;
 }
 
 /// Mutable value modified according to another immutable local.
@@ -292,7 +292,7 @@ proc mutation_from_local_expression() -> i64 {
 
     set value += increment;
 
-    give value;
+    return value;
 }
 
 /// Assignment expression containing several local reads.
@@ -308,7 +308,7 @@ proc complex_assignment_expression() -> i64 {
         second +
         third;
 
-    give result;
+    return result;
 }
 
 /// Mutability remains associated with the binding rather than the expression
@@ -322,7 +322,7 @@ proc mutable_initialized_from_expression() -> i64 {
 
     set value += 22;
 
-    give value;
+    return value;
 }
 
 /// Mutable binding used by an immutable expression after several writes.
@@ -335,7 +335,7 @@ proc read_after_writes() -> i64 {
 
     let snapshot: i64 = value;
 
-    give snapshot;
+    return snapshot;
 }
 
 /// Mutation through nested control flow.
@@ -357,7 +357,7 @@ proc nested_control_flow() -> i64 {
         set index += 1;
     }
 
-    give value;
+    return value;
 }
 
 /// Two mutable variables may exchange values using an immutable temporary.
@@ -370,7 +370,7 @@ proc swap_mutable_values() -> bool {
     set left = right;
     set right = temporary;
 
-    give left == 22 &&
+    return left == 22 and
          right == 20;
 }
 
@@ -384,8 +384,8 @@ proc typed_mutation() -> bool {
     set unsigned_value = 84;
     set flag = true;
 
-    give signed_value == 84 &&
-         unsigned_value == 84 &&
+    return signed_value == 84 and
+         unsigned_value == 84 and
          flag;
 }
 
@@ -406,7 +406,7 @@ proc statement_boundary_alignment() -> i64 {
     set b += 1;
     set c += 1;
 
-    give d;
+    return d;
 }
 
 /// Integrated positive test.
@@ -427,13 +427,13 @@ proc integrated_mutation() -> i64 {
 
     set enabled = false;
 
-    if !enabled {
+    if not enabled {
         set accumulator = 42;
     }
 
     let result: i64 = accumulator;
 
-    give result;
+    return result;
 }
 
 /// Entry point.
@@ -441,124 +441,124 @@ proc integrated_mutation() -> i64 {
 /// Each return code identifies the first grammar/mutation behavior that failed.
 proc main() -> int {
     if immutable_explicit() != 42 {
-        give 1;
+        return 1;
     }
 
     if immutable_inferred() != 42 {
-        give 2;
+        return 2;
     }
 
     if mutable_explicit() != 42 {
-        give 3;
+        return 3;
     }
 
     if mutable_inferred() != 42 {
-        give 4;
+        return 4;
     }
 
     if immutable_to_mutable() != 42 {
-        give 5;
+        return 5;
     }
 
     if mutable_to_immutable() != 42 {
-        give 6;
+        return 6;
     }
 
     if repeated_assignment() != 42 {
-        give 7;
+        return 7;
     }
 
     if compound_arithmetic() != 42 {
-        give 8;
+        return 8;
     }
 
     if compound_modulo() != 42 {
-        give 9;
+        return 9;
     }
 
     if multiple_mutable_bindings() != 42 {
-        give 10;
+        return 10;
     }
 
     if mutable_dependency() != 42 {
-        give 11;
+        return 11;
     }
 
     if nested_block_mutation() != 42 {
-        give 12;
+        return 12;
     }
 
     if nested_shadowing() != 42 {
-        give 13;
+        return 13;
     }
 
     if mutable_shadowing() != 42 {
-        give 14;
+        return 14;
     }
 
     if conditional_mutation(true) != 42 {
-        give 15;
+        return 15;
     }
 
     if conditional_branch_mutation(true) != 42 {
-        give 16;
+        return 16;
     }
 
     if conditional_branch_mutation(false) != 42 {
-        give 17;
+        return 17;
     }
 
-    if !boolean_mutation() {
-        give 18;
+    if not boolean_mutation() {
+        return 18;
     }
 
-    if !boolean_expression_mutation() {
-        give 19;
+    if not boolean_expression_mutation() {
+        return 19;
     }
 
     if while_mutation() != 42 {
-        give 20;
+        return 20;
     }
 
     if while_accumulator() != 42 {
-        give 21;
+        return 21;
     }
 
     if mutation_from_local_expression() != 42 {
-        give 22;
+        return 22;
     }
 
     if complex_assignment_expression() != 42 {
-        give 23;
+        return 23;
     }
 
     if mutable_initialized_from_expression() != 42 {
-        give 24;
+        return 24;
     }
 
     if read_after_writes() != 42 {
-        give 25;
+        return 25;
     }
 
     if nested_control_flow() != 42 {
-        give 26;
+        return 26;
     }
 
-    if !swap_mutable_values() {
-        give 27;
+    if not swap_mutable_values() {
+        return 27;
     }
 
-    if !typed_mutation() {
-        give 28;
+    if not typed_mutation() {
+        return 28;
     }
 
     if statement_boundary_alignment() != 42 {
-        give 29;
+        return 29;
     }
 
     if integrated_mutation() != 42 {
-        give 30;
+        return 30;
     }
 
-    give 0;
+    return 0;
 }

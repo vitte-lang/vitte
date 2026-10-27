@@ -4,6 +4,22 @@
 #include <string.h>
 
 #include "diagnostic/diagnostic.h"
+#include "diagnostic/render_lsp.h"
+
+/* Model the random byte spans on an ASCII line of the generated length. */
+static bool
+ascii_position(vitte_source_id_t id, const char *name, size_t offset,
+               vitte_diagnostic_lsp_position_encoding_t encoding,
+               vitte_diagnostic_lsp_position_t *position, void *user_data)
+{
+    const size_t *length = (const size_t *)user_data;
+    (void)id; (void)name; (void)encoding;
+    if (offset > *length) return false;
+    position->line = 0u;
+    position->character = offset;
+    position->valid = true;
+    return true;
+}
 
 static uint32_t
 next_random(
@@ -28,6 +44,7 @@ main(void)
         vitte_diagnostic_t storage[1];
         vitte_diagnostic_bag_t bag;
         FILE *stream;
+        vitte_diagnostic_lsp_options_t lsp;
 
         length =
             (size_t)(next_random(&state) % UINT32_C(256));
@@ -86,7 +103,11 @@ main(void)
                    stream,
                    &bag,
                    VITTE_DIAGNOSTIC_FORMAT_LSP) ==
-               VITTE_STATUS_OK);
+               VITTE_STATUS_ERROR_INVALID_STATE); /* LSP needs a position converter. */
+        vitte_diagnostic_lsp_options_init(&lsp);
+        lsp.position_converter = ascii_position;
+        lsp.position_user_data = &length;
+        assert(vitte_diagnostic_render_lsp_array(stream, &bag, NULL, &lsp) == VITTE_STATUS_OK);
         assert(fclose(stream) == 0);
         vitte_diagnostic_bag_reset(&bag);
     }

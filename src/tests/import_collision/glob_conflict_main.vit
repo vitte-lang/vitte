@@ -45,9 +45,7 @@
 
 space tests::import_collision::glob_conflict_main;
 
-use tests::import_collision::collision_a::*;
-use tests::import_collision::collision_b::*;
-
+use tests::import_collision::collision_a::*;use tests::import_collision::collision_b::*;
 /// Intentional ambiguous value lookup.
 ///
 /// `VALUE` is exported by both imported modules.
@@ -58,25 +56,25 @@ use tests::import_collision::collision_b::*;
 /// The compiler must diagnose the ambiguity instead of selecting one.
 
 proc conflict_value() -> i64 {
-    give VALUE;
+    return VALUE;
 }
 
 /// Intentional ambiguous constant lookup.
 
 proc conflict_source_id() -> i64 {
-    give SOURCE_ID;
+    return SOURCE_ID;
 }
 
 /// Intentional ambiguous constant lookup.
 
 proc conflict_answer_part() -> i64 {
-    give ANSWER_PART;
+    return ANSWER_PART;
 }
 
 /// Intentional ambiguous constant lookup.
 
 proc conflict_common_limit() -> i64 {
-    give COMMON_LIMIT;
+    return COMMON_LIMIT;
 }
 
 /// Intentional ambiguous procedure lookup.
@@ -84,31 +82,31 @@ proc conflict_common_limit() -> i64 {
 /// Both modules export `identity`.
 
 proc conflict_identity() -> i64 {
-    give identity(42);
+    return identity(42);
 }
 
 /// Intentional ambiguous procedure lookup.
 
 proc conflict_common_value() -> i64 {
-    give common_value();
+    return common_value();
 }
 
 /// Intentional ambiguous procedure lookup.
 
 proc conflict_answer_part_proc() -> i64 {
-    give answer_part();
+    return answer_part();
 }
 
 /// Intentional ambiguous procedure lookup.
 
 proc conflict_source_id_proc() -> i64 {
-    give source_id();
+    return source_id();
 }
 
 /// Intentional ambiguous procedure lookup.
 
 proc conflict_add() -> i64 {
-    give add(
+    return add(
         20,
         22);
 }
@@ -123,7 +121,7 @@ proc conflict_point_type() -> i64 {
             20,
             22);
 
-    give point_sum(&point);
+    return point_sum(&point);
 }
 
 /// Intentional ambiguous constructor/type lookup.
@@ -135,7 +133,7 @@ proc conflict_point_literal() -> i64 {
             y: 22,
         };
 
-    give point.x +
+    return point.x +
          point.y;
 }
 
@@ -145,7 +143,7 @@ proc conflict_default_point() -> i64 {
     let point: Point =
         make_default_point();
 
-    give point_sum(&point);
+    return point_sum(&point);
 }
 
 /// Intentional ambiguous `Record` type and procedure lookups.
@@ -155,7 +153,7 @@ proc conflict_record() -> i64 {
         make_record(
             42);
 
-    give record_value(&record);
+    return record_value(&record);
 }
 
 /// Intentional ambiguous record-source lookup.
@@ -165,7 +163,7 @@ proc conflict_record_source() -> i64 {
         make_record(
             42);
 
-    give record_source(&record);
+    return record_source(&record);
 }
 
 /// Intentional ambiguous `Wrapper` type and associated procedure lookups.
@@ -185,19 +183,19 @@ proc conflict_wrapper() -> i64 {
             point,
             record);
 
-    give wrapper_value(&wrapper);
+    return wrapper_value(&wrapper);
 }
 
 /// Intentional ambiguous pick type lookup.
 
 proc conflict_state() -> State {
-    give default_state();
+    return default_state();
 }
 
 /// Intentional ambiguous pick type lookup.
 
 proc conflict_result_kind() -> ResultKind {
-    give success_kind();
+    return success_kind();
 }
 
 /// Repeated ambiguous lookup.
@@ -206,7 +204,7 @@ proc conflict_result_kind() -> ResultKind {
 /// candidates or install an arbitrary winner after the first diagnostic.
 
 proc conflict_repeated_value() -> i64 {
-    give VALUE +
+    return VALUE +
          VALUE +
          VALUE;
 }
@@ -224,7 +222,7 @@ proc conflict_nested_scope() -> i64 {
             identity(value);
     }
 
-    give result;
+    return result;
 }
 
 /// Ambiguity inside control flow.
@@ -233,10 +231,10 @@ proc conflict_control_flow(
     condition: bool
 ) -> i64 {
     if condition {
-        give VALUE;
+        return VALUE;
     }
 
-    give common_value();
+    return common_value();
 }
 
 /// Ambiguity through several declaration categories in one procedure.
@@ -256,7 +254,7 @@ proc conflict_cross_category() -> i64 {
             point,
             record);
 
-    give wrapper_value(
+    return wrapper_value(
         &wrapper);
 }
 
@@ -265,7 +263,7 @@ proc conflict_cross_category() -> i64 {
 /// Both imported modules export `library_self_test`.
 
 proc conflict_library_self_test() -> bool {
-    give library_self_test();
+    return library_self_test();
 }
 
 /// Entry point intentionally depends on ambiguous imports.
@@ -274,84 +272,84 @@ proc conflict_library_self_test() -> bool {
 
 proc main() -> int {
     if conflict_value() == 42 {
-        give 1;
+        return 1;
     }
 
     if conflict_source_id() == 0 {
-        give 2;
+        return 2;
     }
 
     if conflict_answer_part() == 42 {
-        give 3;
+        return 3;
     }
 
     if conflict_common_limit() == 100 {
-        give 4;
+        return 4;
     }
 
     if conflict_identity() == 42 {
-        give 5;
+        return 5;
     }
 
     if conflict_common_value() == 42 {
-        give 6;
+        return 6;
     }
 
     if conflict_answer_part_proc() == 42 {
-        give 7;
+        return 7;
     }
 
     if conflict_source_id_proc() == 0 {
-        give 8;
+        return 8;
     }
 
     if conflict_add() == 42 {
-        give 9;
+        return 9;
     }
 
     if conflict_point_type() == 42 {
-        give 10;
+        return 10;
     }
 
     if conflict_point_literal() == 42 {
-        give 11;
+        return 11;
     }
 
     if conflict_default_point() == 42 {
-        give 12;
+        return 12;
     }
 
     if conflict_record() == 42 {
-        give 13;
+        return 13;
     }
 
     if conflict_record_source() == 0 {
-        give 14;
+        return 14;
     }
 
     if conflict_wrapper() == 42 {
-        give 15;
+        return 15;
     }
 
     if conflict_repeated_value() == 42 {
-        give 16;
+        return 16;
     }
 
     if conflict_nested_scope() == 42 {
-        give 17;
+        return 17;
     }
 
     if conflict_control_flow(true) == 42 {
-        give 18;
+        return 18;
     }
 
     if conflict_cross_category() == 42 {
-        give 19;
+        return 19;
     }
 
     if conflict_library_self_test() {
-        give 20;
+        return 20;
     }
 
-    give 0;
+    return 0;
 }

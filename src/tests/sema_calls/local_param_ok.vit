@@ -28,47 +28,47 @@ form Pair {
 proc identity(
     value: i64
 ) -> i64 {
-    give value;
+    return value;
 }
 
 proc add(
     left: i64,
     right: i64
 ) -> i64 {
-    give left + right;
+    return left + right;
 }
 
 proc subtract(
     left: i64,
     right: i64
 ) -> i64 {
-    give left - right;
+    return left - right;
 }
 
 proc multiply(
     left: i64,
     right: i64
 ) -> i64 {
-    give left * right;
+    return left * right;
 }
 
 proc increment(
     value: i64
 ) -> i64 {
-    give value + 1;
+    return value + 1;
 }
 
 proc is_answer(
     value: i64
 ) -> bool {
-    give value == 42;
+    return value == 42;
 }
 
 proc make_point(
     x: i64,
     y: i64
 ) -> Point {
-    give Point {
+    return Point {
         x: x,
         y: y,
     };
@@ -77,7 +77,7 @@ proc make_point(
 proc point_sum(
     point: &Point
 ) -> i64 {
-    give point.x +
+    return point.x +
          point.y;
 }
 
@@ -85,7 +85,7 @@ proc make_pair(
     first: i64,
     second: i64
 ) -> Pair {
-    give Pair {
+    return Pair {
         first: first,
         second: second,
     };
@@ -94,7 +94,7 @@ proc make_pair(
 proc pair_sum(
     pair: &Pair
 ) -> i64 {
-    give pair.first +
+    return pair.first +
          pair.second;
 }
 
@@ -103,7 +103,7 @@ proc pair_sum(
 proc forward_scalar(
     value: i64
 ) -> i64 {
-    give identity(value);
+    return identity(value);
 }
 
 /// Forward two scalar parameters.
@@ -112,7 +112,7 @@ proc forward_two(
     left: i64,
     right: i64
 ) -> i64 {
-    give add(
+    return add(
         left,
         right);
 }
@@ -122,7 +122,7 @@ proc forward_two(
 proc nested_scalar(
     value: i64
 ) -> i64 {
-    give identity(
+    return identity(
         identity(
             identity(value)));
 }
@@ -132,7 +132,7 @@ proc nested_scalar(
 proc add_to_twenty_two(
     value: i64
 ) -> i64 {
-    give add(
+    return add(
         value,
         22);
 }
@@ -142,7 +142,7 @@ proc add_to_twenty_two(
 proc duplicate_parameter(
     value: i64
 ) -> i64 {
-    give add(
+    return add(
         value,
         value);
 }
@@ -153,7 +153,7 @@ proc reverse_subtract(
     left: i64,
     right: i64
 ) -> i64 {
-    give subtract(
+    return subtract(
         right,
         left);
 }
@@ -166,7 +166,7 @@ proc through_local(
     let local: i64 =
         value;
 
-    give identity(local);
+    return identity(local);
 }
 
 /// Two parameters flow through independent locals.
@@ -181,7 +181,7 @@ proc through_two_locals(
     let local_right: i64 =
         right;
 
-    give add(
+    return add(
         local_left,
         local_right);
 }
@@ -192,7 +192,7 @@ proc call_result_as_argument(
     left: i64,
     right: i64
 ) -> i64 {
-    give identity(
+    return identity(
         add(
             left,
             right));
@@ -214,7 +214,7 @@ proc arithmetic_pipeline(
             sum,
             2);
 
-    give subtract(
+    return subtract(
         doubled,
         sum);
 }
@@ -226,10 +226,10 @@ proc conditional_forward(
     enabled: bool
 ) -> i64 {
     if enabled {
-        give identity(value);
+        return identity(value);
     }
 
-    give 0;
+    return 0;
 }
 
 /// Parameter is mutated locally and then passed to another procedure.
@@ -243,7 +243,7 @@ proc mutable_parameter_copy(
     set local =
         increment(local);
 
-    give identity(local);
+    return identity(local);
 }
 
 /// Form parameters are forwarded by reference.
@@ -251,7 +251,7 @@ proc mutable_parameter_copy(
 proc forward_point(
     point: &Point
 ) -> i64 {
-    give point_sum(point);
+    return point_sum(point);
 }
 
 /// Form value parameter becomes a reference argument.
@@ -259,7 +259,7 @@ proc forward_point(
 proc point_value_parameter(
     point: Point
 ) -> i64 {
-    give point_sum(
+    return point_sum(
         &point);
 }
 
@@ -274,7 +274,7 @@ proc construct_point_from_parameters(
             x,
             y);
 
-    give point_sum(
+    return point_sum(
         &point);
 }
 
@@ -289,7 +289,7 @@ proc construct_pair_from_parameters(
             first,
             second);
 
-    give pair_sum(
+    return pair_sum(
         &pair);
 }
 
@@ -298,7 +298,7 @@ proc construct_pair_from_parameters(
 proc point_reference_pipeline(
     point: &Point
 ) -> i64 {
-    give identity(
+    return identity(
         forward_point(point));
 }
 
@@ -318,7 +318,7 @@ proc independent_parameters(
     let third_result: i64 =
         identity(third);
 
-    give add(
+    return add(
         add(
             first_result,
             second_result),
@@ -342,7 +342,7 @@ proc nested_scope_parameter(
         }
     }
 
-    give result;
+    return result;
 }
 
 /// Local shadowing must not corrupt parameter bindings outside the inner block.
@@ -362,7 +362,7 @@ proc parameter_shadowing(
                 58);
     }
 
-    give identity(result);
+    return identity(result);
 }
 
 /// Parameter used repeatedly should resolve to the same declaration.
@@ -370,10 +370,10 @@ proc parameter_shadowing(
 proc repeated_parameter_lookup(
     value: i64
 ) -> bool {
-    give identity(value) == value &&
-         identity(value) == value &&
-         identity(value) == value &&
-         add(value, 0) == value &&
+    return identity(value) == value and
+         identity(value) == value and
+         identity(value) == value and
+         add(value, 0) == value and
          subtract(value, 0) == value;
 }
 
@@ -383,10 +383,10 @@ proc alternating_parameter_lookup(
     left: i64,
     right: i64
 ) -> bool {
-    give identity(left) == left &&
-         identity(right) == right &&
-         identity(left) == left &&
-         identity(right) == right &&
+    return identity(left) == left and
+         identity(right) == right and
+         identity(left) == left and
+         identity(right) == right and
          add(left, right) == 42;
 }
 
@@ -398,10 +398,10 @@ proc select_parameter(
     choose_left: bool
 ) -> i64 {
     if choose_left {
-        give identity(left);
+        return identity(left);
     }
 
-    give identity(right);
+    return identity(right);
 }
 
 /// Recursive calls exercise parameter binding in a fresh invocation scope.
@@ -410,10 +410,10 @@ proc sum_to(
     value: i64
 ) -> i64 {
     if value <= 0 {
-        give 0;
+        return 0;
     }
 
-    give add(
+    return add(
         value,
         sum_to(
             value - 1));
@@ -424,20 +424,20 @@ proc sum_to(
 proc stage_three(
     value: i64
 ) -> i64 {
-    give identity(value);
+    return identity(value);
 }
 
 proc stage_two(
     value: i64
 ) -> i64 {
-    give stage_three(
+    return stage_three(
         value);
 }
 
 proc stage_one(
     value: i64
 ) -> i64 {
-    give stage_two(
+    return stage_two(
         value);
 }
 
@@ -460,74 +460,74 @@ proc integrated_parameter_test(
             left,
             right);
 
-    give sum == 42 &&
-         identity(sum) == 42 &&
-         forward_scalar(sum) == 42 &&
-         forward_two(left, right) == 42 &&
-         nested_scalar(sum) == 42 &&
-         through_local(sum) == 42 &&
-         through_two_locals(left, right) == 42 &&
-         call_result_as_argument(left, right) == 42 &&
-         arithmetic_pipeline(left, right) == 42 &&
-         point_sum(&point) == 42 &&
-         forward_point(&point) == 42 &&
-         point_value_parameter(point) == 42 &&
-         pair_sum(&pair) == 42 &&
-         repeated_parameter_lookup(sum) &&
+    return sum == 42 and
+         identity(sum) == 42 and
+         forward_scalar(sum) == 42 and
+         forward_two(left, right) == 42 and
+         nested_scalar(sum) == 42 and
+         through_local(sum) == 42 and
+         through_two_locals(left, right) == 42 and
+         call_result_as_argument(left, right) == 42 and
+         arithmetic_pipeline(left, right) == 42 and
+         point_sum(&point) == 42 and
+         forward_point(&point) == 42 and
+         point_value_parameter(point) == 42 and
+         pair_sum(&pair) == 42 and
+         repeated_parameter_lookup(sum) and
          alternating_parameter_lookup(left, right);
 }
 
 proc main() -> int {
     if forward_scalar(42) != 42 {
-        give 1;
+        return 1;
     }
 
     if forward_two(20, 22) != 42 {
-        give 2;
+        return 2;
     }
 
     if nested_scalar(42) != 42 {
-        give 3;
+        return 3;
     }
 
     if add_to_twenty_two(20) != 42 {
-        give 4;
+        return 4;
     }
 
     if duplicate_parameter(21) != 42 {
-        give 5;
+        return 5;
     }
 
     if reverse_subtract(58, 100) != 42 {
-        give 6;
+        return 6;
     }
 
     if through_local(42) != 42 {
-        give 7;
+        return 7;
     }
 
     if through_two_locals(20, 22) != 42 {
-        give 8;
+        return 8;
     }
 
     if call_result_as_argument(20, 22) != 42 {
-        give 9;
+        return 9;
     }
 
     if arithmetic_pipeline(20, 22) != 42 {
-        give 10;
+        return 10;
     }
 
     if conditional_forward(42, true) != 42 {
-        give 11;
+        return 11;
     }
 
     if conditional_forward(42, false) != 0 {
-        give 12;
+        return 12;
     }
 
     if mutable_parameter_copy(41) != 42 {
-        give 13;
+        return 13;
     }
 
     let point: Point =
@@ -536,73 +536,73 @@ proc main() -> int {
             22);
 
     if forward_point(&point) != 42 {
-        give 14;
+        return 14;
     }
 
     if point_value_parameter(point) != 42 {
-        give 15;
+        return 15;
     }
 
     if construct_point_from_parameters(20, 22) != 42 {
-        give 16;
+        return 16;
     }
 
     if construct_pair_from_parameters(20, 22) != 42 {
-        give 17;
+        return 17;
     }
 
     if point_reference_pipeline(&point) != 42 {
-        give 18;
+        return 18;
     }
 
     if independent_parameters(10, 12, 20) != 42 {
-        give 19;
+        return 19;
     }
 
     if nested_scope_parameter(42) != 42 {
-        give 20;
+        return 20;
     }
 
     if parameter_shadowing(42) != 42 {
-        give 21;
+        return 21;
     }
 
-    if !repeated_parameter_lookup(42) {
-        give 22;
+    if not repeated_parameter_lookup(42) {
+        return 22;
     }
 
-    if !alternating_parameter_lookup(20, 22) {
-        give 23;
+    if not alternating_parameter_lookup(20, 22) {
+        return 23;
     }
 
     if select_parameter(20, 22, true) != 20 {
-        give 24;
+        return 24;
     }
 
     if select_parameter(20, 22, false) != 22 {
-        give 25;
+        return 25;
     }
 
     if sum_to(6) != 21 {
-        give 26;
+        return 26;
     }
 
     if stage_one(42) != 42 {
-        give 27;
+        return 27;
     }
 
-    if !is_answer(
+    if not is_answer(
         forward_two(
             20,
             22)) {
-        give 28;
+        return 28;
     }
 
-    if !integrated_parameter_test(
+    if not integrated_parameter_test(
         20,
         22) {
-        give 29;
+        return 29;
     }
 
-    give 0;
+    return 0;
 }
