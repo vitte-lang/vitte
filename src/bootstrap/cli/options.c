@@ -291,6 +291,7 @@ vitte_main_parse_command(
         case VITTE_CLI_COMMAND_ID_COMPILE: *command = VITTE_MAIN_COMMAND_COMPILE; break;
         case VITTE_CLI_COMMAND_ID_CHECK: *command = VITTE_MAIN_COMMAND_CHECK; break;
         case VITTE_CLI_COMMAND_ID_RUN: *command = VITTE_MAIN_COMMAND_RUN; break;
+        case VITTE_CLI_COMMAND_ID_INSTALL: *command = VITTE_MAIN_COMMAND_INSTALL; break;
         case VITTE_CLI_COMMAND_ID_LEX: *command = VITTE_MAIN_COMMAND_LEX; break;
         case VITTE_CLI_COMMAND_ID_PARSE: *command = VITTE_MAIN_COMMAND_PARSE; break;
         case VITTE_CLI_COMMAND_ID_EXPLAIN: *command = VITTE_MAIN_COMMAND_EXPLAIN; break;
@@ -887,6 +888,30 @@ vitte_main_parse_options(
             return true;
         }
 
+        if (options->command == VITTE_MAIN_COMMAND_INSTALL &&
+            (strcmp(argument, "--global") == 0)) {
+            options->package_global = true;
+            continue;
+        }
+
+        if (options->command == VITTE_MAIN_COMMAND_INSTALL &&
+            (strcmp(argument, "--version") == 0 ||
+             strncmp(argument, "--version=", 10u) == 0)) {
+            const char *version = NULL;
+            if (argument[9] == '=') {
+                version = argument + 10u;
+            } else if (index + 1 < argc && argv[index + 1] != NULL &&
+                       argv[index + 1][0] != '-') {
+                version = argv[++index];
+            }
+            if (version == NULL || version[0] == '\0') {
+                vitte_main_error("--version requires a package version after install");
+                return false;
+            }
+            options->package_version = version;
+            continue;
+        }
+
         if (vitte_main_option_is(argument, VITTE_CLI_OPTION_ID_VERSION)) {
             options->command =
                 VITTE_MAIN_COMMAND_VERSION;
@@ -1120,9 +1145,20 @@ vitte_main_parse_options(
 
     if (options->input_path == NULL &&
         options->command != VITTE_MAIN_COMMAND_COMPLETION) {
+        if (options->command == VITTE_MAIN_COMMAND_INSTALL) {
+            vitte_main_error("install requires a package name");
+            return false;
+        }
         vitte_main_error(
             "no input file");
 
+        return false;
+    }
+
+    if (options->command == VITTE_MAIN_COMMAND_INSTALL &&
+        (options->emit_c || options->emit_object || options->emit_ir ||
+         options->output_path != NULL || options->run_argc != 0)) {
+        vitte_main_error("install accepts a package name, --version and --global");
         return false;
     }
 

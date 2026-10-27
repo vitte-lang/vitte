@@ -115,7 +115,8 @@ typedef enum vitte_main_command {
     VITTE_MAIN_COMMAND_EXPLAIN,
     VITTE_MAIN_COMMAND_COMPLETION,
     VITTE_MAIN_COMMAND_HELP,
-    VITTE_MAIN_COMMAND_VERSION
+    VITTE_MAIN_COMMAND_VERSION,
+    VITTE_MAIN_COMMAND_INSTALL
 } vitte_main_command_t;
 
 typedef enum vitte_main_diagnostic_format {
@@ -147,6 +148,8 @@ typedef struct vitte_main_options {
     vitte_main_command_t command;
     const char *input_path;
     const char *output_path;
+    const char *package_version;
+    bool package_global;
     vitte_main_diagnostic_format_t diagnostic_format;
     bool color;
     bool quiet;
@@ -262,6 +265,9 @@ void vitte_main_print_version(void);
 bool vitte_main_parse_options(int argc, char **argv,
                               vitte_main_options_t *options);
 void vitte_main_options_destroy(vitte_main_options_t *options);
+vitte_main_exit_code_t vitte_main_install_package(const char *name,
+                                                 const char *version,
+                                                 bool global_install);
 
 /* Source/module helpers owned by entry.c and consumed by the pipeline. */
 bool vitte_main_buffer_append(unsigned char **buffer, size_t *length,

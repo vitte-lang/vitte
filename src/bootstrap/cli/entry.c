@@ -2086,6 +2086,8 @@ vitte_main_report_missing_module(
     char root[VITTE_MAIN_MODULE_PATH_MAX];
     char installed_root[VITTE_MAIN_MODULE_PATH_MAX];
     char executable_directory[VITTE_MAIN_MODULE_PATH_MAX];
+    char local_modules[VITTE_MAIN_MODULE_PATH_MAX];
+    char global_modules[VITTE_MAIN_MODULE_PATH_MAX];
     char details[1024];
     char *slash;
     const char *configured_paths;
@@ -2151,6 +2153,11 @@ vitte_main_report_missing_module(
     }
     for (depth = 0u; depth < 12u && scan.entries_left != 0u; ++depth) {
         char *parent;
+        written = snprintf(local_modules, sizeof(local_modules),
+                           "%s/.vitte/modules", root);
+        if (written >= 0 && (size_t)written < sizeof(local_modules)) {
+            vitte_main_module_scan_root(&scan, local_modules);
+        }
 
         vitte_main_module_scan_root(&scan, root);
         if (strcmp(root, "/") == 0 || strcmp(root, ".") == 0) {
@@ -2186,6 +2193,35 @@ vitte_main_report_missing_module(
         }
         cursor = separator + 1u;
     }
+#if defined(_WIN32)
+    {
+        const char *user_data = getenv("LOCALAPPDATA");
+        if (user_data != NULL && user_data[0] != '\0') {
+            written = snprintf(global_modules, sizeof(global_modules),
+                               "%s/Vitte/modules", user_data);
+            if (written >= 0 && (size_t)written < sizeof(global_modules)) {
+                vitte_main_module_scan_root(&scan, global_modules);
+            }
+        }
+    }
+#else
+    {
+        const char *user_data = getenv("XDG_DATA_HOME");
+        if (user_data != NULL && user_data[0] != '\0') {
+            written = snprintf(global_modules, sizeof(global_modules),
+                               "%s/vitte/modules", user_data);
+        } else {
+            user_data = getenv("HOME");
+            written = user_data != NULL && user_data[0] != '\0'
+                ? snprintf(global_modules, sizeof(global_modules),
+                           "%s/.local/share/vitte/modules", user_data)
+                : -1;
+        }
+        if (written >= 0 && (size_t)written < sizeof(global_modules)) {
+            vitte_main_module_scan_root(&scan, global_modules);
+        }
+    }
+#endif
     if (vitte_main_executable_path[0] != '\0' &&
         strlen(vitte_main_executable_path) < sizeof(executable_directory)) {
         char *executable_slash;
@@ -3339,6 +3375,12 @@ vitte_main_dispatch(
             vitte_main_print_version();
 
             return VITTE_MAIN_EXIT_SUCCESS;
+
+        case VITTE_MAIN_COMMAND_INSTALL:
+            return vitte_main_install_package(
+                options->input_path,
+                options->package_version,
+                options->package_global);
 
         case VITTE_MAIN_COMMAND_LEX:
         case VITTE_MAIN_COMMAND_PARSE:

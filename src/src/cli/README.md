@@ -475,31 +475,17 @@ Formatting implementation belongs to the formatter subsystem.
 
 ## 12. `install`
 
-Example:
+Examples:
 
 ```sh
-vitte install mymodule
-```
-
-The intended package architecture can support commands such as:
-
-```sh
-vitte install network
 vitte install json
-vitte install math
+vitte install json --version 0.1.1
+vitte install json --global
 ```
 
-The CLI does not perform network operations.
+Without `--version`, Vitte selects the newest stable release compatible with the running compiler. Project installs are the default: package sources are stored in `.vitte/modules`, the selected dependency is recorded in `vitte.packages.toml`, and the exact archive version and SHA-256 are recorded in `vitte.lock`. `--global` stores the package for the current user and does not edit project files.
 
-It only records package-manager intent.
-
-A package manager can later resolve a module against infrastructure such as:
-
-```text
-vitte-lang.org
-```
-
-or another configured registry.
+The installer reads the published index at `https://vitte-lang.org/registry/packages.tsv`, verifies the archive SHA-256, and extracts the immutable release. The package must list the running Vitte version as compatible.
 
 ---
 

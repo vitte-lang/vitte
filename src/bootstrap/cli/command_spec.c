@@ -318,6 +318,8 @@ vitte_cli_render_help(FILE *stream)
         "  vitte lex hello.vit\n"
         "  vitte parse hello.vit --emit-ast\n"
         "  vitte run hello.vit -- arg1 arg2\n"
+        "  vitte install json\n"
+        "  vitte install json --version 0.1.1\n"
         "  vitte explain E0501\n"
         "  vitte completion bash > vitte.bash\n");
     return !ferror(stream);

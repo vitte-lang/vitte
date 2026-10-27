@@ -24,18 +24,23 @@ keywords: modules packages bibliothèques JSON core versions installation dépô
 <tr><td><strong><code>core</code></strong></td><td><a href="https://github.com/vitte-lang/vitte/tree/main/modules/core">Sources de <code>modules/core</code></a><br>Versionnée avec le dépôt du compilateur, sans release indépendante décrite ici.</td><td>Familles d’APIs fondamentales documentées dans le <a href="https://github.com/vitte-lang/vitte/blob/main/modules/core/API.md">catalogue des exports</a> et le README du module.</td><td><span class="status-tag status-experimental">À vérifier par API</span> : le contrat source et la disponibilité native ne sont pas équivalents. Consultez la fiche de support du symbole précis et compilez un consommateur minimal.</td></tr>
 </tbody></table>
 <p>Cette première édition ne transforme pas les répertoires de sources en promesses de compatibilité. Un module ne sera ajouté comme paquet utilisable que lorsque son nom d’import, sa version, son mode d’installation et au moins un consommateur reproductible seront documentés.</p>
-<p>Les champs de JSON affichés ci-dessus proviennent de <code>modules/json/registry.toml</code>. <code>docs/_data/module_registry.json</code> est généré depuis ce registre avec <code>python3 scripts/generate_module_registry.py</code> ; le workflow Pages vérifie que les données affichées restent synchronisées avec leur source.</p>
+<p>Les champs affichés sur le site et l’index consommé par <code>vitte install</code> proviennent de <code>modules/json/registry.toml</code>. <code>docs/_data/module_registry.json</code> alimente le catalogue et <code>docs/registry/packages.tsv</code> publie les versions téléchargeables avec leurs compatibles et leur SHA-256 ; les deux fichiers sont générés avec <code>python3 scripts/generate_module_registry.py</code> puis vérifiés par le workflow Pages.</p>
 
 <h2 id="json">JSON : le premier paquet externe</h2>
 <p>Le module JSON est la bibliothèque de données la plus complète présentée ici. Sa release autonome <a href="{{ json_package.release_url | escape }}"><code>{{ json_package.release_tag | escape }}</code></a> est liée à un tag immuable et fournit une archive avec son SHA-256. Le registre lit le nom, la version, l’URL, l’empreinte, la licence et les versions compatibles dans <code>modules/json/registry.toml</code> ; la branche <code>main</code> reste une source de développement et n’est pas une référence d’installation reproductible.</p>
 <p><a class="button" href="{{ '/module/json/' | relative_url }}">Ouvrir la page officielle du module JSON <span aria-hidden="true">→</span></a> <a class="button button-secondary" href="{{ '/reference/json/' | relative_url }}">Consulter la référence technique</a></p>
 
-<h2 id="installation">Installer depuis le dépôt Vitte</h2>
-<p>Pour utiliser la copie intégrée au dépôt du compilateur, les commandes suivantes s’exécutent depuis la racine de Vitte :</p>
+<h2 id="installation">Installer le paquet JSON</h2>
+<p>Depuis la racine du projet Vitte où vous voulez l’utiliser, installez automatiquement la dernière version stable compatible. Pour rendre la sélection reproductible, épinglez une version précise :</p>
+<pre><code>vitte install json
+vitte install json --version {{ json_package.version | escape }}</code></pre>
+<p>L’installation locale place les sources dans <code>.vitte/modules/json</code>, inscrit la contrainte résolue dans <code>vitte.packages.toml</code> et la version exacte, l’URL et le SHA-256 dans <code>vitte.lock</code>. Les imports depuis le projet trouvent ces sources automatiquement. Pour installer à l’échelle de l’utilisateur sans modifier le projet, ajoutez <code>--global</code>.</p>
+<pre><code>vitte install json --global</code></pre>
+<p>Pour développer le dépôt intégré au compilateur ou vérifier une copie locale, les commandes suivantes restent disponibles depuis sa racine :</p>
 <pre><code>make -C modules/json verify
 make install PREFIX="$HOME/.local"
 export PATH="$HOME/.local/bin:$PATH"</code></pre>
-<p>Le module est alors installé sous <code>$HOME/.local/share/vitte/modules/json</code>. Si le compilateur ne découvre pas automatiquement cette racine, ajoutez son parent à <code>VITTE_MODULE_PATH</code> :</p>
+<p>Cette installation manuelle place le module sous <code>$HOME/.local/share/vitte/modules/json</code>. Si le compilateur ne découvre pas automatiquement cette racine, ajoutez son parent à <code>VITTE_MODULE_PATH</code> :</p>
 <pre><code>export VITTE_MODULE_PATH="$HOME/.local/share/vitte/modules"
 build/bin/vitte compile application.vit -o application</code></pre>
 <p>Sous Windows, le séparateur de chemins de modules est le point-virgule. Le dépôt fournit également une cible de vérification qui installe le paquet dans un répertoire temporaire, compile un consommateur qui importe le parser et l’encodeur, puis exécute ce consommateur. Pour un clone autonome du dépôt JSON, suivez les instructions et les fichiers de la release correspondante ; les chemins <code>modules/json</code> ci-dessus sont ceux du dépôt monorepo Vitte.</p>

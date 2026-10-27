@@ -65,7 +65,12 @@ proc reformater(source: string) -> int {
 </ul>
 
 <h2 id="installer">Installation et import</h2>
-<p>Pour installer la release autonome 0.1.1 depuis son archive versionnée, téléchargez les deux fichiers joints à la release, vérifiez leur somme, puis lancez le Makefile avec le compilateur installé :</p>
+<p>Depuis le répertoire du projet où le paquet sera utilisé, la commande suivante choisit la version stable compatible la plus récente. Ajoutez l’option de version pour verrouiller explicitement JSON 0.1.1 :</p>
+<pre><code>vitte install json
+vitte install json --version {{ json_package.version | escape }}</code></pre>
+<p>Par défaut, les sources sont installées dans <code>.vitte/modules/json</code>. Le manifeste <code>vitte.packages.toml</code> mémorise la dépendance ; <code>vitte.lock</code> conserve la version exacte, l’URL de l’archive et son SHA-256. L’option <code>--global</code> installe le paquet dans le répertoire de modules de l’utilisateur, sans écrire dans le projet. L’installation manuelle ci-dessous reste utile pour contribuer au paquet :</p>
+<pre><code>vitte install json --global</code></pre>
+<p>Pour installer la release depuis son archive versionnée manuellement, téléchargez les fichiers de la release et vérifiez la somme avant le Makefile :</p>
 <pre><code>curl -LO {{ json_package.download_url | escape }}
 curl -LO {{ json_package.download_url | append: '.sha256' | escape }}
 shasum -a 256 --check vitte-json-{{ json_package.version | escape }}.tar.gz.sha256

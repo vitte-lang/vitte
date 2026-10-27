@@ -13,6 +13,7 @@ This reference, `vitte --help`, and scripts produced by
 | `compile` (default) | `.vit` file | Analyze and compile a source file |
 | `check` | `.vit` file | Validate UTF-8, syntax and semantics |
 | `run` | `.vit` file | Compile and run a program |
+| `install` | package name | Install a package into the current project |
 | `lex` | `.vit` file | Tokenize a source file |
 | `parse` | `.vit` file | Parse a source file |
 | `explain` | public code (for example, `E0501`) | Explain a public diagnostic code |
@@ -67,6 +68,8 @@ The `--` separator forwards the remaining arguments to the `run` program.
 | `--cache-dir=PATH` | Set cache directory |
 | `--sysroot=PATH` | Set sysroot |
 | `--registry=URL` | Set package registry |
+| `--version VERSION` | Select a package version for `install` |
+| `--global` | Install a package for the current user |
 | `--timings` | Display compiler phase timings |
 | `--emit-tokens` | Print lexer tokens |
 | `--emit-ast` | Print an AST summary |
@@ -105,6 +108,21 @@ underscores (for example, `VITTE_MAX_ERRORS` and
 sources. Configuration is merged and validated once before the pipeline.
 `VITTE_MODULE_PATH` adds module search roots separated by the host path-list
 separator (`:` on Unix and `;` on Windows).
+
+## Package installation
+
+```sh
+vitte install json
+vitte install json --version 0.1.1
+vitte install json --global
+```
+
+Without a version pin, `install` chooses the newest stable release compatible
+with the running compiler. Local installs go to `.vitte/modules`; exact package
+versions are recorded in `vitte.packages.toml` and `vitte.lock`. A global
+install uses the current user's Vitte module directory and leaves the project
+files unchanged. The installer downloads the public package index and release,
+then verifies the release archive's SHA-256 before extracting it.
 
 ## Diagnostics
 
