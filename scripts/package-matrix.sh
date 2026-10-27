@@ -9,6 +9,7 @@ normalize_arch() {
     armhf | armv7 | armv7l) printf 'armv7\n' ;;
     armel | armv6 | armv6l) printf 'armv6\n' ;;
     ppc64el | powerpc64le | ppc64le) printf 'ppc64el\n' ;;
+    mips64) printf 'mips64\n' ;;
     ppc64 | powerpc64) printf 'powerpc64\n' ;;
     ppc | powerpc) printf 'powerpc\n' ;;
     riscv64 | RISC-V64 | RISCV64) printf 'riscv64\n' ;;
@@ -25,6 +26,11 @@ normalize_os() {
     OpenBSD | openbsd) printf 'openbsd\n' ;;
     NetBSD | netbsd) printf 'netbsd\n' ;;
     DragonFly | dragonfly) printf 'dragonfly\n' ;;
+    MidnightBSD | midnightbsd) printf 'midnightbsd\n' ;;
+    GhostBSD | ghostbsd) printf 'ghostbsd\n' ;;
+    HardenedBSD | hardenedbsd) printf 'hardenedbsd\n' ;;
+    NomadBSD | nomadbsd) printf 'nomadbsd\n' ;;
+    helloSystem | hellosystem) printf 'hellosystem\n' ;;
     SunOS | Solaris | solaris) printf 'solaris\n' ;;
     Windows | windows | windows-xp | windows-vista | windows-7 | windows-8 | windows-8.1 | windows-10 | windows-11 | MINGW* | MSYS* | CYGWIN*) printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]' ;;
     *) printf 'unsupported os: %s\n' "$1" >&2; exit 1 ;;

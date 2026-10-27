@@ -16,6 +16,7 @@ WINDOWS_SIGNTOOL=${WINDOWS_SIGNTOOL:-signtool}
 WINDOWS_SIGN_CERT=${WINDOWS_SIGN_CERT:-}
 WINDOWS_VITTE_EXE=${WINDOWS_VITTE_EXE:-}
 WINDOWS_TARGETS=${WINDOWS_TARGETS:-xp vista 7 8 8.1 10 11}
+WINDOWS_MINIMUM_VERSION=${WINDOWS_MINIMUM_VERSION:-$(scripts_build_minimum_version_for_target windows)}
 scripts_build_maybe_help "usage: build-windows-installer.sh [--dry-run]"
 scripts_build_maybe_dry_run "would build Windows NSIS kits version=$VERSION arch=$ARCH out=$OUT_DIR"
 
@@ -352,6 +353,9 @@ EOF
   rm -f "$kit_file" "$kit_file.sha256"
   scripts_build_tar_gz "$kit_file" "$stage" installer.nsi install.ps1 uninstall.ps1 BUILD.txt LICENSE README.md logo.png payload
   scripts_build_sha256_write "$kit_file" "$kit_file.sha256"
+  scripts_build_write_artifact_manifest \
+    "$kit_file" windows "$arch" "$VERSION" \
+    "$kit_file.MANIFEST.json" "$WINDOWS_MINIMUM_VERSION"
   printf '[build-windows-installer] wrote build kit %s (%s bytes)\n' "$kit_file" "$(wc -c < "$kit_file" | tr -d ' ')"
 
   if [ "$has_pe" -eq 1 ] && command -v makensis >/dev/null 2>&1; then
@@ -360,6 +364,9 @@ EOF
     validate_pe "$package_file" "$arch" || die "NSIS output is not a Windows $arch executable"
     sign_windows_artifact "$package_file"
     scripts_build_sha256_write "$package_file" "$package_file.sha256"
+    scripts_build_write_artifact_manifest \
+      "$package_file" windows "$arch" "$VERSION" \
+      "$package_file.MANIFEST.json" "$WINDOWS_MINIMUM_VERSION"
     printf '[build-windows-installer] wrote %s (%s bytes)\n' "$package_file" "$(wc -c < "$package_file" | tr -d ' ')"
   elif [ "$has_pe" -eq 0 ]; then
     [ "$REQUIRE_NATIVE" -eq 0 ] ||

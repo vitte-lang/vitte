@@ -53,13 +53,13 @@ verify_optional_sum() {
 }
 
 verify_manifest_if_present() {
-  file=$1
-  manifest=$file.MANIFEST.json
+  artifact_path=$1
+  manifest_path=$artifact_path.MANIFEST.json
 
-  [ ! -e "$manifest" ] || {
-    require_file "$manifest"
+  [ ! -e "$manifest_path" ] || {
+    require_file "$manifest_path"
 
-    python3 - "$file" "$manifest" <<'PY'
+    python3 - "$artifact_path" "$manifest_path" <<'PY'
 import hashlib
 import json
 import sys

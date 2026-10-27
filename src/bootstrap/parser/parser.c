@@ -1158,6 +1158,8 @@ vitte_parser_add_node(
         (vitte_ast_node_id_t)required;
 
     node->kind = kind;
+    /* Keep the C parser's default consistent with the documented AST ABI. */
+    node->token_index = VITTE_PARSER_NO_TOKEN;
     node->span = span;
 
     parser->node_count = required;
@@ -2923,7 +2925,7 @@ vitte_parser_parse_postfix(
                 VITTE_TOKEN_LEFT_BRACE)) {
             const vitte_ast_node_t *type_path;
             vitte_ast_node_id_t form;
-            size_t begin;
+            vitte_parser_span_t type_span;
 
             type_path =
                 vitte_parser_get_node(parser, expression);
@@ -2941,7 +2943,7 @@ vitte_parser_parse_postfix(
                 break;
             }
 
-            begin = type_path->span.begin;
+            type_span = type_path->span;
             (void)vitte_parser_advance(parser);
             form = vitte_parser_add_node(
                 parser,
@@ -3045,10 +3047,10 @@ vitte_parser_parse_postfix(
                 vitte_ast_node_t *node;
                 node = vitte_parser_get_node_mut(parser, form);
                 if (node != NULL) {
-                    node->span = vitte_parser_span_from_range(
-                        parser,
-                        begin,
-                        parser->position);
+                    node->span = vitte_parser_span_join(
+                        type_span,
+                        vitte_parser_span_from_token(
+                            vitte_parser_previous(parser)));
                 }
             }
             expression = form;

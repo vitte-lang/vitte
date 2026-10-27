@@ -1115,6 +1115,14 @@ build_one() {
   if [ -s "$dmg_file" ]; then
     write_checksum "$dmg_file"
   fi
+  scripts_build_write_artifact_manifest \
+    "$package_file" macos "$label" "$VERSION" \
+    "$package_file.MANIFEST.json" "$minimum_system"
+  if [ -s "$dmg_file" ]; then
+    scripts_build_write_artifact_manifest \
+      "$dmg_file" macos "$label" "$VERSION" \
+      "$dmg_file.MANIFEST.json" "$minimum_system"
+  fi
 
   package_size=$(wc -c < "$package_file" | tr -d ' ')
 
@@ -1289,8 +1297,14 @@ esac
 create_macos2006_profile
 
 case "$ARCH" in
-  all | arm64 | x86_64 | universal | universal2)
+  all | universal | universal2)
     make -C "$ROOT_DIR" macos-universal-bin
+    ;;
+  arm64)
+    make -C "$ROOT_DIR" macos-arm64-bin
+    ;;
+  x86_64)
+    make -C "$ROOT_DIR" macos-x86_64-bin
     ;;
 esac
 

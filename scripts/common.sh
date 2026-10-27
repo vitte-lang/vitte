@@ -266,7 +266,7 @@ verify_vitte() {
 
   {
     printf '%s\n' 'proc main() -> int {'
-    printf '%s\n' '    give 0;'
+    printf '%s\n' '    return 0;'
     printf '%s\n' '}'
   } > "$smoke_dir/main.vit"
 
@@ -277,19 +277,34 @@ verify_vitte() {
     scripts_build_die \
       "Vitte post-install check failed: $vitte check main.vit"
 
-  (
-    cd "$smoke_dir"
-    "$vitte" compile main.vit -o main >/dev/null 2>&1
-  ) ||
-    scripts_build_die \
-      "Vitte post-install compile failed: $vitte compile main.vit -o main"
+  case "$(uname -s 2>/dev/null || printf '%s' unknown)" in
+    MINGW* | MSYS* | CYGWIN*)
+      (
+        cd "$smoke_dir"
+        "$vitte" compile main.vit --emit-c -o main.c >/dev/null 2>&1 &&
+          cc -std=c17 main.c -o main.exe &&
+          ./main.exe
+      ) ||
+        scripts_build_die \
+          "Vitte Windows C-emission smoke failed: $vitte compile main.vit --emit-c"
+      ;;
 
-  smoke_program=$smoke_dir/main
-  [ -x "$smoke_program" ] || smoke_program=$smoke_dir/main.exe
-  [ -x "$smoke_program" ] ||
-    scripts_build_die "Vitte post-install executable is missing: $smoke_dir/main"
-  "$smoke_program" >/dev/null 2>&1 ||
-    scripts_build_die "Vitte post-install executable failed: $smoke_program"
+    *)
+      (
+        cd "$smoke_dir"
+        "$vitte" compile main.vit -o main >/dev/null 2>&1
+      ) ||
+        scripts_build_die \
+          "Vitte post-install compile failed: $vitte compile main.vit -o main"
+
+      smoke_program=$smoke_dir/main
+      [ -x "$smoke_program" ] || smoke_program=$smoke_dir/main.exe
+      [ -x "$smoke_program" ] ||
+        scripts_build_die "Vitte post-install executable is missing: $smoke_dir/main"
+      "$smoke_program" >/dev/null 2>&1 ||
+        scripts_build_die "Vitte post-install executable failed: $smoke_program"
+      ;;
+  esac
 
   cleanup_smoke
   trap - EXIT HUP INT TERM
@@ -883,6 +898,9 @@ scripts_build_write_artifact_manifest() {
 
   libc=$(scripts_build_libc_for_target "$platform")
   minimum_version=$(scripts_build_minimum_version_for_target "$platform")
+  if [ -n "${6:-}" ]; then
+    minimum_version=$6
+  fi
   abi=$(scripts_build_abi_label "$platform" "$arch" "$libc")
 
   static_when_possible=false
