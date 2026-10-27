@@ -1,0 +1,60 @@
+---
+title: Lire les limites du compilateur
+permalink: /cours/18-compilation/
+chapter: 18
+duration: 45 minutes
+lead: Pour écrire du Vitte utilisable, il faut savoir où vérifier une construction : dans la grammaire, l’analyseur, le typage ou l’exécution. Cette dernière leçon t’apprend à suivre une fonctionnalité jusqu’à la preuve disponible.
+takeaway: Une forme écrite dans la grammaire ne garantit pas qu’elle compile ni qu’elle s’exécute dans chaque chemin du compilateur.
+practice: Choisis une forme Vitte, trouve sa règle, son diagnostic éventuel et un test qui prouve le niveau de prise en charge atteint.
+---
+<h2>Quatre questions pour chaque construction</h2>
+<p>Quand tu découvres une syntaxe, ne demande pas seulement « est-ce que le langage l’autorise ? ». Dans le dépôt Vitte, réponds à quatre questions distinctes :</p>
+<ol>
+  <li><strong>La grammaire la décrit-elle ?</strong> Une règle EBNF indique la forme prévue du code.</li>
+  <li><strong>L’analyseur l’accepte-t-il ?</strong> Le parseur peut reconnaître cette forme et construire une représentation.</li>
+  <li><strong>L’analyse sémantique la valide-t-elle ?</strong> Les noms, types et contraintes doivent aussi être cohérents.</li>
+  <li><strong>Le backend la compile-t-il et le programme s’exécute-t-il ?</strong> La preuve la plus concrète est un test qui construit un exécutable et vérifie son résultat.</li>
+</ol>
+<p>Ces réponses ne sont pas interchangeables. Une page de grammaire décrit la syntaxe ; une commande de parsing confirme la structure ; un exécutable réussi confirme un cas précis sur un chemin de compilation donné.</p>
+
+<h2>Comparer des niveaux de preuve</h2>
+<p>La matrice du projet donne des exemples concrets. Une boucle <code>while</code> apparaît dans les tests runtime ; le compilateur natif la prend donc en charge dans les cas couverts. La déclaration d’une <code>form</code> non générique et le choix <code>pick</code> avec charge utile sont également exercés jusqu’à l’exécution.</p>
+<p>À l’inverse, le test dédié d’une forme générique arrive jusqu’au backend, puis reçoit un diagnostic de génération de code. La forme <code>for</code> sur tableau atteint elle aussi une erreur backend dans le test ciblé. Ces exemples ne signifient pas que toute la syntaxe correspondante est inconnue : ils indiquent précisément que le chemin de compilation testé n’achève pas ces cas.</p>
+<p>Consulte l’<a href="{{ '/reference/support/' | relative_url }}">état du support Vitte</a> avant de bâtir un projet sur une construction avancée. La matrice détaille aussi les différences entre le frontend natif et le chemin de compatibilité.</p>
+
+<h2>Explorer une source avec la CLI</h2>
+<p>Depuis la racine du dépôt, la CLI permet d’inspecter différentes étapes :</p>
+<pre><code>build/bin/vitte lex examples/tutorials/syntaxe.vit
+build/bin/vitte parse examples/tutorials/syntaxe.vit
+build/bin/vitte check examples/tutorials/syntaxe.vit
+build/bin/vitte run examples/tutorials/syntaxe.vit --quiet --no-color</code></pre>
+<p><code>lex</code> montre les tokens ; <code>parse</code> vérifie la structure ; <code>check</code> poursuit l’analyse ; <code>run</code> demande la compilation et l’exécution. Pour examiner une étape intermédiaire d’une compilation, la commande documentée accepte aussi <code>compile fichier.vit --stop-after-sema</code>. La disponibilité d’une option ne garantit pas la prise en charge de chaque syntaxe : note la commande et son résultat exact.</p>
+
+<h2>Réduire un problème à son plus petit exemple</h2>
+<p>Si un programme ne passe pas, enlève temporairement tout ce qui n’est pas nécessaire au diagnostic. Garde une seule déclaration, une procédure courte et la construction en question. Puis avance étape par étape :</p>
+<ol>
+  <li>Vérifie que le fichier et la commande ciblent bien le même frontend.</li>
+  <li>Exécute le parseur pour séparer un problème de syntaxe d’un problème plus loin dans le pipeline.</li>
+  <li>Lis le code de diagnostic et l’emplacement, puis corrige une seule cause.</li>
+  <li>Si le parsing et l’analyse passent mais que la génération échoue, compare à un exemple compilé du même type de construction.</li>
+  <li>Ajoute le cas réduit aux notes de projet avec la version de l’outil et le résultat observé.</li>
+</ol>
+<p>Une erreur backend n’est pas la preuve que ta syntaxe est mal écrite. Un diagnostic de type ne se corrige pas nécessairement en changeant la grammaire. Identifier la phase te permet de chercher au bon endroit.</p>
+
+<h2>Ne pas transformer un cas réussi en promesse générale</h2>
+<p>Si <code>while</code> fonctionne dans un exemple, cela confirme les opérations exercées dans cet exemple : la condition, le corps, les mises à jour et la sortie testée. Cela ne prouve pas automatiquement que toutes les formes de boucle, tous les types d’indice ou toutes les cibles d’exécution se comportent de la même façon.</p>
+<p>Utilise la même précision quand tu écris de la documentation. Indique la source, la commande, le résultat et le mode de compilation. Si aucun test ne couvre le cas exact, dis qu’il reste à confirmer. Une limite documentée est plus utile qu’une promesse fondée uniquement sur la grammaire.</p>
+
+<section class="practice-block">
+  <h2>Atelier final : enquêter sur une fonctionnalité Vitte</h2>
+  <ol>
+    <li>Choisis <code>while</code>, <code>pick</code>, une forme générique ou <code>for</code>.</li>
+    <li>Ouvre la <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire Vitte</a> et trouve la règle ou note son absence.</li>
+    <li>Consulte la <a href="{{ '/reference/support/' | relative_url }}">matrice du compilateur</a> et repère le test qui donne la meilleure preuve.</li>
+    <li>Écris une note en quatre lignes : syntaxe décrite, acceptation, compilation, exécution.</li>
+    <li>Si la commande ou le résultat ne sont pas clairs, réduis le cas et compare-le à une fixture existante.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>Une bonne note ne conclut pas seulement « pris en charge » ou « non pris en charge ». Elle nomme le chemin testé et le niveau atteint. Par exemple : « syntaxe décrite ; test ciblé reçu par le backend ; génération rejetée ; exécution non établie ».</p></details>
+</section>
+
+<div class="callout"><strong>Tu as terminé le parcours approfondi</strong><p>Tu sais maintenant lire du code Vitte, raisonner sur ses valeurs et ses états, organiser ses modules et vérifier la prise en charge d’une forme avant de l’utiliser. Pour continuer, choisis une notion précise dans la <a href="{{ '/reference/' | relative_url }}">référence</a>, puis cherche une fixture correspondante dans le dépôt.</p></div>

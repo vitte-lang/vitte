@@ -1,0 +1,67 @@
+---
+title: Modéliser les données et les états
+permalink: /cours/15-modelisation/
+chapter: 15
+duration: 55 minutes
+lead: Un bon type rend les états valides faciles à décrire et les états incohérents difficiles à construire. Dans cette leçon, tu vas choisir entre une forme et un choix, puis suivre une valeur de résultat jusque dans son traitement.
+takeaway: Utilise `form` pour des propriétés présentes ensemble et `pick` pour des variantes exclusives.
+practice: Remplace trois indicateurs booléens d’un état métier par un type Vitte qui ne permet que les états prévus.
+---
+<h2>Décrire les choses qui coexistent avec <code>form</code></h2>
+<p>Une forme rassemble les propriétés d’un même objet. Un point possède une coordonnée horizontale et une coordonnée verticale au même moment :</p>
+<pre><code>form Point {
+    x: i64,
+    y: i64,
+}
+
+proc somme(point: Point) -&gt; i64 {
+    return point.x + point.y;
+}</code></pre>
+<p>Le nom <code>Point</code> donne un type aux deux nombres et permet de les transmettre ensemble. Les noms des champs rendent leurs rôles visibles ; une signature qui reçoit <code>Point</code> exprime plus clairement son intention que deux paramètres numériques anonymes.</p>
+<p>Une forme ne garantit pas à elle seule toutes les règles métier. Un rectangle qui stocke un coin minimum et un coin maximum peut encore avoir un minimum supérieur à son maximum. Il faut décider où cette règle sera vérifiée : à la construction, dans une procédure de validation ou dans un contrat adapté.</p>
+
+<h2>Décrire les alternatives avec <code>pick</code></h2>
+<p>Un choix nommé représente une valeur qui se trouve dans une variante à la fois. Voici un résultat qui contient soit une valeur, soit un échec :</p>
+<pre><code>pick Resultat {
+    Ok(i64),
+    Echec,
+}
+
+proc valeur(resultat: Resultat) -&gt; i64 {
+    match resultat {
+        Resultat::Ok(nombre) =&gt; { return nombre; },
+        Resultat::Echec =&gt; { return -1; },
+    }
+    return -2;
+}</code></pre>
+<p>Dans le bras <code>Ok</code>, <code>nombre</code> reçoit la charge utile. Dans le bras <code>Echec</code>, aucune valeur n’est disponible. Ce modèle distingue un résultat absent d’une valeur numérique ordinaire. Le code <code>-1</code> de cette fonction n’est qu’une convention de l’exemple ; dans une API, renvoyer un autre <code>pick</code> peut préserver la distinction entre résultat et échec.</p>
+
+<h2>La différence de représentation change le raisonnement</h2>
+<p>Suppose qu’un téléchargement puisse être en attente, terminé ou échoué. Trois booléens peuvent représenter huit combinaisons ; plusieurs ne veulent rien dire, comme « terminé et en attente ». Un <code>pick Etat { EnAttente, Termine, Echec }</code> nomme seulement les cas utiles.</p>
+<p>Si une variante doit transporter une information, donne-lui une charge utile adaptée : un échec peut contenir un code ou une position. Garde chaque donnée près de la variante à laquelle elle appartient. Cette structure évite qu’un champ d’erreur reste renseigné alors que l’opération a réussi.</p>
+<p>Dans l’autre sens, ne transforme pas en variantes des propriétés qui peuvent coexister. Un utilisateur qui a un identifiant, un nom et une adresse est une forme, même si chacune de ces valeurs peut être modifiée séparément.</p>
+
+<h2>Lire puis décomposer l’exemple vérifié</h2>
+<p>Le fichier <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/formes-choix.vit"><code>formes-choix.vit</code></a> combine les deux idées : il construit un <code>Point</code>, puis construit <code>Resultat::Ok(42)</code> et récupère la charge utile avec <code>match</code>. Le fichier complet s’exécute avec le frontend natif :</p>
+<pre><code>build/bin/vitte run examples/tutorials/formes-choix.vit --quiet --no-color</code></pre>
+<p>Résultat confirmé : code de sortie <code>0</code>. Pour apprendre chaque étape séparément, commente la procédure <code>valeur</code>, vérifie la lecture des champs de <code>Point</code>, puis rétablis la procédure et suis les deux bras de <code>match</code>.</p>
+
+<h2>Une méthode de conception en quatre questions</h2>
+<ol>
+  <li>Quelles propriétés existent simultanément ? Regroupe-les dans une forme.</li>
+  <li>Quels cas s’excluent mutuellement ? Énumère-les dans un choix.</li>
+  <li>Quelle information est nécessaire dans chaque cas ? Place-la dans la charge utile de la variante concernée.</li>
+  <li>Quelle règle doit toujours rester vraie ? Écris-la en une phrase et décide où la contrôler.</li>
+</ol>
+<p>Quand tu hésites, écris deux ou trois valeurs concrètes que le type devrait pouvoir représenter. Puis cherche une combinaison qui serait invalide. Si elle peut être construite facilement, le modèle peut probablement être amélioré.</p>
+
+<section class="practice-block">
+  <h2>Atelier avancé : état d’une réservation</h2>
+  <ol>
+    <li>Une réservation possède un numéro et une date : décris ces propriétés avec une forme.</li>
+    <li>Une réservation est disponible, confirmée ou annulée : décris les états exclusifs avec un choix.</li>
+    <li>Ajoute une charge utile à l’annulation pour conserver la raison. Écris les bras d’un <code>match</code> qui traitent les trois variantes.</li>
+    <li>Énumère une règle métier, par exemple « une réservation confirmée possède un numéro de confirmation ». Décide si cette règle appartient au modèle, à une validation ou à un contrat.</li>
+  </ol>
+  <details><summary>Correction guidée</summary><p>Une forme <code>Reservation</code> convient au numéro et à la date puisqu’ils coexistent. Un <code>pick EtatReservation</code> convient aux trois situations exclusives ; la variante d’annulation peut porter une raison. Les données présentes uniquement dans une variante doivent rester dans sa charge utile. Les règles qui impliquent plusieurs champs doivent être vérifiées explicitement : la déclaration d’une forme ne les prouve pas automatiquement.</p></details>
+</section>

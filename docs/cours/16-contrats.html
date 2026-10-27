@@ -1,0 +1,57 @@
+---
+title: Contrats et validation
+permalink: /cours/16-contrats/
+chapter: 16
+duration: 50 minutes
+lead: Une procédure a des conditions d’entrée et promet un résultat. Apprenons à rendre ces engagements explicites, puis à choisir entre un contrat destiné aux appels incorrects et une erreur que le programme doit traiter.
+takeaway: Un contrat décrit les conditions d’utilisation d’une procédure ; une validation transforme une entrée incertaine en décision explicite.
+practice: Écris une précondition et une postcondition pour une procédure de calcul, puis identifie les entrées qui doivent plutôt produire un résultat d’erreur.
+---
+<h2>Une signature dit déjà quelque chose</h2>
+<p>Dans <code>proc doubler(valeur: i64) -&gt; i64</code>, le type annonce une entrée et une sortie numériques. Il ne dit pas si les valeurs négatives ont un sens, ni quelle relation doit exister entre l’entrée et la sortie. Un contrat peut préciser ces propriétés :</p>
+<pre><code>proc doubler(valeur: i64) -&gt; i64
+    requires valeur &gt;= 0;
+    ensures result == valeur * 2;
+{
+    return valeur * 2;
+}</code></pre>
+<p><code>requires</code> exprime une condition sur les paramètres avant l’appel. <code>ensures</code> décrit une propriété du résultat après l’exécution ; <code>result</code> désigne la valeur renvoyée. Le corps reste responsable de tenir cette promesse.</p>
+
+<h2>Écrire des engagements utiles</h2>
+<p>Une précondition doit préciser ce que l’appelant est tenu de fournir. Une postcondition doit préciser ce que l’appelant pourra ensuite supposer. Préfère une propriété simple à une formule qui répète tout le corps de la procédure.</p>
+<p>Pour une procédure qui calcule un prix après remise, les questions utiles sont par exemple : le taux doit-il se situer entre 0 et 100 ? Le résultat doit-il rester inférieur ou égal au prix d’origine ? Comment traiter un prix négatif ? Écris d’abord ces règles en français, puis transforme les règles précises en expressions.</p>
+<p>Évite les contrats tautologiques. <code>ensures result == result;</code> est toujours vrai, mais n’apprend rien à l’appelant. Une bonne postcondition relie le résultat aux paramètres ou à une propriété métier.</p>
+
+<h2>Contrat ou erreur à traiter ?</h2>
+<p>Le choix dépend de la source de l’entrée et de la réaction attendue :</p>
+<ul>
+  <li>Une précondition convient à un usage incorrect d’une procédure, quand l’appelant doit garantir que la condition est vraie.</li>
+  <li>Une validation convient à une donnée venant d’un fichier, d’un utilisateur ou d’une autre source incertaine, lorsque le programme doit expliquer le refus et continuer.</li>
+  <li>Un résultat représenté par <code>pick</code> convient quand réussite et échec sont deux résultats normaux que l’appelant doit distinguer.</li>
+</ul>
+<p>Par exemple, une fonction interne peut exiger une quantité positive si tous ses appels contrôlent déjà cette règle. Une commande qui reçoit une quantité saisie au clavier doit la vérifier avant de l’envoyer au calcul ; elle ne doit pas considérer une entrée invalide comme une faute du langage.</p>
+
+<h2>Lire la preuve disponible dans le dépôt</h2>
+<p>Le fichier <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/contrats.vit"><code>contrats.vit</code></a> contient le contrat de <code>doubler</code> et appelle la procédure avec <code>21</code>. Dans le dépôt audité, cet exemple passe par le chemin de compatibilité de la CLI :</p>
+<pre><code>build/bin/vitte run examples/tutorials/contrats.vit --quiet --no-color</code></pre>
+<p>Résultat confirmé : code de sortie <code>0</code>. Cela établit l’exécution de ce cas valide dans ce chemin. Cela ne prouve pas à lui seul le comportement d’une violation de précondition dans chaque frontend. Pour ce détail, consulte la <a href="{{ '/reference/support/' | relative_url }}">matrice de support Vitte</a> et conserve la distinction entre une syntaxe décrite, une procédure vérifiée et un comportement runtime observé.</p>
+
+<h2>Décomposer une règle métier</h2>
+<p>Prends la règle « doubler accepte une valeur positive ou nulle et renvoie son double ». Elle se décompose en trois affirmations :</p>
+<ol>
+  <li><code>valeur &gt;= 0</code> est une condition d’entrée.</li>
+  <li><code>result == valeur * 2</code> est une propriété de sortie.</li>
+  <li>Le calcul dans le corps doit produire cette valeur pour toutes les entrées autorisées.</li>
+</ol>
+<p>La troisième affirmation ne découle pas de l’écriture de la première et de la deuxième. Elle demande une vérification adaptée au projet. Pour les petites fonctions, compare des cas simples ; pour des opérations plus délicates, ajoute des tests de frontière et vérifie les risques de dépassement numérique.</p>
+
+<section class="practice-block">
+  <h2>Atelier avancé : concevoir un prix remisé</h2>
+  <ol>
+    <li>Écris en français la règle d’une procédure qui prend un prix et un pourcentage de remise.</li>
+    <li>Propose une condition d’entrée pour un prix et pour un taux compris entre 0 et 100.</li>
+    <li>Décris une propriété de sortie vérifiable sans recopier le corps complet.</li>
+    <li>Décide comment traiter un prix ou un taux reçu d’un utilisateur : précondition ou résultat d’erreur ? Justifie ta décision.</li>
+  </ol>
+  <details><summary>Correction guidée</summary><p>Pour un appel interne, des préconditions peuvent exprimer <code>prix &gt;= 0</code> et <code>taux &gt;= 0 and taux &lt;= 100</code>. La postcondition peut relier le prix final au prix et au taux, avec une règle d’arrondi définie. Si les nombres viennent d’un utilisateur, valide-les avant le calcul et renvoie un état d’erreur explicite : la saisie incorrecte fait partie des situations prévues par le programme.</p></details>
+</section>

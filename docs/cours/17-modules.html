@@ -1,0 +1,63 @@
+---
+title: Concevoir des modules réutilisables
+permalink: /cours/17-modules/
+chapter: 17
+duration: 55 minutes
+lead: Un programme Vitte en plusieurs fichiers a besoin de chemins cohérents et d’une interface claire. Cette leçon suit un appel entre deux modules, puis transforme cet exemple en méthode d’organisation.
+takeaway: Un module publie les noms dont les autres modules ont besoin ; les détails internes restent privés.
+practice: Sépare un calcul dans un module Vitte dédié et limite ses exports à l’interface réellement appelée.
+---
+<h2>Chemin logique et fichier source</h2>
+<p>Une déclaration <code>space</code> nomme le module auquel appartient un fichier. Dans le projet d’exemple, les sources se trouvent sous <code>examples/tutorials/modules/</code> et leurs chemins commencent par <code>tutorials::modules</code>. Le chemin relie le code à son rôle dans l’arborescence ; adopte une convention unique et applique-la à tous les fichiers du projet.</p>
+<p>Le module producteur peut exposer une procédure :</p>
+<pre><code>space tutorials::modules::calcul;
+
+export proc additionner(gauche: i64, droite: i64) -&gt; i64 {
+    return gauche + droite;
+}</code></pre>
+<p><code>export</code> indique que la procédure fait partie de l’interface publique. Ses paramètres et son type de retour forment un contrat pour le code appelant. La règle de calcul reste dans le module qui la possède.</p>
+
+<h2>Importer et appeler le module</h2>
+<p>Le fichier principal importe le chemin sous un alias, puis utilise le nom qualifié :</p>
+<pre><code>space tutorials::modules::main;
+
+use tutorials::modules::calcul as calcul;
+
+proc main() -&gt; i64 {
+    if calcul::additionner(20, 22) == 42 {
+        return 0;
+    }
+    return 1;
+}</code></pre>
+<p><code>calcul::additionner</code> garde la provenance du nom visible. Si un autre module fournit aussi une procédure appelée <code>additionner</code>, le chemin indique laquelle est appelée. L’alias peut raccourcir un long chemin tout en conservant cette qualification.</p>
+
+<h2>Résoudre un module et exécuter le programme</h2>
+<p>La résolution doit savoir où chercher les fichiers importés. Dans l’exemple du dépôt, <code>VITTE_MODULE_PATH=examples</code> indique la racine appropriée :</p>
+<pre><code>VITTE_MODULE_PATH=examples build/bin/vitte run examples/tutorials/modules/main.vit --quiet --no-color</code></pre>
+<p>Résultat confirmé : code de sortie <code>0</code>. Les deux sources vérifiées sont <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/modules/main.vit"><code>main.vit</code></a> et <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/modules/calcul.vit"><code>calcul.vit</code></a>. Si l’import échoue, vérifie dans cet ordre : le chemin de module déclaré, la racine de recherche, le chemin importé, puis l’export du nom utilisé.</p>
+
+<h2>Concevoir une interface Vitte</h2>
+<p>Avant d’exporter un nom, pose-toi ces questions :</p>
+<ol>
+  <li>Quel autre module l’appelle réellement ?</li>
+  <li>Le nom exporté décrit-il un comportement stable, ou révèle-t-il un détail de calcul ?</li>
+  <li>Les paramètres et le résultat rendent-ils les obligations de l’appelant compréhensibles ?</li>
+  <li>Peut-on changer l’implémentation sans modifier les appels ?</li>
+</ol>
+<p>Un module qui exporte toutes ses fonctions internes rend ses choix difficiles à faire évoluer. Commence avec l’interface la plus petite utile. Ajoute un export quand un besoin concret apparaît, pas seulement parce que la déclaration existe.</p>
+<p>Un import de module n’équivaut pas à un accès universel à ses déclarations. L’export du producteur et la résolution de l’appelant doivent tous deux convenir. Les imports globaux et certains réexports ont des limites dans les chemins de compilation ; privilégie les imports explicites déjà exercés par le dépôt.</p>
+
+<h2>Faire grandir l’exemple sans perdre le fil</h2>
+<p>Pour ajouter une opération, commence par écrire sa signature et son résultat attendu. Ajoute ensuite la procédure exportée dans <code>calcul.vit</code>, puis un appel qualifié dans <code>main.vit</code>. Vérifie les deux fichiers ensemble avant d’ajouter un troisième module. Cette progression permet d’attribuer plus facilement un diagnostic au chemin, à la visibilité, à la signature ou au corps.</p>
+<p>Quand un nom de module change, recherche ses imports et actualise le chemin dans les sources et la configuration. Un chemin importé fait partie de la structure du programme : garde-le cohérent plutôt que de corriger les appels un par un au hasard.</p>
+
+<section class="practice-block">
+  <h2>Atelier avancé : construire un petit module de calcul</h2>
+  <ol>
+    <li>Crée un module <code>exercice::calcul</code> contenant deux procédures publiques avec paramètres et résultats typés.</li>
+    <li>Crée un fichier principal qui importe ce module sous un alias et appelle les deux opérations par leur nom qualifié.</li>
+    <li>Ajoute une procédure interne sans <code>export</code>. Décide si elle doit rester privée et explique son rôle.</li>
+    <li>Quand le programme ne résout pas le module, vérifie séparément le chemin déclaré, le chemin importé et la racine fournie au compilateur.</li>
+  </ol>
+  <details><summary>Correction guidée</summary><p>Le module producteur porte <code>space exercice::calcul;</code>, déclare ses opérations avec <code>export proc</code> et garde ses helpers privés. Le fichier appelant déclare son propre <code>space</code>, écrit <code>use exercice::calcul as calcul;</code>, puis appelle <code>calcul::nom(...)</code>. Le chemin de recherche doit inclure le dossier racine qui contient <code>exercice/</code>.</p></details>
+</section>

@@ -1,0 +1,57 @@
+---
+title: Boucles, tableaux et invariants
+permalink: /cours/14-invariants/
+chapter: 14
+duration: 55 minutes
+lead: Passons de « la boucle semble fonctionner » à une explication vérifiable. Tu vas suivre l’état d’un calcul, établir ce qui reste vrai à chaque passage et contrôler les bornes d’un tableau.
+takeaway: Une boucle maîtrisée a un état, une règle qui le fait progresser, un invariant et une condition d’arrêt.
+practice: Trace une boucle Vitte sur papier et écris, avant de la coder, ce qui doit être vrai au début de chaque passage.
+---
+<h2>Un résultat se construit étape par étape</h2>
+<p>Une boucle n’est pas seulement une répétition. C’est un calcul découpé en états successifs. Pour la comprendre, nomme les valeurs qui changent, note leur valeur initiale, puis décris exactement ce que fait un passage.</p>
+<p>Voici un patron d’addition sur un tableau de trois entiers :</p>
+<pre><code>proc somme(valeurs: [3]i64) -&gt; i64 {
+    let mut index: i64 = 0;
+    let mut total: i64 = 0;
+
+    while index &lt; 3 {
+        set total = total + valeurs[index];
+        set index = index + 1;
+    }
+
+    return total;
+}</code></pre>
+<p>À chaque passage, <code>index</code> désigne l’élément à ajouter ; après l’ajout, il avance d’une position. Le tableau fournit les indices 0, 1 et 2 : la condition <code>index &lt; 3</code> empêche la lecture à l’indice 3. Les tableaux fixes, l’indexation, <code>while</code> et <code>set</code> sont exercés dans le dépôt. Ce programme combiné est un patron pédagogique, pas une fixture testée telle quelle.</p>
+
+<h2>Écrire l’invariant avant le corps</h2>
+<p>Un invariant est une phrase qui reste vraie au début de chaque passage. Pour la somme précédente, on peut écrire :</p>
+<blockquote><p><code>total</code> contient la somme des éléments déjà parcourus, de l’indice 0 jusqu’à <code>index - 1</code>.</p></blockquote>
+<p>Vérifie cette phrase en trois temps :</p>
+<ol>
+  <li><strong>Initialisation.</strong> Avant le premier passage, <code>index</code> vaut 0 et aucune valeur n’a été parcourue. La somme vide vaut 0 ; <code>total</code> est donc correct.</li>
+  <li><strong>Conservation.</strong> Si l’invariant est vrai et que <code>index &lt; 3</code>, le corps ajoute exactement <code>valeurs[index]</code>, puis avance <code>index</code> de 1. <code>total</code> correspond alors à tous les éléments parcourus.</li>
+  <li><strong>Sortie.</strong> La boucle s’arrête quand <code>index</code> vaut 3. Les trois éléments ont été parcourus ; l’invariant donne le résultat attendu.</li>
+</ol>
+<p>Cette méthode trouve les erreurs de borne avant l’exécution. Si tu commences à 1, le premier élément manque. Si tu écris <code>index &lt;= 3</code>, le programme tente de lire un quatrième élément.</p>
+
+<h2>Mesurer la progression</h2>
+<p>Un invariant ne suffit pas : une boucle doit aussi s’arrêter. Ici, <code>index</code> augmente de 1 et reste inférieur à 3 tant que le corps recommence. La distance <code>3 - index</code> diminue ; elle ne peut pas diminuer indéfiniment tout en restant positive. Pour une boucle plus complexe, cherche une quantité entière qui se rapproche visiblement de zéro.</p>
+<p>Avec <code>continue</code>, vérifie que le chemin qui saute le reste du corps fait tout de même progresser l’état. Avec <code>break</code>, précise les valeurs possibles à la sortie anticipée. Une boucle qui se termine à plusieurs endroits a plusieurs postconditions à examiner.</p>
+
+<h2>Tracer une boucle réelle du dépôt</h2>
+<p>Dans <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/controle.vit"><code>controle.vit</code></a>, l’indice avance jusqu’à 6. L’itération 3 est ignorée avec <code>continue</code> ; l’itération 6 arrête la boucle avec <code>break</code> avant d’être ajoutée. Les valeurs ajoutées sont donc 1, 2, 4 et 5, pour un total de 12. L’exemple se lance avec :</p>
+<pre><code>build/bin/vitte run examples/tutorials/controle.vit --quiet --no-color</code></pre>
+<p>Résultat confirmé dans le dépôt : code de sortie <code>0</code>. Pour voir chaque transition, fais un tableau avec les colonnes <code>indice</code>, <code>branche choisie</code> et <code>total</code>. Tu peux aussi comparer avec <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/tableaux.vit"><code>tableaux.vit</code></a>, qui vérifie la lecture et l’écriture d’éléments indexés.</p>
+
+<h2>Un algorithme, trois preuves</h2>
+<p>Avant d’ajouter un parcours dans un programme, prépare trois réponses : pourquoi le premier indice est valide, pourquoi chaque passage garde l’indice valide, et pourquoi le dernier passage s’arrête avant la borne interdite. Cette courte preuve fait partie de la conception du programme ; elle ne dépend pas d’un message du compilateur.</p>
+<section class="practice-block">
+  <h2>Atelier avancé : rechercher une valeur</h2>
+  <ol>
+    <li>Trace le calcul de somme sur le tableau <code>[4, 7, 2]</code>. Note <code>index</code> et <code>total</code> avant et après chaque passage.</li>
+    <li>Remplace la condition <code>index &lt; 3</code> par <code>index &lt;= 3</code>. À quel passage l’accès devient-il invalide ? Répare la condition.</li>
+    <li>Adapte le raisonnement pour chercher la première occurrence de 7. Écris l’invariant en français avant d’introduire une condition de sortie anticipée.</li>
+    <li>Compare ta trace à la fixture <code>controle.vit</code>. Explique pourquoi la valeur 3 ne participe pas au total et pourquoi l’indice 6 n’y participe pas non plus.</li>
+  </ol>
+  <details><summary>Correction guidée</summary><p>La somme progresse ainsi : avant le premier passage, <code>(index, total) = (0, 0)</code> ; puis <code>(1, 4)</code>, <code>(2, 11)</code> et <code>(3, 13)</code>. La condition devient alors fausse. Pour la recherche, un invariant utile est : « aucune position strictement inférieure à <code>index</code> ne contient encore la valeur recherchée ».</p></details>
+</section>
