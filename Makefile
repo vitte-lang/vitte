@@ -406,10 +406,21 @@ test-cli-driver: $(TARGET_BIN)
 	@set -e; \
 	fixture="$(TEST_DIR)/grammar_alignment/let_mut_ok.vit"; \
 	printf '[CLI] check and early-stop stages\n'; \
-	$(TARGET_BIN) check "$$fixture" \
+	if $(TARGET_BIN) check "$$fixture" \
 		>/dev/null \
-		2>$(BUILD)/cli-check.stderr; \
-	test ! -s $(BUILD)/cli-check.stderr; \
+		2>$(BUILD)/cli-check.stderr; then \
+		:; \
+	else \
+		status=$$?; \
+		printf '[CLI] check failed for %s (exit %s)\n' "$$fixture" "$$status" >&2; \
+		cat $(BUILD)/cli-check.stderr >&2; \
+		exit "$$status"; \
+	fi; \
+	if test -s $(BUILD)/cli-check.stderr; then \
+		printf '[CLI] check wrote unexpected stderr for %s\n' "$$fixture" >&2; \
+		cat $(BUILD)/cli-check.stderr >&2; \
+		exit 1; \
+	fi; \
 	$(TARGET_BIN) compile "$$fixture" \
 		--emit-tokens \
 		--stop-after-lexer \
