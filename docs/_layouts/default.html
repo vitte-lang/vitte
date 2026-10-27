@@ -33,7 +33,7 @@
             {% when 'home' %}{% if page.url == item.url %}{% assign is_current = true %}{% endif %}
             {% when 'learn' %}{% if page.url == item.url %}{% assign is_current = true %}{% endif %}{% if page.url contains '/cours/' or page.url == sidebar.examples.url %}{% assign is_section = true %}{% endif %}
             {% when 'reference' %}{% if page.url == item.url %}{% assign is_current = true %}{% endif %}{% if page.url contains '/reference/' and page.url != item.url %}{% assign is_section = true %}{% endif %}
-            {% when 'guides' %}{% if page.url == item.url %}{% assign is_current = true %}{% endif %}
+            {% when 'guides' %}{% if page.url == item.url %}{% assign is_current = true %}{% endif %}{% if page.url contains '/guides/' and page.url != item.url %}{% assign is_section = true %}{% endif %}
             {% when 'project' %}{% if page.url == item.url %}{% assign is_current = true %}{% endif %}
           {% endcase %}
           <a href="{{ item.url | relative_url }}"{% if is_current %} class="is-current" aria-current="page"{% elsif is_section %} class="is-section"{% endif %}>{{ item.title }}</a>
@@ -86,8 +86,11 @@
         <a class="sidebar-home {% if page.url == sidebar.examples.url %}is-active{% endif %}" href="{{ sidebar.examples.url | relative_url }}"{% if page.url == sidebar.examples.url %} aria-current="page"{% endif %}>
           <span class="nav-index">{{ sidebar.examples.icon }}</span><span>{{ sidebar.examples.title }}</span>
         </a>
-        <a class="sidebar-home {% if page.url == sidebar.guides.url %}is-active{% endif %}" href="{{ sidebar.guides.url | relative_url }}"{% if page.url == sidebar.guides.url %} aria-current="page"{% endif %}>
+        <a class="sidebar-home {% if page.url == sidebar.guides.url or page.url contains '/guides/' %}is-active{% endif %}" href="{{ sidebar.guides.url | relative_url }}"{% if page.url == sidebar.guides.url %} aria-current="page"{% endif %}>
           <span class="nav-index">{{ sidebar.guides.icon }}</span><span>{{ sidebar.guides.title }}</span>
+        </a>
+        <a class="sidebar-link {% if page.url == '/guides/installation-depannage/' %}is-active{% endif %}" href="{{ '/guides/installation-depannage/' | relative_url }}"{% if page.url == '/guides/installation-depannage/' %} aria-current="page"{% endif %}>
+          <span class="nav-index">G1</span><span>Installation et dépannage</span>
         </a>
         <a class="sidebar-home {% if page.url == sidebar.project.url %}is-active{% endif %}" href="{{ sidebar.project.url | relative_url }}"{% if page.url == sidebar.project.url %} aria-current="page"{% endif %}>
           <span class="nav-index">{{ sidebar.project.icon }}</span><span>{{ sidebar.project.title }}</span>
@@ -109,6 +112,9 @@
         {% elsif page.url contains '/reference/' and page.url != sidebar.reference.url %}
           {% assign breadcrumb_parent_url = sidebar.reference.url %}
           {% assign breadcrumb_parent_title = sidebar.reference.title %}
+        {% elsif page.url contains '/guides/' and page.url != sidebar.guides.url %}
+          {% assign breadcrumb_parent_url = sidebar.guides.url %}
+          {% assign breadcrumb_parent_title = sidebar.guides.title %}
         {% endif %}
         {% unless page.url == '/' %}
           <nav class="breadcrumbs" aria-label="Fil d’Ariane">

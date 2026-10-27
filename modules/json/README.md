@@ -45,8 +45,8 @@ make install PREFIX="$HOME/.local"
 ```
 
 `test-vitte` stages a compiler installation, then compiles and runs a consumer
-that imports the position module and calls `position::start()` from the
-installed source tree.
+that imports the parser and encoder, parses a JSON object, and checks its
+compact encoding from the installed source tree.
 Normal `make install` installs the compiler and JSON source tree under
 `$PREFIX/share/vitte/modules/json`; `make uninstall` removes both. A staged
 installation can be made with `DESTDIR`, for example:
@@ -72,7 +72,7 @@ reference arguments, `string.length`, and dynamic string concatenation.
 Run `make -C modules/json test-encode test-runtime test-invalid test-parse
 test-roundtrip test-string-concat test-unicode` for the native integration
 suites. `test-vitte` stages installation and compiles/runs a consumer importing
-the installed error/position API. The root `make install` and Raspberry Pi
+the installed parser and encoder API. The root `make install` and Raspberry Pi
 installer both install the JSON source module through the module install target.
 
 `package.toml` records package identity and layout. The compiler does not yet

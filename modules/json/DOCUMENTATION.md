@@ -154,6 +154,20 @@ use json::parser::parser::*;
 | `json::error::error` | modèle commun d’erreur |
 | `json::runtime::numeric` | conversions et formatage des nombres |
 
+Cette table inventorie les espaces et fichiers source du paquet ; elle ne
+signifie pas que chaque déclaration est importable depuis une application.
+L’espace d’entrée `json` ne réexporte pas automatiquement ses sous-modules.
+Dans cette révision, `json::core::array`, `json::core::object`,
+`json::core::number` et les composants `json::parser::array`,
+`json::parser::object` et `json::parser::value` sont internes : leurs
+déclarations ne portent pas `export`. Les modèles de tableau, d’objet et de
+nombre de ces fichiers sont distincts de l’arbre récursif canonique
+`JsonValue`.
+
+Pour une application, importez des symboles explicitement exportés. Le test
+d’installation `tests/import_smoke.vit` vérifie le parser et l’encodeur ; il
+ne constitue pas une preuve d’importation de tous les espaces listés ici.
+
 Pour une application, importer généralement :
 
 ```vitte

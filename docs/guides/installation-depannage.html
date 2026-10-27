@@ -1,0 +1,101 @@
+---
+title: Installation et dépannage
+permalink: /guides/installation-depannage/
+section: Utiliser Vitte
+lead: Construire ou installer le compilateur, préparer les chemins de modules et isoler les erreurs par étape.
+description: Guide d’installation et de dépannage de Vitte, fondé sur les commandes et cibles présentes dans le dépôt.
+summary: Construire Vitte, l’installer dans un préfixe local, résoudre un module et comprendre les erreurs courantes.
+keywords: installation compiler compilateur make build install PREFIX PATH dépannage erreur lex parse check compile run module VITTE_MODULE_PATH
+---
+<div class="reference-callout">
+  <strong>Ce guide suit le dépôt Vitte {{ site.vitte_version }}.</strong>
+  <p>Les noms de commandes et les étapes de compilation sont ceux du dépôt. La prise en charge du langage reste limitée à des sous-ensembles précis : consultez la <a href="{{ '/reference/support/' | relative_url }}">matrice de compatibilité</a> avant de conclure qu’une construction peut être compilée.</p>
+</div>
+
+<h2 id="prerequis">Prérequis</h2>
+<p>Pour construire le compilateur depuis les sources, prévoyez un compilateur C compatible C17, <code>make</code> et Git. Python 3 est également utilisé par les vérifications et scripts de développement du dépôt. Le workflow CI du projet installe ces outils avant de construire et de contrôler le compilateur.</p>
+<pre><code>cc --version
+make --version
+python3 --version
+git --version</code></pre>
+<p>Sur macOS, les outils C et <code>make</code> sont fournis par les Command Line Tools de Xcode. Sur Linux, installez la chaîne de compilation C17 et <code>make</code> depuis le gestionnaire de paquets de votre distribution. Les commandes d’installation des paquets dépendent de l’OS et ne sont pas nécessaires si ces outils sont déjà présents.</p>
+
+<h2 id="construire">Construire le dépôt</h2>
+<p><code>make</code> est le parcours principal utilisé par le dépôt et sa CI. Depuis le répertoire dans lequel vous voulez garder les sources :</p>
+<pre><code>git clone https://github.com/vitte-lang/vitte.git
+cd vitte
+make -j2
+./build/bin/vitte --version
+./build/bin/vitte check examples/hello.vit</code></pre>
+<p>Le binaire construit par Make se trouve dans <code>build/bin/vitte</code> (ou <code>build/bin/vitte.exe</code> dans les environnements Windows du dépôt). La dernière commande vérifie un exemple du dépôt. Elle ne démontre pas que toutes les formes du langage sont prises en charge ; chaque commande passe par le frontend choisi par le compilateur.</p>
+<p>Pour utiliser immédiatement ce binaire sans l’installer, donnez son chemin explicite :</p>
+<pre><code>./build/bin/vitte lex examples/hello.vit
+./build/bin/vitte parse examples/hello.vit
+./build/bin/vitte check examples/hello.vit
+./build/bin/vitte run examples/hello.vit</code></pre>
+
+<h2 id="installer">Installer sous un préfixe local</h2>
+<p>Le Makefile installe le compilateur sous <code>PREFIX/bin</code> et le paquet JSON sous <code>PREFIX/share/vitte/modules/json</code>. Un préfixe dans votre dossier personnel évite de modifier l’installation système :</p>
+<pre><code>make install PREFIX="$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
+vitte --version</code></pre>
+<p>Pour installer dans le préfixe système par défaut (<code>/usr/local</code>), il faut que votre compte ait les droits d’écriture nécessaires. Si la commande échoue avec un refus d’accès, choisissez un préfixe local ou utilisez la procédure d’administration habituelle de votre système.</p>
+<p>La désinstallation reprend le même préfixe :</p>
+<pre><code>make uninstall PREFIX="$HOME/.local"</code></pre>
+<p>Le Makefile accepte également <code>DESTDIR</code> pour préparer une installation dans un répertoire de staging, par exemple lors de la fabrication d’un paquet. Ce répertoire sert au packaging ; il ne remplace pas le préfixe utilisé à l’exécution.</p>
+
+<h2 id="modules">Résoudre les modules, dont JSON</h2>
+<p>Pour une copie de travail du dépôt, <code>VITTE_MODULE_PATH</code> doit contenir la racine qui abrite les espaces de noms. Pour utiliser <code>json::parser::parser</code>, indiquez donc le dossier <code>modules</code>, et non le seul dossier <code>modules/json</code> :</p>
+<pre><code>VITTE_MODULE_PATH="$PWD/modules" \
+  ./build/bin/vitte run modules/json/tests/import_smoke.vit</code></pre>
+<p>Le séparateur entre plusieurs racines suit le système hôte : <code>:</code> sur les systèmes de type Unix et <code>;</code> sous Windows. Les déclarations <code>space</code>, les imports <code>use</code>, les exports et le chemin des fichiers doivent aussi correspondre. La variable ajoute des racines de recherche ; elle ne corrige pas un chemin de module erroné.</p>
+<p>Après <code>make install PREFIX="$HOME/.local"</code>, le module JSON est placé dans <code>$HOME/.local/share/vitte/modules/json</code>. Si votre configuration ne découvre pas cette racine automatiquement, ajoutez <code>$HOME/.local/share/vitte/modules</code> à <code>VITTE_MODULE_PATH</code>. Pour installer ou vérifier uniquement le paquet JSON, son Makefile fournit des cibles dédiées :</p>
+<pre><code>make -C modules/json check
+make -C modules/json verify</code></pre>
+<p><code>verify</code> lance la vérification des sources et le test d’import installé décrit dans <code>modules/json/Makefile</code>. La fiche <a href="{{ '/reference/json/' | relative_url }}">Module JSON</a> détaille ses espaces, fonctions, limites et diagnostics.</p>
+
+<h2 id="isoler-erreur">Isoler la première étape en échec</h2>
+<p>Le pipeline sépare la lecture des caractères, la syntaxe, l’analyse sémantique et les étapes de compilation. Lancez la commande la plus proche de l’étape que vous suspectez, puis avancez jusqu’à reproduire l’erreur :</p>
+<pre><code>./build/bin/vitte lex chemin/vers/main.vit
+./build/bin/vitte parse chemin/vers/main.vit
+./build/bin/vitte check chemin/vers/main.vit
+./build/bin/vitte compile chemin/vers/main.vit --stop-after-sema
+./build/bin/vitte compile chemin/vers/main.vit
+./build/bin/vitte run chemin/vers/main.vit</code></pre>
+<ul>
+  <li><code>lex</code> aide à repérer un caractère ou un littéral mal formé.</li>
+  <li><code>parse</code> vérifie la structure syntaxique reconnue par le parseur.</li>
+  <li><code>check</code> vérifie le programme jusqu’au niveau exposé par le frontend sélectionné.</li>
+  <li><code>compile --stop-after-sema</code> s’arrête après l’analyse sémantique lorsque cette option est disponible pour la commande.</li>
+  <li><code>compile</code> et <code>run</code> demandent les étapes de backend, de liaison ou d’exécution et peuvent échouer si une construction n’est pas encore prise en charge.</li>
+</ul>
+<p>Un succès de <code>parse</code> signifie seulement que la syntaxe a été acceptée. Il ne prouve ni que les noms et les types sont valides, ni que la forme atteint le backend. Reportez-vous à la matrice par construction et à la <a href="{{ '/reference/cli/' | relative_url }}">référence CLI</a>.</p>
+
+<h2 id="diagnostics">Erreurs fréquentes</h2>
+<table><thead><tr><th>Symptôme</th><th>Vérification</th><th>Suite à donner</th></tr></thead><tbody>
+<tr><td><code>vitte: command not found</code></td><td>Le binaire n’est pas dans <code>PATH</code>, ou l’installation n’a pas abouti.</td><td>Lancez <code>./build/bin/vitte --version</code> depuis le dépôt, puis vérifiez que <code>$HOME/.local/bin</code> est dans <code>PATH</code> si vous avez installé sous <code>~/.local</code>.</td></tr>
+<tr><td><code>make</code> ne trouve pas le compilateur C</td><td>Le compilateur manque, ou <code>CC</code> pointe vers un exécutable absent.</td><td>Installez une chaîne C17 et vérifiez <code>cc --version</code>. Si vous choisissez un autre compilateur installé, passez son nom à Make, par exemple <code>make CC=clang</code>.</td></tr>
+<tr><td>Le fichier source est introuvable</td><td>Le chemin est relatif au répertoire courant.</td><td>Vérifiez <code>pwd</code> et le nom du fichier ; donnez un chemin absolu si la commande est lancée depuis un autre répertoire.</td></tr>
+<tr><td>Le module ou le symbole importé est introuvable</td><td>La racine de recherche, le chemin <code>space</code>, l’import et l’export ne concordent pas.</td><td>Vérifiez que <code>VITTE_MODULE_PATH</code> pointe vers le parent du dossier du module, puis contrôlez l’orthographe du chemin et la visibilité du symbole.</td></tr>
+<tr><td>La syntaxe passe mais <code>check</code> ou l’analyse sémantique échoue</td><td>La grammaire et l’analyseur ne valident pas les mêmes propriétés que l’analyse des noms et des types.</td><td>Suivez le diagnostic et réduisez le fichier à la déclaration ou l’expression concernée. Consultez la fiche de référence correspondante.</td></tr>
+<tr><td>Le backend refuse une forme pourtant analysée</td><td>La construction est peut-être décrite par l’EBNF et reconnue par l’analyseur, sans génération supportée.</td><td>Recherchez-la dans la <a href="{{ '/reference/support/' | relative_url }}">matrice de compatibilité</a>. Un diagnostic backend est une limite d’implémentation, pas une erreur de configuration du système.</td></tr>
+<tr><td>La compilation C ou la liaison échoue</td><td>Le programme a dépassé les premières étapes ; le compilateur C hôte ou l’édition de liens peut être en cause.</td><td>Conservez le diagnostic complet, la version du compilateur, la commande et le code C généré lorsque celui-ci est produit. Vérifiez la disponibilité du compilateur C utilisé par le pilote.</td></tr>
+</tbody></table>
+
+<h2 id="signaler">Préparer un signalement utile</h2>
+<p>Si le problème subsiste, fournissez les éléments qui permettent de reproduire la même étape :</p>
+<ol>
+  <li>la version affichée par <code>vitte --version</code> ;</li>
+  <li>le système, le compilateur C et les options de construction ;</li>
+  <li>la commande exacte et le répertoire depuis lequel elle est lancée ;</li>
+  <li>le diagnostic complet, y compris son code et l’étape du pipeline ;</li>
+  <li>un petit fichier source qui reproduit le problème sans données secrètes.</li>
+</ol>
+<p>Recherchez d’abord une issue existante, puis ouvrez un <a href="https://github.com/vitte-lang/vitte/issues">signalement sur GitHub</a> si le problème est nouveau. Pour une question de compatibilité, indiquez aussi si l’échec se produit à la grammaire, à l’analyseur, à l’analyse sémantique, au backend ou pendant l’exécution.</p>
+
+<h2 id="aller-plus-loin">Pour continuer</h2>
+<div class="guide-grid">
+  <a class="guide-card" href="{{ '/reference/support/' | relative_url }}"><span>COMPATIBILITÉ</span><strong>État de chaque construction</strong><p>Comparez l’EBNF, l’analyseur et la preuve de compilation ou d’exécution disponibles.</p><b>Lire la matrice →</b></a>
+  <a class="guide-card" href="{{ '/reference/json/' | relative_url }}"><span>BIBLIOTHÈQUE</span><strong>Guide du module JSON</strong><p>Découvrez le parser, le modèle de valeurs, l’encodeur, Unicode et les nombres.</p><b>Ouvrir le guide JSON →</b></a>
+  <a class="guide-card" href="{{ '/reference/cli/' | relative_url }}"><span>OUTILS</span><strong>Commandes et diagnostics</strong><p>Consultez les options du compilateur et les formats de diagnostic.</p><b>Voir la CLI →</b></a>
+</div>
