@@ -1,0 +1,23 @@
+/// Allocateur système qui met les octets réservés à zéro avant de les publier.
+space alloc::allocator::zeroed;
+
+use core::mem::layout::{Layout};
+use core::intrinsics::memory::{intrinsic_fill};
+use alloc::allocator::result::{AllocationResult, AllocationError, AllocatorKind, allocation_success, allocation_failure};
+use alloc::allocator::system::{system_allocate, system_deallocate};
+
+export proc zeroed_allocate(layout: Layout) -> AllocationResult {
+    let result: AllocationResult = system_allocate(layout);
+    if result.success == false { return allocation_failure(result.error, AllocatorKind.Zeroed); }
+    if layout.size == 0 { return allocation_success(null, AllocatorKind.Zeroed); }
+    if intrinsic_fill(result.pointer, 0, layout.size) {
+        return allocation_success(result.pointer, AllocatorKind.Zeroed);
+    }
+    system_deallocate(result.pointer, layout);
+    return allocation_failure(AllocationError.InvalidPointer, AllocatorKind.Zeroed);
+}
+
+export proc zeroed_deallocate(pointer: *mut u8, layout: Layout) -> bool {
+    return system_deallocate(pointer, layout);
+}
+

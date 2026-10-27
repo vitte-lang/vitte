@@ -1,0 +1,105 @@
+/// Allocateur de pile sur un tampon fourni par l'appelant; libérations LIFO.
+space alloc::allocator::custom;
+
+use core::mem::layout::{Layout, layout_is_valid};
+use alloc::allocator::result::{
+    AllocationResult,
+    AllocationError,
+    AllocatorKind,
+    allocation_success,
+    allocation_failure,
+};
+
+export form CustomAllocator {
+    buffer: *mut u8,
+    capacity: usize,
+    cursor: usize,
+    valid: bool,
+}
+
+export proc custom_allocator(buffer: *mut u8, capacity: usize) -> CustomAllocator {
+    return CustomAllocator {
+        buffer: buffer,
+        capacity: capacity,
+        cursor: 0,
+        valid: capacity == 0 || buffer != null,
+    };
+}
+
+export proc custom_allocate(value: &mut CustomAllocator, layout: Layout) -> AllocationResult {
+    if value.valid == false || not layout_is_valid(&layout) {
+        return allocation_failure(AllocationError.InvalidLayout, AllocatorKind.Custom);
+    }
+    if layout.size == 0 { return allocation_success(null, AllocatorKind.Custom); }
+    if value.buffer == null || value.cursor > value.capacity {
+        return allocation_failure(AllocationError.OutOfMemory, AllocatorKind.Custom);
+    }
+
+    let metadata_size: usize = sizeof(usize);
+    if value.cursor > usize.MAX - metadata_size {
+        return allocation_failure(AllocationError.SizeOverflow, AllocatorKind.Custom);
+    }
+    let base_address: usize = value.buffer as usize;
+    let candidate_offset: usize = value.cursor + metadata_size;
+    if base_address > usize.MAX - candidate_offset {
+        return allocation_failure(AllocationError.SizeOverflow, AllocatorKind.Custom);
+    }
+    let candidate: usize = base_address + candidate_offset;
+    let mut allocation_align: usize = layout.align;
+    if alignof(usize) > allocation_align { set allocation_align = alignof(usize); }
+    let remainder: usize = candidate % allocation_align;
+    let mut padding: usize = 0;
+    if remainder != 0 { set padding = allocation_align - remainder; }
+    if candidate_offset > usize.MAX - padding {
+        return allocation_failure(AllocationError.SizeOverflow, AllocatorKind.Custom);
+    }
+    let user_offset: usize = candidate_offset + padding;
+    if user_offset > value.capacity {
+        return allocation_failure(AllocationError.OutOfMemory, AllocatorKind.Custom);
+    }
+    if layout.size > value.capacity - user_offset {
+        return allocation_failure(AllocationError.OutOfMemory, AllocatorKind.Custom);
+    }
+    if base_address > usize.MAX - user_offset {
+        return allocation_failure(AllocationError.SizeOverflow, AllocatorKind.Custom);
+    }
+
+    let user_address: usize = base_address + user_offset;
+    let metadata_address: usize = user_address - metadata_size;
+    let metadata: *mut usize = metadata_address as *mut usize;
+    set *metadata = value.cursor;
+    set value.cursor = user_offset + layout.size;
+    return allocation_success(user_address as *mut u8, AllocatorKind.Custom);
+}
+
+/// Ne libère que le dernier bloc obtenu, et restaure alors le curseur précédent.
+export proc custom_deallocate(value: &mut CustomAllocator, pointer: *mut u8, layout: Layout) -> bool {
+    if not value.valid || not layout_is_valid(&layout) { return false; }
+    if layout.size == 0 { return pointer == null; }
+    if pointer == null || value.buffer == null { return false; }
+
+    let base_address: usize = value.buffer as usize;
+    let user_address: usize = pointer as usize;
+    if user_address < base_address { return false; }
+    let user_offset: usize = user_address - base_address;
+    if user_offset > value.capacity || layout.size > value.capacity - user_offset { return false; }
+    if user_offset + layout.size != value.cursor { return false; }
+    let metadata_size: usize = sizeof(usize);
+    if user_offset < metadata_size { return false; }
+
+    let metadata_address: usize = user_address - metadata_size;
+    let metadata: *const usize = metadata_address as *const usize;
+    let previous_cursor: usize = *metadata;
+    if previous_cursor > user_offset - metadata_size { return false; }
+    set value.cursor = previous_cursor;
+    return true;
+}
+
+export proc custom_reset(value: &mut CustomAllocator) {
+    set value.cursor = 0;
+}
+
+export proc custom_remaining(value: &CustomAllocator) -> usize {
+    if value.cursor > value.capacity { return 0; }
+    return value.capacity - value.cursor;
+}

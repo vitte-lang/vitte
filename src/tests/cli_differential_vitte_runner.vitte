@@ -1,0 +1,100 @@
+/// Fixed-fixture Vitte CLI probe paired with cli_differential_c_runner.c.
+space tests::cli_differential_vitte_runner;
+
+use compiler::cli::cli::{
+    Cli,
+    vitte_cli_init,
+    vitte_cli_set_limits,
+    vitte_cli_parse_slice,
+    vitte_cli_config,
+    vitte_cli_state,
+    vitte_cli_last_error,
+    vitte_cli_seen_options,
+    vitte_cli_stats,
+    vitte_cli_fingerprint,
+    vitte_cli_message,
+    vitte_cli_destroy,
+};
+
+extern "C" {
+    proc putchar(character: i32) -> i32;
+}
+
+const HEX_DIGITS: string = "0123456789abcdef";
+
+proc emit_hex(value: u64) {
+    let mut index: usize = 0;
+    while index < 16 {
+        let shift = ((15 - index) * 4) as u32;
+        let digit = ((value >> shift) & 15) as usize;
+        let _ = putchar(HEX_DIGITS[digit] as i32);
+        set index += 1;
+    }
+}
+
+proc emit_field(value: u64, first: bool) {
+    if not first { let _ = putchar(';' as i32); }
+    emit_hex(value);
+}
+
+proc emit_case(name: string, argv: [string]) -> bool {
+    let mut cli: Cli;
+    if not vitte_cli_init(&mut cli) { return false; }
+    if not vitte_cli_set_limits(&mut cli, 2, 2) {
+        vitte_cli_destroy(&mut cli);
+        return false;
+    }
+
+    let parsed = vitte_cli_parse_slice(&mut cli, argv);
+    let config = vitte_cli_config(&mut cli);
+    let message = vitte_cli_message(&mut cli);
+    if config == null or message == null {
+        vitte_cli_destroy(&mut cli);
+        return false;
+    }
+    let stats = vitte_cli_stats(&mut cli);
+
+    let mut index: usize = 0;
+    while index < name.len() {
+        let _ = putchar(name[index] as i32);
+        set index += 1;
+    }
+    let _ = putchar('|' as i32);
+
+    emit_field(if parsed { 1 } else { 0 }, true);
+    emit_field(vitte_cli_state(&cli) as u64, false);
+    emit_field(vitte_cli_last_error(&cli) as u64, false);
+    emit_field((*config).command as u64, false);
+    emit_field((*config).backend as u64, false);
+    emit_field((*config).optimization as u64, false);
+    emit_field((*config).diagnostic_format as u64, false);
+    emit_field((*config).color as u64, false);
+    emit_field(vitte_cli_seen_options(&cli), false);
+    emit_field(stats.argument_count as u64, false);
+    emit_field(stats.parsed_argument_count as u64, false);
+    emit_field(stats.option_count as u64, false);
+    emit_field(stats.positional_count as u64, false);
+    emit_field(stats.consumed_value_count as u64, false);
+    emit_field(stats.input_count as u64, false);
+    emit_field(stats.forward_argument_count as u64, false);
+    emit_field(vitte_cli_fingerprint(&cli), false);
+    emit_field((*message).argument_index as u32 as u64, false);
+    let _ = putchar('\n' as i32);
+
+    vitte_cli_destroy(&mut cli);
+    return true;
+}
+
+proc main() -> i32 {
+    if not emit_case("valid-options", ["vitte", "build", "--backend=c17", "--opt=debug", "--output", "out.c", "src/main.vit"]) { return 2; }
+    if not emit_case("valid-switches", ["vitte", "check", "--deterministic", "--no-runtime-checks", "src/main.vit"]) { return 2; }
+    if not emit_case("duplicate-option", ["vitte", "build", "--output=a.c", "--output", "b.c", "src/main.vit"]) { return 2; }
+    if not emit_case("conflicting-options", ["vitte", "build", "--verbose", "--quiet", "src/main.vit"]) { return 2; }
+    if not emit_case("forwarded-args", ["vitte", "run", "src/main.vit", "--", "--verbose", "arg with spaces"]) { return 2; }
+    if not emit_case("input-limit", ["vitte", "build", "a.vit", "b.vit", "c.vit"]) { return 2; }
+    if not emit_case("forward-limit", ["vitte", "run", "main.vit", "--", "one", "two", "three"]) { return 2; }
+    if not emit_case("missing-value", ["vitte", "build", "--backend"]) { return 2; }
+    if not emit_case("invalid-value", ["vitte", "build", "--backend=invalid", "src/main.vit"]) { return 2; }
+    if not emit_case("unknown-option", ["vitte", "build", "--not-a-real-option", "src/main.vit"]) { return 2; }
+    return 0;
+}

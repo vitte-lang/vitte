@@ -1,0 +1,61 @@
+// ============================================================================
+// Vitte Standard Library
+// Module: math.classification.fpclassify
+// File: modules/math/src/classification/fpclassify.vit
+//
+// IEEE 754 floating-point classification using comparisons with representable
+// format boundaries. The returned class values are stable Vitte constants.
+// ============================================================================
+
+space math.classification.fpclassify
+
+export const FP_NAN: i32 = 0;
+export const FP_INFINITE: i32 = 1;
+export const FP_ZERO: i32 = 2;
+export const FP_SUBNORMAL: i32 = 3;
+export const FP_NORMAL: i32 = 4;
+
+const F32_MAX_FINITE: f32 = 3.40282346638528859811704183484516925440e38;
+const F32_MIN_NORMAL: f32 = 1.17549435082228750796873653722224568e-38;
+const F64_MAX_FINITE: f64 = 1.797693134862315708145274237317043567981e308;
+const F64_MIN_NORMAL: f64 = 2.22507385850720138309023271733240406e-308;
+
+export proc fpclassify_f32(value: f32) -> i32 {
+    if value != value {
+        return FP_NAN
+    }
+
+    if value > F32_MAX_FINITE || value < -F32_MAX_FINITE {
+        return FP_INFINITE
+    }
+
+    if value == 0.0 {
+        return FP_ZERO
+    }
+
+    if value > -F32_MIN_NORMAL && value < F32_MIN_NORMAL {
+        return FP_SUBNORMAL
+    }
+
+    return FP_NORMAL
+}
+
+export proc fpclassify_f64(value: f64) -> i32 {
+    if value != value {
+        return FP_NAN
+    }
+
+    if value > F64_MAX_FINITE || value < -F64_MAX_FINITE {
+        return FP_INFINITE
+    }
+
+    if value == 0.0 {
+        return FP_ZERO
+    }
+
+    if value > -F64_MIN_NORMAL && value < F64_MIN_NORMAL {
+        return FP_SUBNORMAL
+    }
+
+    return FP_NORMAL
+}

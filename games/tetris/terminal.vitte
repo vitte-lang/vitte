@@ -1,0 +1,1516 @@
+space games::tetris::terminal;
+
+use games::tetris::board::*;
+use games::tetris::piece::*;
+use games::tetris::game::*;
+
+/*
+ * ============================================================================
+ * VITTE TETRIS — TERMINAL INTERFACE
+ * ============================================================================
+ *
+ * File:
+ *   games/tetris/terminal.vitte
+ *
+ * Features:
+ *   - ASCII board rendering
+ *   - Active tetromino rendering
+ *   - Ghost piece rendering
+ *   - Hold and next previews
+ *   - Score and statistics
+ *   - Game state messages
+ *   - Keyboard action mapping
+ *   - ANSI terminal control
+ *   - Configurable appearance
+ *   - Unit tests
+ *
+ * The module does not implement a platform-specific
+ * raw keyboard input driver.
+ *
+ * main.vitte is responsible for obtaining keyboard input,
+ * scheduling ticks and calling the rendering functions.
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * TERMINAL CONSTANTS
+ * ============================================================================
+ */
+
+export const TERMINAL_WIDTH: i64 = 80;
+export const TERMINAL_HEIGHT: i64 = 30;
+
+export const TERMINAL_BOARD_WIDTH: i64 = 10;
+export const TERMINAL_BOARD_HEIGHT: i64 = 20;
+
+export const TERMINAL_CELL_WIDTH: i64 = 2;
+
+export const TERMINAL_PREVIEW_WIDTH: i64 = 4;
+export const TERMINAL_PREVIEW_HEIGHT: i64 = 4;
+
+export const TERMINAL_PREVIEW_COUNT: i64 = 5;
+
+/* ============================================================================
+ * TERMINAL MODES
+ * ============================================================================
+ */
+
+export const TERMINAL_MODE_ASCII: i64 = 0;
+export const TERMINAL_MODE_BLOCKS: i64 = 1;
+export const TERMINAL_MODE_LETTERS: i64 = 2;
+
+/* ============================================================================
+ * COLORS
+ * ============================================================================
+ */
+
+export const TERMINAL_COLOR_DEFAULT: i64 = 0;
+export const TERMINAL_COLOR_BLACK: i64 = 30;
+export const TERMINAL_COLOR_RED: i64 = 31;
+export const TERMINAL_COLOR_GREEN: i64 = 32;
+export const TERMINAL_COLOR_YELLOW: i64 = 33;
+export const TERMINAL_COLOR_BLUE: i64 = 34;
+export const TERMINAL_COLOR_MAGENTA: i64 = 35;
+export const TERMINAL_COLOR_CYAN: i64 = 36;
+export const TERMINAL_COLOR_WHITE: i64 = 37;
+
+/* ============================================================================
+ * INPUT KEYS
+ * ============================================================================
+ */
+
+export const TERMINAL_KEY_NONE: i64 = 0;
+
+export const TERMINAL_KEY_LEFT: i64 = 1;
+export const TERMINAL_KEY_RIGHT: i64 = 2;
+export const TERMINAL_KEY_DOWN: i64 = 3;
+export const TERMINAL_KEY_UP: i64 = 4;
+
+export const TERMINAL_KEY_SPACE: i64 = 5;
+export const TERMINAL_KEY_HOLD: i64 = 6;
+
+export const TERMINAL_KEY_PAUSE: i64 = 7;
+export const TERMINAL_KEY_QUIT: i64 = 8;
+export const TERMINAL_KEY_RESTART: i64 = 9;
+
+export const TERMINAL_KEY_ROTATE_CCW: i64 = 10;
+
+/* ============================================================================
+ * TERMINAL CONFIGURATION
+ * ============================================================================
+ */
+
+export form TerminalConfig {
+    width: i64,
+    height: i64,
+
+    mode: i64,
+
+    use_color: bool,
+    use_ghost: bool,
+    use_hold: bool,
+    use_next: bool,
+    use_statistics: bool,
+
+    show_grid: bool,
+    show_border: bool,
+    show_controls: bool,
+
+    compact: bool,
+    debug: bool
+}
+
+/* ============================================================================
+ * TERMINAL STATE
+ * ============================================================================
+ */
+
+export form Terminal {
+    config: TerminalConfig,
+
+    initialized: bool,
+    dirty: bool,
+
+    frame_count: i64,
+
+    last_score: i64,
+    last_level: i64,
+    last_lines: i64,
+
+    last_state: i64,
+
+    cursor_hidden: bool
+}
+
+/* ============================================================================
+ * CONFIGURATION
+ * ============================================================================
+ */
+
+export proc terminal_default_config() -> TerminalConfig {
+    return TerminalConfig {
+        width: TERMINAL_WIDTH,
+        height: TERMINAL_HEIGHT,
+
+        mode: TERMINAL_MODE_ASCII,
+
+        use_color: true,
+        use_ghost: true,
+        use_hold: true,
+        use_next: true,
+        use_statistics: true,
+
+        show_grid: false,
+        show_border: true,
+        show_controls: true,
+
+        compact: false,
+        debug: false
+    };
+}
+
+export proc terminal_compact_config() -> TerminalConfig {
+    return TerminalConfig {
+        width: 40,
+        height: 25,
+
+        mode: TERMINAL_MODE_ASCII,
+
+        use_color: false,
+        use_ghost: true,
+        use_hold: false,
+        use_next: false,
+        use_statistics: true,
+
+        show_grid: false,
+        show_border: true,
+        show_controls: false,
+
+        compact: true,
+        debug: false
+    };
+}
+
+/* ============================================================================
+ * TERMINAL CREATION
+ * ============================================================================
+ */
+
+export proc terminal_create() -> Terminal {
+    return Terminal {
+        config: terminal_default_config(),
+
+        initialized: false,
+        dirty: true,
+
+        frame_count: 0,
+
+        last_score: -1,
+        last_level: -1,
+        last_lines: -1,
+
+        last_state: -1,
+
+        cursor_hidden: false
+    };
+}
+
+export proc terminal_create_with_config(
+    config: TerminalConfig
+) -> Terminal {
+    return Terminal {
+        config: config,
+
+        initialized: false,
+        dirty: true,
+
+        frame_count: 0,
+
+        last_score: -1,
+        last_level: -1,
+        last_lines: -1,
+
+        last_state: -1,
+
+        cursor_hidden: false
+    };
+}
+
+/* ============================================================================
+ * TERMINAL OUTPUT
+ * ============================================================================
+ *
+ * Route text and integers through the compiler's standard output intrinsics;
+ * keep the terminal API independent from a libc formatting implementation.
+ */
+
+intrinsic io_print_i64(value: i64);
+
+export proc terminal_write(text: str) {
+    print(text);
+}
+
+export proc terminal_write_line(text: str) {
+    terminal_write(text);
+    terminal_newline();
+}
+
+export proc terminal_newline() {
+    print("\n");
+}
+
+export proc terminal_write_integer(value: i64) {
+    io_print_i64(value);
+}
+
+/* ============================================================================
+ * ANSI ESCAPE SEQUENCES
+ * ============================================================================
+ */
+
+export proc terminal_clear_screen() {
+    terminal_write("\x1b[2J");
+    terminal_write("\x1b[H");
+}
+
+export proc terminal_home() {
+    terminal_write("\x1b[H");
+}
+
+export proc terminal_emit_hide_cursor() {
+    terminal_write("\x1b[?25l");
+}
+
+export proc terminal_emit_show_cursor() {
+    terminal_write("\x1b[?25h");
+}
+
+export proc terminal_reset_style() {
+    terminal_write("\x1b[0m");
+}
+
+export proc terminal_bold() {
+    terminal_write("\x1b[1m");
+}
+
+export proc terminal_dim() {
+    terminal_write("\x1b[2m");
+}
+
+export proc terminal_color_reset() {
+    terminal_reset_style();
+}
+
+/* ============================================================================
+ * ANSI COLORS
+ * ============================================================================
+ */
+
+export proc terminal_color_for_piece(kind: i64) -> str {
+    if kind == PIECE_I {
+        return "\x1b[36m";
+    }
+
+    if kind == PIECE_O {
+        return "\x1b[33m";
+    }
+
+    if kind == PIECE_T {
+        return "\x1b[35m";
+    }
+
+    if kind == PIECE_S {
+        return "\x1b[32m";
+    }
+
+    if kind == PIECE_Z {
+        return "\x1b[31m";
+    }
+
+    if kind == PIECE_J {
+        return "\x1b[34m";
+    }
+
+    if kind == PIECE_L {
+        return "\x1b[93m";
+    }
+
+    return "\x1b[0m";
+}
+
+export proc terminal_set_piece_color(
+    terminal: &Terminal,
+    kind: i64
+) {
+    if not terminal.config.use_color {
+        return;
+    }
+
+    terminal_write(
+        terminal_color_for_piece(kind)
+    );
+}
+
+/* ============================================================================
+ * TERMINAL INITIALIZATION
+ * ============================================================================
+ */
+
+export proc terminal_initialize(terminal: &mut Terminal) {
+    if terminal.initialized {
+        return;
+    }
+
+    terminal_clear_screen();
+    terminal_emit_hide_cursor();
+
+    set terminal.initialized = true;
+    set terminal.cursor_hidden = true;
+    set terminal.dirty = true;
+}
+
+/* ============================================================================
+ * TERMINAL SHUTDOWN
+ * ============================================================================
+ */
+
+export proc terminal_shutdown(terminal: &mut Terminal) {
+    terminal_reset_style();
+    terminal_emit_show_cursor();
+    terminal_newline();
+
+    set terminal.initialized = false;
+    set terminal.cursor_hidden = false;
+}
+
+/* ============================================================================
+ * TERMINAL INVALIDATION
+ * ============================================================================
+ */
+
+export proc terminal_invalidate(terminal: &mut Terminal) {
+    set terminal.dirty = true;
+}
+
+export proc terminal_is_dirty(terminal: &Terminal) -> bool {
+    return terminal.dirty;
+}
+
+/* ============================================================================
+ * PIECE OVERLAY
+ * ============================================================================
+ */
+
+export proc terminal_piece_at(
+    current: &Piece,
+    x: i64,
+    y: i64
+) -> bool {
+    let local_x: i64 = x - current.x;
+    let local_y: i64 = y - current.y;
+
+    if not piece_matrix_inside(local_x, local_y) {
+        return false;
+    }
+
+    return piece_cell_occupied(
+        current,
+        local_x,
+        local_y
+    );
+}
+
+/* ============================================================================
+ * GHOST OVERLAY
+ * ============================================================================
+ */
+
+export proc terminal_ghost_at(
+    game: &Game,
+    x: i64,
+    y: i64
+) -> bool {
+    if game.state != GAME_STATE_PLAYING
+        and game.state != GAME_STATE_PAUSED
+    {
+        return false;
+    }
+
+    let ghost_y: i64 = game_ghost_y(game);
+
+    let local_x: i64 = x - game.current.x;
+    let local_y: i64 = y - ghost_y;
+
+    if not piece_matrix_inside(local_x, local_y) {
+        return false;
+    }
+
+    return piece_cell_occupied(
+        &game.current,
+        local_x,
+        local_y
+    );
+}
+
+/* ============================================================================
+ * CELL RENDERING
+ * ============================================================================
+ */
+
+export proc terminal_draw_empty(
+    terminal: &Terminal
+) {
+    if terminal.config.show_grid {
+        terminal_write("..");
+        return;
+    }
+
+    terminal_write("  ");
+}
+
+export proc terminal_draw_ghost(
+    terminal: &Terminal
+) {
+    if terminal.config.use_color {
+        terminal_dim();
+    }
+
+    terminal_write("::");
+
+    if terminal.config.use_color {
+        terminal_reset_style();
+    }
+}
+
+export proc terminal_draw_piece(
+    terminal: &Terminal,
+    kind: i64
+) {
+    terminal_set_piece_color(terminal, kind);
+
+    if terminal.config.mode == TERMINAL_MODE_LETTERS {
+        terminal_write(piece_ascii_double(kind));
+    } elif terminal.config.mode == TERMINAL_MODE_BLOCKS {
+        terminal_write("##");
+    } else {
+        terminal_write("[]");
+    }
+
+    if terminal.config.use_color {
+        terminal_reset_style();
+    }
+}
+
+/* ============================================================================
+ * COMPOSITE CELL
+ * ============================================================================
+ */
+
+export proc terminal_draw_cell(
+    terminal: &Terminal,
+    game: &Game,
+    x: i64,
+    y: i64
+) {
+    let locked: i64 = board_get(
+        &game.board,
+        x,
+        y
+    );
+
+    if locked != BOARD_EMPTY {
+        terminal_draw_piece(terminal, locked);
+        return;
+    }
+
+    if game.state == GAME_STATE_PLAYING
+        or game.state == GAME_STATE_PAUSED
+    {
+        if terminal_piece_at(
+            &game.current,
+            x,
+            y
+        ) {
+            terminal_draw_piece(
+                terminal,
+                game.current.kind
+            );
+
+            return;
+        }
+
+        if terminal.config.use_ghost
+            and terminal_ghost_at(game, x, y)
+        {
+            terminal_draw_ghost(terminal);
+            return;
+        }
+    }
+
+    terminal_draw_empty(terminal);
+}
+
+/* ============================================================================
+ * BOARD BORDER
+ * ============================================================================
+ */
+
+export proc terminal_draw_horizontal_border() {
+    terminal_write("+");
+
+    let mut x: i64 = 0;
+
+    while x < TERMINAL_BOARD_WIDTH {
+        terminal_write("--");
+        set x = x + 1;
+    }
+
+    terminal_write_line("+");
+}
+
+/* ============================================================================
+ * BOARD RENDERING
+ * ============================================================================
+ */
+
+export proc terminal_draw_board(
+    terminal: &Terminal,
+    game: &Game
+) {
+    if terminal.config.show_border {
+        terminal_draw_horizontal_border();
+    }
+
+    let mut y: i64 = 0;
+
+    while y < TERMINAL_BOARD_HEIGHT {
+        if terminal.config.show_border {
+            terminal_write("|");
+        }
+
+        let mut x: i64 = 0;
+
+        while x < TERMINAL_BOARD_WIDTH {
+            terminal_draw_cell(
+                terminal,
+                game,
+                x,
+                y
+            );
+
+            set x = x + 1;
+        }
+
+        if terminal.config.show_border {
+            terminal_write("|");
+        }
+
+        terminal_newline();
+
+        set y = y + 1;
+    }
+
+    if terminal.config.show_border {
+        terminal_draw_horizontal_border();
+    }
+}
+
+/* ============================================================================
+ * PREVIEW RENDERING
+ * ============================================================================
+ */
+
+export proc terminal_draw_preview(
+    terminal: &Terminal,
+    kind: i64
+) {
+    if not piece_valid_kind(kind) {
+        terminal_write_line("(empty)");
+        return;
+    }
+
+    let preview: Piece = piece_create(kind);
+
+    let mut y: i64 = 0;
+
+    while y < TERMINAL_PREVIEW_HEIGHT {
+        let mut x: i64 = 0;
+
+        while x < TERMINAL_PREVIEW_WIDTH {
+            if piece_cell_occupied(
+                &preview,
+                x,
+                y
+            ) {
+                terminal_draw_piece(terminal, kind);
+            } else {
+                terminal_write("  ");
+            }
+
+            set x = x + 1;
+        }
+
+        terminal_newline();
+
+        set y = y + 1;
+    }
+}
+
+/* ============================================================================
+ * HOLD
+ * ============================================================================
+ */
+
+export proc terminal_draw_hold(
+    terminal: &Terminal,
+    game: &Game
+) {
+    if not terminal.config.use_hold {
+        return;
+    }
+
+    terminal_write_line("HOLD");
+    terminal_write_line("----");
+
+    terminal_draw_preview(
+        terminal,
+        game.hold_kind
+    );
+
+    if game.hold_used {
+        terminal_write_line("Hold unavailable");
+    } else {
+        terminal_write_line("Hold available");
+    }
+
+    terminal_newline();
+}
+
+/* ============================================================================
+ * NEXT PIECES
+ * ============================================================================
+ */
+
+export proc terminal_draw_next(
+    terminal: &Terminal,
+    game: &Game
+) {
+    if not terminal.config.use_next {
+        return;
+    }
+
+    terminal_write_line("NEXT");
+    terminal_write_line("----");
+
+    let mut index: i64 = 0;
+
+    while index < TERMINAL_PREVIEW_COUNT {
+        let kind: i64 = game_next_preview(
+            game,
+            index
+        );
+
+        terminal_write("#");
+        terminal_write_integer(index + 1);
+        terminal_write(": ");
+        terminal_write_line(piece_name(kind));
+
+        if not terminal.config.compact {
+            terminal_draw_preview(terminal, kind);
+        }
+
+        set index = index + 1;
+    }
+
+    terminal_newline();
+}
+
+/* ============================================================================
+ * SCORE
+ * ============================================================================
+ */
+
+export proc terminal_draw_score(game: &Game) {
+    terminal_write("SCORE      ");
+    terminal_write_integer(game.statistics.score);
+    terminal_newline();
+
+    terminal_write("HIGH SCORE ");
+    terminal_write_integer(game.statistics.high_score);
+    terminal_newline();
+
+    terminal_write("LEVEL      ");
+    terminal_write_integer(game.statistics.level);
+    terminal_newline();
+
+    terminal_write("LINES      ");
+    terminal_write_integer(game.statistics.lines);
+    terminal_newline();
+}
+
+/* ============================================================================
+ * STATISTICS
+ * ============================================================================
+ */
+
+export proc terminal_draw_statistics(
+    terminal: &Terminal,
+    game: &Game
+) {
+    if not terminal.config.use_statistics {
+        return;
+    }
+
+    terminal_write_line("STATISTICS");
+    terminal_write_line("----------");
+
+    terminal_write("Pieces spawned : ");
+    terminal_write_integer(
+        game.statistics.pieces_spawned
+    );
+    terminal_newline();
+
+    terminal_write("Pieces locked  : ");
+    terminal_write_integer(
+        game.statistics.pieces_locked
+    );
+    terminal_newline();
+
+    terminal_write("Singles        : ");
+    terminal_write_integer(
+        game.statistics.singles
+    );
+    terminal_newline();
+
+    terminal_write("Doubles        : ");
+    terminal_write_integer(
+        game.statistics.doubles
+    );
+    terminal_newline();
+
+    terminal_write("Triples        : ");
+    terminal_write_integer(
+        game.statistics.triples
+    );
+    terminal_newline();
+
+    terminal_write("Tetrises       : ");
+    terminal_write_integer(
+        game.statistics.tetrises
+    );
+    terminal_newline();
+
+    terminal_write("Combo          : ");
+    terminal_write_integer(
+        game.statistics.combo
+    );
+    terminal_newline();
+
+    terminal_write("Best combo     : ");
+    terminal_write_integer(
+        game.statistics.best_combo
+    );
+    terminal_newline();
+
+    terminal_write("Back-to-back   : ");
+    terminal_write_integer(
+        game.statistics.back_to_back
+    );
+    terminal_newline();
+
+    terminal_write("Perfect clears : ");
+    terminal_write_integer(
+        game.statistics.perfect_clears
+    );
+    terminal_newline();
+
+    terminal_write("Soft drop      : ");
+    terminal_write_integer(
+        game.statistics.soft_drop_cells
+    );
+    terminal_newline();
+
+    terminal_write("Hard drop      : ");
+    terminal_write_integer(
+        game.statistics.hard_drop_cells
+    );
+    terminal_newline();
+
+    terminal_write("Rotations      : ");
+    terminal_write_integer(
+        game.statistics.rotations
+    );
+    terminal_newline();
+
+    terminal_write("Moves          : ");
+    terminal_write_integer(
+        game.statistics.moves
+    );
+    terminal_newline();
+
+    terminal_write("Holds          : ");
+    terminal_write_integer(
+        game.statistics.holds
+    );
+    terminal_newline();
+
+    terminal_write("Ticks          : ");
+    terminal_write_integer(
+        game.statistics.ticks
+    );
+    terminal_newline();
+}
+
+/* ============================================================================
+ * GAME STATE
+ * ============================================================================
+ */
+
+export proc terminal_state_name(state: i64) -> str {
+    if state == GAME_STATE_READY {
+        return "READY";
+    }
+
+    if state == GAME_STATE_PLAYING {
+        return "PLAYING";
+    }
+
+    if state == GAME_STATE_PAUSED {
+        return "PAUSED";
+    }
+
+    if state == GAME_STATE_OVER {
+        return "GAME OVER";
+    }
+
+    if state == GAME_STATE_QUIT {
+        return "QUIT";
+    }
+
+    return "UNKNOWN";
+}
+
+export proc terminal_draw_state(game: &Game) {
+    terminal_write("STATE: ");
+    terminal_write_line(
+        terminal_state_name(game.state)
+    );
+}
+
+/* ============================================================================
+ * CONTROLS
+ * ============================================================================
+ */
+
+export proc terminal_draw_controls() {
+    terminal_write_line("CONTROLS");
+    terminal_write_line("--------");
+
+    terminal_write_line("A / Left  : Move left");
+    terminal_write_line("D / Right : Move right");
+    terminal_write_line("S / Down  : Soft drop");
+    terminal_write_line("W / Up    : Rotate clockwise");
+    terminal_write_line("Z         : Rotate counterclockwise");
+    terminal_write_line("SPACE     : Hard drop");
+    terminal_write_line("C         : Hold");
+    terminal_write_line("P         : Pause / Resume");
+    terminal_write_line("R         : Restart");
+    terminal_write_line("Q         : Quit");
+
+    terminal_newline();
+}
+
+/* ============================================================================
+ * TITLE
+ * ============================================================================
+ */
+
+export proc terminal_draw_title() {
+    terminal_write_line("================================");
+    terminal_write_line("          VITTE TETRIS          ");
+    terminal_write_line("================================");
+    terminal_newline();
+}
+
+/* ============================================================================
+ * READY SCREEN
+ * ============================================================================
+ */
+
+export proc terminal_draw_ready() {
+    terminal_write_line("READY");
+    terminal_write_line("-----");
+    terminal_write_line("Press START to begin.");
+    terminal_newline();
+}
+
+/* ============================================================================
+ * PAUSE SCREEN
+ * ============================================================================
+ */
+
+export proc terminal_draw_pause() {
+    terminal_newline();
+    terminal_write_line("====================");
+    terminal_write_line("       PAUSED       ");
+    terminal_write_line("====================");
+    terminal_write_line("Press P to resume.");
+}
+
+/* ============================================================================
+ * GAME OVER SCREEN
+ * ============================================================================
+ */
+
+export proc terminal_draw_game_over(game: &Game) {
+    terminal_newline();
+
+    terminal_write_line("====================");
+    terminal_write_line("     GAME OVER      ");
+    terminal_write_line("====================");
+
+    terminal_write("Final score: ");
+    terminal_write_integer(game.statistics.score);
+    terminal_newline();
+
+    terminal_write("Total lines: ");
+    terminal_write_integer(game.statistics.lines);
+    terminal_newline();
+
+    terminal_write("Final level: ");
+    terminal_write_integer(game.statistics.level);
+    terminal_newline();
+
+    terminal_write_line("Press R to restart or Q to quit.");
+}
+
+/* ============================================================================
+ * QUIT SCREEN
+ * ============================================================================
+ */
+
+export proc terminal_draw_quit() {
+    terminal_newline();
+    terminal_write_line("Thanks for playing Vitte Tetris.");
+}
+
+/* ============================================================================
+ * COMPLETE FRAME
+ * ============================================================================
+ */
+
+export proc terminal_draw_frame(
+    terminal: &mut Terminal,
+    game: &Game
+) {
+    if not terminal.initialized {
+        terminal_initialize(terminal);
+    }
+
+    terminal_home();
+
+    terminal_draw_title();
+
+    terminal_draw_state(game);
+    terminal_newline();
+
+    terminal_draw_board(
+        terminal,
+        game
+    );
+
+    terminal_newline();
+
+    terminal_draw_score(game);
+    terminal_newline();
+
+    if not terminal.config.compact {
+        terminal_draw_hold(terminal, game);
+        terminal_draw_next(terminal, game);
+        terminal_draw_statistics(terminal, game);
+    }
+
+    if terminal.config.show_controls {
+        terminal_draw_controls();
+    }
+
+    if game.state == GAME_STATE_READY {
+        terminal_draw_ready();
+    } elif game.state == GAME_STATE_PAUSED {
+        terminal_draw_pause();
+    } elif game.state == GAME_STATE_OVER {
+        terminal_draw_game_over(game);
+    } elif game.state == GAME_STATE_QUIT {
+        terminal_draw_quit();
+    }
+
+    set terminal.frame_count =
+        terminal.frame_count + 1;
+
+    set terminal.last_score =
+        game.statistics.score;
+
+    set terminal.last_level =
+        game.statistics.level;
+
+    set terminal.last_lines =
+        game.statistics.lines;
+
+    set terminal.last_state =
+        game.state;
+
+    set terminal.dirty = false;
+}
+
+/* ============================================================================
+ * RENDER CHANGE DETECTION
+ * ============================================================================
+ */
+
+export proc terminal_needs_render(
+    terminal: &Terminal,
+    game: &Game
+) -> bool {
+    if terminal.dirty {
+        return true;
+    }
+
+    if terminal.last_score != game.statistics.score {
+        return true;
+    }
+
+    if terminal.last_level != game.statistics.level {
+        return true;
+    }
+
+    if terminal.last_lines != game.statistics.lines {
+        return true;
+    }
+
+    if terminal.last_state != game.state {
+        return true;
+    }
+
+    return false;
+}
+
+/* ============================================================================
+ * CONDITIONAL RENDERING
+ * ============================================================================
+ */
+
+export proc terminal_render_if_needed(
+    terminal: &mut Terminal,
+    game: &Game
+) -> bool {
+    if not terminal_needs_render(terminal, game) {
+        return false;
+    }
+
+    terminal_draw_frame(terminal, game);
+
+    return true;
+}
+
+/* ============================================================================
+ * INPUT CHARACTER MAPPING
+ * ============================================================================
+ *
+ * ASCII input values:
+ *
+ * A = 65, a = 97
+ * D = 68, d = 100
+ * S = 83, s = 115
+ * W = 87, w = 119
+ * Z = 90, z = 122
+ * C = 67, c = 99
+ * P = 80, p = 112
+ * Q = 81, q = 113
+ * R = 82, r = 114
+ * SPACE = 32
+ */
+
+export proc terminal_key_from_ascii(code: i64) -> i64 {
+    if code == 65 or code == 97 {
+        return TERMINAL_KEY_LEFT;
+    }
+
+    if code == 68 or code == 100 {
+        return TERMINAL_KEY_RIGHT;
+    }
+
+    if code == 83 or code == 115 {
+        return TERMINAL_KEY_DOWN;
+    }
+
+    if code == 87 or code == 119 {
+        return TERMINAL_KEY_UP;
+    }
+
+    if code == 90 or code == 122 {
+        return TERMINAL_KEY_ROTATE_CCW;
+    }
+
+    if code == 32 {
+        return TERMINAL_KEY_SPACE;
+    }
+
+    if code == 67 or code == 99 {
+        return TERMINAL_KEY_HOLD;
+    }
+
+    if code == 80 or code == 112 {
+        return TERMINAL_KEY_PAUSE;
+    }
+
+    if code == 81 or code == 113 {
+        return TERMINAL_KEY_QUIT;
+    }
+
+    if code == 82 or code == 114 {
+        return TERMINAL_KEY_RESTART;
+    }
+
+    return TERMINAL_KEY_NONE;
+}
+
+/* ============================================================================
+ * KEY TO GAME ACTION
+ * ============================================================================
+ */
+
+export proc terminal_key_to_action(key: i64) -> i64 {
+    if key == TERMINAL_KEY_LEFT {
+        return GAME_ACTION_LEFT;
+    }
+
+    if key == TERMINAL_KEY_RIGHT {
+        return GAME_ACTION_RIGHT;
+    }
+
+    if key == TERMINAL_KEY_DOWN {
+        return GAME_ACTION_SOFT_DROP;
+    }
+
+    if key == TERMINAL_KEY_UP {
+        return GAME_ACTION_ROTATE_CW;
+    }
+
+    if key == TERMINAL_KEY_ROTATE_CCW {
+        return GAME_ACTION_ROTATE_CCW;
+    }
+
+    if key == TERMINAL_KEY_SPACE {
+        return GAME_ACTION_HARD_DROP;
+    }
+
+    if key == TERMINAL_KEY_HOLD {
+        return GAME_ACTION_HOLD;
+    }
+
+    if key == TERMINAL_KEY_PAUSE {
+        return GAME_ACTION_PAUSE;
+    }
+
+    if key == TERMINAL_KEY_QUIT {
+        return GAME_ACTION_QUIT;
+    }
+
+    if key == TERMINAL_KEY_RESTART {
+        return GAME_ACTION_RESTART;
+    }
+
+    return GAME_ACTION_NONE;
+}
+
+/* ============================================================================
+ * INPUT DISPATCH
+ * ============================================================================
+ */
+
+export proc terminal_dispatch_key(
+    game: &mut Game,
+    key: i64
+) -> bool {
+    if key == TERMINAL_KEY_PAUSE {
+        return game_toggle_pause(game);
+    }
+
+    let action: i64 =
+        terminal_key_to_action(key);
+
+    if action == GAME_ACTION_NONE {
+        return false;
+    }
+
+    return game_apply_action(
+        game,
+        action
+    );
+}
+
+export proc terminal_dispatch_ascii(
+    game: &mut Game,
+    code: i64
+) -> bool {
+    let key: i64 =
+        terminal_key_from_ascii(code);
+
+    return terminal_dispatch_key(
+        game,
+        key
+    );
+}
+
+/* ============================================================================
+ * CONFIGURATION MUTATORS
+ * ============================================================================
+ */
+
+export proc terminal_set_mode(
+    terminal: &mut Terminal,
+    mode: i64
+) -> bool {
+    if mode < TERMINAL_MODE_ASCII
+        or mode > TERMINAL_MODE_LETTERS
+    {
+        return false;
+    }
+
+    set terminal.config.mode = mode;
+    terminal_invalidate(terminal);
+
+    return true;
+}
+
+export proc terminal_enable_color(
+    terminal: &mut Terminal,
+    enabled: bool
+) {
+    set terminal.config.use_color = enabled;
+    terminal_invalidate(terminal);
+}
+
+export proc terminal_enable_ghost(
+    terminal: &mut Terminal,
+    enabled: bool
+) {
+    set terminal.config.use_ghost = enabled;
+    terminal_invalidate(terminal);
+}
+
+export proc terminal_enable_hold(
+    terminal: &mut Terminal,
+    enabled: bool
+) {
+    set terminal.config.use_hold = enabled;
+    terminal_invalidate(terminal);
+}
+
+export proc terminal_enable_next(
+    terminal: &mut Terminal,
+    enabled: bool
+) {
+    set terminal.config.use_next = enabled;
+    terminal_invalidate(terminal);
+}
+
+export proc terminal_enable_statistics(
+    terminal: &mut Terminal,
+    enabled: bool
+) {
+    set terminal.config.use_statistics = enabled;
+    terminal_invalidate(terminal);
+}
+
+export proc terminal_enable_grid(
+    terminal: &mut Terminal,
+    enabled: bool
+) {
+    set terminal.config.show_grid = enabled;
+    terminal_invalidate(terminal);
+}
+
+export proc terminal_enable_border(
+    terminal: &mut Terminal,
+    enabled: bool
+) {
+    set terminal.config.show_border = enabled;
+    terminal_invalidate(terminal);
+}
+
+export proc terminal_enable_controls(
+    terminal: &mut Terminal,
+    enabled: bool
+) {
+    set terminal.config.show_controls = enabled;
+    terminal_invalidate(terminal);
+}
+
+/* ============================================================================
+ * TERMINAL VALIDATION
+ * ============================================================================
+ */
+
+export proc terminal_validate(terminal: &Terminal) -> bool {
+    if terminal.config.width <= 0 {
+        return false;
+    }
+
+    if terminal.config.height <= 0 {
+        return false;
+    }
+
+    if terminal.config.mode < TERMINAL_MODE_ASCII
+        or terminal.config.mode > TERMINAL_MODE_LETTERS
+    {
+        return false;
+    }
+
+    if terminal.frame_count < 0 {
+        return false;
+    }
+
+    return true;
+}
+
+/* ============================================================================
+ * TESTS — CONFIGURATION
+ * ============================================================================
+ */
+
+test "terminal default configuration" {
+    let config: TerminalConfig =
+        terminal_default_config();
+
+    assert config.width == 80;
+    assert config.height == 30;
+    assert config.use_ghost;
+    assert config.use_hold;
+    assert config.use_next;
+}
+
+/* ============================================================================
+ * TESTS — CREATION
+ * ============================================================================
+ */
+
+test "terminal creation" {
+    let terminal: Terminal = terminal_create();
+
+    assert not terminal.initialized;
+    assert terminal.dirty;
+    assert terminal.frame_count == 0;
+    assert terminal_validate(&terminal);
+}
+
+/* ============================================================================
+ * TESTS — ASCII INPUT
+ * ============================================================================
+ */
+
+test "terminal ascii movement" {
+    assert terminal_key_from_ascii(97)
+        == TERMINAL_KEY_LEFT;
+
+    assert terminal_key_from_ascii(100)
+        == TERMINAL_KEY_RIGHT;
+
+    assert terminal_key_from_ascii(115)
+        == TERMINAL_KEY_DOWN;
+
+    assert terminal_key_from_ascii(119)
+        == TERMINAL_KEY_UP;
+}
+
+/* ============================================================================
+ * TESTS — ACTION MAPPING
+ * ============================================================================
+ */
+
+test "terminal action mapping" {
+    assert terminal_key_to_action(TERMINAL_KEY_LEFT)
+        == GAME_ACTION_LEFT;
+
+    assert terminal_key_to_action(TERMINAL_KEY_RIGHT)
+        == GAME_ACTION_RIGHT;
+
+    assert terminal_key_to_action(TERMINAL_KEY_SPACE)
+        == GAME_ACTION_HARD_DROP;
+
+    assert terminal_key_to_action(TERMINAL_KEY_HOLD)
+        == GAME_ACTION_HOLD;
+}
+
+/* ============================================================================
+ * TESTS — MODE
+ * ============================================================================
+ */
+
+test "terminal mode selection" {
+    let mut terminal: Terminal = terminal_create();
+
+    assert terminal_set_mode(
+        &mut terminal,
+        TERMINAL_MODE_LETTERS
+    );
+
+    assert terminal.config.mode == TERMINAL_MODE_LETTERS;
+
+    assert not terminal_set_mode(
+        &mut terminal,
+        99
+    );
+}
+
+/* ============================================================================
+ * TESTS — PIECE OVERLAY
+ * ============================================================================
+ */
+
+test "terminal piece overlay" {
+    let piece: Piece = piece_create_at(
+        PIECE_O,
+        3,
+        5
+    );
+
+    assert terminal_piece_at(&piece, 4, 6);
+    assert terminal_piece_at(&piece, 5, 6);
+    assert terminal_piece_at(&piece, 4, 7);
+    assert terminal_piece_at(&piece, 5, 7);
+
+    assert not terminal_piece_at(&piece, 3, 5);
+}
+
+/* ============================================================================
+ * TESTS — STATE
+ * ============================================================================
+ */
+
+test "terminal state names" {
+    assert terminal_state_name(GAME_STATE_READY) == "READY";
+    assert terminal_state_name(GAME_STATE_PLAYING) == "PLAYING";
+    assert terminal_state_name(GAME_STATE_PAUSED) == "PAUSED";
+    assert terminal_state_name(GAME_STATE_OVER) == "GAME OVER";
+}
+
+/* ============================================================================
+ * TESTS — INVALIDATION
+ * ============================================================================
+ */
+
+test "terminal invalidation" {
+    let mut terminal: Terminal = terminal_create();
+
+    set terminal.dirty = false;
+
+    terminal_invalidate(&mut terminal);
+
+    assert terminal.dirty;
+}
+
+/* ============================================================================
+ * END OF FILE
+ * ============================================================================
+ */

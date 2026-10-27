@@ -1,0 +1,47 @@
+/// Handle à libération explicite pour suivre une réservation et éviter son double free.
+space alloc::allocator::tracking;
+
+use core::mem::layout::{Layout};
+use alloc::allocator::result::{AllocationError, AllocatorKind};
+use alloc::allocator::allocator::{Allocator, allocator_allocate, allocator_deallocate};
+
+export form TrackedAllocation {
+    success: bool,
+    active: bool,
+    pointer: *mut u8,
+    layout: Layout,
+    allocator: AllocatorKind,
+    error: AllocationError,
+}
+
+export proc tracking_allocate(base: Allocator, layout: Layout) -> TrackedAllocation {
+    let result = allocator_allocate(&base, layout);
+    return TrackedAllocation {
+        success: result.success,
+        active: result.success && layout.size != 0,
+        pointer: result.pointer,
+        layout: layout,
+        allocator: result.allocator,
+        error: result.error,
+    };
+}
+
+export proc tracking_release(value: &mut TrackedAllocation) -> bool {
+    if value.success == false { return false; }
+    if value.layout.size == 0 {
+        set value.success = false;
+        return true;
+    }
+    if value.active == false { return false; }
+
+    let allocator: Allocator = Allocator { kind: value.allocator };
+    if not allocator_deallocate(&allocator, value.pointer, value.layout) { return false; }
+    set value.active = false;
+    set value.pointer = null;
+    return true;
+}
+
+export proc tracking_is_active(value: &TrackedAllocation) -> bool {
+    return value.active;
+}
+

@@ -1,0 +1,51 @@
+/// Allocateur qui essaie jusqu'à trois stratégies dans l'ordre fourni.
+space alloc::allocator::composite;
+
+use core::mem::layout::{Layout};
+use alloc::allocator::result::{AllocationError, AllocatorKind};
+use alloc::allocator::allocator::{Allocator, allocator_allocate, allocator_deallocate};
+
+export form CompositeAllocator {
+    first: Allocator,
+    second: Allocator,
+    third: Allocator,
+}
+
+export form CompositeAllocation {
+    success: bool,
+    pointer: *mut u8,
+    error: AllocationError,
+    allocator: AllocatorKind,
+    selected: u8,
+}
+
+export proc composite_allocator(first: Allocator, second: Allocator, third: Allocator) -> CompositeAllocator {
+    return CompositeAllocator { first: first, second: second, third: third };
+}
+
+export proc composite_allocate(value: &CompositeAllocator, layout: Layout) -> CompositeAllocation {
+    let first_result = allocator_allocate(&value.first, layout);
+    if first_result.success {
+        return CompositeAllocation { success: true, pointer: first_result.pointer, error: AllocationError.None, allocator: first_result.allocator, selected: 0 };
+    }
+    let second_result = allocator_allocate(&value.second, layout);
+    if second_result.success {
+        return CompositeAllocation { success: true, pointer: second_result.pointer, error: AllocationError.None, allocator: second_result.allocator, selected: 1 };
+    }
+    let third_result = allocator_allocate(&value.third, layout);
+    return CompositeAllocation {
+        success: third_result.success,
+        pointer: third_result.pointer,
+        error: third_result.error,
+        allocator: third_result.allocator,
+        selected: 2,
+    };
+}
+
+export proc composite_deallocate(value: &CompositeAllocator, allocation: &CompositeAllocation, layout: Layout) -> bool {
+    if allocation.success == false { return false; }
+    if allocation.selected == 0 { return allocator_deallocate(&value.first, allocation.pointer, layout); }
+    if allocation.selected == 1 { return allocator_deallocate(&value.second, allocation.pointer, layout); }
+    if allocation.selected == 2 { return allocator_deallocate(&value.third, allocation.pointer, layout); }
+    return false;
+}

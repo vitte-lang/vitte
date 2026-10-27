@@ -1,0 +1,112 @@
+/// Allocateur système sur les intrinsics mémoire de `core`.
+space alloc::allocator::system;
+
+use core::mem::layout::{Layout, layout_is_valid};
+use core::intrinsics::memory::{native_allocate, native_deallocate, intrinsic_copy};
+use alloc::allocator::result::{
+    AllocationResult,
+    AllocationError,
+    AllocatorKind,
+    allocation_success,
+    allocation_failure,
+};
+
+export proc system_allocate(layout: Layout) -> AllocationResult {
+    if not layout_is_valid(&layout) {
+        return allocation_failure(AllocationError.InvalidLayout, AllocatorKind.System);
+    }
+    if layout.size == 0 {
+        return allocation_success(null, AllocatorKind.System);
+    }
+
+    let metadata_size: usize = sizeof(*mut u8);
+    if layout.align - 1 > usize.MAX - metadata_size {
+        return allocation_failure(AllocationError.SizeOverflow, AllocatorKind.System);
+    }
+    let overhead: usize = (layout.align - 1) + metadata_size;
+    if layout.size > usize.MAX - overhead {
+        return allocation_failure(AllocationError.SizeOverflow, AllocatorKind.System);
+    }
+
+    let total_size: usize = layout.size + overhead;
+    let base: *mut u8 = native_allocate(total_size);
+    if base == null { return allocation_failure(AllocationError.OutOfMemory, AllocatorKind.System); }
+
+    let base_address: usize = base as usize;
+    if base_address > usize.MAX - metadata_size {
+        native_deallocate(base);
+        return allocation_failure(AllocationError.SizeOverflow, AllocatorKind.System);
+    }
+    let candidate: usize = base_address + metadata_size;
+    let remainder: usize = candidate % layout.align;
+    let mut padding: usize = 0;
+    if remainder != 0 { set padding = layout.align - remainder; }
+    if candidate > usize.MAX - padding {
+        native_deallocate(base);
+        return allocation_failure(AllocationError.SizeOverflow, AllocatorKind.System);
+    }
+    let aligned_address: usize = candidate + padding;
+    if aligned_address > usize.MAX - layout.size {
+        native_deallocate(base);
+        return allocation_failure(AllocationError.SizeOverflow, AllocatorKind.System);
+    }
+
+    let metadata_address: usize = aligned_address - metadata_size;
+    let metadata: *mut *mut u8 = metadata_address as *mut *mut u8;
+    set *metadata = base;
+    return allocation_success(aligned_address as *mut u8, AllocatorKind.System);
+}
+
+/// Libère uniquement un pointeur retourné par `system_allocate` avec son layout.
+export proc system_deallocate(pointer: *mut u8, layout: Layout) -> bool {
+    if not layout_is_valid(&layout) { return false; }
+    if layout.size == 0 { return pointer == null; }
+    if pointer == null { return false; }
+
+    let user_address: usize = pointer as usize;
+    let metadata_size: usize = sizeof(*mut u8);
+    if user_address < metadata_size { return false; }
+    let metadata_address: usize = user_address - metadata_size;
+    let metadata: *const *mut u8 = metadata_address as *const *mut u8;
+    let base: *mut u8 = *metadata;
+    if base == null { return false; }
+    native_deallocate(base);
+    return true;
+}
+
+export proc system_reallocate(
+    pointer: *mut u8,
+    old_layout: Layout,
+    new_layout: Layout
+) -> AllocationResult {
+    if not layout_is_valid(&old_layout) || not layout_is_valid(&new_layout) {
+        return allocation_failure(AllocationError.InvalidLayout, AllocatorKind.System);
+    }
+    if pointer == null {
+        if old_layout.size == 0 { return system_allocate(new_layout); }
+        return allocation_failure(AllocationError.InvalidPointer, AllocatorKind.System);
+    }
+    if old_layout.size == 0 {
+        return allocation_failure(AllocationError.InvalidPointer, AllocatorKind.System);
+    }
+    if new_layout.size == 0 {
+        if system_deallocate(pointer, old_layout) { return allocation_success(null, AllocatorKind.System); }
+        return allocation_failure(AllocationError.InvalidPointer, AllocatorKind.System);
+    }
+
+    let replacement: AllocationResult = system_allocate(new_layout);
+    if replacement.success == false { return replacement; }
+
+    let mut copy_size: usize = old_layout.size;
+    if new_layout.size < copy_size { set copy_size = new_layout.size; }
+    if copy_size != 0 && not intrinsic_copy(replacement.pointer, pointer, copy_size) {
+        system_deallocate(replacement.pointer, new_layout);
+        return allocation_failure(AllocationError.InvalidPointer, AllocatorKind.System);
+    }
+    if not system_deallocate(pointer, old_layout) {
+        system_deallocate(replacement.pointer, new_layout);
+        return allocation_failure(AllocationError.InvalidPointer, AllocatorKind.System);
+    }
+    return replacement;
+}
+

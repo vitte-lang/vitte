@@ -1,0 +1,1225 @@
+extern proc terminal_hide_cursor();
+extern proc terminal_show_cursor();
+extern proc terminal_key_pressed() -> bool;
+extern proc terminal_read_key() -> char;
+extern proc terminal_sleep_ms(milliseconds: i64);
+
+space games::tetris::main;
+
+use games::tetris::board::*;
+use games::tetris::piece::*;
+use games::tetris::game::*;
+use games::tetris::terminal::*;
+
+/*
+ * ============================================================================
+ * VITTE TETRIS — MAIN
+ * ============================================================================
+ *
+ * Entry point:
+ *   games/tetris/main.vitte
+ *
+ * Modules:
+ *   board.vitte
+ *   piece.vitte
+ *   game.vitte
+ *   terminal.vitte
+ *
+ * Responsibilities:
+ *   - Application configuration
+ *   - Game initialization
+ *   - Terminal initialization
+ *   - Command dispatch
+ *   - Simulation scheduling
+ *   - Game lifecycle
+ *   - Final statistics
+ *   - Clean shutdown
+ *
+ * The command dispatcher is also used by the interactive terminal loop.
+ * Cross-module declarations are exposed with `export`.
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * APPLICATION CONSTANTS
+ * ============================================================================
+ */
+
+const APP_VERSION_MAJOR: i64 = 0;
+const APP_VERSION_MINOR: i64 = 1;
+const APP_VERSION_PATCH: i64 = 0;
+
+const APP_DEFAULT_SEED: i64 = 12345;
+
+const APP_DEFAULT_TICKS: i64 = 1;
+const APP_FAST_TICKS: i64 = 10;
+const APP_LONG_TICKS: i64 = 100;
+
+const APP_MAX_BATCH_TICKS: i64 = 100000;
+
+const APP_COMMAND_NONE: i64 = 0;
+const APP_COMMAND_LEFT: i64 = 1;
+const APP_COMMAND_RIGHT: i64 = 2;
+const APP_COMMAND_DOWN: i64 = 3;
+const APP_COMMAND_ROTATE_CW: i64 = 4;
+const APP_COMMAND_ROTATE_CCW: i64 = 5;
+const APP_COMMAND_HARD_DROP: i64 = 6;
+const APP_COMMAND_HOLD: i64 = 7;
+const APP_COMMAND_PAUSE: i64 = 8;
+const APP_COMMAND_RESTART: i64 = 9;
+const APP_COMMAND_QUIT: i64 = 10;
+const APP_COMMAND_TICK: i64 = 11;
+const APP_COMMAND_RUN: i64 = 12;
+const APP_COMMAND_HELP: i64 = 13;
+const APP_COMMAND_STATS: i64 = 14;
+const APP_COMMAND_BOARD: i64 = 15;
+const APP_COMMAND_VALIDATE: i64 = 16;
+const APP_COMMAND_START: i64 = 17;
+const APP_COMMAND_COMPACT: i64 = 18;
+const APP_COMMAND_FULL: i64 = 19;
+const APP_COMMAND_GHOST: i64 = 20;
+const APP_COMMAND_COLOR: i64 = 21;
+const APP_COMMAND_GRID: i64 = 22;
+const APP_COMMAND_PREVIEW: i64 = 23;
+const APP_COMMAND_HOLD_VIEW: i64 = 24;
+const APP_COMMAND_CONTROLS: i64 = 25;
+const APP_COMMAND_DEBUG: i64 = 26;
+
+/* ============================================================================
+ * APPLICATION CONFIGURATION
+ * ============================================================================
+ */
+
+form AppConfig {
+    seed: i64,
+
+    initial_ticks: i64,
+    maximum_batch_ticks: i64,
+
+    auto_start: bool,
+    auto_render: bool,
+
+    show_welcome: bool,
+    show_help: bool,
+
+    compact_mode: bool,
+    color_enabled: bool,
+    ghost_enabled: bool,
+
+    validate_after_action: bool,
+    debug: bool
+}
+
+/* ============================================================================
+ * APPLICATION STATISTICS
+ * ============================================================================
+ */
+
+form AppStatistics {
+    commands_received: i64,
+    commands_executed: i64,
+    commands_rejected: i64,
+
+    actions_applied: i64,
+
+    simulation_batches: i64,
+    simulation_ticks: i64,
+
+    renders: i64,
+    restarts: i64,
+
+    validation_checks: i64,
+    validation_failures: i64
+}
+
+/* ============================================================================
+ * APPLICATION STATE
+ * ============================================================================
+ */
+
+form App {
+    config: AppConfig,
+
+    game: Game,
+    terminal: Terminal,
+
+    statistics: AppStatistics,
+
+    initialized: bool,
+    running: bool,
+
+    exit_code: i64,
+
+    last_command: i64,
+    last_command_success: bool
+}
+
+/* ============================================================================
+ * CONFIGURATION
+ * ============================================================================
+ */
+
+proc app_default_config() -> AppConfig {
+    return AppConfig {
+        seed: APP_DEFAULT_SEED,
+
+        initial_ticks: APP_DEFAULT_TICKS,
+        maximum_batch_ticks: APP_MAX_BATCH_TICKS,
+
+        auto_start: true,
+        auto_render: true,
+
+        show_welcome: true,
+        show_help: true,
+
+        compact_mode: false,
+        color_enabled: true,
+        ghost_enabled: true,
+
+        validate_after_action: false,
+        debug: false
+    };
+}
+
+proc app_default_statistics() -> AppStatistics {
+    return AppStatistics {
+        commands_received: 0,
+        commands_executed: 0,
+        commands_rejected: 0,
+
+        actions_applied: 0,
+
+        simulation_batches: 0,
+        simulation_ticks: 0,
+
+        renders: 0,
+        restarts: 0,
+
+        validation_checks: 0,
+        validation_failures: 0
+    };
+}
+
+/* ============================================================================
+ * APPLICATION CREATION
+ * ============================================================================
+ */
+
+proc app_create(config: AppConfig) -> App {
+    let mut terminal_config: TerminalConfig =
+        terminal_default_config();
+
+    set terminal_config.compact =
+        config.compact_mode;
+
+    set terminal_config.use_color =
+        config.color_enabled;
+
+    set terminal_config.use_ghost =
+        config.ghost_enabled;
+
+    return App {
+        config: config,
+
+        game: game_create(config.seed),
+
+        terminal: terminal_create_with_config(
+            terminal_config
+        ),
+
+        statistics: app_default_statistics(),
+
+        initialized: false,
+        running: false,
+
+        exit_code: 0,
+
+        last_command: APP_COMMAND_NONE,
+        last_command_success: false
+    };
+}
+
+/* ============================================================================
+ * APPLICATION OUTPUT
+ * ============================================================================
+ */
+
+proc app_write(text: str) {
+    terminal_write(text);
+}
+
+proc app_write_line(text: str) {
+    terminal_write_line(text);
+}
+
+proc app_write_integer(value: i64) {
+    terminal_write_integer(value);
+}
+
+proc app_newline() {
+    terminal_newline();
+}
+
+/* ============================================================================
+ * VERSION
+ * ============================================================================
+ */
+
+proc app_print_version() {
+    app_write("Vitte Tetris ");
+    app_write_integer(APP_VERSION_MAJOR);
+    app_write(".");
+    app_write_integer(APP_VERSION_MINOR);
+    app_write(".");
+    app_write_integer(APP_VERSION_PATCH);
+    app_newline();
+}
+
+/* ============================================================================
+ * WELCOME SCREEN
+ * ============================================================================
+ */
+
+proc app_print_welcome() {
+    app_write_line("========================================");
+    app_write_line("              VITTE TETRIS              ");
+    app_write_line("========================================");
+
+    app_newline();
+
+    app_print_version();
+
+    app_newline();
+
+    app_write_line("A terminal Tetris written in Vitte.");
+    app_write_line("Board: 10 columns x 20 rows.");
+    app_write_line("Pieces: I O T S Z J L.");
+
+    app_newline();
+}
+
+/* ============================================================================
+ * HELP
+ * ============================================================================
+ */
+
+proc app_print_help() {
+    app_write_line("COMMANDS");
+    app_write_line("========");
+
+    app_write_line("a / left       Move left");
+    app_write_line("d / right      Move right");
+    app_write_line("s / down       Soft drop");
+    app_write_line("w / up         Rotate clockwise");
+    app_write_line("z / ccw        Rotate counterclockwise");
+
+    app_write_line("space / drop   Hard drop");
+    app_write_line("c / hold       Hold piece");
+
+    app_write_line("p / pause      Pause or resume");
+    app_write_line("r / restart    Restart game");
+    app_write_line("q / quit       Quit");
+
+    app_write_line("tick           Advance one simulation tick");
+    app_write_line("run            Advance ten simulation ticks");
+    app_write_line("fast           Advance one hundred ticks");
+
+    app_write_line("board          Render board");
+    app_write_line("stats          Show statistics");
+    app_write_line("validate       Validate game state");
+    app_write_line("help           Show help");
+
+    app_write_line("compact        Compact display");
+    app_write_line("full           Full display");
+
+    app_write_line("ghost          Toggle ghost piece");
+    app_write_line("color          Toggle colors");
+    app_write_line("grid           Toggle grid");
+
+    app_write_line("preview        Toggle next pieces");
+    app_write_line("holdview       Toggle hold display");
+    app_write_line("controls       Toggle controls");
+
+    app_newline();
+}
+
+/* ============================================================================
+ * INITIALIZATION
+ * ============================================================================
+ */
+
+proc app_initialize(app: &mut App) -> bool {
+    if app.initialized {
+        return false;
+    }
+
+    if app.config.show_welcome {
+        app_print_welcome();
+    }
+
+    if app.config.show_help {
+        app_print_help();
+    }
+
+    if app.config.auto_start {
+        if not game_start(&mut app.game) {
+            set app.exit_code = 1;
+            return false;
+        }
+    }
+
+    terminal_initialize(&mut app.terminal);
+
+    set app.initialized = true;
+    set app.running = true;
+
+    terminal_invalidate(&mut app.terminal);
+
+    return true;
+}
+
+/* ============================================================================
+ * RENDERING
+ * ============================================================================
+ */
+
+proc app_render(app: &mut App) {
+    if not app.initialized {
+        return;
+    }
+
+    terminal_draw_frame(
+        &mut app.terminal,
+        &app.game
+    );
+
+    set app.statistics.renders =
+        app.statistics.renders + 1;
+}
+
+proc app_render_if_enabled(app: &mut App) {
+    if not app.config.auto_render {
+        return;
+    }
+
+    app_render(app);
+}
+
+/* ============================================================================
+ * GAME START
+ * ============================================================================
+ */
+
+proc app_start_game(app: &mut App) -> bool {
+    if app.game.state != GAME_STATE_READY {
+        return false;
+    }
+
+    let result: bool = game_start(&mut app.game);
+
+    if result {
+        terminal_invalidate(&mut app.terminal);
+    }
+
+    return result;
+}
+
+/* ============================================================================
+ * GAME ACTIONS
+ * ============================================================================
+ */
+
+proc app_apply_game_action(
+    app: &mut App,
+    action: i64
+) -> bool {
+    let result: bool =
+        game_apply_action(&mut app.game, action);
+
+    if result {
+        set app.statistics.actions_applied =
+            app.statistics.actions_applied + 1;
+
+        terminal_invalidate(&mut app.terminal);
+    }
+
+    return result;
+}
+
+/* ============================================================================
+ * PAUSE
+ * ============================================================================
+ */
+
+proc app_toggle_pause(app: &mut App) -> bool {
+    let result: bool =
+        game_toggle_pause(&mut app.game);
+
+    if result {
+        terminal_invalidate(&mut app.terminal);
+    }
+
+    return result;
+}
+
+/* ============================================================================
+ * RESTART
+ * ============================================================================
+ */
+
+proc app_restart(app: &mut App) -> bool {
+    let seed: i64 =
+        app.game.random_state + 1;
+
+    let result: bool =
+        game_restart(&mut app.game, seed);
+
+    if result {
+        set app.statistics.restarts =
+            app.statistics.restarts + 1;
+
+        terminal_invalidate(&mut app.terminal);
+    }
+
+    return result;
+}
+
+/* ============================================================================
+ * QUIT
+ * ============================================================================
+ */
+
+proc app_quit(app: &mut App) {
+    game_quit(&mut app.game);
+
+    set app.running = false;
+
+    terminal_invalidate(&mut app.terminal);
+}
+
+/* ============================================================================
+ * SIMULATION
+ * ============================================================================
+ */
+
+proc app_advance(
+    app: &mut App,
+    requested_ticks: i64
+) -> i64 {
+    if app.game.state != GAME_STATE_PLAYING {
+        return 0;
+    }
+
+    let ticks: i64 = game_clamp(
+        requested_ticks,
+        0,
+        app.config.maximum_batch_ticks
+    );
+
+    let before: i64 =
+        app.game.statistics.ticks;
+
+    game_advance(&mut app.game, ticks);
+
+    let advanced: i64 =
+        app.game.statistics.ticks - before;
+
+    set app.statistics.simulation_batches =
+        app.statistics.simulation_batches + 1;
+
+    set app.statistics.simulation_ticks =
+        app.statistics.simulation_ticks + advanced;
+
+    if advanced > 0 {
+        terminal_invalidate(&mut app.terminal);
+    }
+
+    return advanced;
+}
+
+/* ============================================================================
+ * VALIDATION
+ * ============================================================================
+ */
+
+proc app_validate(app: &mut App) -> bool {
+    set app.statistics.validation_checks =
+        app.statistics.validation_checks + 1;
+
+    let valid: bool = game_validate(&app.game)
+        and terminal_validate(&app.terminal);
+
+    if not valid {
+        set app.statistics.validation_failures =
+            app.statistics.validation_failures + 1;
+    }
+
+    return valid;
+}
+
+/* ============================================================================
+ * COMMAND HELPERS
+ * ============================================================================
+ */
+
+proc app_command_to_game_action(
+    command: i64
+) -> i64 {
+    if command == APP_COMMAND_LEFT {
+        return GAME_ACTION_LEFT;
+    }
+
+    if command == APP_COMMAND_RIGHT {
+        return GAME_ACTION_RIGHT;
+    }
+
+    if command == APP_COMMAND_DOWN {
+        return GAME_ACTION_SOFT_DROP;
+    }
+
+    if command == APP_COMMAND_ROTATE_CW {
+        return GAME_ACTION_ROTATE_CW;
+    }
+
+    if command == APP_COMMAND_ROTATE_CCW {
+        return GAME_ACTION_ROTATE_CCW;
+    }
+
+    if command == APP_COMMAND_HARD_DROP {
+        return GAME_ACTION_HARD_DROP;
+    }
+
+    if command == APP_COMMAND_HOLD {
+        return GAME_ACTION_HOLD;
+    }
+
+    return GAME_ACTION_NONE;
+}
+
+/* ============================================================================
+ * COMMAND EXECUTION
+ * ============================================================================
+ */
+
+proc app_execute_command(
+    app: &mut App,
+    command: i64
+) -> bool {
+    set app.statistics.commands_received =
+        app.statistics.commands_received + 1;
+
+    set app.last_command = command;
+    set app.last_command_success = false;
+
+    let mut success: bool = false;
+
+    if command == APP_COMMAND_LEFT
+        or command == APP_COMMAND_RIGHT
+        or command == APP_COMMAND_DOWN
+        or command == APP_COMMAND_ROTATE_CW
+        or command == APP_COMMAND_ROTATE_CCW
+        or command == APP_COMMAND_HARD_DROP
+        or command == APP_COMMAND_HOLD
+    {
+        success = app_apply_game_action(
+            app,
+            app_command_to_game_action(command)
+        );
+    } elif command == APP_COMMAND_PAUSE {
+        success = app_toggle_pause(app);
+    } elif command == APP_COMMAND_RESTART {
+        success = app_restart(app);
+    } elif command == APP_COMMAND_QUIT {
+        app_quit(app);
+        success = true;
+    } elif command == APP_COMMAND_START {
+        success = app_start_game(app);
+    } elif command == APP_COMMAND_TICK {
+        success = app_advance(
+            app,
+            APP_DEFAULT_TICKS
+        ) > 0;
+    } elif command == APP_COMMAND_RUN {
+        success = app_advance(
+            app,
+            APP_FAST_TICKS
+        ) > 0;
+    } elif command == APP_COMMAND_HELP {
+        app_print_help();
+        success = true;
+    } elif command == APP_COMMAND_STATS {
+        terminal_draw_statistics(
+            &app.terminal,
+            &app.game
+        );
+        success = true;
+    } elif command == APP_COMMAND_BOARD {
+        app_render(app);
+        success = true;
+    } elif command == APP_COMMAND_VALIDATE {
+        success = app_validate(app);
+
+        if success {
+            app_write_line("Validation: OK");
+        } else {
+            app_write_line("Validation: FAILED");
+        }
+    } elif command == APP_COMMAND_COMPACT {
+        set app.terminal.config.compact = true;
+        terminal_invalidate(&mut app.terminal);
+        success = true;
+    } elif command == APP_COMMAND_FULL {
+        set app.terminal.config.compact = false;
+        terminal_invalidate(&mut app.terminal);
+        success = true;
+    } elif command == APP_COMMAND_GHOST {
+        terminal_enable_ghost(
+            &mut app.terminal,
+            not app.terminal.config.use_ghost
+        );
+        success = true;
+    } elif command == APP_COMMAND_COLOR {
+        terminal_enable_color(
+            &mut app.terminal,
+            not app.terminal.config.use_color
+        );
+        success = true;
+    } elif command == APP_COMMAND_GRID {
+        terminal_enable_grid(
+            &mut app.terminal,
+            not app.terminal.config.show_grid
+        );
+        success = true;
+    } elif command == APP_COMMAND_PREVIEW {
+        terminal_enable_next(
+            &mut app.terminal,
+            not app.terminal.config.use_next
+        );
+        success = true;
+    } elif command == APP_COMMAND_HOLD_VIEW {
+        terminal_enable_hold(
+            &mut app.terminal,
+            not app.terminal.config.use_hold
+        );
+        success = true;
+    } elif command == APP_COMMAND_CONTROLS {
+        terminal_enable_controls(
+            &mut app.terminal,
+            not app.terminal.config.show_controls
+        );
+        success = true;
+    }
+
+    if success {
+        set app.statistics.commands_executed =
+            app.statistics.commands_executed + 1;
+    } else {
+        set app.statistics.commands_rejected =
+            app.statistics.commands_rejected + 1;
+    }
+
+    set app.last_command_success = success;
+
+    if app.config.validate_after_action {
+        if not app_validate(app) {
+            set app.exit_code = 2;
+            set app.running = false;
+        }
+    }
+
+    return success;
+}
+
+/* ============================================================================
+ * ASCII COMMAND MAPPING
+ * ============================================================================
+ *
+ * Single-character commands can be mapped without
+ * requiring a string parser.
+ */
+
+proc app_command_from_ascii(code: i64) -> i64 {
+    if code == 65 or code == 97 {
+        return APP_COMMAND_LEFT;
+    }
+
+    if code == 68 or code == 100 {
+        return APP_COMMAND_RIGHT;
+    }
+
+    if code == 83 or code == 115 {
+        return APP_COMMAND_DOWN;
+    }
+
+    if code == 87 or code == 119 {
+        return APP_COMMAND_ROTATE_CW;
+    }
+
+    if code == 90 or code == 122 {
+        return APP_COMMAND_ROTATE_CCW;
+    }
+
+    if code == 32 {
+        return APP_COMMAND_HARD_DROP;
+    }
+
+    if code == 67 or code == 99 {
+        return APP_COMMAND_HOLD;
+    }
+
+    if code == 80 or code == 112 {
+        return APP_COMMAND_PAUSE;
+    }
+
+    if code == 82 or code == 114 {
+        return APP_COMMAND_RESTART;
+    }
+
+    if code == 81 or code == 113 {
+        return APP_COMMAND_QUIT;
+    }
+
+    return APP_COMMAND_NONE;
+}
+
+/* ============================================================================
+ * ASCII INPUT DISPATCH
+ * ============================================================================
+ */
+
+proc app_dispatch_ascii(
+    app: &mut App,
+    code: i64
+) -> bool {
+    let command: i64 =
+        app_command_from_ascii(code);
+
+    if command == APP_COMMAND_NONE {
+        return false;
+    }
+
+    return app_execute_command(app, command);
+}
+
+/* ============================================================================
+ * FRAME PROCESSING
+ * ============================================================================
+ */
+
+proc app_process_frame(
+    app: &mut App,
+    input_code: i64,
+    elapsed_ticks: i64
+) {
+    if not app.running {
+        return;
+    }
+
+    if input_code != 0 {
+        app_dispatch_ascii(app, input_code);
+    }
+
+    if not app.running {
+        return;
+    }
+
+    if elapsed_ticks > 0 {
+        app_advance(app, elapsed_ticks);
+    }
+
+    app_render_if_enabled(app);
+}
+
+/* ============================================================================
+ * GAME OVER
+ * ============================================================================
+ */
+
+proc app_is_game_over(app: &App) -> bool {
+    return game_is_over(&app.game);
+}
+
+proc app_is_finished(app: &App) -> bool {
+    return not app.running
+        or game_is_quit(&app.game);
+}
+
+/* ============================================================================
+ * FINAL STATISTICS
+ * ============================================================================
+ */
+
+proc app_print_final_statistics(app: &App) {
+    app_newline();
+
+    app_write_line("========================================");
+    app_write_line("           FINAL STATISTICS             ");
+    app_write_line("========================================");
+
+    app_write("Score: ");
+    app_write_integer(app.game.statistics.score);
+    app_newline();
+
+    app_write("High score: ");
+    app_write_integer(app.game.statistics.high_score);
+    app_newline();
+
+    app_write("Level: ");
+    app_write_integer(app.game.statistics.level);
+    app_newline();
+
+    app_write("Lines: ");
+    app_write_integer(app.game.statistics.lines);
+    app_newline();
+
+    app_write("Pieces locked: ");
+    app_write_integer(app.game.statistics.pieces_locked);
+    app_newline();
+
+    app_write("Tetrises: ");
+    app_write_integer(app.game.statistics.tetrises);
+    app_newline();
+
+    app_write("Perfect clears: ");
+    app_write_integer(app.game.statistics.perfect_clears);
+    app_newline();
+
+    app_write("Commands received: ");
+    app_write_integer(app.statistics.commands_received);
+    app_newline();
+
+    app_write("Commands executed: ");
+    app_write_integer(app.statistics.commands_executed);
+    app_newline();
+
+    app_write("Simulation ticks: ");
+    app_write_integer(app.statistics.simulation_ticks);
+    app_newline();
+
+    app_write("Frames rendered: ");
+    app_write_integer(app.statistics.renders);
+    app_newline();
+
+    app_newline();
+}
+
+/* ============================================================================
+ * SHUTDOWN
+ * ============================================================================
+ */
+
+proc app_shutdown(app: &mut App) {
+    if not app.initialized {
+        return;
+    }
+
+    terminal_shutdown(&mut app.terminal);
+
+    app_print_final_statistics(app);
+
+    set app.running = false;
+    set app.initialized = false;
+}
+
+/* ============================================================================
+ * COMMAND-DRIVEN SESSION
+ * ============================================================================
+ *
+ * The host supplies a sequence of ASCII key codes.
+ * Each code represents one command.
+ *
+ * This function is useful for:
+ *   - Automated tests
+ *   - Deterministic replays
+ *   - Embedded launchers
+ *   - Future input adapters
+ */
+
+proc app_run_script(
+    app: &mut App,
+    commands: *i64,
+    count: i64
+) {
+    if not app.initialized {
+        if not app_initialize(app) {
+            return;
+        }
+    }
+
+    let limit: i64 = game_clamp(count, 0, 32);
+    let mut index: i64 = 0;
+
+    while index < limit and app.running {
+        app_process_frame(
+            app,
+            commands[index],
+            1
+        );
+
+        set index = index + 1;
+    }
+}
+
+/* ============================================================================
+ * DEMONSTRATION SESSION
+ * ============================================================================
+ */
+
+proc app_run_demo(app: &mut App) {
+    if not app.initialized {
+        if not app_initialize(app) {
+            return;
+        }
+    }
+
+    let commands: [i64; 32] = [
+        97, 97, 119, 100,
+        115, 115, 32, 99,
+        100, 119, 32, 97,
+        97, 115, 32, 100,
+        119, 32, 99, 115,
+        115, 32, 97, 119,
+        32, 100, 115, 32,
+        97, 119, 32, 113
+    ];
+
+    app_run_script(
+        app,
+        &commands[0],
+        32
+    );
+}
+
+/* ============================================================================
+ * INTERACTIVE SESSION
+ * ============================================================================
+ */
+
+proc app_run_interactive(app: &mut App) {
+    if not app.initialized and not app_initialize(app) {
+        return;
+    }
+
+    terminal_hide_cursor();
+    app_render(app);
+
+    while app.running and not app_is_game_over(app) {
+        let mut input_code: i64 = 0;
+
+        if terminal_key_pressed() {
+            input_code = terminal_read_key() as i64;
+        }
+
+        app_process_frame(app, input_code, 1);
+
+        if app.running and not app_is_game_over(app) {
+            terminal_sleep_ms(16);
+        }
+    }
+
+    app_render(app);
+    terminal_show_cursor();
+}
+
+/* ============================================================================
+ * ENTRY POINT
+ * ============================================================================
+ *
+ * Start an interactive terminal session with the built-in POSIX input
+ * adapter. The compiler supplies a portable fallback on non-POSIX targets.
+ */
+
+proc main() -> i64 {
+    let config: AppConfig =
+        app_default_config();
+
+    let mut app: App =
+        app_create(config);
+
+    if not app_initialize(&mut app) {
+        return 1;
+    }
+
+    app_run_interactive(&mut app);
+
+    let result: i64 = app.exit_code;
+
+    app_shutdown(&mut app);
+
+    return result;
+}
+
+/* ============================================================================
+ * TESTS
+ * ============================================================================
+ */
+
+test "app default configuration" {
+    let config: AppConfig = app_default_config();
+
+    assert config.seed == APP_DEFAULT_SEED;
+    assert config.auto_start;
+    assert config.auto_render;
+}
+
+test "app creation" {
+    let config: AppConfig = app_default_config();
+
+    let app: App = app_create(config);
+
+    assert not app.initialized;
+    assert not app.running;
+    assert app.exit_code == 0;
+}
+
+test "app ascii mapping" {
+    assert app_command_from_ascii(97) == APP_COMMAND_LEFT;
+    assert app_command_from_ascii(100) == APP_COMMAND_RIGHT;
+    assert app_command_from_ascii(115) == APP_COMMAND_DOWN;
+    assert app_command_from_ascii(119) == APP_COMMAND_ROTATE_CW;
+    assert app_command_from_ascii(122) == APP_COMMAND_ROTATE_CCW;
+    assert app_command_from_ascii(32) == APP_COMMAND_HARD_DROP;
+    assert app_command_from_ascii(99) == APP_COMMAND_HOLD;
+    assert app_command_from_ascii(112) == APP_COMMAND_PAUSE;
+    assert app_command_from_ascii(114) == APP_COMMAND_RESTART;
+    assert app_command_from_ascii(113) == APP_COMMAND_QUIT;
+}
+
+test "app game action mapping" {
+    assert app_command_to_game_action(APP_COMMAND_LEFT)
+        == GAME_ACTION_LEFT;
+
+    assert app_command_to_game_action(APP_COMMAND_RIGHT)
+        == GAME_ACTION_RIGHT;
+
+    assert app_command_to_game_action(APP_COMMAND_HARD_DROP)
+        == GAME_ACTION_HARD_DROP;
+
+    assert app_command_to_game_action(APP_COMMAND_HOLD)
+        == GAME_ACTION_HOLD;
+}
+
+test "app initialization" {
+    let mut config: AppConfig = app_default_config();
+
+    set config.show_welcome = false;
+    set config.show_help = false;
+
+    let mut app: App = app_create(config);
+
+    assert app_initialize(&mut app);
+    assert app.initialized;
+    assert app.running;
+    assert game_is_playing(&app.game);
+
+    app_shutdown(&mut app);
+}
+
+test "app movement" {
+    let mut config: AppConfig = app_default_config();
+
+    set config.show_welcome = false;
+    set config.show_help = false;
+
+    let mut app: App = app_create(config);
+
+    app_initialize(&mut app);
+
+    let previous_x: i64 = app.game.current.x;
+
+    assert app_execute_command(
+        &mut app,
+        APP_COMMAND_LEFT
+    );
+
+    assert app.game.current.x == previous_x - 1;
+
+    app_shutdown(&mut app);
+}
+
+test "app simulation" {
+    let mut config: AppConfig = app_default_config();
+
+    set config.show_welcome = false;
+    set config.show_help = false;
+
+    let mut app: App = app_create(config);
+
+    app_initialize(&mut app);
+
+    let advanced: i64 = app_advance(
+        &mut app,
+        10
+    );
+
+    assert advanced == 10;
+    assert app.statistics.simulation_ticks == 10;
+
+    app_shutdown(&mut app);
+}
+
+test "app pause" {
+    let mut config: AppConfig = app_default_config();
+
+    set config.show_welcome = false;
+    set config.show_help = false;
+
+    let mut app: App = app_create(config);
+
+    app_initialize(&mut app);
+
+    assert app_toggle_pause(&mut app);
+    assert game_is_paused(&app.game);
+
+    assert app_toggle_pause(&mut app);
+    assert game_is_playing(&app.game);
+
+    app_shutdown(&mut app);
+}
+
+test "app restart" {
+    let mut config: AppConfig = app_default_config();
+
+    set config.show_welcome = false;
+    set config.show_help = false;
+
+    let mut app: App = app_create(config);
+
+    app_initialize(&mut app);
+
+    assert app_restart(&mut app);
+    assert app.statistics.restarts == 1;
+
+    app_shutdown(&mut app);
+}
+
+test "app validation" {
+    let config: AppConfig = app_default_config();
+
+    let mut app: App = app_create(config);
+
+    assert app_validate(&mut app);
+}
+
+test "app quit" {
+    let mut config: AppConfig = app_default_config();
+
+    set config.show_welcome = false;
+    set config.show_help = false;
+
+    let mut app: App = app_create(config);
+
+    app_initialize(&mut app);
+
+    app_quit(&mut app);
+
+    assert not app.running;
+    assert game_is_quit(&app.game);
+
+    app_shutdown(&mut app);
+}
+
+/* ============================================================================
+ * END OF FILE
+ * ============================================================================
+ */

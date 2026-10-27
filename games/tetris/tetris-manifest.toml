@@ -1,0 +1,252 @@
+# =============================================================================
+# VITTE TETRIS — PROJECT MANIFEST
+# =============================================================================
+
+[package]
+name = "vitte-tetris"
+version = "0.1.0"
+description = "A terminal Tetris game written entirely in Vitte"
+authors = ["Vitte Project"]
+license = "MIT"
+edition = "2026"
+
+# =============================================================================
+# PROJECT
+# =============================================================================
+
+[project]
+type = "binary"
+language = "vitte"
+entry = "main.vitte"
+root = "."
+source_extension = ".vitte"
+
+# =============================================================================
+# BUILD
+# =============================================================================
+
+[build]
+compiler = "vittec"
+backend = "c17"
+default_profile = "release"
+output_directory = "build"
+incremental = true
+parallel = true
+
+sources = [
+    "main.vitte",
+    "game.vitte",
+    "board.vitte",
+    "piece.vitte",
+    "terminal.vitte",
+]
+
+# =============================================================================
+# EXECUTABLE
+# =============================================================================
+
+[[bin]]
+name = "vitte-tetris"
+path = "main.vitte"
+
+# =============================================================================
+# MODULES
+# =============================================================================
+
+[modules]
+root = "."
+auto_discovery = false
+
+include = [
+    "games::tetris::main",
+    "games::tetris::game",
+    "games::tetris::board",
+    "games::tetris::piece",
+    "games::tetris::terminal",
+]
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+
+[dependencies]
+
+# =============================================================================
+# FEATURES
+# =============================================================================
+
+[features]
+default = [
+    "terminal",
+    "ascii",
+    "ghost",
+    "hold",
+    "preview",
+    "statistics",
+]
+
+terminal = []
+ascii = []
+ansi = []
+colors = ["ansi"]
+ghost = []
+hold = []
+preview = []
+statistics = []
+debug = []
+
+# =============================================================================
+# DEBUG PROFILE
+# =============================================================================
+
+[profile.debug]
+optimization = 0
+debug_info = true
+overflow_checks = true
+bounds_checks = true
+assertions = true
+strip = false
+
+# =============================================================================
+# RELEASE PROFILE
+# =============================================================================
+
+[profile.release]
+optimization = 2
+debug_info = false
+overflow_checks = true
+bounds_checks = true
+assertions = false
+strip = false
+lto = false
+
+# =============================================================================
+# TEST PROFILE
+# =============================================================================
+
+[profile.test]
+optimization = 0
+debug_info = true
+overflow_checks = true
+bounds_checks = true
+assertions = true
+
+# =============================================================================
+# TERMINAL CONFIGURATION
+# =============================================================================
+
+[terminal]
+width = 80
+height = 30
+encoding = "utf-8"
+
+colors = true
+ansi = true
+cursor = false
+
+# =============================================================================
+# GAME CONFIGURATION
+# =============================================================================
+
+[game]
+title = "Vitte Tetris"
+
+board_width = 10
+board_height = 20
+
+preview_count = 5
+randomizer = "seven-bag"
+
+starting_level = 1
+maximum_level = 30
+
+lines_per_level = 10
+
+hold_enabled = true
+ghost_enabled = true
+
+# =============================================================================
+# CONTROLS
+# =============================================================================
+
+[controls]
+left = "a"
+right = "d"
+down = "s"
+
+rotate_clockwise = "w"
+rotate_counterclockwise = "z"
+
+hard_drop = "space"
+hold = "c"
+
+pause = "p"
+restart = "r"
+quit = "q"
+
+# =============================================================================
+# TESTS
+# =============================================================================
+
+[tests]
+enabled = true
+recursive = true
+
+include = [
+    "board.vitte",
+    "piece.vitte",
+    "game.vitte",
+    "terminal.vitte",
+    "main.vitte",
+]
+
+# =============================================================================
+# PLATFORM TARGETS
+# =============================================================================
+
+[target.macos]
+enabled = true
+backend = "c17"
+
+[target.linux]
+enabled = true
+backend = "c17"
+
+[target.freebsd]
+enabled = true
+backend = "c17"
+
+[target.openbsd]
+enabled = true
+backend = "c17"
+
+[target.netbsd]
+enabled = true
+backend = "c17"
+
+# =============================================================================
+# INSTALLATION
+# =============================================================================
+
+[install]
+binary = "vitte-tetris"
+prefix = "/usr/local"
+bindir = "bin"
+
+# =============================================================================
+# METADATA
+# =============================================================================
+
+[metadata]
+category = "games"
+keywords = [
+    "vitte",
+    "tetris",
+    "terminal",
+    "game",
+    "puzzle",
+]
+
+# =============================================================================
+# END OF FILE
+# =============================================================================
