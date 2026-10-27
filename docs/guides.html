@@ -1,0 +1,69 @@
+---
+layout: guide
+title: Guides pratiques
+permalink: /guides/
+section: Utiliser Vitte
+lead: Les étapes de base pour obtenir le compilateur, construire le dépôt, travailler avec les chemins de modules et interpréter les diagnostics.
+description: Guides d’installation, de configuration de projet, de compilation et de dépannage pour Vitte.
+---
+<div class="reference-callout warning">
+  <strong>Les commandes dépendent des capacités réellement disponibles</strong>
+  <p>Les instructions de construction ci-dessous suivent le README du dépôt. La compilation de bout en bout dépend du sous-ensemble pris en charge par le frontend et le backend employés. Consultez la <a href="{{ '/reference/support/' | relative_url }}">matrice de support</a> pour lire les preuves construction par construction.</p>
+</div>
+
+<h2 id="installation">Installer ou construire le compilateur</h2>
+<p>Le chemin reproductible documenté dans le dépôt consiste à récupérer les sources puis à construire le compilateur avec <code>make</code>. La construction demande un compilateur C17 et l’outil <code>make</code>.</p>
+<pre><code>git clone https://github.com/vitte-lang/vitte.git
+cd vitte
+make
+vitte --version</code></pre>
+<p>La dernière commande affiche la version connue du binaire disponible dans l’environnement. Si votre terminal ne trouve pas <code>vitte</code>, vérifiez où le build a placé l’exécutable et lancez-le par son chemin, ou suivez les instructions d’installation du README du projet. Le dépôt documente aussi une construction avec CMake :</p>
+<pre><code>cmake -S . -B build
+cmake --build build</code></pre>
+<p>Les paquets distribués, les scripts d’installation et les plateformes prises en charge évoluent avec le projet. Consultez les <a href="https://github.com/vitte-lang/vitte/releases">versions publiées</a> et le <a href="https://github.com/vitte-lang/vitte/blob/main/README.md">README à jour</a> avant de choisir un paquet.</p>
+
+<h2 id="projet">Organiser les sources d’un projet</h2>
+<p>Un petit programme peut tenir dans un fichier <code>.vit</code>. Sa déclaration de module, ses imports et ses procédures donnent au compilateur les noms et les chemins logiques employés dans le code. À mesure que le programme grandit, gardez cohérents le chemin <code>space</code>, les noms des fichiers, les imports et la racine à partir de laquelle vous lancez la commande.</p>
+<pre><code>space application/main;
+
+proc main() -&gt; int {
+    return 0;
+}</code></pre>
+<p>Pour les modules, la CLI documente <code>--project-root</code>, <code>--manifest-path</code> et la variable <code>VITTE_MODULE_PATH</code>. Cette dernière ajoute des racines de recherche pour les modules ; elle ne remplace pas la déclaration des chemins et imports dans les fichiers source.</p>
+<pre><code>VITTE_MODULE_PATH="$PWD/modules" build/bin/vitte compile application.vit -o application
+vitte check src/main.vit</code></pre>
+<p>Le module JSON du dépôt illustre un paquet organisé avec <code>package.toml</code>. Ce manifeste décrit ce paquet et son point d’entrée ; il ne faut pas le confondre avec un gestionnaire universel de dépendances ou un format de projet garanti pour toutes les applications. La page <a href="{{ '/reference/modules/' | relative_url }}">Modules et visibilité</a> détaille la résolution documentée et ses limites.</p>
+
+<h2 id="compilation">Vérifier et compiler un programme</h2>
+<p>Les commandes courtes permettent de localiser la phase concernée. Lancez-les depuis la racine de votre dépôt ou précisez explicitement le chemin du fichier.</p>
+<pre><code>vitte lex examples/hello.vit
+vitte parse examples/hello.vit
+vitte check examples/hello.vit
+vitte compile examples/hello.vit --stop-after-sema
+vitte compile examples/hello.vit
+vitte run examples/hello.vit</code></pre>
+<ul>
+  <li><code>lex</code> affiche ou vérifie la lecture des tokens.</li>
+  <li><code>parse</code> contrôle la structure syntaxique reconnue par le parseur.</li>
+  <li><code>check</code> lance les vérifications exposées par le frontend sélectionné.</li>
+  <li><code>compile --stop-after-sema</code> demande un arrêt après l’analyse sémantique.</li>
+  <li><code>compile</code> et <code>run</code> demandent les étapes de backend et d’exécution lorsque la construction et le chemin sélectionnés les prennent en charge.</li>
+</ul>
+<p>Ne déduisez pas qu’un programme complet est pris en charge parce que ses mots sont présents dans l’EBNF ou parce que son analyse syntaxique réussit. Utilisez l’<a href="{{ '/reference/cli/' | relative_url }}">index des commandes</a> pour les options, puis la <a href="{{ '/reference/support/' | relative_url }}">matrice de support</a> pour les preuves de compilation et d’exécution. Les tests du dépôt peuvent être lancés avec <code>make test</code>.</p>
+
+<h2 id="diagnostics">Comprendre les erreurs et dépanner</h2>
+<p>Un diagnostic est plus utile lorsqu’il est rattaché à l’étape exacte où le compilateur s’arrête. Reprenez le programme dans l’ordre : fichier et commande employés, tokens, structure, noms et types, génération, puis exécution. Une erreur observée tard dans le pipeline peut être causée par une hypothèse invalide faite plus tôt.</p>
+<ol>
+  <li><strong>Vérifiez la commande et le fichier.</strong> Confirmez que le binaire attendu est lancé, que le chemin existe et que vous partez de la bonne racine de projet.</li>
+  <li><strong>Réduisez la phase.</strong> Utilisez <code>lex</code>, <code>parse</code>, <code>check</code> ou <code>compile --stop-after-sema</code> pour repérer le premier stade qui échoue.</li>
+  <li><strong>Vérifiez les noms et les modules.</strong> Comparez <code>space</code>, les chemins <code>use</code>, les noms de fichier, les exports et les racines données à <code>VITTE_MODULE_PATH</code> ou <code>--project-root</code>.</li>
+  <li><strong>Vérifiez le niveau de support.</strong> Une construction peut être reconnue par un parseur, puis rejetée par l’analyse sémantique ou le backend. Cherchez-la dans la fiche concernée et dans la matrice de support.</li>
+  <li><strong>Conservez les éléments utiles.</strong> Notez la version, la commande exacte, le diagnostic complet et le plus petit fichier source qui reproduit le problème.</li>
+</ol>
+<p>Pour les détails des codes, formats de sortie et options d’arrêt, consultez <a href="{{ '/reference/cli/' | relative_url }}">CLI et diagnostics</a>. Si le problème n’est pas déjà signalé, ouvrez une <a href="https://github.com/vitte-lang/vitte/issues">issue sur le dépôt</a> avec les éléments de reproduction.</p>
+
+<h2 id="suite">Poursuivre</h2>
+<div class="guide-grid">
+  <a class="guide-card" href="{{ '/apprendre/' | relative_url }}"><span>APPRENDRE</span><strong>Parcours approfondi</strong><p>Suivez les chapitres dans un ordre progressif et revenez aux pages de référence au fil de la lecture.</p><b>Voir les chapitres →</b></a>
+  <a class="guide-card" href="{{ '/projet/' | relative_url }}"><span>CONTRIBUER</span><strong>Projet et communauté</strong><p>Retrouvez le code source, les versions, les discussions et le suivi des problèmes.</p><b>Ouvrir la page projet →</b></a>
+</div>

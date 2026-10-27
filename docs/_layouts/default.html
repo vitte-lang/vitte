@@ -17,62 +17,100 @@
         <span>vitte<span class="brand-dot">/</span><small>documentation du langage</small></span>
       </a>
       <nav class="topbar-nav" aria-label="Navigation principale">
-        <a href="{{ '/#parcours' | relative_url }}">Tutoriel</a>
-        <a href="{{ '/reference/' | relative_url }}">Référence</a>
-        <a href="{{ '/exemples/' | relative_url }}">Exemples</a>
-        <a href="{{ '/reference/glossaire/' | relative_url }}">Glossaire</a>
-        <a class="top-link" href="https://github.com/vitte-lang/vitte">Dépôt <span aria-hidden="true">↗</span></a>
+        {% for item in site.data.navigation.primary %}
+          {% assign is_current = false %}
+          {% assign is_section = false %}
+          {% case item.key %}
+            {% when 'home' %}{% if page.url == '/' %}{% assign is_current = true %}{% endif %}
+            {% when 'learn' %}{% if page.url == '/apprendre/' %}{% assign is_current = true %}{% endif %}{% if page.url contains '/cours/' or page.url == '/exemples/' %}{% assign is_section = true %}{% endif %}
+            {% when 'reference' %}{% if page.url == '/reference/' %}{% assign is_current = true %}{% endif %}{% if page.url contains '/reference/' and page.url != '/reference/' %}{% assign is_section = true %}{% endif %}
+            {% when 'guides' %}{% if page.url == '/guides/' %}{% assign is_current = true %}{% endif %}
+            {% when 'project' %}{% if page.url == '/projet/' %}{% assign is_current = true %}{% endif %}
+          {% endcase %}
+          <a href="{{ item.url | relative_url }}"{% if is_current %} class="is-current" aria-current="page"{% elsif is_section %} class="is-section"{% endif %}>{{ item.title }}</a>
+        {% endfor %}
+        <a class="top-link" href="https://github.com/vitte-lang/vitte">GitHub <span aria-hidden="true">↗</span></a>
       </nav>
     </header>
 
     <div class="shell">
       <aside class="sidebar" aria-label="Navigation de la documentation">
         <div class="sidebar-heading">Dans cette documentation</div>
-        <a class="sidebar-home {% if page.url == '/' %}is-active{% endif %}" href="{{ '/' | relative_url }}">
+        <a class="sidebar-home {% if page.url == '/' %}is-active{% endif %}" href="{{ '/' | relative_url }}"{% if page.url == '/' %} aria-current="page"{% endif %}>
           <span class="nav-index">⌂</span><span>Vue d’ensemble</span>
         </a>
-        <a class="sidebar-home {% if page.url == '/exemples/' %}is-active{% endif %}" href="{{ '/exemples/' | relative_url }}">
-          <span class="nav-index">{ }</span><span>Exemples vérifiés</span>
+        <a class="sidebar-home {% if page.url == '/apprendre/' %}is-active{% endif %}" href="{{ '/apprendre/' | relative_url }}"{% if page.url == '/apprendre/' %} aria-current="page"{% endif %}>
+          <span class="nav-index">A</span><span>Apprendre Vitte</span>
         </a>
-        <details class="sidebar-section" {% if page.url contains '/reference/' %}open{% endif %}>
-          <summary>Référence <span>{{ site.data.references.size }} fiches</span></summary>
-          <a class="sidebar-link {% if page.url == '/reference/' %}is-active{% endif %}" href="{{ '/reference/' | relative_url }}">
-            <span class="nav-index">R</span><span>Index de référence</span>
-          </a>
-          {% for reference in site.data.references %}
-            <a class="sidebar-link {% if page.url == reference.url %}is-active{% endif %}" href="{{ reference.url | relative_url }}">
-              <span class="nav-index">{{ forloop.index | prepend: '0' | slice: -2, 2 }}</span>
-              <span>{{ reference.title }}</span>
-            </a>
-          {% endfor %}
-        </details>
-        <details class="sidebar-section" {% if page.url contains '/cours/' %}open{% endif %}>
-          <summary>Parcours guidé <span>{{ site.data.lessons.size }} leçons</span></summary>
+        <details class="sidebar-section" {% if page.url contains '/cours/' or page.url == '/apprendre/' %}open{% endif %}>
+          <summary>Chapitres <span>{{ site.data.lessons.size }} leçons</span></summary>
           {% assign last_part = '' %}
           {% for lesson in site.data.lessons %}
             {% if lesson.part != last_part %}
               <div class="nav-group">{{ lesson.part }}</div>
               {% assign last_part = lesson.part %}
             {% endif %}
-            <a class="sidebar-link {% if page.url == lesson.url %}is-active{% endif %}" href="{{ lesson.url | relative_url }}">
+            <a class="sidebar-link {% if page.url == lesson.url %}is-active{% endif %}" href="{{ lesson.url | relative_url }}"{% if page.url == lesson.url %} aria-current="page"{% endif %}>
               <span class="nav-index">{{ forloop.index | prepend: '0' | slice: -2, 2 }}</span>
               <span>{{ lesson.title }}</span>
             </a>
           {% endfor %}
         </details>
+        <details class="sidebar-section" {% if page.url contains '/reference/' %}open{% endif %}>
+          <summary>Référence <span>{{ site.data.references.size }} fiches</span></summary>
+          <a class="sidebar-link {% if page.url == '/reference/' %}is-active{% endif %}" href="{{ '/reference/' | relative_url }}"{% if page.url == '/reference/' %} aria-current="page"{% endif %}>
+            <span class="nav-index">R</span><span>Index de référence</span>
+          </a>
+          {% for reference in site.data.references %}
+            <a class="sidebar-link {% if page.url == reference.url %}is-active{% endif %}" href="{{ reference.url | relative_url }}"{% if page.url == reference.url %} aria-current="page"{% endif %}>
+              <span class="nav-index">{{ forloop.index | prepend: '0' | slice: -2, 2 }}</span>
+              <span>{{ reference.title }}</span>
+            </a>
+          {% endfor %}
+        </details>
+        <a class="sidebar-home {% if page.url == '/exemples/' %}is-active{% endif %}" href="{{ '/exemples/' | relative_url }}"{% if page.url == '/exemples/' %} aria-current="page"{% endif %}>
+          <span class="nav-index">{ }</span><span>Exemples vérifiés</span>
+        </a>
+        <a class="sidebar-home {% if page.url == '/guides/' %}is-active{% endif %}" href="{{ '/guides/' | relative_url }}"{% if page.url == '/guides/' %} aria-current="page"{% endif %}>
+          <span class="nav-index">G</span><span>Guides pratiques</span>
+        </a>
+        <a class="sidebar-home {% if page.url == '/projet/' %}is-active{% endif %}" href="{{ '/projet/' | relative_url }}"{% if page.url == '/projet/' %} aria-current="page"{% endif %}>
+          <span class="nav-index">↗</span><span>Le projet Vitte</span>
+        </a>
         <div class="sidebar-note">
           <span class="note-icon">✦</span>
-          <p>Un parcours complet dans le langage Vitte : concepts, exemples commentés et état réel du compilateur.</p>
+          <p>Un parcours complet dans le langage Vitte : notions expliquées, exemples commentés et état du compilateur relié au dépôt.</p>
         </div>
       </aside>
 
       <main id="contenu" class="main-content">
+        {% assign breadcrumb_parent_url = nil %}
+        {% assign breadcrumb_parent_title = nil %}
+        {% if page.url contains '/cours/' or page.url == '/exemples/' %}
+          {% assign breadcrumb_parent_url = '/apprendre/' %}
+          {% assign breadcrumb_parent_title = 'Apprendre' %}
+        {% elsif page.url contains '/reference/' and page.url != '/reference/' %}
+          {% assign breadcrumb_parent_url = '/reference/' %}
+          {% assign breadcrumb_parent_title = 'Référence' %}
+        {% endif %}
+        {% unless page.url == '/' %}
+          <nav class="breadcrumbs" aria-label="Fil d’Ariane">
+            <ol>
+              <li><a href="{{ '/' | relative_url }}">Accueil</a></li>
+              {% if breadcrumb_parent_url and page.url != breadcrumb_parent_url %}
+                <li><a href="{{ breadcrumb_parent_url | relative_url }}">{{ breadcrumb_parent_title }}</a></li>
+              {% endif %}
+              <li aria-current="page">{{ page.title | default: 'Documentation' | escape }}</li>
+            </ol>
+          </nav>
+        {% endunless %}
         {{ content }}
       </main>
     </div>
     <footer class="site-footer">
       <span>Documentation du langage Vitte · construite depuis les sources du dépôt.</span>
-      <a href="{{ '/' | relative_url }}">Retour à l’accueil ↑</a>
+      <span><a href="{{ '/projet/' | relative_url }}">Le projet Vitte</a> · <a href="{{ '/' | relative_url }}">Retour à l’accueil ↑</a></span>
     </footer>
+    <script src="{{ '/assets/js/sidebar-current.js' | relative_url }}" defer></script>
   </body>
 </html>
