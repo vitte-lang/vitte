@@ -95,6 +95,14 @@
   mode: Compatibilité CLI
   command: build/bin/vitte run examples/tutorials/contrats.vit --quiet --no-color
   result: Les clauses requires et ensures réussissent pour doubler(21) = 42 ; sortie standard vide, code de sortie 0.
+- title: Projet complet — configuration JSON
+  group: Organiser un projet
+  summary: Parse un document strict, contrôle son schéma métier et le réencode avec indentation.
+  source: examples/projects/json_config/main.vit
+  lesson: /projets/configuration-json/
+  mode: Frontend natif
+  command: 'VITTE_MODULE_PATH="$PWD/examples:$PWD/modules" build/bin/vitte run examples/projects/json_config/main.vit --quiet --no-color'
+  result: 'Code de sortie 0 ; affiche « Configuration valide : gateway écoute sur le port 8443. » puis le JSON indenté.'
 - title: Diagnostic de type attendu
   group: Résultats négatifs attendus
   summary: Passe un entier à un opérateur logique qui attend un booléen.
@@ -111,3 +119,51 @@
   mode: Échec attendu
   command: build/bin/vitte compile examples/tutorials/generiques-limites.vit --emit-c --quiet --no-color --diagnostic=json
   result: Code de sortie 1 ; diagnostic VITTE_BACKEND_E_CODEGEN.
+- title: Chaîne non terminée
+  group: Résultats négatifs attendus
+  summary: Ouvre un littéral chaîne sans écrire son guillemet de fermeture.
+  source: examples/diagnostics/unterminated_string.vit
+  lesson: /guides/erreurs-courantes/
+  mode: Échec attendu
+  command: build/bin/vitte check examples/diagnostics/unterminated_string.vit --quiet --no-color --diagnostic=terminal
+  result: Code de sortie 1 ; E0102, phase lexer, chaîne non terminée.
+- title: Point-virgule attendu
+  group: Résultats négatifs attendus
+  summary: Termine un return sans le point-virgule requis avant la fermeture du bloc.
+  source: examples/diagnostics/syntax_missing_semicolon.vit
+  lesson: /guides/erreurs-courantes/
+  mode: Échec attendu
+  command: build/bin/vitte check examples/diagnostics/syntax_missing_semicolon.vit --quiet --no-color --diagnostic=terminal
+  result: Code de sortie 1 ; E0201, attendu « ; », trouvé « } ».
+- title: Import inexistant
+  group: Résultats négatifs attendus
+  summary: Demande un module qui n’existe sous aucune racine de recherche.
+  source: examples/diagnostics/missing_import.vit
+  lesson: /guides/erreurs-courantes/
+  mode: Échec attendu
+  command: build/bin/vitte check examples/diagnostics/missing_import.vit --quiet --no-color --diagnostic=terminal
+  result: Code de sortie 1 ; E0301, module missing::package::module introuvable.
+- title: Nom non déclaré
+  group: Résultats négatifs attendus
+  summary: Utilise missing_value sans déclaration visible ni import.
+  source: examples/diagnostics/unknown_name.vit
+  lesson: /guides/erreurs-courantes/
+  mode: Échec attendu
+  command: build/bin/vitte check examples/diagnostics/unknown_name.vit --quiet --no-color --diagnostic=terminal
+  result: Code de sortie 1 ; E0401, symbole missing_value inconnu.
+- title: Opérande logique de mauvais type
+  group: Résultats négatifs attendus
+  summary: Applique not à un entier alors que l’opérateur logique attend bool.
+  source: examples/diagnostics/invalid_not_operand.vit
+  lesson: /guides/erreurs-courantes/
+  mode: Échec attendu
+  command: build/bin/vitte check examples/diagnostics/invalid_not_operand.vit --quiet --no-color --diagnostic=terminal
+  result: Code de sortie 1 ; E0512, not reçoit i64 au lieu de bool.
+- title: Nombre d’arguments incorrect
+  group: Résultats négatifs attendus
+  summary: Appelle une procédure qui requiert un argument sans lui en fournir.
+  source: examples/diagnostics/wrong_arity.vit
+  lesson: /guides/erreurs-courantes/
+  mode: Échec attendu
+  command: build/bin/vitte check examples/diagnostics/wrong_arity.vit --quiet --no-color --diagnostic=terminal
+  result: Code de sortie 1 ; E0601, un argument requis manque à l’appel de one.

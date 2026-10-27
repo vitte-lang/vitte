@@ -1,0 +1,294 @@
+---
+layout: guide
+title: Projet complet — Valider une configuration JSON
+permalink: /projets/configuration-json/
+section: Projet guidé
+lead: Construire un petit validateur de configuration avec le parser strict, des contrôles de schéma, des types JSON et l’encodeur formaté.
+description: Projet Vitte pas à pas pour analyser et valider une configuration JSON avec le module Vitte-Foundation/json.
+summary: "Projet reproductible : parse strict, clés requises, types, plage de port et sortie JSON indentée."
+keywords: projet tutoriel configuration JSON parse_strict validation service port JsonValue encode_pretty
+---
+
+<div class="reference-callout example">
+  <strong>Exemple exécuté avec le bootstrap Vitte 0.1.1.</strong>
+  <p>Le programme et la commande de cette page ont été vérifiés le 28 octobre 2026 depuis la racine du dépôt. Le document JSON est stocké dans une chaîne source : ce projet démontre le parsing et la validation, pas l’ouverture d’un fichier ou la lecture de stdin.</p>
+</div>
+
+<h2 id="objectif">Objectif et contrat du programme</h2>
+<p>Le programme reçoit un document décrivant un service. Il refuse un JSON mal formé, rejette les clés dupliquées, exige un objet racine contenant une clé <code>service</code>, puis vérifie que cet objet contient un nom, un port entier et un indicateur booléen. Le port doit se trouver dans la plage TCP habituelle <code>1..65535</code>. Si tout est valide, le programme affiche un résumé puis le document réencodé avec indentation.</p>
+<p>La validation se déroule en couches distinctes. <code>parse_strict</code> contrôle la syntaxe JSON et l’unicité des clés. Le code Vitte contrôle ensuite le schéma métier. Le succès du parseur ne garantit donc pas qu’un port existe, qu’il soit entier ou qu’il soit valide pour l’application.</p>
+<pre><code>{
+  "service": {
+    "name": "gateway",
+    "port": 8443,
+    "enabled": true
+  }
+}</code></pre>
+
+<h2 id="arborescence">Arborescence et prérequis</h2>
+<p>Le projet tient dans un fichier source ; le module JSON vient du dépôt Vitte :</p>
+<pre><code>vitte/
+├── build/bin/vitte
+├── examples/
+│   └── projects/json_config/
+│       └── main.vit
+└── modules/
+    └── json/
+        ├── core/
+        ├── parser/
+        └── encode/</code></pre>
+<p>Il faut un build du dépôt Vitte et les sources du module JSON à l’emplacement <code>modules/json</code>. Le programme importe trois espaces : <code>json::parser::parser</code> pour lire, <code>json::core::value</code> pour inspecter, et <code>json::encode::encoder</code> pour réécrire.</p>
+
+<h2 id="imports">Étape 1 : importer uniquement les fonctions nécessaires</h2>
+<p>Les imports groupés indiquent la provenance des types et fonctions. Ils évitent un glob qui rendrait moins évident le module propriétaire de chaque nom :</p>
+<pre><code>use json::core::value::{
+    JsonValue,
+    bool_or,
+    integer_or,
+    is_bool,
+    is_integer,
+    is_object,
+    is_string,
+    object_get_ref,
+    object_len,
+    object_member_ref,
+    string_or,
+};
+use json::encode::encoder::{JsonEncodeResult, encode_pretty};
+use json::parser::parser::{JsonParseResult, parse_strict};</code></pre>
+<p><code>JsonValue</code> est le nœud de l’arbre JSON. Les prédicats <code>is_object</code>, <code>is_string</code>, <code>is_integer</code> et <code>is_bool</code> vérifient les formes reçues avant les conversions. Les fonctions <code>integer_or</code>, <code>string_or</code> et <code>bool_or</code> donnent une valeur de repli ; ici elles suivent la vérification de type, de sorte que ce repli ne masque pas une entrée de type incorrect.</p>
+
+<h2 id="cles">Étape 2 : vérifier les clés avant d’obtenir une référence</h2>
+<p><code>object_get_ref</code> est un accès direct : il exige que la valeur soit un objet et que la clé existe. La procédure <code>object_has</code> parcourt les membres grâce à <code>object_len</code> et <code>object_member_ref</code>. Elle permet de vérifier les préconditions avant d’appeler l’accès direct.</p>
+<pre><code>proc object_has(object: &amp;JsonValue, wanted: string) -&gt; bool {
+    if not is_object(object) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index &lt; object_len(object) {
+        let member = object_member_ref(object, index);
+        if member.key == wanted {
+            return true;
+        }
+        set index += 1;
+    }
+
+    return false;
+}</code></pre>
+<p>Cette fonction ne construit pas de nouvelle valeur JSON et ne modifie pas l’objet ; elle cherche seulement une clé. Une fois <code>object_has</code> vrai, <code>object_get_ref</code> fournit une référence vers la valeur existante.</p>
+
+<h2 id="parsing">Étape 3 : parser en mode strict</h2>
+<p>Le texte est donné comme chaîne et passé à <code>parse_strict</code>. Ce mode traite les clés dupliquées comme une erreur. En cas d’échec, <code>parsed.ok</code> est faux et <code>parsed.report</code> contient le diagnostic de la version 0.1.1 du module JSON.</p>
+<pre><code>let source: string =
+    "{\"service\":{\"name\":\"gateway\",\"port\":8443,\"enabled\":true}}";
+
+let parsed: JsonParseResult = parse_strict(source);
+if not parsed.ok {
+    print("Erreur : le document JSON est invalide.");
+    return 1;
+}</code></pre>
+<p>Pour afficher le détail technique pendant le développement, remplacez le message générique par <code>parsed.report.message</code> ou examinez les champs de <code>JsonParserDiagnostic</code>. En production, évitez d’exposer à un utilisateur final des chemins système ou des données sensibles inclus dans un diagnostic.</p>
+
+<h2 id="schema">Étape 4 : valider la forme et les champs</h2>
+<p>Le document doit d’abord être un objet. Le champ <code>service</code> doit exister et être un objet lui aussi. Le programme vérifie ensuite la présence des trois champs requis avant de demander leurs références :</p>
+<pre><code>let root: &amp;JsonValue = &amp;parsed.value;
+if not is_object(root) or not object_has(root, "service") {
+    return 2;
+}
+
+let service: &amp;JsonValue = object_get_ref(root, "service");
+if not is_object(service) {
+    return 3;
+}
+
+if not object_has(service, "name") or
+   not object_has(service, "port") or
+   not object_has(service, "enabled") {
+    return 4;
+}
+</code></pre>
+<p>Les codes de retour rendent les étapes distinctes dans un script ou un test d’intégration. Le programme affiche aussi un message adapté avant chaque retour. Dans une application plus grande, on pourrait remplacer ces entiers par un type d’erreur métier, si les constructions utilisées sont prises en charge par la cible choisie.</p>
+
+<h2 id="types">Étape 5 : contrôler les types et les règles métier</h2>
+<p>JSON n’a qu’une catégorie générale « number », mais le modèle du module distingue les entiers et les flottants. Le port est volontairement exigé comme entier : <code>8443.0</code> est donc rejeté par cette règle, même si sa valeur mathématique est entière.</p>
+<pre><code>let name: &amp;JsonValue = object_get_ref(service, "name");
+let port: &amp;JsonValue = object_get_ref(service, "port");
+let enabled: &amp;JsonValue = object_get_ref(service, "enabled");
+
+if not is_string(name) or not is_integer(port) or not is_bool(enabled) {
+    return 5;
+}
+
+let service_name: string = string_or(name, "");
+let service_port: i64 = integer_or(port, 0);
+let service_enabled: bool = bool_or(enabled, false);
+
+if service_name.length == 0 or
+   service_port &lt; 1 or service_port &gt; 65535 {
+    return 6;
+}</code></pre>
+<p>Le domaine réseau définit les ports utilisables de <code>1</code> à <code>65535</code>. Cette règle appartient au programme, pas à JSON : un nombre peut être valide JSON tout en étant impossible à utiliser comme port. La valeur <code>0</code> est réservée ici au repli après conversion et est ensuite rejetée par le contrôle de plage.</p>
+
+<h2 id="encodage">Étape 6 : réencoder seulement après validation</h2>
+<p>Après avoir vérifié le schéma et l’activation du service, le programme appelle <code>encode_pretty</code>. Il vérifie encore <code>ok</code> avant d’afficher <code>text</code>. L’encodeur reçoit l’arbre JSON d’origine : il reformate le document, mais ne remplace pas la validation métier.</p>
+<pre><code>let encoded: JsonEncodeResult = encode_pretty(&amp;parsed.value);
+if not encoded.ok {
+    return 8;
+}
+
+print("Configuration valide : gateway écoute sur le port 8443.\n");
+print(encoded.text);
+return 0;</code></pre>
+
+<h2 id="source-complet">Fichier complet</h2>
+<p>Le fichier complet exécutable est <a href="https://github.com/vitte-lang/vitte/blob/main/examples/projects/json_config/main.vit"><code>examples/projects/json_config/main.vit</code></a>. Le voici en entier pour pouvoir le lire sans quitter le guide :</p>
+<pre><code>space projects::json_config::main;
+
+use json::core::value::{
+    JsonValue,
+    bool_or,
+    integer_or,
+    is_bool,
+    is_integer,
+    is_object,
+    is_string,
+    object_get_ref,
+    object_len,
+    object_member_ref,
+    string_or,
+};
+use json::encode::encoder::{
+    JsonEncodeResult,
+    encode_pretty,
+};
+use json::parser::parser::{
+    JsonParseResult,
+    parse_strict,
+};
+
+proc object_has(object: &amp;JsonValue, wanted: string) -&gt; bool {
+    if not is_object(object) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index &lt; object_len(object) {
+        let member = object_member_ref(object, index);
+        if member.key == wanted {
+            return true;
+        }
+        set index += 1;
+    }
+
+    return false;
+}
+
+proc main() -&gt; int {
+    let source: string =
+        "{\"service\":{\"name\":\"gateway\",\"port\":8443,\"enabled\":true}}";
+
+    let parsed: JsonParseResult = parse_strict(source);
+    if not parsed.ok {
+        print("Erreur : le document JSON est invalide.");
+        return 1;
+    }
+
+    let root: &amp;JsonValue = &amp;parsed.value;
+    if not is_object(root) or not object_has(root, "service") {
+        print("Erreur : la clé service doit contenir un objet.");
+        return 2;
+    }
+
+    let service: &amp;JsonValue = object_get_ref(root, "service");
+    if not is_object(service) {
+        print("Erreur : service doit être un objet.");
+        return 3;
+    }
+
+    if not object_has(service, "name") or
+       not object_has(service, "port") or
+       not object_has(service, "enabled") {
+        print("Erreur : name, port et enabled sont obligatoires.");
+        return 4;
+    }
+
+    let name: &amp;JsonValue = object_get_ref(service, "name");
+    let port: &amp;JsonValue = object_get_ref(service, "port");
+    let enabled: &amp;JsonValue = object_get_ref(service, "enabled");
+
+    if not is_string(name) or not is_integer(port) or not is_bool(enabled) {
+        print("Erreur : name, port et enabled ont des types incorrects.");
+        return 5;
+    }
+
+    let service_name: string = string_or(name, "");
+    let service_port: i64 = integer_or(port, 0);
+    let service_enabled: bool = bool_or(enabled, false);
+
+    if service_name.length == 0 or
+       service_port &lt; 1 or service_port &gt; 65535 {
+        print("Erreur : nom vide ou port hors de la plage 1..65535.");
+        return 6;
+    }
+
+    if not service_enabled {
+        print("Erreur : ce guide attend un service activé.");
+        return 7;
+    }
+
+    let encoded: JsonEncodeResult = encode_pretty(&amp;parsed.value);
+    if not encoded.ok {
+        print("Erreur : l’encodeur n’a pas pu produire le JSON.");
+        return 8;
+    }
+
+    print("Configuration valide : gateway écoute sur le port 8443.\n");
+    print(encoded.text);
+    return 0;
+}</code></pre>
+
+<h2 id="execution">Exécuter le projet et comparer la sortie</h2>
+<p>Depuis la racine du dépôt, ajoutez au chemin de recherche la racine des exemples et celle qui contient le namespace <code>json</code>. La commande testée sur Unix/macOS est :</p>
+<pre><code>VITTE_MODULE_PATH="$PWD/examples:$PWD/modules" \
+  build/bin/vitte run examples/projects/json_config/main.vit \
+  --quiet --no-color</code></pre>
+<p>Résultat confirmé : code de sortie <code>0</code> et sortie standard suivante :</p>
+<pre><code>Configuration valide : gateway écoute sur le port 8443.
+{
+  "service": {
+    "name": "gateway",
+    "port": 8443,
+    "enabled": true
+  }
+}</code></pre>
+<p>Sur Windows, définissez <code>VITTE_MODULE_PATH</code> avec le séparateur de chemins <code>;</code> et utilisez l’exécutable de la distribution Windows. La chaîne exacte de lancement dépend du terminal et de l’emplacement choisi pour le dépôt.</p>
+
+<h2 id="codes-sortie">Comportements d’erreur et codes de sortie</h2>
+<table><thead><tr><th>Code</th><th>Condition</th><th>Action du programme</th></tr></thead><tbody>
+<tr><td><code>0</code></td><td>JSON syntaxiquement valide, schéma satisfait, service activé, encodage réussi.</td><td>Affiche le résumé et la configuration réindentée.</td></tr>
+<tr><td><code>1</code></td><td><code>parse_strict</code> renvoie <code>ok = false</code>.</td><td>Refuse le document avant d’accéder à l’arbre.</td></tr>
+<tr><td><code>2</code></td><td>La racine n’est pas un objet ou la clé <code>service</code> manque.</td><td>Refuse la configuration sans appeler un accès objet invalide.</td></tr>
+<tr><td><code>3</code></td><td><code>service</code> existe, mais n’est pas un objet.</td><td>Refuse un mauvais type racine du sous-document.</td></tr>
+<tr><td><code>4</code></td><td>Une des clés <code>name</code>, <code>port</code> ou <code>enabled</code> manque.</td><td>Signale les champs requis absents.</td></tr>
+<tr><td><code>5</code></td><td>Un des trois champs a un type JSON incorrect.</td><td>Exige chaîne, entier et booléen dans cet ordre.</td></tr>
+<tr><td><code>6</code></td><td>Le nom est vide ou le port sort de <code>1..65535</code>.</td><td>Applique les contraintes métier propres à ce programme.</td></tr>
+<tr><td><code>7</code></td><td>Le service est désactivé.</td><td>Refuse l’état demandé par ce scénario.</td></tr>
+<tr><td><code>8</code></td><td>L’encodeur ne produit pas de résultat valide.</td><td>Ne lit pas la sortie de l’encodeur en échec.</td></tr>
+</tbody></table>
+
+<h2 id="limites">Limites de ce projet et prolongements documentés</h2>
+<ul>
+  <li><strong>Pas d’entrée fichier :</strong> <code>source</code> est une chaîne embarquée. Le module JSON ne lit ni fichier ni stdin ; une couche d’E/S doit fournir les octets et imposer sa propre limite avant de créer la chaîne.</li>
+  <li><strong>Schéma volontairement étroit :</strong> cet exemple vérifie trois champs d’un objet précis. Une configuration réelle peut nécessiter des champs facultatifs, des valeurs par défaut, des chemins imbriqués et des diagnostics métier distincts.</li>
+  <li><strong>Accès par référence :</strong> vérifiez le type de l’objet et l’existence de la clé avant <code>object_get_ref</code>, qui suppose ces conditions.</li>
+  <li><strong>Budgets de parsing :</strong> pour des données non fiables, utilisez les variantes à limites décrites dans le <a href="{{ '/nouveautes/' | relative_url }}#migration-json">guide de migration</a> et la <a href="{{ '/reference/json/' | relative_url }}">référence JSON</a>.</li>
+  <li><strong>Compatibilité du langage :</strong> un exemple qui s’exécute sur cette version ne prouve pas le support de toutes les formes Vitte. La <a href="{{ '/reference/support/' | relative_url }}">matrice de support</a> reste la référence par construction.</li>
+</ul>
+
+<h2 id="suite">Continuer depuis le projet</h2>
+<div class="guide-grid">
+  <a class="guide-card" href="{{ '/module/json/' | relative_url }}"><span>MODULE</span><strong>Page du module JSON</strong><p>Versions publiées, API, installation et état vérifié du paquet.</p><b>Ouvrir la page JSON →</b></a>
+  <a class="guide-card" href="{{ '/guides/erreurs-courantes/' | relative_url }}"><span>DIAGNOSTICS</span><strong>Erreurs fréquentes</strong><p>Interpréter les codes du compilateur et remonter à la phase fautive.</p><b>Lire le guide →</b></a>
+  <a class="guide-card" href="{{ '/cours/17-modules/' | relative_url }}"><span>APPRENDRE</span><strong>Modules et imports</strong><p>Revoir les chemins logiques, les racines de recherche et les exports.</p><b>Lire le chapitre →</b></a>
+</div>

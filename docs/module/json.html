@@ -1,0 +1,86 @@
+---
+layout: guide
+title: Module JSON pour Vitte
+permalink: /module/json/
+section: Modules Vitte
+lead: Un paquet Vitte pour analyser, valider, inspecter et encoder des documents JSON, avec des limites configurables et des diagnostics structurés.
+description: "Page officielle du module JSON Vitte : versions, installation, API, sécurité, vérifications et liens vers son dépôt."
+summary: "Module JSON Vitte : dépôt, releases, parsing strict, valeurs, encodage et limites."
+keywords: json module Vitte parse parse_strict JsonValue encode limites diagnostic package
+---
+<div class="reference-callout warning">
+  <strong>Les deux dépôts n’affichent pas encore le même numéro.</strong>
+  <p>Au 28 octobre 2026, la release publique du <a href="https://github.com/Vitte-Foundation/json">dépôt JSON autonome</a> consultée est <code>0.1.0</code>. La copie intégrée au dépôt du compilateur Vitte indique <code>0.1.1</code> dans <code>modules/json/package.toml</code>. Pour installer un projet, choisissez une seule provenance et relevez sa version réelle.</p>
+</div>
+<p><a class="button" href="https://github.com/Vitte-Foundation/json">Dépôt officiel sur GitHub <span aria-hidden="true">↗</span></a> <a class="button button-secondary" href="https://github.com/Vitte-Foundation/json/releases">Releases du module</a> <a class="button button-secondary" href="{{ '/reference/json/' | relative_url }}">Référence API détaillée</a></p>
+
+<h2 id="presentation">Ce que fournit le paquet</h2>
+<p>Le module prend une chaîne Vitte contenant du JSON, la transforme en tokens, construit une valeur Vitte, permet d’inspecter et de valider cette valeur, puis peut la réencoder. Le paquet est écrit en Vitte et le manifeste ne déclare aucune dépendance native. Le parsing travaille sur une chaîne déjà fournie par l’application : l’ouverture d’un fichier ou la lecture de stdin relève de la couche d’entrée du programme, pas du parser JSON.</p>
+<pre><code>texte JSON → lexer → tokens → parser → JsonValue → encodeur → texte JSON</code></pre>
+<p>Cette séparation permet de tester les étapes individuellement : examiner le lexer, parser un flux de tokens déjà disponible, appliquer un schéma métier après parsing ou produire une sortie compacte et indentée.</p>
+
+<h2 id="demarrage">Démarrage rapide</h2>
+<pre><code>use json::parser::parser::{JsonParseResult, parse_strict};
+use json::encode::encoder::{JsonEncodeResult, encode_pretty};
+
+proc reformater(source: string) -> int {
+    let parsed: JsonParseResult = parse_strict(source);
+    if not parsed.ok {
+        print(parsed.report.message);
+        return 1;
+    }
+
+    let encoded: JsonEncodeResult = encode_pretty(&amp;parsed.value);
+    if not encoded.ok {
+        print("L’encodage JSON a échoué.");
+        return 2;
+    }
+
+    print(encoded.text);
+    return 0;
+}</code></pre>
+<p><code>parse_strict</code> rejette un document mal formé et les clés d’objet répétées. Le résultat doit être vérifié avant d’accéder à <code>value</code>. De même, l’encodeur renvoie une forme de résultat : n’utilisez <code>text</code> qu’après avoir contrôlé <code>ok</code>.</p>
+
+<h2 id="api">Organisation de l’API</h2>
+<table><thead><tr><th>Namespace</th><th>Usage</th><th>Entrées principales</th></tr></thead><tbody>
+<tr><td><code>json::parser::parser</code></td><td>Analyser un document depuis une source ou une liste de tokens.</td><td><code>parse</code>, <code>parse_strict</code>, variantes <code>parse_*_with_limits</code>, <code>JsonParseResult</code>, diagnostics et statistiques.</td></tr>
+<tr><td><code>json::lexer::lexer</code></td><td>Produire des tokens avec plages de source et budgets lexicaux.</td><td><code>lex</code>, <code>lex_with_limits</code>, <code>JsonLexerLimits</code>, profils par défaut et constructeur.</td></tr>
+<tr><td><code>json::core::value</code></td><td>Créer, examiner, comparer et valider l’arbre JSON.</td><td><code>JsonValue</code>, <code>JsonValueKind</code>, constructeurs, prédicats, accès aux tableaux/objets, valeurs de repli et statistiques.</td></tr>
+<tr><td><code>json::encode::encoder</code></td><td>Sérialiser une valeur en JSON.</td><td><code>encode</code>, <code>encode_compact</code>, <code>encode_pretty</code> et options d’indentation.</td></tr>
+<tr><td><code>json::lexer::escape</code></td><td>Décoder les échappements JSON et Unicode.</td><td><code>decode_escape</code> et types de résultat lexical.</td></tr>
+<tr><td><code>json::error::position</code></td><td>Interpréter et afficher les plages source.</td><td><code>JsonPosition</code>, <code>JsonSpan</code>, <code>human_line</code> et <code>human_column</code>.</td></tr>
+</tbody></table>
+<p>La fiche <a href="{{ '/reference/json/' | relative_url }}">Module JSON</a> décrit les fonctions et types en détail. La page <a href="{{ '/modules/' | relative_url }}">Catalogue des modules</a> compare le paquet JSON à <code>core</code> et explique comment interpréter les niveaux de support.</p>
+
+<h2 id="securite">Limites et données non fiables</h2>
+<p>Dans la copie intégrée 0.1.1, les profils par défaut bornent le nombre de tokens à <code>1 048 576</code>, la source à <code>268 435 456</code> unités, la longueur d’une chaîne décodée à <code>16 777 216</code> et celle d’un nombre à <code>4 096</code>. Le parser limite la profondeur à <code>512</code>, le nombre global de valeurs à <code>1 048 576</code>, les éléments par tableau et les membres par objet à <code>1 048 576</code>, et les clés décodées à <code>16 777 216</code>.</p>
+<p>Ces maxima ne remplacent pas les budgets adaptés à votre service. Pour une requête réseau de petite taille, créez des limites plus basses et appelez <code>parse_strict_with_limits</code>. La limite de source intervient après que l’application a déjà construit la chaîne ; limitez donc également la lecture du fichier ou du corps HTTP.</p>
+<ul>
+  <li>Choisissez le mode strict si des clés dupliquées doivent être refusées sans ambiguïté.</li>
+  <li>Vérifiez <code>ok</code>, le type racine, les champs requis et les plages métier.</li>
+  <li>Ne supposez pas que la présence d’un champ garantit le type attendu.</li>
+  <li>Ne réencodez pas une valeur qui a échoué au parsing ou à la validation applicative.</li>
+  <li>Gardez en tête qu’un document valide selon JSON peut rester invalide pour le schéma de votre application.</li>
+</ul>
+
+<h2 id="installer">Installation et import</h2>
+<p>Dans une copie du dépôt Vitte, les commandes suivantes vérifient et installent le paquet intégré :</p>
+<pre><code>make -C modules/json verify
+make install PREFIX="$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
+export VITTE_MODULE_PATH="$HOME/.local/share/vitte/modules"</code></pre>
+<p>Le répertoire donné à <code>VITTE_MODULE_PATH</code> est le parent de <code>json/</code>, pas le dossier <code>json</code> lui-même. Le séparateur de plusieurs chemins est <code>:</code> sur les systèmes Unix et <code>;</code> sous Windows. Pour les artefacts du dépôt autonome et leurs sommes, partez de la <a href="https://github.com/Vitte-Foundation/json/releases">page Releases JSON</a> ; ne déduisez pas leur contenu du numéro de la copie intégrée.</p>
+
+<h2 id="preuves">Vérifications disponibles</h2>
+<p>Pour la copie JSON <code>0.1.1</code> du dépôt Vitte, les commandes ci-dessous constituent les points de départ reproductibles :</p>
+<pre><code>make -C modules/json check-library test-parse
+make -C modules/json verify</code></pre>
+<p><code>verify</code> contrôle la disposition du paquet, compile et exécute un consommateur qui importe le parser et l’encodeur installés, puis lance le test de concaténation dynamique. Les tests ciblés couvrent également les erreurs de parsing, les limites, Unicode et les nombres. La réussite de ces cibles ne prouve pas séparément chaque fonction exportée ni chaque taille de document réelle en production.</p>
+
+<h2 id="sources">Documentation et sources</h2>
+<div class="guide-grid">
+  <a class="guide-card" href="https://github.com/Vitte-Foundation/json"><span>DÉPÔT AUTONOME</span><strong>Code et discussions JSON</strong><p>Parcourez les sources, les tests, les issues et les changements du module.</p><b>Ouvrir Vitte-Foundation/json ↗</b></a>
+  <a class="guide-card" href="https://github.com/Vitte-Foundation/json/releases"><span>VERSIONS PUBLIÉES</span><strong>Archives et notes JSON</strong><p>Vérifiez la version publiée et les éléments téléchargeables avant installation.</p><b>Consulter les releases ↗</b></a>
+  <a class="guide-card" href="https://github.com/vitte-lang/vitte/tree/main/modules/json"><span>COPIE INTÉGRÉE</span><strong>Sources dans Vitte</strong><p>Consultez la copie testée avec le bootstrap et le compilateur de ce dépôt.</p><b>Parcourir modules/json ↗</b></a>
+  <a class="guide-card" href="{{ '/projets/configuration-json/' | relative_url }}"><span>PROJET PAS À PAS</span><strong>Valider une configuration</strong><p>Suivez un petit programme Vitte qui parse, contrôle et réencode une configuration.</p><b>Lire le projet complet →</b></a>
+</div>

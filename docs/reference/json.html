@@ -6,6 +6,8 @@ lead: Lire, créer, valider et encoder des valeurs JSON avec le module Vitte fou
 description: "Guide du module JSON Vitte : parser, modèle de valeurs, encodage, Unicode, nombres et diagnostics."
 source: modules/json/DOCUMENTATION.md · README.md · package.toml · sources Vitte
 support: "La cible test-vitte compile et exécute un consommateur du parser et de l’encodeur installés ; elle ne prouve pas que chaque source du paquet soit une API importable."
+vitte_version: "0.1.1"
+updated: 28 octobre 2026
 reference_order: 11
 summary: "Parser, valeurs, objets, tableaux, encodeur, Unicode et diagnostics."
 keywords: "json JSON parser parse parse_strict lexer token JsonValue encode encode_pretty Unicode nombre erreur diagnostic JSON module"
@@ -13,6 +15,8 @@ keywords: "json JSON parser parse parse_strict lexer token JsonValue encode enco
 <div class="reference-callout">
   <strong>Le code de cette révision est la référence de l’API.</strong>
   <p>L’issue <a href="https://github.com/vitte-lang/vitte/issues/17">#17</a> joint plusieurs éditions PDF. Le PDF français se présente comme une édition de travail et précise que ses signatures et commandes n’ont pas été vérifiées sur une copie du dépôt. Cette page s’appuie sur <a href="https://github.com/vitte-lang/vitte/blob/main/modules/json/DOCUMENTATION.md"><code>modules/json/DOCUMENTATION.md</code></a> et les sources du module.</p>
+  <p><a class="button" href="https://github.com/Vitte-Foundation/json">Dépôt du module JSON <span aria-hidden="true">↗</span></a></p>
+  <p>La page <a href="{{ '/module/json/' | relative_url }}">Module JSON pour Vitte</a> résume les versions du dépôt autonome et de la copie intégrée ; la page <a href="{{ '/nouveautes/' | relative_url }}">Nouveautés et migrations</a> explique les adaptations d’API.</p>
 </div>
 
 <h2>La chaîne de traitement</h2>
@@ -21,7 +25,7 @@ keywords: "json JSON parser parse parse_strict lexer token JsonValue encode enco
 
 <table><thead><tr><th>Espace</th><th>Rôle</th><th>API exportée et preuve dans le dépôt</th></tr></thead><tbody>
 <tr><td><code>json::core::value</code></td><td>Arbre JSON canonique, constructeurs, prédicats de type, accès génériques, égalité et validation.</td><td><code>JsonValue</code>, <code>JsonValueKind</code>, <code>parse</code> et encodeur l’utilisent. Les constructeurs et accès sont exportés dans <code>core/value.vit</code>.</td></tr>
-<tr><td><code>json::parser::parser</code></td><td>Analyse un texte ou des tokens et produit diagnostics et statistiques.</td><td><code>parse</code>, <code>parse_strict</code>, <code>parse_tokens</code>, <code>parse_tokens_strict</code>. Le test consommateur importe <code>parse</code>.</td></tr>
+<tr><td><code>json::parser::parser</code></td><td>Analyse un texte ou des tokens et produit diagnostics et statistiques.</td><td><code>parse</code>, <code>parse_strict</code>, <code>parse_with_limits</code>, <code>parse_strict_with_limits</code>, <code>parse_tokens</code>, <code>parse_tokens_strict</code>, <code>parse_tokens_with_limits</code>. Le test consommateur importe <code>parse</code>.</td></tr>
 <tr><td><code>json::encode::encoder</code></td><td>Sérialisation compacte, lisible ou configurée.</td><td><code>encode</code>, <code>encode_compact</code>, <code>encode_pretty</code>, <code>encode_pretty_with_indent</code>. Le test consommateur importe <code>encode_compact</code>.</td></tr>
 <tr><td><code>json::lexer::lexer</code> et <code>json::lexer::escape</code></td><td>Tokens, spans, lecture lexicale et décodage des échappements Unicode.</td><td><code>lex</code> et <code>decode_escape</code> sont exportées ; la suite Unicode exerce le lexer.</td></tr>
 <tr><td><code>json::error::position</code> et <code>json::runtime::numeric</code></td><td>Coordonnées source et fonctions bas niveau de validation, conversion et formatage numériques.</td><td>Types et fonctions exportés dans les sources. Les suites du module couvrent les positions et le runtime numérique.</td></tr>
@@ -44,19 +48,19 @@ use json::encode::encoder::{JsonEncodeResult, encode_pretty};
 
 proc reformater(source: string) {
     let parsed: JsonParseResult = parse_strict(source);
-    if !parsed.ok {
-        // parsed.diagnostic donne le détail de l’échec.
-        give;
+    if not parsed.ok {
+        // parsed.report donne le détail de l’échec.
+        return;
     }
 
     let encoded: JsonEncodeResult = encode_pretty(&amp;parsed.value);
-    if !encoded.ok {
+    if not encoded.ok {
         // Ne pas utiliser encoded.text en cas d’échec.
-        give;
+        return;
     }
 
     // encoded.text contient le JSON mis en forme.
-    give;
+    return;
 }</code></pre>
 
 <h2>Les valeurs JSON</h2>
@@ -77,13 +81,17 @@ let paquet: JsonValue = object([version]);</code></pre>
 <p><code>parse(source)</code> effectue le lexing et lit un document JSON complet. Il exige une valeur racine et rejette les tokens qui la suivent. <code>parse_strict(source)</code> applique la même grammaire, mais refuse les clés d’objet répétées. Les variantes <code>parse_tokens</code> et <code>parse_tokens_strict</code> prennent une suite de tokens déjà produite par le lexer.</p>
 <p>Pour les entrées de configuration ou de réseau, préfère <code>parse_strict</code> : si deux clés portent le même nom, différents consommateurs peuvent sinon retenir des valeurs différentes. JSON ne permet pas les commentaires, les clés non citées, les guillemets simples ou les virgules finales.</p>
 
+<h2>Profils de ressources</h2>
+<p>La copie 0.1.1 expose <code>JsonLexerLimits</code> et <code>JsonParserLimits</code>, leurs profils par défaut, des constructeurs et des fonctions de validation. <code>parse_with_limits</code> applique la politique de doublons du profil reçu ; <code>parse_strict_with_limits</code> impose le rejet des doublons. <code>parse_tokens_with_limits</code> applique les limites du parser à une suite de tokens déjà disponible.</p>
+<p>Les limites du lexer couvrent la source, le nombre de tokens, la longueur des chaînes décodées et celle des lexèmes numériques. Le parser borne la profondeur, le nombre global de valeurs, les éléments de chaque tableau, les membres de chaque objet et la longueur des clés décodées. Les valeurs par défaut, leur sens exact et un exemple de configuration figurent dans la section <a href="https://github.com/vitte-lang/vitte/blob/main/modules/json/DOCUMENTATION.md#15-limites-et-s%C3%A9curit%C3%A9">Limites et sécurité du guide source</a> et la <a href="{{ '/nouveautes/' | relative_url }}#migration-json">page de migration</a>.</p>
+
 <h2>Un exemple consommateur vérifiable</h2>
 <p>Le test <code>modules/json/tests/import_smoke.vit</code> importe réellement le parser et l’encodeur du paquet, lit <code>{"ready":true}</code>, encode la valeur au format compact et vérifie le résultat caractère par caractère. La cible <code>test-vitte</code> installe le module dans un répertoire de staging, compile ce consommateur puis l’exécute :</p>
 <pre><code>make -C modules/json test-vitte</code></pre>
 <p>Résultat attendu lorsque la cible réussit : code de sortie zéro et message de succès « installed JSON parser and encoder consumer compiled and ran ». Cette preuve porte sur le chemin parser → encodeur testé ; elle ne valide pas chaque fonction de chaque fichier du paquet.</p>
 
 <h2>Diagnostics et positions</h2>
-<p>En cas d’échec, <code>JsonParseResult.diagnostic</code> contient entre autres le code, le message, le détail, une suggestion éventuelle, la valeur attendue et trouvée, la clé et un <code>JsonSpan</code>. Les suggestions sont informatives ; elles ne modifient pas automatiquement le document.</p>
+<p>Dans l’API 0.1.1 intégrée, <code>JsonParseResult.report</code> contient entre autres le code, le message, le détail, une suggestion éventuelle, la valeur attendue et trouvée, la clé et un <code>JsonSpan</code>. Les suggestions sont informatives ; elles ne modifient pas automatiquement le document. Pour migrer depuis la release JSON 0.1.0, remplacez l’accès <code>.diagnostic</code> du résultat parser par <code>.report</code>.</p>
 <p>Les coordonnées de <code>JsonPosition</code> sont comptées à partir de zéro. Pour afficher une ligne ou une colonne à une personne, utilise <code>human_line</code> et <code>human_column</code>, qui produisent des numéros commençant à un. Les plages source servent à pointer l’erreur ou les occurrences liées dans un éditeur.</p>
 
 <h2>Encoder du JSON</h2>

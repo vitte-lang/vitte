@@ -1,0 +1,117 @@
+---
+layout: guide
+title: Nouveautés et migrations
+permalink: /nouveautes/
+section: Projet et versions
+lead: Historique des versions publiées, état des sources du dépôt et adaptations à connaître lors d’une mise à jour de Vitte ou du module JSON.
+description: Notes de version et guide de migration Vitte, avec distinction entre l’archive publiée et les sources de développement.
+summary: "Versions publiques, état 0.1.1 du dépôt, changements JSON et migration des appels d’API."
+keywords: nouveautes versions changelog migration Vitte 0.1.0 0.1.1 JSON diagnostic report limites bootstrap
+---
+
+<div class="reference-callout warning">
+  <strong>Version publiée et version des sources sont deux informations différentes.</strong>
+  <p>État relevé le 28 octobre 2026 : la dernière release publique consultée du compilateur Vitte indique le paquet <code>0.1.0</code>, tandis que le fichier <code>VERSION</code> de cette copie du dépôt indique <code>0.1.1</code>. Le numéro <code>0.1.1</code> décrit donc ici les sources vérifiées ; il ne signifie pas qu’une release binaire portant ce numéro est déjà publiée. Consultez toujours les <a href="https://github.com/vitte-lang/vitte/releases">releases officielles</a> avant de télécharger un artefact.</p>
+</div>
+
+<h2 id="etat">État des versions au 28 octobre 2026</h2>
+<table><thead><tr><th>Composant</th><th>Version publiée vérifiée</th><th>Sources du dépôt</th><th>Ce que cela signifie</th></tr></thead><tbody>
+<tr><td>Compilateur Vitte</td><td><a href="https://github.com/vitte-lang/vitte/releases/tag/VersionOctobre2026"><code>VersionOctobre2026</code>, paquet <code>0.1.0</code></a></td><td><code>VERSION</code> : <code>0.1.1</code></td><td>La page de release est la référence pour les téléchargements publics. La version des sources de ce guide peut inclure du travail postérieur à la release.</td></tr>
+<tr><td>Module JSON indépendant</td><td><a href="https://github.com/Vitte-Foundation/json/releases"><code>Json_Module_Version_0.1.0</code></a></td><td><code>modules/json/package.toml</code> : <code>0.1.1</code></td><td>Le dépôt externe et la copie intégrée au dépôt du compilateur ont des numéros distincts. Vérifiez le manifeste et la page Releases du dépôt que vous utilisez.</td></tr>
+</tbody></table>
+<p>Les versions sont vérifiées séparément parce que le module JSON peut être publié ou mis à jour indépendamment du compilateur. Pour une application reproductible, consignez le commit de Vitte, le manifeste du module réellement installé et la commande de compilation.</p>
+
+<h2 id="vitte-2026-10">Release Vitte 2026.10 — paquet 0.1.0</h2>
+<p>La release publique <code>VersionOctobre2026</code> a été publiée le 3 octobre 2026 et annonce le paquet Vitte <code>0.1.0</code>. Sa note de version rassemble les composants livrés avec cette publication. Elle constitue un état de release daté : elle ne remplace pas les tests ni la matrice de support d’une copie plus récente du dépôt.</p>
+<ul>
+  <li><a href="https://github.com/vitte-lang/vitte/releases/tag/VersionOctobre2026">Lire la note officielle Vitte 2026.10</a> pour les détails et les artefacts joints.</li>
+  <li>La page d’<a href="{{ '/guides/installation-depannage/' | relative_url }}">installation et dépannage</a> distingue les fichiers réellement publiés des formats que des scripts savent éventuellement fabriquer.</li>
+  <li>La <a href="{{ '/reference/support/' | relative_url }}">matrice de support</a> indique les constructions vérifiées par le dépôt ; une note de release ne garantit pas chaque forme de la grammaire.</li>
+</ul>
+
+<h2 id="source-011">État des sources Vitte 0.1.1</h2>
+<p>Le dépôt de travail actuellement décrit par cette documentation porte <code>0.1.1</code> dans <code>VERSION</code> et dans le manifeste de la copie intégrée du module JSON. Les changements ci-dessous sont ceux établis par les sources et les vérifications du dépôt ; ils ne doivent pas être présentés comme une liste d’artefacts d’une release publiée tant que la page Releases ne l’indique pas.</p>
+<h3>Module JSON</h3>
+<ul>
+  <li>Les profils de limites du lexer et du parser sont exposés : valeurs par défaut, constructeurs contrôlés et fonctions de validation.</li>
+  <li>Les points d’entrée <code>parse_with_limits</code>, <code>parse_strict_with_limits</code> et <code>parse_tokens_with_limits</code> acceptent des limites explicites. Le parsing strict impose le rejet des clés d’objet répétées.</li>
+  <li>Les résultats de parsing exposent leur diagnostic via <code>JsonParseResult.report</code>. Lorsqu’un parsing depuis le texte échoue au lexer, le résultat du parser conserve le détail et la plage source et classe l’erreur comme flux de tokens invalide.</li>
+  <li>La suite du module vérifie les plafonds de profondeur, de valeurs, de membres, de clés, de tokens, de chaînes, de nombres et de taille de source, y compris leurs frontières.</li>
+</ul>
+<h3>Compilateur et intégration</h3>
+<ul>
+  <li>Une addition dont les deux opérandes HIR sont des chaînes est abaissée vers l’opération IR de concaténation de chaînes. La régression du consommateur JSON compile et s’exécute sur le bootstrap courant.</li>
+  <li>La cible <code>test-ir-backend</code> suit désormais le programme Vitte maintenu du dépôt au lieu de dépendre d’un ancien harnais C absent.</li>
+  <li>Le contrôle de release du compilateur et <code>make -C modules/json verify</code> ont réussi sur la copie de travail examinée le 28 octobre 2026. Cette preuve porte sur ce commit et ces cibles, pas sur une future release ou toutes les constructions du langage.</li>
+</ul>
+
+<h2 id="migration-json">Migrer le code consommateur JSON</h2>
+<p>Le changement d’accès le plus visible pour un consommateur qui passe de la version JSON publiée <code>0.1.0</code> à l’API présente dans la copie du dépôt <code>0.1.1</code> concerne le champ de diagnostic. Les anciennes sources utilisaient <code>JsonParseResult.diagnostic</code> ; la forme actuelle expose <code>JsonParseResult.report</code>.</p>
+<div class="reference-callout warning"><strong>Adaptation de source</strong><p>Recherchez les accès à <code>.diagnostic</code> sur un <code>JsonParseResult</code> et remplacez-les par <code>.report</code>. Les diagnostics du lexer ont leur propre forme : ne renommez pas leurs champs sans vérifier le type importé.</p></div>
+<pre><code>// Ancien accès dans une copie du module JSON 0.1.0
+if not parsed.ok {
+    print(parsed.diagnostic.message);
+    return 1;
+}
+
+// Accès dans le module JSON 0.1.1 du dépôt Vitte
+if not parsed.ok {
+    print(parsed.report.message);
+    return 1;
+}</code></pre>
+<p>Les entrées courantes <code>parse</code>, <code>parse_strict</code>, <code>parse_tokens</code> et <code>parse_tokens_strict</code> restent les choix simples lorsque les limites par défaut conviennent. Pour rendre les ressources explicites, importez les profils et choisissez le point d’entrée correspondant :</p>
+<pre><code>use json::lexer::lexer::{
+    JsonLexerLimits,
+    default_lexer_limits,
+    new_lexer_limits,
+};
+use json::parser::parser::{
+    JsonParserLimits,
+    JsonParserDuplicateKeyPolicy,
+    default_parser_limits,
+    new_parser_limits,
+    parse_with_limits,
+    parse_strict_with_limits,
+};
+
+let lexer_limits: JsonLexerLimits = default_lexer_limits();
+let parser_limits: JsonParserLimits = default_parser_limits();
+let result = parse_with_limits(source, lexer_limits, parser_limits);
+
+// Pour des données non fiables et des clés uniques :
+let strict_limits: JsonParserLimits = new_parser_limits(
+    64, 50000, 10000, 10000, 4096,
+    JsonParserDuplicateKeyPolicy.Reject);
+let strict_result = parse_strict_with_limits(
+    source, lexer_limits, strict_limits);</code></pre>
+<p>Les cinq nombres de <code>new_parser_limits</code> règlent, dans l’ordre, la profondeur, le nombre total de valeurs, les éléments par tableau, les membres par objet et la longueur des clés. La longueur de clé est mesurée après décodage. Les nombres doivent être strictement positifs. <code>parse_with_limits</code> respecte la politique de doublons reçue ; la variante strict force <code>Reject</code>.</p>
+
+<h3>Valeurs par défaut observées dans le module 0.1.1</h3>
+<table><thead><tr><th>Profil</th><th>Limite</th><th>Valeur</th></tr></thead><tbody>
+<tr><td>Lexer</td><td>Tokens, token final <code>End</code> compris</td><td><code>1 048 576</code></td></tr>
+<tr><td>Lexer</td><td>Longueur de chaîne décodée</td><td><code>16 777 216</code></td></tr>
+<tr><td>Lexer</td><td>Longueur du lexème numérique</td><td><code>4 096</code></td></tr>
+<tr><td>Lexer</td><td>Longueur de la source avant lexing</td><td><code>268 435 456</code></td></tr>
+<tr><td>Parser</td><td>Conteneurs imbriqués</td><td><code>512</code></td></tr>
+<tr><td>Parser</td><td>Valeurs totales</td><td><code>1 048 576</code></td></tr>
+<tr><td>Parser</td><td>Éléments par tableau / membres par objet</td><td><code>1 048 576</code> chacun</td></tr>
+<tr><td>Parser</td><td>Longueur de clé décodée</td><td><code>16 777 216</code></td></tr>
+</tbody></table>
+<p>Une racine scalaire a une profondeur zéro ; un tableau ou objet à la racine compte pour une. Le nombre de valeurs est global au document ; les limites des tableaux et objets sont locales à chaque conteneur. Pour un fichier ou un corps HTTP, bornez également la lecture avant de créer la chaîne passée au lexer.</p>
+
+<h2 id="verifier-migration">Vérifier une mise à jour dans son projet</h2>
+<ol>
+  <li>Notez la version du binaire avec <code>build/bin/vitte --version</code> ou <code>vitte --version</code>.</li>
+  <li>Notez le dépôt et la version de chaque module dans son <code>package.toml</code>.</li>
+  <li>Recherchez les champs de résultat, les fonctions d’import et les options que le projet utilise réellement.</li>
+  <li>Vérifiez d’abord les sources puis l’intégration installée avec <code>make -C modules/json check</code> et <code>make -C modules/json verify</code>.</li>
+  <li>Relancez ensuite les commandes propres à votre application et comparez leurs sorties avec les résultats attendus.</li>
+</ol>
+<p>Une compilation réussie ne garantit pas que la règle métier de l’application soit correcte. Après parsing, vérifiez les types JSON, les champs obligatoires et les plages métier avant d’utiliser ou d’encoder la valeur.</p>
+
+<h2 id="historique">Consulter les historiques officiels</h2>
+<div class="guide-grid">
+  <a class="guide-card" href="https://github.com/vitte-lang/vitte/releases"><span>COMPILATEUR</span><strong>Releases Vitte</strong><p>Versions, notes de publication et fichiers réellement disponibles au téléchargement.</p><b>Ouvrir les releases ↗</b></a>
+  <a class="guide-card" href="https://github.com/Vitte-Foundation/json/releases"><span>MODULE JSON</span><strong>Releases du module</strong><p>Numéros publiés, archives et sommes annoncées par le dépôt autonome JSON.</p><b>Ouvrir les releases JSON ↗</b></a>
+  <a class="guide-card" href="{{ '/modules/' | relative_url }}"><span>CATALOGUE</span><strong>Modules Vitte</strong><p>Comparer les dépôts, versions, installations, API et preuves de support.</p><b>Parcourir le catalogue →</b></a>
+</div>

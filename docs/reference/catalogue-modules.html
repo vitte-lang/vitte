@@ -1,0 +1,72 @@
+---
+title: Catalogue des modules
+permalink: /modules/
+section: Bibliothèques
+lead: Repérer les paquets Vitte disponibles, leur dépôt, leur version, leur installation, leur API publique et le niveau de preuve associé.
+description: Catalogue des modules Vitte avec dépôts officiels, versions publiées, installation, API et compatibilité observée.
+source: modules/core · modules/json · dépôts GitHub des modules
+support: "Le catalogue sépare la version publiée du dépôt et celle des sources intégrées au compilateur."
+vitte_version: "0.1.1"
+updated: 28 octobre 2026
+reference_order: 12
+summary: "Catalogue JSON et core, versions, commandes d’installation, API et preuves de support."
+keywords: modules packages bibliothèques JSON core versions installation dépôt API support
+---
+<div class="reference-callout warning">
+  <strong>Un module présent dans le dépôt n’est pas forcément une release autonome.</strong>
+  <p>Ce catalogue indique le dépôt d’origine, le numéro de release consulté et la copie locale lorsqu’ils diffèrent. L’état a été relevé le 28 octobre 2026 ; les versions et fichiers publiés peuvent évoluer. Vérifiez les pages Releases avant de choisir un paquet pour un projet.</p>
+</div>
+
+<h2 id="inventaire">Modules documentés</h2>
+<table><thead><tr><th>Module</th><th>Dépôt et versions</th><th>Usage et API</th><th>État du support</th></tr></thead><tbody>
+<tr><td><strong><code>json</code></strong></td><td><a href="https://github.com/Vitte-Foundation/json">Dépôt autonome Vitte-Foundation/json</a><br>Release publique consultée : <code>0.1.0</code><br>Copie du dépôt Vitte : <code>0.1.1</code></td><td>Lexer, parser strict, arbre <code>JsonValue</code>, accès aux champs, validation, encodage, Unicode, limites et diagnostics.</td><td><span class="status-tag status-available">Disponible</span> dans le parcours vérifié du dépôt : le consommateur installé parser/encodeur et la concaténation passent avec <code>make -C modules/json verify</code>. Cela ne constitue pas un audit runtime de chaque symbole.</td></tr>
+<tr><td><strong><code>core</code></strong></td><td><a href="https://github.com/vitte-lang/vitte/tree/main/modules/core">Sources de <code>modules/core</code></a><br>Versionnée avec le dépôt du compilateur, sans release indépendante décrite ici.</td><td>Familles d’APIs fondamentales documentées dans le <a href="https://github.com/vitte-lang/vitte/blob/main/modules/core/API.md">catalogue des exports</a> et le README du module.</td><td><span class="status-tag status-experimental">À vérifier par API</span> : le contrat source et la disponibilité native ne sont pas équivalents. Consultez la fiche de support du symbole précis et compilez un consommateur minimal.</td></tr>
+</tbody></table>
+<p>Cette première édition ne transforme pas les répertoires de sources en promesses de compatibilité. Un module ne sera ajouté comme paquet utilisable que lorsque son nom d’import, sa version, son mode d’installation et au moins un consommateur reproductible seront documentés.</p>
+
+<h2 id="json">JSON : le premier paquet externe</h2>
+<p>Le module JSON est la bibliothèque de données la plus complète présentée ici. Le dépôt public est <a href="https://github.com/Vitte-Foundation/json">Vitte-Foundation/json</a>. Sa page Releases indique <code>Json_Module_Version_0.1.0</code>. La copie intégrée dans ce dépôt porte quant à elle <code>0.1.1</code> dans <code>modules/json/package.toml</code>. Ces numéros décrivent deux sources de distribution : ne remplacez pas l’un par l’autre sans avoir synchronisé les dépôts.</p>
+<p><a class="button" href="{{ '/module/json/' | relative_url }}">Ouvrir la page officielle du module JSON <span aria-hidden="true">→</span></a> <a class="button button-secondary" href="{{ '/reference/json/' | relative_url }}">Consulter la référence technique</a></p>
+
+<h2 id="installation">Installer depuis le dépôt Vitte</h2>
+<p>Pour utiliser la copie intégrée au dépôt du compilateur, les commandes suivantes s’exécutent depuis la racine de Vitte :</p>
+<pre><code>make -C modules/json verify
+make install PREFIX="$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"</code></pre>
+<p>Le module est alors installé sous <code>$HOME/.local/share/vitte/modules/json</code>. Si le compilateur ne découvre pas automatiquement cette racine, ajoutez son parent à <code>VITTE_MODULE_PATH</code> :</p>
+<pre><code>export VITTE_MODULE_PATH="$HOME/.local/share/vitte/modules"
+build/bin/vitte compile application.vit -o application</code></pre>
+<p>Sous Windows, le séparateur de chemins de modules est le point-virgule. Le dépôt fournit également une cible de vérification qui installe le paquet dans un répertoire temporaire, compile un consommateur qui importe le parser et l’encodeur, puis exécute ce consommateur. Pour un clone autonome du dépôt JSON, suivez les instructions et les fichiers de la release correspondante ; les chemins <code>modules/json</code> ci-dessus sont ceux du dépôt monorepo Vitte.</p>
+
+<h2 id="surface-api">Carte rapide de l’API JSON 0.1.1 intégrée</h2>
+<table><thead><tr><th>Espace</th><th>Responsabilité</th><th>Entrées publiques importantes</th></tr></thead><tbody>
+<tr><td><code>json::parser::parser</code></td><td>Analyse un document depuis son texte ou des tokens déjà lexés.</td><td><code>parse</code>, <code>parse_strict</code>, <code>parse_with_limits</code>, <code>parse_strict_with_limits</code>, <code>parse_tokens</code>, <code>parse_tokens_strict</code>, <code>parse_tokens_with_limits</code>, profils et diagnostics.</td></tr>
+<tr><td><code>json::lexer::lexer</code></td><td>Convertit le texte en tokens avec plages source et plafonds de ressources.</td><td><code>lex</code>, <code>lex_with_limits</code>, <code>default_lexer_limits</code>, <code>new_lexer_limits</code>, validation de profil.</td></tr>
+<tr><td><code>json::core::value</code></td><td>Représente les six classes de valeurs JSON et offre des constructeurs et accès contrôlés.</td><td><code>JsonValue</code>, <code>JsonValueKind</code>, <code>is_object</code>, <code>object_get_ref</code>, <code>integer_or</code>, <code>string_or</code>, <code>validate</code>, égalité et statistiques.</td></tr>
+<tr><td><code>json::encode::encoder</code></td><td>Écrit une valeur JSON compacte ou indentée.</td><td><code>encode</code>, <code>encode_compact</code>, <code>encode_pretty</code>, <code>encode_pretty_with_indent</code>, options et résultat d’encodage.</td></tr>
+<tr><td><code>json::lexer::escape</code></td><td>Décode les séquences d’échappement JSON, y compris Unicode.</td><td><code>decode_escape</code>, résultats d’échappement et erreurs lexicales.</td></tr>
+<tr><td><code>json::error::position</code></td><td>Décrit une position, une plage source et des conversions d’affichage.</td><td><code>JsonPosition</code>, <code>JsonSpan</code>, <code>human_line</code>, <code>human_column</code>.</td></tr>
+<tr><td><code>json::runtime::numeric</code></td><td>Fonctions bas niveau pour analyser, valider et formater des nombres JSON.</td><td>Validation des formes numériques et opérations numériques documentées dans le guide du module.</td></tr>
+</tbody></table>
+<p>Les fichiers <code>parser/array.vit</code>, <code>parser/object.vit</code>, <code>parser/value.vit</code> et <code>encode/escape.vit</code> sont des brouillons internes non installés par le Makefile maintenu. Utilisez les API exportées de <code>parser/parser</code>, <code>encode/encoder</code> et des modules déclarés dans leur documentation.</p>
+
+<h2 id="preuve">Lire les preuves de support</h2>
+<ul>
+  <li><strong>Vérification du paquet :</strong> <code>make -C modules/json check</code> contrôle la disposition attendue et les sources maintenues avec le compilateur indiqué par le Makefile.</li>
+  <li><strong>Consommateur installé :</strong> <code>make -C modules/json test-vitte</code> prouve un import et une exécution du parser et de l’encodeur installés.</li>
+  <li><strong>Suite complète du paquet :</strong> <code>make -C modules/json verify</code> inclut l’import installé et le test de concaténation dynamique fourni par le module.</li>
+  <li><strong>Couverture par API :</strong> l’existence d’un export ne prouve pas que tous les types ou cas limites ont un consommateur public compilé. Lisez la documentation détaillée et les tests associés.</li>
+</ul>
+<p>Les résultats des commandes dépendent du compilateur utilisé, du répertoire de travail, du chemin de modules et de la version réellement installée. Quand une commande échoue, comparez d’abord <code>vitte --version</code>, la version de <code>package.toml</code> et le dépôt d’où proviennent les sources.</p>
+
+<h2 id="contribuer">Ajouter un module au catalogue</h2>
+<p>Pour que ce catalogue reste fiable, une nouvelle entrée devrait fournir au minimum :</p>
+<ol>
+  <li>un dépôt maintenu et un lien vers ses releases ou tags ;</li>
+  <li>le nom du paquet, la version, le module d’entrée et les dépendances ;</li>
+  <li>la procédure exacte d’installation et la racine de résolution ;</li>
+  <li>la liste des symboles réellement exportés, avec une distinction entre source et API installée ;</li>
+  <li>une commande de vérification, un consommateur minimal et sa sortie attendue ;</li>
+  <li>les limites connues, la cible/plateforme et la version du compilateur utilisée pour la preuve.</li>
+</ol>
+<p>Pour l’état général des formes du langage, consultez la <a href="{{ '/reference/support/' | relative_url }}">matrice de compatibilité</a>. Pour les nouveautés entre versions, consultez <a href="{{ '/nouveautes/' | relative_url }}">Nouveautés et migrations</a>.</p>

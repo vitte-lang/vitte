@@ -1,0 +1,104 @@
+space projects::json_config::main;
+
+use json::core::value::{
+    JsonValue,
+    bool_or,
+    integer_or,
+    is_bool,
+    is_integer,
+    is_object,
+    is_string,
+    object_get_ref,
+    object_len,
+    object_member_ref,
+    string_or,
+};
+use json::encode::encoder::{
+    JsonEncodeResult,
+    encode_pretty,
+};
+use json::parser::parser::{
+    JsonParseResult,
+    parse_strict,
+};
+
+proc object_has(object: &JsonValue, wanted: string) -> bool {
+    if not is_object(object) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+    while index < object_len(object) {
+        let member = object_member_ref(object, index);
+        if member.key == wanted {
+            return true;
+        }
+        set index += 1;
+    }
+
+    return false;
+}
+
+proc main() -> int {
+    let source: string =
+        "{\"service\":{\"name\":\"gateway\",\"port\":8443,\"enabled\":true}}";
+
+    let parsed: JsonParseResult = parse_strict(source);
+    if not parsed.ok {
+        print("Erreur : le document JSON est invalide.");
+        return 1;
+    }
+
+    let root: &JsonValue = &parsed.value;
+    if not is_object(root) or not object_has(root, "service") {
+        print("Erreur : la clé service doit contenir un objet.");
+        return 2;
+    }
+
+    let service: &JsonValue = object_get_ref(root, "service");
+    if not is_object(service) {
+        print("Erreur : service doit être un objet.");
+        return 3;
+    }
+
+    if not object_has(service, "name") or
+       not object_has(service, "port") or
+       not object_has(service, "enabled") {
+        print("Erreur : name, port et enabled sont obligatoires.");
+        return 4;
+    }
+
+    let name: &JsonValue = object_get_ref(service, "name");
+    let port: &JsonValue = object_get_ref(service, "port");
+    let enabled: &JsonValue = object_get_ref(service, "enabled");
+
+    if not is_string(name) or not is_integer(port) or not is_bool(enabled) {
+        print("Erreur : name, port et enabled ont des types incorrects.");
+        return 5;
+    }
+
+    let service_name: string = string_or(name, "");
+    let service_port: i64 = integer_or(port, 0);
+    let service_enabled: bool = bool_or(enabled, false);
+
+    if service_name.length == 0 or
+       service_port < 1 or service_port > 65535 {
+        print("Erreur : nom vide ou port hors de la plage 1..65535.");
+        return 6;
+    }
+
+    if not service_enabled {
+        print("Erreur : ce guide attend un service activé.");
+        return 7;
+    }
+
+    let encoded: JsonEncodeResult = encode_pretty(&parsed.value);
+    if not encoded.ok {
+        print("Erreur : l’encodeur n’a pas pu produire le JSON.");
+        return 8;
+    }
+
+    print("Configuration valide : gateway écoute sur le port 8443.\n");
+    print(encoded.text);
+    return 0;
+}
