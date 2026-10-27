@@ -258,14 +258,116 @@ cleanup:
     return success;
 }
 
+static int
+check_alias_conflict(void)
+{
+    vitte_import_context_t context;
+    vitte_import_module_id_t source;
+    vitte_import_module_id_t first_target;
+    vitte_import_module_id_t second_target;
+    vitte_import_string_id_t first_name;
+    vitte_import_string_id_t second_name;
+    vitte_import_string_id_t alias;
+    vitte_import_desc_t description;
+    vitte_import_edge_id_t first_edge;
+    const vitte_import_edge_t *stored_edge;
+    int success;
+
+    memset(
+        &context,
+        0,
+        sizeof(context));
+    success = 0;
+
+    if (!vitte_import_init(&context)) {
+        return fail("failed to initialize alias-conflict context");
+    }
+
+    source = add_module(&context, "alias.source");
+    first_target = add_module(&context, "alias.first");
+    second_target = add_module(&context, "alias.second");
+    first_name = vitte_import_intern_string(
+        &context,
+        "alias.first",
+        strlen("alias.first"));
+    second_name = vitte_import_intern_string(
+        &context,
+        "alias.second",
+        strlen("alias.second"));
+    alias = vitte_import_intern_string(
+        &context,
+        "shared",
+        strlen("shared"));
+
+    if (source == VITTE_IMPORT_INVALID_ID ||
+        first_target == VITTE_IMPORT_INVALID_ID ||
+        second_target == VITTE_IMPORT_INVALID_ID ||
+        first_name == VITTE_IMPORT_INVALID_ID ||
+        second_name == VITTE_IMPORT_INVALID_ID ||
+        alias == VITTE_IMPORT_INVALID_ID) {
+        (void)fail("failed to construct alias-conflict graph");
+        goto cleanup;
+    }
+
+    memset(
+        &description,
+        0,
+        sizeof(description));
+    description.source_module = source;
+    description.module_name = first_name;
+    description.alias = alias;
+    description.span = vitte_import_span_make(7u, 11u, 29u);
+    description.span.line = 3u;
+    description.span.column = 5u;
+    description.span.end_line = 3u;
+    description.span.end_column = 23u;
+    description.visibility = VITTE_IMPORT_VISIBILITY_PRIVATE;
+
+    first_edge = vitte_import_add(&context, &description);
+    stored_edge = vitte_import_get(&context, first_edge);
+    if (first_edge == VITTE_IMPORT_INVALID_ID ||
+        stored_edge == NULL ||
+        !stored_edge->span.valid ||
+        stored_edge->span.file_id != 7u ||
+        stored_edge->span.begin != 11u ||
+        stored_edge->span.end != 29u ||
+        stored_edge->span.line != 3u ||
+        stored_edge->span.column != 5u ||
+        stored_edge->span.end_line != 3u ||
+        stored_edge->span.end_column != 23u) {
+        (void)fail("failed to register the first aliased import");
+        goto cleanup;
+    }
+
+    description.module_name = second_name;
+    if (vitte_import_add(&context, &description) !=
+            VITTE_IMPORT_INVALID_ID ||
+        vitte_import_last_error(&context) !=
+            VITTE_IMPORT_ERROR_ALIAS_CONFLICT ||
+        strcmp(
+            vitte_import_error_name(vitte_import_last_error(&context)),
+            "alias_conflict") != 0 ||
+        context.edge_count != 1u) {
+        (void)fail("different targets incorrectly share one import alias");
+        goto cleanup;
+    }
+
+    success = 1;
+
+cleanup:
+    vitte_import_destroy(&context);
+    return success;
+}
+
 int
 main(void)
 {
     if (!check_large_graph() ||
-        !check_cycle_diagnostic()) {
+        !check_cycle_diagnostic() ||
+        !check_alias_conflict()) {
         return EXIT_FAILURE;
     }
 
-    (void)puts("[IMPORT] large graph and cycle checks passed");
+    (void)puts("[IMPORT] graph, cycle, and alias checks passed");
     return EXIT_SUCCESS;
 }

@@ -1,0 +1,143 @@
+/// Arithmétique vérifiée pour les entiers 64 bits.
+space core::num::checked;
+
+use core::num::limits::{I64_MIN, I64_MAX, U64_MAX};
+
+/// Raisons d'échec de l'arithmétique vérifiée.
+export pick CheckedError {
+    None,
+    Overflow,
+    DivisionByZero,
+}
+
+/// Les deux formes de résultat suivent le contrat commun : succès avec
+/// `error == None`; échec avec valeur zéro et erreur non nulle.
+export form CheckedI64Result {
+    success: bool,
+    value: i64,
+    error: CheckedError,
+}
+
+export form CheckedU64Result {
+    success: bool,
+    value: u64,
+    error: CheckedError,
+}
+
+/// Alias source maintenu pour les consommateurs de la première API `core`.
+export type CheckedI64 = CheckedI64Result;
+export type CheckedU64 = CheckedU64Result;
+
+proc checked_fail_i64(error: CheckedError) -> CheckedI64Result {
+    return CheckedI64Result { success: false, value: 0, error: error };
+}
+proc checked_fail_u64(error: CheckedError) -> CheckedU64Result {
+    return CheckedU64Result { success: false, value: 0, error: error };
+}
+
+export proc checked_u64_add(left: u64, right: u64) -> CheckedU64Result {
+    if left > U64_MAX - right { return checked_fail_u64(CheckedError.Overflow); }
+    return CheckedU64Result { success: true, value: left + right, error: CheckedError.None };
+}
+
+export proc checked_u64_sub(left: u64, right: u64) -> CheckedU64Result {
+    if left < right { return checked_fail_u64(CheckedError.Overflow); }
+    return CheckedU64Result { success: true, value: left - right, error: CheckedError.None };
+}
+
+export proc checked_u64_mul(left: u64, right: u64) -> CheckedU64Result {
+    if right != 0 && left > U64_MAX / right { return checked_fail_u64(CheckedError.Overflow); }
+    return CheckedU64Result { success: true, value: left * right, error: CheckedError.None };
+}
+
+export proc checked_u64_div(left: u64, right: u64) -> CheckedU64Result {
+    if right == 0 { return checked_fail_u64(CheckedError.DivisionByZero); }
+    return CheckedU64Result { success: true, value: left / right, error: CheckedError.None };
+}
+
+export proc checked_u64_rem(left: u64, right: u64) -> CheckedU64Result {
+    if right == 0 { return checked_fail_u64(CheckedError.DivisionByZero); }
+    return CheckedU64Result { success: true, value: left % right, error: CheckedError.None };
+}
+
+export proc checked_i64_add(left: i64, right: i64) -> CheckedI64Result {
+    if right > 0 && left > I64_MAX - right { return checked_fail_i64(CheckedError.Overflow); }
+    if right < 0 && left < I64_MIN - right { return checked_fail_i64(CheckedError.Overflow); }
+    return CheckedI64Result { success: true, value: left + right, error: CheckedError.None };
+}
+
+export proc checked_i64_sub(left: i64, right: i64) -> CheckedI64Result {
+    if right < 0 && left > I64_MAX + right { return checked_fail_i64(CheckedError.Overflow); }
+    if right > 0 && left < I64_MIN + right { return checked_fail_i64(CheckedError.Overflow); }
+    return CheckedI64Result { success: true, value: left - right, error: CheckedError.None };
+}
+
+export proc checked_i64_mul(left: i64, right: i64) -> CheckedI64Result {
+    if left == 0 || right == 0 { return CheckedI64Result { success: true, value: 0, error: CheckedError.None }; }
+    if left > 0 {
+        if right > 0 && left > I64_MAX / right { return checked_fail_i64(CheckedError.Overflow); }
+        if right < 0 && right < I64_MIN / left { return checked_fail_i64(CheckedError.Overflow); }
+    } else {
+        if right > 0 && left < I64_MIN / right { return checked_fail_i64(CheckedError.Overflow); }
+        if right < 0 && left < I64_MAX / right { return checked_fail_i64(CheckedError.Overflow); }
+    }
+    return CheckedI64Result { success: true, value: left * right, error: CheckedError.None };
+}
+
+export proc checked_i64_div(left: i64, right: i64) -> CheckedI64Result {
+    if right == 0 { return checked_fail_i64(CheckedError.DivisionByZero); }
+    if left == I64_MIN && right == -1 { return checked_fail_i64(CheckedError.Overflow); }
+    return CheckedI64Result { success: true, value: left / right, error: CheckedError.None };
+}
+
+export proc checked_i64_rem(left: i64, right: i64) -> CheckedI64Result {
+    if right == 0 { return checked_fail_i64(CheckedError.DivisionByZero); }
+    // The minimum value modulo -1 has the same signed overflow as division.
+    if left == I64_MIN && right == -1 { return checked_fail_i64(CheckedError.Overflow); }
+    return CheckedI64Result { success: true, value: left % right, error: CheckedError.None };
+}
+
+export proc checked_i64_neg(value: i64) -> CheckedI64Result {
+    if value == I64_MIN { return checked_fail_i64(CheckedError.Overflow); }
+    return CheckedI64Result { success: true, value: -value, error: CheckedError.None };
+}
+
+export proc checked_u64_pow(base: u64, exponent: u32) -> CheckedU64Result {
+    let mut result: u64 = 1;
+    let mut factor: u64 = base;
+    let mut remaining: u32 = exponent;
+    while remaining != 0 {
+        if (remaining & 1) != 0 {
+            let product: CheckedU64Result = checked_u64_mul(result, factor);
+            if not product.success { return checked_fail_u64(product.error); }
+            set result = product.value;
+        }
+        set remaining = remaining >> 1;
+        if remaining != 0 {
+            let square: CheckedU64Result = checked_u64_mul(factor, factor);
+            if not square.success { return checked_fail_u64(square.error); }
+            set factor = square.value;
+        }
+    }
+    return CheckedU64Result { success: true, value: result, error: CheckedError.None };
+}
+
+export proc checked_i64_pow(base: i64, exponent: u32) -> CheckedI64Result {
+    let mut result: i64 = 1;
+    let mut factor: i64 = base;
+    let mut remaining: u32 = exponent;
+    while remaining != 0 {
+        if (remaining & 1) != 0 {
+            let product: CheckedI64Result = checked_i64_mul(result, factor);
+            if not product.success { return checked_fail_i64(product.error); }
+            set result = product.value;
+        }
+        set remaining = remaining >> 1;
+        if remaining != 0 {
+            let square: CheckedI64Result = checked_i64_mul(factor, factor);
+            if not square.success { return checked_fail_i64(square.error); }
+            set factor = square.value;
+        }
+    }
+    return CheckedI64Result { success: true, value: result, error: CheckedError.None };
+}

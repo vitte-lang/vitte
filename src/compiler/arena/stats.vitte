@@ -1,0 +1,2095 @@
+/*
+ * Vitte Compiler
+ * src/arena/stats.vit
+ *
+ * Memory statistics and observation layer.
+ *
+ * No allocation.
+ * No mutation of observed allocators.
+ * Deterministic snapshots.
+ * Saturating arithmetic.
+ * Structural validation.
+ */
+
+space compiler::arena::stats;
+
+use compiler::arena::arena::{
+    ArenaContext,
+    ArenaContextStats,
+    arena_context_is_valid,
+    arena_context_stats,
+};
+use compiler::arena::pool::{
+    Pool,
+    PoolStats,
+    pool_is_valid,
+    pool_stats,
+};
+/* ========================================================================= */
+/* Configuration                                                             */
+/* ========================================================================= */
+
+pub const STATS_BASIS_POINTS: u32 = 10000;
+
+const STATS_MAX_SIZE: usize = usize.MAX;
+const STATS_MAX_DELTA: isize = 9223372036854775807;
+const STATS_MIN_DELTA: isize = -9223372036854775807 - 1;
+
+/* ========================================================================= */
+/* Data structures                                                           */
+/* ========================================================================= */
+
+pub form StatsArena {
+    valid: bool,
+
+    block_size: usize,
+    block_count: usize,
+    peak_block_count: usize,
+
+    reserved_bytes: usize,
+    peak_reserved_bytes: usize,
+
+    used_bytes: usize,
+    peak_used_bytes: usize,
+
+    requested_bytes: usize,
+    unused_bytes: usize,
+    padding_bytes: usize,
+
+    allocation_count: usize,
+    generation: u64,
+
+    utilization_basis_points: u32,
+    requested_utilization_basis_points: u32,
+    padding_basis_points: u32,
+}
+
+pub form StatsPool {
+    valid: bool,
+    saturated: bool,
+
+    object_size: usize,
+    slot_size: usize,
+    alignment: usize,
+
+    page_count: usize,
+    peak_page_count: usize,
+
+    capacity: usize,
+    live_count: usize,
+    peak_live_count: usize,
+    free_count: usize,
+
+    reserved_bytes: usize,
+    peak_reserved_bytes: usize,
+
+    allocation_count: usize,
+    free_operation_count: usize,
+
+    generation: u64,
+
+    max_objects: usize,
+    max_reserved_bytes: usize,
+
+    live_object_bytes: usize,
+    slot_storage_bytes: usize,
+    slot_padding_bytes: usize,
+    metadata_bytes: usize,
+
+    utilization_basis_points: u32,
+    live_bytes_basis_points: u32,
+    metadata_basis_points: u32,
+}
+
+pub form StatsPools {
+    valid: bool,
+    saturated: bool,
+
+    pool_count: usize,
+    valid_pool_count: usize,
+    invalid_pool_count: usize,
+
+    page_count: usize,
+    peak_page_count: usize,
+
+    capacity: usize,
+
+    live_count: usize,
+    peak_live_count: usize,
+    free_count: usize,
+
+    reserved_bytes: usize,
+    peak_reserved_bytes: usize,
+
+    live_object_bytes: usize,
+    slot_storage_bytes: usize,
+    slot_padding_bytes: usize,
+    metadata_bytes: usize,
+
+    allocation_count: usize,
+    free_operation_count: usize,
+
+    utilization_basis_points: u32,
+    live_bytes_basis_points: u32,
+    metadata_basis_points: u32,
+}
+
+pub form StatsSnapshot {
+    valid: bool,
+    saturated: bool,
+
+    has_arena: bool,
+    has_pools: bool,
+
+    arena: StatsArena,
+    pools: StatsPools,
+
+    total_reserved_bytes: usize,
+    total_live_bytes: usize,
+    total_requested_bytes: usize,
+    total_unused_bytes: usize,
+    total_overhead_bytes: usize,
+    total_allocation_count: usize,
+
+    utilization_basis_points: u32,
+    overhead_basis_points: u32,
+}
+
+pub form StatsDelta {
+    valid: bool,
+    saturated: bool,
+
+    total_reserved_bytes: isize,
+    total_live_bytes: isize,
+    total_requested_bytes: isize,
+    total_unused_bytes: isize,
+    total_overhead_bytes: isize,
+    total_allocation_count: isize,
+
+    arena_block_count: isize,
+    arena_reserved_bytes: isize,
+    arena_used_bytes: isize,
+    arena_requested_bytes: isize,
+    arena_unused_bytes: isize,
+    arena_padding_bytes: isize,
+    arena_allocation_count: isize,
+
+    pools_page_count: isize,
+    pools_capacity: isize,
+    pools_live_count: isize,
+    pools_free_count: isize,
+    pools_reserved_bytes: isize,
+    pools_live_object_bytes: isize,
+    pools_metadata_bytes: isize,
+    pools_allocation_count: isize,
+    pools_free_operation_count: isize,
+
+    utilization_before_basis_points: u32,
+    utilization_after_basis_points: u32,
+
+    overhead_before_basis_points: u32,
+    overhead_after_basis_points: u32,
+}
+
+/* ========================================================================= */
+/* Initialization                                                            */
+/* ========================================================================= */
+
+pub proc stats_arena_init() -> StatsArena {
+    return StatsArena {
+        valid: false,
+
+        block_size: 0,
+        block_count: 0,
+        peak_block_count: 0,
+
+        reserved_bytes: 0,
+        peak_reserved_bytes: 0,
+
+        used_bytes: 0,
+        peak_used_bytes: 0,
+
+        requested_bytes: 0,
+        unused_bytes: 0,
+        padding_bytes: 0,
+
+        allocation_count: 0,
+        generation: 0,
+
+        utilization_basis_points: 0,
+        requested_utilization_basis_points: 0,
+        padding_basis_points: 0,
+    };
+}
+
+pub proc stats_pool_init() -> StatsPool {
+    return StatsPool {
+        valid: false,
+        saturated: false,
+
+        object_size: 0,
+        slot_size: 0,
+        alignment: 0,
+
+        page_count: 0,
+        peak_page_count: 0,
+
+        capacity: 0,
+        live_count: 0,
+        peak_live_count: 0,
+        free_count: 0,
+
+        reserved_bytes: 0,
+        peak_reserved_bytes: 0,
+
+        allocation_count: 0,
+        free_operation_count: 0,
+
+        generation: 0,
+
+        max_objects: 0,
+        max_reserved_bytes: 0,
+
+        live_object_bytes: 0,
+        slot_storage_bytes: 0,
+        slot_padding_bytes: 0,
+        metadata_bytes: 0,
+
+        utilization_basis_points: 0,
+        live_bytes_basis_points: 0,
+        metadata_basis_points: 0,
+    };
+}
+
+pub proc stats_pools_init() -> StatsPools {
+    return StatsPools {
+        valid: false,
+        saturated: false,
+
+        pool_count: 0,
+        valid_pool_count: 0,
+        invalid_pool_count: 0,
+
+        page_count: 0,
+        peak_page_count: 0,
+
+        capacity: 0,
+
+        live_count: 0,
+        peak_live_count: 0,
+        free_count: 0,
+
+        reserved_bytes: 0,
+        peak_reserved_bytes: 0,
+
+        live_object_bytes: 0,
+        slot_storage_bytes: 0,
+        slot_padding_bytes: 0,
+        metadata_bytes: 0,
+
+        allocation_count: 0,
+        free_operation_count: 0,
+
+        utilization_basis_points: 0,
+        live_bytes_basis_points: 0,
+        metadata_basis_points: 0,
+    };
+}
+
+pub proc stats_snapshot_init() -> StatsSnapshot {
+    return StatsSnapshot {
+        valid: false,
+        saturated: false,
+
+        has_arena: false,
+        has_pools: false,
+
+        arena: stats_arena_init(),
+        pools: stats_pools_init(),
+
+        total_reserved_bytes: 0,
+        total_live_bytes: 0,
+        total_requested_bytes: 0,
+        total_unused_bytes: 0,
+        total_overhead_bytes: 0,
+        total_allocation_count: 0,
+
+        utilization_basis_points: 0,
+        overhead_basis_points: 0,
+    };
+}
+
+pub proc stats_delta_init() -> StatsDelta {
+    return StatsDelta {
+        valid: false,
+        saturated: false,
+
+        total_reserved_bytes: 0,
+        total_live_bytes: 0,
+        total_requested_bytes: 0,
+        total_unused_bytes: 0,
+        total_overhead_bytes: 0,
+        total_allocation_count: 0,
+
+        arena_block_count: 0,
+        arena_reserved_bytes: 0,
+        arena_used_bytes: 0,
+        arena_requested_bytes: 0,
+        arena_unused_bytes: 0,
+        arena_padding_bytes: 0,
+        arena_allocation_count: 0,
+
+        pools_page_count: 0,
+        pools_capacity: 0,
+        pools_live_count: 0,
+        pools_free_count: 0,
+        pools_reserved_bytes: 0,
+        pools_live_object_bytes: 0,
+        pools_metadata_bytes: 0,
+        pools_allocation_count: 0,
+        pools_free_operation_count: 0,
+
+        utilization_before_basis_points: 0,
+        utilization_after_basis_points: 0,
+
+        overhead_before_basis_points: 0,
+        overhead_after_basis_points: 0,
+    };
+}
+
+/* ========================================================================= */
+/* Checked arithmetic                                                        */
+/* ========================================================================= */
+
+proc stats_add_checked(
+    left: usize,
+    right: usize
+) -> ?usize {
+    if left > STATS_MAX_SIZE - right {
+        return null;
+    }
+
+    return left + right;
+}
+
+proc stats_mul_checked(
+    left: usize,
+    right: usize
+) -> ?usize {
+    if left != 0 {
+        if right > STATS_MAX_SIZE / left {
+            return null;
+        }
+    }
+
+    return left * right;
+}
+
+proc stats_saturating_add(
+    left: usize,
+    right: usize,
+    saturated: &mut bool
+) -> usize {
+    let result = stats_add_checked(left, right);
+
+    if result == null {
+        set *saturated = true;
+        return STATS_MAX_SIZE;
+    }
+
+    return result?;
+}
+
+proc stats_saturating_mul(
+    left: usize,
+    right: usize,
+    saturated: &mut bool
+) -> usize {
+    let result = stats_mul_checked(left, right);
+
+    if result == null {
+        set *saturated = true;
+        return STATS_MAX_SIZE;
+    }
+
+    return result?;
+}
+
+proc stats_saturating_increment(
+    value: usize,
+    saturated: &mut bool
+) -> usize {
+    if value == STATS_MAX_SIZE {
+        set *saturated = true;
+        return STATS_MAX_SIZE;
+    }
+
+    return value + 1;
+}
+
+proc stats_nonnegative_difference(
+    left: usize,
+    right: usize
+) -> usize {
+    if left <= right {
+        return 0;
+    }
+
+    return left - right;
+}
+
+/* ========================================================================= */
+/* Signed delta                                                              */
+/* ========================================================================= */
+
+proc stats_signed_delta(
+    before: usize,
+    after: usize,
+    saturated: &mut bool
+) -> isize {
+    if after >= before {
+        let difference = after - before;
+
+        if difference > STATS_MAX_DELTA as usize {
+            set *saturated = true;
+            return STATS_MAX_DELTA;
+        }
+
+        return difference as isize;
+    }
+
+    let difference = before - after;
+
+    if difference > STATS_MAX_DELTA as usize {
+        set *saturated = true;
+        return STATS_MIN_DELTA;
+    }
+
+    return -(difference as isize);
+}
+
+/* ========================================================================= */
+/* Overflow-safe ratio                                                       */
+/* ========================================================================= */
+
+/*
+ * Exact floor(value * scale / total).
+ *
+ * Fast path: direct multiplication when representable.
+ * Slow path: binary search using quotient decomposition.
+ *
+ * The standard scale is 10000.
+ */
+
+proc stats_mul_div_fraction_floor(
+    value: usize,
+    scale: usize,
+    total: usize
+) -> usize {
+    if value == 0  or  scale == 0  or  total == 0 {
+        return 0;
+    }
+
+    if value >= total {
+        return scale;
+    }
+
+    if value <= STATS_MAX_SIZE / scale {
+        return (value * scale) / total;
+    }
+
+    let total_q = total / scale;
+    let total_r = total % scale;
+
+    let mut low: usize = 0;
+    let mut high: usize = scale - 1;
+
+    while low < high {
+        let middle = low + (high - low + 1) / 2;
+
+        let mut threshold_overflow = false;
+        let mut qpart: usize = 0;
+        let mut threshold: usize = 0;
+
+        if middle != 0  and 
+           total_q > STATS_MAX_SIZE / middle {
+            set threshold_overflow = true;
+        } else {
+            set qpart = middle * total_q;
+        }
+
+        if not threshold_overflow {
+            /*
+             * With the configured 10000-point scale,
+             * middle * total_r fits every supported
+             * target with usize >= 32 bits.
+             */
+
+            if middle != 0  and 
+               total_r > STATS_MAX_SIZE / middle {
+                set threshold_overflow = true;
+            } else {
+                let product = middle * total_r;
+
+                let mut fraction = product / scale;
+
+                if product % scale != 0 {
+                    set fraction = fraction + 1;
+                }
+
+                if qpart > STATS_MAX_SIZE - fraction {
+                    set threshold_overflow = true;
+                } else {
+                    set threshold = qpart + fraction;
+                }
+            }
+        }
+
+        if not threshold_overflow  and  threshold <= value {
+            set low = middle;
+        } else {
+            set high = middle - 1;
+        }
+    }
+
+    return low;
+}
+
+pub proc stats_ratio_basis_points(
+    value: usize,
+    total: usize
+) -> u32 {
+    if value == 0  or  total == 0 {
+        return 0;
+    }
+
+    if value >= total {
+        return STATS_BASIS_POINTS;
+    }
+
+    let result = stats_mul_div_fraction_floor(
+        value,
+        STATS_BASIS_POINTS as usize,
+        total
+    );
+
+    if result > STATS_BASIS_POINTS as usize {
+        return STATS_BASIS_POINTS;
+    }
+
+    return result as u32;
+}
+
+/* ========================================================================= */
+/* Internal helpers                                                          */
+/* ========================================================================= */
+
+proc stats_power_of_two(value: usize) -> bool {
+    return value != 0  and 
+           (value & (value - 1)) == 0;
+}
+
+proc stats_ratio_valid(value: u32) -> bool {
+    return value <= STATS_BASIS_POINTS;
+}
+
+proc stats_snapshot_shapes_match(
+    before: &StatsSnapshot,
+    after: &StatsSnapshot
+) -> bool {
+    return before.has_arena == after.has_arena  and 
+           before.has_pools == after.has_pools;
+}
+
+/* ========================================================================= */
+/* Arena capture                                                             */
+/* ========================================================================= */
+
+pub proc stats_capture_arena(
+    arena: *const ArenaContext
+) -> StatsArena {
+    let mut stats = stats_arena_init();
+
+    if arena == null {
+        return stats;
+    }
+
+    if not arena_context_is_valid(&*arena) {
+        return stats;
+    }
+
+    let source = arena_context_stats(&*arena);
+
+    set stats.block_size = source.block_size;
+    set stats.block_count = source.block_count;
+    set stats.peak_block_count = source.peak_block_count;
+
+    set stats.reserved_bytes = source.reserved_bytes;
+    set stats.peak_reserved_bytes = source.peak_reserved_bytes;
+
+    set stats.used_bytes = source.used_bytes;
+    set stats.peak_used_bytes = source.peak_used_bytes;
+
+    set stats.requested_bytes = source.requested_bytes;
+    set stats.unused_bytes = source.unused_bytes;
+    set stats.padding_bytes = source.padding_bytes;
+
+    set stats.allocation_count = source.allocation_count;
+    set stats.generation = source.generation;
+
+    set stats.utilization_basis_points =
+        stats_ratio_basis_points(
+            stats.used_bytes,
+            stats.reserved_bytes
+        );
+
+    set stats.requested_utilization_basis_points =
+        stats_ratio_basis_points(
+            stats.requested_bytes,
+            stats.reserved_bytes
+        );
+
+    set stats.padding_basis_points =
+        stats_ratio_basis_points(
+            stats.padding_bytes,
+            stats.used_bytes
+        );
+
+    set stats.valid = true;
+
+    return stats;
+}
+
+/* ========================================================================= */
+/* Pool capture                                                              */
+/* ========================================================================= */
+
+pub proc stats_capture_pool(
+    pool: *const Pool
+) -> StatsPool {
+    let mut stats = stats_pool_init();
+
+    if pool == null {
+        return stats;
+    }
+
+    if not pool_is_valid(&*pool) {
+        return stats;
+    }
+
+    let source = pool_stats(&*pool);
+
+    set stats.object_size = source.object_size;
+    set stats.slot_size = source.slot_size;
+    set stats.alignment = source.alignment;
+
+    set stats.page_count = source.page_count;
+    set stats.peak_page_count = source.peak_page_count;
+
+    set stats.capacity = source.capacity;
+    set stats.live_count = source.live_count;
+    set stats.peak_live_count = source.peak_live_count;
+    set stats.free_count = source.free_count;
+
+    set stats.reserved_bytes = source.reserved_bytes;
+    set stats.peak_reserved_bytes = source.peak_reserved_bytes;
+
+    set stats.allocation_count = source.allocation_count;
+    set stats.free_operation_count = source.free_operation_count;
+
+    set stats.generation = source.generation;
+
+    set stats.max_objects = source.max_objects;
+    set stats.max_reserved_bytes = source.max_reserved_bytes;
+
+    let mut saturated = false;
+
+    set stats.live_object_bytes =
+        stats_saturating_mul(
+            stats.live_count,
+            stats.object_size,
+            &mut saturated
+        );
+
+    set stats.slot_storage_bytes =
+        stats_saturating_mul(
+            stats.capacity,
+            stats.slot_size,
+            &mut saturated
+        );
+
+    if stats.slot_size >= stats.object_size {
+        set stats.slot_padding_bytes =
+            stats_saturating_mul(
+                stats.capacity,
+                stats.slot_size - stats.object_size,
+                &mut saturated
+            );
+    }
+
+    if not saturated  and 
+       stats.reserved_bytes >= stats.slot_storage_bytes {
+        set stats.metadata_bytes =
+            stats.reserved_bytes -
+            stats.slot_storage_bytes;
+    } else {
+        set stats.metadata_bytes = 0;
+
+        if stats.slot_storage_bytes >
+           stats.reserved_bytes {
+            set saturated = true;
+        }
+    }
+
+    set stats.utilization_basis_points =
+        stats_ratio_basis_points(
+            stats.live_count,
+            stats.capacity
+        );
+
+    set stats.live_bytes_basis_points =
+        stats_ratio_basis_points(
+            stats.live_object_bytes,
+            stats.reserved_bytes
+        );
+
+    set stats.metadata_basis_points =
+        stats_ratio_basis_points(
+            stats.metadata_bytes,
+            stats.reserved_bytes
+        );
+
+    set stats.saturated = saturated;
+    set stats.valid = true;
+
+    return stats;
+}
+
+/* ========================================================================= */
+/* Pool aggregation                                                          */
+/* ========================================================================= */
+
+pub proc stats_capture_pools(
+    pools: [*mut Pool]
+) -> StatsPools {
+    let mut stats = stats_pools_init();
+
+    set stats.pool_count = pools.len;
+
+    let mut saturated = false;
+    let mut index: usize = 0;
+
+    while index < pools.len {
+        let current = stats_capture_pool(pools[index]);
+
+        if not current.valid {
+            set stats.invalid_pool_count =
+                stats_saturating_increment(
+                    stats.invalid_pool_count,
+                    &mut saturated
+                );
+
+            set index = index + 1;
+            continue;
+        }
+
+        set stats.valid_pool_count =
+            stats_saturating_increment(
+                stats.valid_pool_count,
+                &mut saturated
+            );
+
+        set stats.page_count =
+            stats_saturating_add(
+                stats.page_count,
+                current.page_count,
+                &mut saturated
+            );
+
+        set stats.peak_page_count =
+            stats_saturating_add(
+                stats.peak_page_count,
+                current.peak_page_count,
+                &mut saturated
+            );
+
+        set stats.capacity =
+            stats_saturating_add(
+                stats.capacity,
+                current.capacity,
+                &mut saturated
+            );
+
+        set stats.live_count =
+            stats_saturating_add(
+                stats.live_count,
+                current.live_count,
+                &mut saturated
+            );
+
+        set stats.peak_live_count =
+            stats_saturating_add(
+                stats.peak_live_count,
+                current.peak_live_count,
+                &mut saturated
+            );
+
+        set stats.free_count =
+            stats_saturating_add(
+                stats.free_count,
+                current.free_count,
+                &mut saturated
+            );
+
+        set stats.reserved_bytes =
+            stats_saturating_add(
+                stats.reserved_bytes,
+                current.reserved_bytes,
+                &mut saturated
+            );
+
+        set stats.peak_reserved_bytes =
+            stats_saturating_add(
+                stats.peak_reserved_bytes,
+                current.peak_reserved_bytes,
+                &mut saturated
+            );
+
+        set stats.live_object_bytes =
+            stats_saturating_add(
+                stats.live_object_bytes,
+                current.live_object_bytes,
+                &mut saturated
+            );
+
+        set stats.slot_storage_bytes =
+            stats_saturating_add(
+                stats.slot_storage_bytes,
+                current.slot_storage_bytes,
+                &mut saturated
+            );
+
+        set stats.slot_padding_bytes =
+            stats_saturating_add(
+                stats.slot_padding_bytes,
+                current.slot_padding_bytes,
+                &mut saturated
+            );
+
+        set stats.metadata_bytes =
+            stats_saturating_add(
+                stats.metadata_bytes,
+                current.metadata_bytes,
+                &mut saturated
+            );
+
+        set stats.allocation_count =
+            stats_saturating_add(
+                stats.allocation_count,
+                current.allocation_count,
+                &mut saturated
+            );
+
+        set stats.free_operation_count =
+            stats_saturating_add(
+                stats.free_operation_count,
+                current.free_operation_count,
+                &mut saturated
+            );
+
+        if current.saturated {
+            set saturated = true;
+        }
+
+        set index = index + 1;
+    }
+
+    set stats.utilization_basis_points =
+        stats_ratio_basis_points(
+            stats.live_count,
+            stats.capacity
+        );
+
+    set stats.live_bytes_basis_points =
+        stats_ratio_basis_points(
+            stats.live_object_bytes,
+            stats.reserved_bytes
+        );
+
+    set stats.metadata_basis_points =
+        stats_ratio_basis_points(
+            stats.metadata_bytes,
+            stats.reserved_bytes
+        );
+
+    set stats.saturated = saturated;
+
+    set stats.valid =
+        stats.invalid_pool_count == 0;
+
+    return stats;
+}
+
+/* ========================================================================= */
+/* Global snapshot                                                           */
+/* ========================================================================= */
+
+pub proc stats_capture(
+    arena: *const ArenaContext,
+    pools: [*mut Pool]
+) -> StatsSnapshot {
+    let mut snapshot = stats_snapshot_init();
+
+    if arena == null  and  pools.len == 0 {
+        return snapshot;
+    }
+
+    let mut arena_ok = true;
+    let mut pools_ok = true;
+
+    if arena != null {
+        set snapshot.arena = stats_capture_arena(arena);
+
+        set arena_ok = snapshot.arena.valid;
+        set snapshot.has_arena = arena_ok;
+    }
+
+    if pools.len != 0 {
+        set snapshot.has_pools = true;
+
+        set snapshot.pools =
+            stats_capture_pools(pools);
+
+        set pools_ok = snapshot.pools.valid;
+    }
+
+    let mut saturated = false;
+
+    let arena_reserved =
+        snapshot.arena.reserved_bytes;
+
+    let pool_reserved =
+        snapshot.pools.reserved_bytes;
+
+    let arena_live =
+        snapshot.arena.used_bytes;
+
+    let pool_live =
+        snapshot.pools.live_object_bytes;
+
+    let arena_requested =
+        snapshot.arena.requested_bytes;
+
+    let pool_requested =
+        snapshot.pools.live_object_bytes;
+
+    set snapshot.total_reserved_bytes =
+        stats_saturating_add(
+            arena_reserved,
+            pool_reserved,
+            &mut saturated
+        );
+
+    set snapshot.total_live_bytes =
+        stats_saturating_add(
+            arena_live,
+            pool_live,
+            &mut saturated
+        );
+
+    set snapshot.total_requested_bytes =
+        stats_saturating_add(
+            arena_requested,
+            pool_requested,
+            &mut saturated
+        );
+
+    set snapshot.total_unused_bytes =
+        stats_nonnegative_difference(
+            snapshot.total_reserved_bytes,
+            snapshot.total_live_bytes
+        );
+
+    set snapshot.total_overhead_bytes =
+        stats_saturating_add(
+            snapshot.arena.padding_bytes,
+            snapshot.pools.metadata_bytes,
+            &mut saturated
+        );
+
+    set snapshot.total_overhead_bytes =
+        stats_saturating_add(
+            snapshot.total_overhead_bytes,
+            snapshot.pools.slot_padding_bytes,
+            &mut saturated
+        );
+
+    set snapshot.total_allocation_count =
+        stats_saturating_add(
+            snapshot.arena.allocation_count,
+            snapshot.pools.allocation_count,
+            &mut saturated
+        );
+
+    set snapshot.utilization_basis_points =
+        stats_ratio_basis_points(
+            snapshot.total_live_bytes,
+            snapshot.total_reserved_bytes
+        );
+
+    set snapshot.overhead_basis_points =
+        stats_ratio_basis_points(
+            snapshot.total_overhead_bytes,
+            snapshot.total_reserved_bytes
+        );
+
+    set snapshot.saturated =
+        saturated  or  snapshot.pools.saturated;
+
+    set snapshot.valid =
+        arena_ok  and 
+        pools_ok  and 
+        (snapshot.has_arena  or  snapshot.has_pools);
+
+    return snapshot;
+}
+
+/* ========================================================================= */
+/* Delta                                                                     */
+/* ========================================================================= */
+
+pub proc stats_delta(
+    before: &StatsSnapshot,
+    after: &StatsSnapshot
+) -> StatsDelta {
+    let mut delta = stats_delta_init();
+
+    if not before.valid  or  not after.valid {
+        return delta;
+    }
+
+    if not stats_snapshot_shapes_match(before, after) {
+        return delta;
+    }
+
+    let mut saturated = false;
+
+    set delta.total_reserved_bytes =
+        stats_signed_delta(
+            before.total_reserved_bytes,
+            after.total_reserved_bytes,
+            &mut saturated
+        );
+
+    set delta.total_live_bytes =
+        stats_signed_delta(
+            before.total_live_bytes,
+            after.total_live_bytes,
+            &mut saturated
+        );
+
+    set delta.total_requested_bytes =
+        stats_signed_delta(
+            before.total_requested_bytes,
+            after.total_requested_bytes,
+            &mut saturated
+        );
+
+    set delta.total_unused_bytes =
+        stats_signed_delta(
+            before.total_unused_bytes,
+            after.total_unused_bytes,
+            &mut saturated
+        );
+
+    set delta.total_overhead_bytes =
+        stats_signed_delta(
+            before.total_overhead_bytes,
+            after.total_overhead_bytes,
+            &mut saturated
+        );
+
+    set delta.total_allocation_count =
+        stats_signed_delta(
+            before.total_allocation_count,
+            after.total_allocation_count,
+            &mut saturated
+        );
+
+    if before.has_arena {
+        set delta.arena_block_count =
+            stats_signed_delta(
+                before.arena.block_count,
+                after.arena.block_count,
+                &mut saturated
+            );
+
+        set delta.arena_reserved_bytes =
+            stats_signed_delta(
+                before.arena.reserved_bytes,
+                after.arena.reserved_bytes,
+                &mut saturated
+            );
+
+        set delta.arena_used_bytes =
+            stats_signed_delta(
+                before.arena.used_bytes,
+                after.arena.used_bytes,
+                &mut saturated
+            );
+
+        set delta.arena_requested_bytes =
+            stats_signed_delta(
+                before.arena.requested_bytes,
+                after.arena.requested_bytes,
+                &mut saturated
+            );
+
+        set delta.arena_unused_bytes =
+            stats_signed_delta(
+                before.arena.unused_bytes,
+                after.arena.unused_bytes,
+                &mut saturated
+            );
+
+        set delta.arena_padding_bytes =
+            stats_signed_delta(
+                before.arena.padding_bytes,
+                after.arena.padding_bytes,
+                &mut saturated
+            );
+
+        set delta.arena_allocation_count =
+            stats_signed_delta(
+                before.arena.allocation_count,
+                after.arena.allocation_count,
+                &mut saturated
+            );
+    }
+
+    if before.has_pools {
+        set delta.pools_page_count =
+            stats_signed_delta(
+                before.pools.page_count,
+                after.pools.page_count,
+                &mut saturated
+            );
+
+        set delta.pools_capacity =
+            stats_signed_delta(
+                before.pools.capacity,
+                after.pools.capacity,
+                &mut saturated
+            );
+
+        set delta.pools_live_count =
+            stats_signed_delta(
+                before.pools.live_count,
+                after.pools.live_count,
+                &mut saturated
+            );
+
+        set delta.pools_free_count =
+            stats_signed_delta(
+                before.pools.free_count,
+                after.pools.free_count,
+                &mut saturated
+            );
+
+        set delta.pools_reserved_bytes =
+            stats_signed_delta(
+                before.pools.reserved_bytes,
+                after.pools.reserved_bytes,
+                &mut saturated
+            );
+
+        set delta.pools_live_object_bytes =
+            stats_signed_delta(
+                before.pools.live_object_bytes,
+                after.pools.live_object_bytes,
+                &mut saturated
+            );
+
+        set delta.pools_metadata_bytes =
+            stats_signed_delta(
+                before.pools.metadata_bytes,
+                after.pools.metadata_bytes,
+                &mut saturated
+            );
+
+        set delta.pools_allocation_count =
+            stats_signed_delta(
+                before.pools.allocation_count,
+                after.pools.allocation_count,
+                &mut saturated
+            );
+
+        set delta.pools_free_operation_count =
+            stats_signed_delta(
+                before.pools.free_operation_count,
+                after.pools.free_operation_count,
+                &mut saturated
+            );
+    }
+
+    set delta.utilization_before_basis_points =
+        before.utilization_basis_points;
+
+    set delta.utilization_after_basis_points =
+        after.utilization_basis_points;
+
+    set delta.overhead_before_basis_points =
+        before.overhead_basis_points;
+
+    set delta.overhead_after_basis_points =
+        after.overhead_basis_points;
+
+    set delta.saturated =
+        saturated  or 
+        before.saturated  or 
+        after.saturated;
+
+    set delta.valid = true;
+
+    return delta;
+}
+
+/* ========================================================================= */
+/* Released / increased helpers                                              */
+/* ========================================================================= */
+
+pub proc stats_reserved_released(
+    before: &StatsSnapshot,
+    after: &StatsSnapshot
+) -> usize {
+    if not before.valid  or 
+       not after.valid  or 
+       not stats_snapshot_shapes_match(before, after) {
+        return 0;
+    }
+
+    return stats_nonnegative_difference(
+        before.total_reserved_bytes,
+        after.total_reserved_bytes
+    );
+}
+
+pub proc stats_reserved_increased(
+    before: &StatsSnapshot,
+    after: &StatsSnapshot
+) -> usize {
+    if not before.valid  or 
+       not after.valid  or 
+       not stats_snapshot_shapes_match(before, after) {
+        return 0;
+    }
+
+    return stats_nonnegative_difference(
+        after.total_reserved_bytes,
+        before.total_reserved_bytes
+    );
+}
+
+pub proc stats_live_released(
+    before: &StatsSnapshot,
+    after: &StatsSnapshot
+) -> usize {
+    if not before.valid  or 
+       not after.valid  or 
+       not stats_snapshot_shapes_match(before, after) {
+        return 0;
+    }
+
+    return stats_nonnegative_difference(
+        before.total_live_bytes,
+        after.total_live_bytes
+    );
+}
+
+/* ========================================================================= */
+/* Comparison                                                                */
+/* ========================================================================= */
+
+pub proc stats_compare_reserved(
+    left: &StatsSnapshot,
+    right: &StatsSnapshot
+) -> i32 {
+    if left.total_reserved_bytes <
+       right.total_reserved_bytes {
+        return -1;
+    }
+
+    if left.total_reserved_bytes >
+       right.total_reserved_bytes {
+        return 1;
+    }
+
+    return 0;
+}
+
+pub proc stats_compare_live(
+    left: &StatsSnapshot,
+    right: &StatsSnapshot
+) -> i32 {
+    if left.total_live_bytes <
+       right.total_live_bytes {
+        return -1;
+    }
+
+    if left.total_live_bytes >
+       right.total_live_bytes {
+        return 1;
+    }
+
+    return 0;
+}
+
+/* ========================================================================= */
+/* Arena validation                                                          */
+/* ========================================================================= */
+
+pub proc stats_validate_arena(
+    stats: &StatsArena
+) -> bool {
+    if not stats.valid {
+        return false;
+    }
+
+    if stats.generation == 0 {
+        return false;
+    }
+
+    if stats.used_bytes > stats.reserved_bytes {
+        return false;
+    }
+
+    if stats.requested_bytes > stats.used_bytes {
+        return false;
+    }
+
+    if stats.unused_bytes !=
+       stats.reserved_bytes - stats.used_bytes {
+        return false;
+    }
+
+    if stats.padding_bytes > stats.used_bytes {
+        return false;
+    }
+
+    if stats.peak_block_count < stats.block_count {
+        return false;
+    }
+
+    if stats.peak_reserved_bytes <
+       stats.reserved_bytes {
+        return false;
+    }
+
+    if stats.peak_used_bytes < stats.used_bytes {
+        return false;
+    }
+
+    if stats.block_count == 0 {
+        if stats.reserved_bytes != 0  or 
+           stats.used_bytes != 0 {
+            return false;
+        }
+    }
+
+    if stats.reserved_bytes == 0  and 
+       stats.used_bytes != 0 {
+        return false;
+    }
+
+    if not stats_ratio_valid(
+        stats.utilization_basis_points
+    ) {
+        return false;
+    }
+
+    if not stats_ratio_valid(
+        stats.requested_utilization_basis_points
+    ) {
+        return false;
+    }
+
+    if not stats_ratio_valid(
+        stats.padding_basis_points
+    ) {
+        return false;
+    }
+
+    if stats.utilization_basis_points !=
+       stats_ratio_basis_points(
+           stats.used_bytes,
+           stats.reserved_bytes
+       ) {
+        return false;
+    }
+
+    if stats.requested_utilization_basis_points !=
+       stats_ratio_basis_points(
+           stats.requested_bytes,
+           stats.reserved_bytes
+       ) {
+        return false;
+    }
+
+    if stats.padding_basis_points !=
+       stats_ratio_basis_points(
+           stats.padding_bytes,
+           stats.used_bytes
+       ) {
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Pool validation                                                           */
+/* ========================================================================= */
+
+pub proc stats_validate_pool(
+    stats: &StatsPool
+) -> bool {
+    if not stats.valid {
+        return false;
+    }
+
+    if stats.object_size == 0  or 
+       stats.slot_size == 0  or 
+       stats.alignment == 0 {
+        return false;
+    }
+
+    if not stats_power_of_two(stats.alignment) {
+        return false;
+    }
+
+    if stats.slot_size < stats.object_size {
+        return false;
+    }
+
+    if stats.slot_size % stats.alignment != 0 {
+        return false;
+    }
+
+    if stats.live_count > stats.capacity  or 
+       stats.free_count > stats.capacity {
+        return false;
+    }
+
+    if stats.capacity - stats.live_count !=
+       stats.free_count {
+        return false;
+    }
+
+    if stats.peak_live_count < stats.live_count  or 
+       stats.peak_page_count < stats.page_count  or 
+       stats.peak_reserved_bytes < stats.reserved_bytes {
+        return false;
+    }
+
+    if stats.page_count == 0 {
+        if stats.capacity != 0  or 
+           stats.live_count != 0  or 
+           stats.free_count != 0  or 
+           stats.reserved_bytes != 0 {
+            return false;
+        }
+    }
+
+    if stats.capacity == 0 {
+        if stats.live_count != 0  or 
+           stats.free_count != 0 {
+            return false;
+        }
+    }
+
+    if stats.max_objects != STATS_MAX_SIZE  and 
+       stats.capacity > stats.max_objects {
+        return false;
+    }
+
+    if stats.max_reserved_bytes != STATS_MAX_SIZE  and 
+       stats.reserved_bytes > stats.max_reserved_bytes {
+        return false;
+    }
+
+    if not stats.saturated {
+        let expected_live =
+            stats_mul_checked(
+                stats.live_count,
+                stats.object_size
+            );
+
+        if expected_live == null  or 
+           stats.live_object_bytes != expected_live? {
+            return false;
+        }
+
+        let expected_storage =
+            stats_mul_checked(
+                stats.capacity,
+                stats.slot_size
+            );
+
+        if expected_storage == null  or 
+           stats.slot_storage_bytes != expected_storage? {
+            return false;
+        }
+
+        if stats.slot_storage_bytes >
+           stats.reserved_bytes {
+            return false;
+        }
+
+        if stats.metadata_bytes !=
+           stats.reserved_bytes -
+           stats.slot_storage_bytes {
+            return false;
+        }
+
+        let expected_padding =
+            stats_mul_checked(
+                stats.capacity,
+                stats.slot_size - stats.object_size
+            );
+
+        if expected_padding == null  or 
+           stats.slot_padding_bytes != expected_padding? {
+            return false;
+        }
+
+        if stats.live_object_bytes >
+           stats.slot_storage_bytes {
+            return false;
+        }
+    }
+
+    if not stats_ratio_valid(stats.utilization_basis_points)  or 
+       not stats_ratio_valid(stats.live_bytes_basis_points)  or 
+       not stats_ratio_valid(stats.metadata_basis_points) {
+        return false;
+    }
+
+    if not stats.saturated {
+        if stats.utilization_basis_points !=
+           stats_ratio_basis_points(
+               stats.live_count,
+               stats.capacity
+           ) {
+            return false;
+        }
+
+        if stats.live_bytes_basis_points !=
+           stats_ratio_basis_points(
+               stats.live_object_bytes,
+               stats.reserved_bytes
+           ) {
+            return false;
+        }
+
+        if stats.metadata_basis_points !=
+           stats_ratio_basis_points(
+               stats.metadata_bytes,
+               stats.reserved_bytes
+           ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Aggregate pool validation                                                 */
+/* ========================================================================= */
+
+pub proc stats_validate_pools(
+    stats: &StatsPools
+) -> bool {
+    if stats.valid  and  stats.invalid_pool_count != 0 {
+        return false;
+    }
+
+    if not stats.valid  and  stats.invalid_pool_count == 0 {
+        return false;
+    }
+
+    if stats.valid_pool_count > stats.pool_count  or 
+       stats.invalid_pool_count > stats.pool_count {
+        return false;
+    }
+
+    let classified = stats_add_checked(
+        stats.valid_pool_count,
+        stats.invalid_pool_count
+    );
+
+    if classified == null  or 
+       classified? != stats.pool_count {
+        return false;
+    }
+
+    if not stats.saturated {
+        if stats.live_count > stats.capacity  or 
+           stats.free_count > stats.capacity {
+            return false;
+        }
+
+        if stats.capacity - stats.live_count !=
+           stats.free_count {
+            return false;
+        }
+
+        if stats.peak_live_count < stats.live_count  or 
+           stats.peak_page_count < stats.page_count  or 
+           stats.peak_reserved_bytes < stats.reserved_bytes {
+            return false;
+        }
+
+        if stats.slot_storage_bytes >
+           stats.reserved_bytes {
+            return false;
+        }
+
+        if stats.metadata_bytes >
+           stats.reserved_bytes {
+            return false;
+        }
+
+        if stats.live_object_bytes >
+           stats.slot_storage_bytes {
+            return false;
+        }
+    }
+
+    if not stats_ratio_valid(stats.utilization_basis_points)  or 
+       not stats_ratio_valid(stats.live_bytes_basis_points)  or 
+       not stats_ratio_valid(stats.metadata_basis_points) {
+        return false;
+    }
+
+    if not stats.saturated {
+        if stats.utilization_basis_points !=
+           stats_ratio_basis_points(
+               stats.live_count,
+               stats.capacity
+           ) {
+            return false;
+        }
+
+        if stats.live_bytes_basis_points !=
+           stats_ratio_basis_points(
+               stats.live_object_bytes,
+               stats.reserved_bytes
+           ) {
+            return false;
+        }
+
+        if stats.metadata_basis_points !=
+           stats_ratio_basis_points(
+               stats.metadata_bytes,
+               stats.reserved_bytes
+           ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Snapshot validation                                                       */
+/* ========================================================================= */
+
+pub proc stats_validate_snapshot(
+    snapshot: &StatsSnapshot
+) -> bool {
+    if not snapshot.valid {
+        return false;
+    }
+
+    if not snapshot.has_arena  and  not snapshot.has_pools {
+        return false;
+    }
+
+    if snapshot.has_arena {
+        if not stats_validate_arena(&snapshot.arena) {
+            return false;
+        }
+    } else {
+        if snapshot.arena.valid {
+            return false;
+        }
+    }
+
+    if snapshot.has_pools {
+        if not stats_validate_pools(&snapshot.pools) {
+            return false;
+        }
+    } else {
+        if snapshot.pools.pool_count != 0  or 
+           snapshot.pools.valid_pool_count != 0  or 
+           snapshot.pools.invalid_pool_count != 0 {
+            return false;
+        }
+    }
+
+    let mut saturated = false;
+
+    let expected_reserved =
+        stats_saturating_add(
+            snapshot.arena.reserved_bytes,
+            snapshot.pools.reserved_bytes,
+            &mut saturated
+        );
+
+    let expected_live =
+        stats_saturating_add(
+            snapshot.arena.used_bytes,
+            snapshot.pools.live_object_bytes,
+            &mut saturated
+        );
+
+    let expected_requested =
+        stats_saturating_add(
+            snapshot.arena.requested_bytes,
+            snapshot.pools.live_object_bytes,
+            &mut saturated
+        );
+
+    let mut expected_overhead =
+        stats_saturating_add(
+            snapshot.arena.padding_bytes,
+            snapshot.pools.metadata_bytes,
+            &mut saturated
+        );
+
+    set expected_overhead =
+        stats_saturating_add(
+            expected_overhead,
+            snapshot.pools.slot_padding_bytes,
+            &mut saturated
+        );
+
+    let expected_allocations =
+        stats_saturating_add(
+            snapshot.arena.allocation_count,
+            snapshot.pools.allocation_count,
+            &mut saturated
+        );
+
+    if snapshot.total_reserved_bytes != expected_reserved  or 
+       snapshot.total_live_bytes != expected_live  or 
+       snapshot.total_requested_bytes != expected_requested  or 
+       snapshot.total_overhead_bytes != expected_overhead  or 
+       snapshot.total_allocation_count != expected_allocations {
+        return false;
+    }
+
+    if snapshot.total_unused_bytes !=
+       stats_nonnegative_difference(
+           snapshot.total_reserved_bytes,
+           snapshot.total_live_bytes
+       ) {
+        return false;
+    }
+
+    if not snapshot.saturated {
+        if snapshot.total_live_bytes >
+           snapshot.total_reserved_bytes {
+            return false;
+        }
+
+        if snapshot.total_requested_bytes >
+           snapshot.total_live_bytes {
+            return false;
+        }
+    }
+
+    if not stats_ratio_valid(
+        snapshot.utilization_basis_points
+    ) {
+        return false;
+    }
+
+    if not stats_ratio_valid(
+        snapshot.overhead_basis_points
+    ) {
+        return false;
+    }
+
+    if not snapshot.saturated {
+        if snapshot.utilization_basis_points !=
+           stats_ratio_basis_points(
+               snapshot.total_live_bytes,
+               snapshot.total_reserved_bytes
+           ) {
+            return false;
+        }
+
+        if snapshot.overhead_basis_points !=
+           stats_ratio_basis_points(
+               snapshot.total_overhead_bytes,
+               snapshot.total_reserved_bytes
+           ) {
+            return false;
+        }
+    }
+
+    if snapshot.has_pools  and 
+       snapshot.pools.saturated  and 
+       not snapshot.saturated {
+        return false;
+    }
+
+    if saturated  and  not snapshot.saturated {
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Delta validation                                                          */
+/* ========================================================================= */
+
+pub proc stats_validate_delta(
+    delta: &StatsDelta
+) -> bool {
+    if not delta.valid {
+        return false;
+    }
+
+    if not stats_ratio_valid(
+        delta.utilization_before_basis_points
+    ) {
+        return false;
+    }
+
+    if not stats_ratio_valid(
+        delta.utilization_after_basis_points
+    ) {
+        return false;
+    }
+
+    if not stats_ratio_valid(
+        delta.overhead_before_basis_points
+    ) {
+        return false;
+    }
+
+    if not stats_ratio_valid(
+        delta.overhead_after_basis_points
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Snapshot predicates and accessors                                         */
+/* ========================================================================= */
+
+pub proc stats_snapshot_is_valid(snapshot: &StatsSnapshot) -> bool {
+    return snapshot.valid;
+}
+
+pub proc stats_snapshot_has_arena(snapshot: &StatsSnapshot) -> bool {
+    return snapshot.valid  and snapshot.has_arena;
+}
+
+pub proc stats_snapshot_has_pools(snapshot: &StatsSnapshot) -> bool {
+    return snapshot.valid  and snapshot.has_pools;
+}
+
+pub proc stats_snapshot_is_saturated(snapshot: &StatsSnapshot) -> bool {
+    return snapshot.saturated;
+}
+
+pub proc stats_snapshot_is_empty(snapshot: &StatsSnapshot) -> bool {
+    return snapshot.valid  and snapshot.total_live_bytes == 0;
+}
+
+pub proc stats_snapshot_has_live_memory(snapshot: &StatsSnapshot) -> bool {
+    return snapshot.valid  and snapshot.total_live_bytes != 0;
+}
+
+pub proc stats_snapshot_has_reserved_memory(snapshot: &StatsSnapshot) -> bool {
+    return snapshot.valid  and snapshot.total_reserved_bytes != 0;
+}
+
+pub proc stats_snapshot_has_overhead(snapshot: &StatsSnapshot) -> bool {
+    return snapshot.valid  and snapshot.total_overhead_bytes != 0;
+}
+
+pub proc stats_utilization_basis_points(snapshot: &StatsSnapshot) -> u32 {
+    if not snapshot.valid {
+        return 0;
+    }
+
+    return snapshot.utilization_basis_points;
+}
+
+pub proc stats_overhead_basis_points(snapshot: &StatsSnapshot) -> u32 {
+    if not snapshot.valid {
+        return 0;
+    }
+
+    return snapshot.overhead_basis_points;
+}
+
+pub proc stats_utilization_percent(snapshot: &StatsSnapshot) -> u32 {
+    return stats_utilization_basis_points(snapshot) / 100;
+}
+
+pub proc stats_overhead_percent(snapshot: &StatsSnapshot) -> u32 {
+    return stats_overhead_basis_points(snapshot) / 100;
+}
+
+pub proc stats_reserved_bytes(snapshot: &StatsSnapshot) -> usize {
+    if not snapshot.valid {
+        return 0;
+    }
+
+    return snapshot.total_reserved_bytes;
+}
+
+pub proc stats_live_bytes(snapshot: &StatsSnapshot) -> usize {
+    if not snapshot.valid {
+        return 0;
+    }
+
+    return snapshot.total_live_bytes;
+}
+
+pub proc stats_requested_bytes(snapshot: &StatsSnapshot) -> usize {
+    if not snapshot.valid {
+        return 0;
+    }
+
+    return snapshot.total_requested_bytes;
+}
+
+pub proc stats_unused_bytes(snapshot: &StatsSnapshot) -> usize {
+    if not snapshot.valid {
+        return 0;
+    }
+
+    return snapshot.total_unused_bytes;
+}
+
+pub proc stats_overhead_bytes(snapshot: &StatsSnapshot) -> usize {
+    if not snapshot.valid {
+        return 0;
+    }
+
+    return snapshot.total_overhead_bytes;
+}
+
+pub proc stats_allocation_count(snapshot: &StatsSnapshot) -> usize {
+    if not snapshot.valid {
+        return 0;
+    }
+
+    return snapshot.total_allocation_count;
+}
+
+/* ========================================================================= */
+/* Arena, pool, aggregate and delta predicates                               */
+/* ========================================================================= */
+
+pub proc stats_arena_is_valid(stats: &StatsArena) -> bool {
+    return stats.valid;
+}
+
+pub proc stats_arena_is_empty(stats: &StatsArena) -> bool {
+    return stats.valid  and stats.allocation_count == 0;
+}
+
+pub proc stats_arena_has_blocks(stats: &StatsArena) -> bool {
+    return stats.valid  and stats.block_count != 0;
+}
+
+pub proc stats_pool_is_valid(stats: &StatsPool) -> bool {
+    return stats.valid;
+}
+
+pub proc stats_pool_is_empty(stats: &StatsPool) -> bool {
+    return stats.valid  and stats.live_count == 0;
+}
+
+pub proc stats_pool_is_full(stats: &StatsPool) -> bool {
+    return stats.valid  and stats.capacity != 0  and
+           stats.live_count == stats.capacity;
+}
+
+pub proc stats_pool_has_pages(stats: &StatsPool) -> bool {
+    return stats.valid  and stats.page_count != 0;
+}
+
+pub proc stats_pool_is_saturated(stats: &StatsPool) -> bool {
+    return stats.saturated;
+}
+
+pub proc stats_pools_are_valid(stats: &StatsPools) -> bool {
+    return stats.valid;
+}
+
+pub proc stats_pools_are_saturated(stats: &StatsPools) -> bool {
+    return stats.saturated;
+}
+
+pub proc stats_pools_have_invalid(stats: &StatsPools) -> bool {
+    return stats.invalid_pool_count != 0;
+}
+
+pub proc stats_pools_are_empty(stats: &StatsPools) -> bool {
+    return stats.valid  and stats.live_count == 0;
+}
+
+pub proc stats_delta_is_valid(delta: &StatsDelta) -> bool {
+    return delta.valid;
+}
+
+pub proc stats_delta_is_saturated(delta: &StatsDelta) -> bool {
+    return delta.saturated;
+}
+
+pub proc stats_reserved_decreased(delta: &StatsDelta) -> bool {
+    return delta.valid  and delta.total_reserved_bytes < 0;
+}
+
+pub proc stats_reserved_grew(delta: &StatsDelta) -> bool {
+    return delta.valid  and delta.total_reserved_bytes > 0;
+}
+
+pub proc stats_live_decreased(delta: &StatsDelta) -> bool {
+    return delta.valid  and delta.total_live_bytes < 0;
+}
+
+pub proc stats_live_grew(delta: &StatsDelta) -> bool {
+    return delta.valid  and delta.total_live_bytes > 0;
+}
+
+pub proc stats_saturating_sum(left: usize, right: usize) -> usize {
+    let result = stats_add_checked(left, right);
+
+    if result == null {
+        return STATS_MAX_SIZE;
+    }
+
+    return result?;
+}
+
+pub proc stats_saturating_difference(left: usize, right: usize) -> usize {
+    return stats_nonnegative_difference(left, right);
+}
+
+/* ========================================================================= */
+/* End                                                                       */
+/* ========================================================================= */

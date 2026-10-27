@@ -31,16 +31,37 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            build-essential
+            build-essential \
+            gdb
 
       - name: Build compiler
-        run: make -j2
+        shell: bash
+        run: |
+          ulimit -s unlimited
+          if make -j2; then
+            exit 0
+          fi
+          if [ -x build/bin/vitte-bootstrap ]; then
+            env VITTE_MODULE_PATH="modules/core/src:src/compiler" \
+              gdb --batch \
+                -ex run \
+                -ex 'thread apply all bt' \
+                --args build/bin/vitte-bootstrap compile \
+                  src/compiler/api/api.vitte \
+                  --emit-c --quiet --no-color \
+                  -o /tmp/vitte-bootstrap-diagnostic.c || true
+          fi
+          exit 1
 
       - name: Run compiler test suite
-        run: make test
+        run: |
+          ulimit -s unlimited
+          make test
 
       - name: Run runtime tests
-        run: make test-runtime
+        run: |
+          ulimit -s unlimited
+          make test-runtime
 
   extension-dap:
     name: Extension and native DAP

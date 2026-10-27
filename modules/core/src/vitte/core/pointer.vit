@@ -1,0 +1,26 @@
+/// Adaptateurs d'adresses et d'accès pointeur attendus par le compilateur.
+space vitte::core::pointer;
+
+export type uintptr = usize;
+
+export proc is_null<T>(value: *const T) -> bool { return value == null; }
+
+export proc address(value: *const u8) -> uintptr { return value as uintptr; }
+export proc from_address_mut(value: uintptr) -> *mut u8 { return value as *mut u8; }
+
+export proc add_bytes(value: *mut u8, offset: usize) -> *mut u8 {
+    if value == null { return null; }
+    let base: uintptr = value as uintptr;
+    if offset > usize.MAX - base { return null; }
+    return (base + offset) as *mut u8;
+}
+
+export proc add_bytes_const(value: *const u8, offset: usize) -> *const u8 {
+    if value == null { return null; }
+    let base: uintptr = value as uintptr;
+    if offset > usize.MAX - base { return null; }
+    return (base + offset) as *const u8;
+}
+
+export proc read<T>(source: *const T) -> T { return *source; }
+export proc write<T>(destination: *mut T, value: T) { set *destination = value; }

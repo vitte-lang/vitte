@@ -29,9 +29,7 @@
 
 space tests::import_collision::local_main;
 
-use tests::import_collision::local_lib;
-use tests::import_collision::local_lib::*;
-
+use tests::import_collision::local_lib;use tests::import_collision::local_lib::*;
 const SOURCE_ID: i64 = 99;
 const VALUE: i64 = 1000;
 const MODULE_VALUE: i64 = 2000;
@@ -66,40 +64,40 @@ pick ResultKind {
 proc identity(
     value: i64
 ) -> i64 {
-    give value + LOCAL_ONE;
+    return value + LOCAL_ONE;
 }
 
 proc source_id() -> i64 {
-    give SOURCE_ID;
+    return SOURCE_ID;
 }
 
 proc common_value() -> i64 {
-    give VALUE;
+    return VALUE;
 }
 
 proc module_value() -> i64 {
-    give MODULE_VALUE;
+    return MODULE_VALUE;
 }
 
 proc add(
     left: i64,
     right: i64
 ) -> i64 {
-    give left + right + LOCAL_ONE;
+    return left + right + LOCAL_ONE;
 }
 
 proc make_point(
     x: i64,
     y: i64
 ) -> Point {
-    give Point {
+    return Point {
         x: x,
         y: y,
     };
 }
 
 proc make_default_point() -> Point {
-    give make_point(
+    return make_point(
         40,
         60);
 }
@@ -107,14 +105,14 @@ proc make_default_point() -> Point {
 proc point_sum(
     point: &Point
 ) -> i64 {
-    give point.x +
+    return point.x +
          point.y;
 }
 
 proc make_record(
     value: i64
 ) -> Record {
-    give Record {
+    return Record {
         value: value,
         source: SOURCE_ID,
     };
@@ -123,20 +121,20 @@ proc make_record(
 proc record_value(
     record: &Record
 ) -> i64 {
-    give record.value;
+    return record.value;
 }
 
 proc record_source(
     record: &Record
 ) -> i64 {
-    give record.source;
+    return record.source;
 }
 
 proc make_wrapper(
     point: Point,
     record: Record
 ) -> Wrapper {
-    give Wrapper {
+    return Wrapper {
         point: point,
         record: record,
     };
@@ -145,70 +143,70 @@ proc make_wrapper(
 proc wrapper_value(
     wrapper: &Wrapper
 ) -> i64 {
-    give point_sum(
+    return point_sum(
                &wrapper.point) +
          record_value(
                &wrapper.record);
 }
 
 proc default_state() -> State {
-    give State.Local;
+    return State.Local;
 }
 
 proc success_kind() -> ResultKind {
-    give ResultKind.LocalSuccess;
+    return ResultKind.LocalSuccess;
 }
 
 /// Verify that an unqualified constant resolves to the local declaration.
 
 proc test_local_constant_value() -> bool {
-    give VALUE == 1000;
+    return VALUE == 1000;
 }
 
 /// Verify that the imported declaration remains reachable through the module.
 
 proc test_imported_constant_value() -> bool {
-    give local_lib::VALUE == 42;
+    return local_lib::VALUE == 42;
 }
 
 proc test_local_source_id() -> bool {
-    give SOURCE_ID == 99 &&
+    return SOURCE_ID == 99 and
          source_id() == 99;
 }
 
 proc test_imported_source_id() -> bool {
-    give local_lib::SOURCE_ID == 7 &&
+    return local_lib::SOURCE_ID == 7 and
          local_lib::source_id() == 7;
 }
 
 proc test_local_module_value() -> bool {
-    give MODULE_VALUE == 2000 &&
+    return MODULE_VALUE == 2000 and
          module_value() == 2000;
 }
 
 proc test_imported_module_value() -> bool {
-    give local_lib::MODULE_VALUE == 42 &&
+    return local_lib::MODULE_VALUE == 42 and
          local_lib::module_value() == 42;
 }
 
 /// Local `identity` differs intentionally from the imported implementation.
 
 proc test_local_identity() -> bool {
-    give identity(41) == 42;
+    return identity(41) == 42;
 }
 
 proc test_imported_identity() -> bool {
-    give local_lib::identity(42) == 42;
+    return local_lib::identity(42) == 42;
 }
 
 /// Local `add` deliberately adds one extra unit.
 
 proc test_local_add() -> bool {
-    give add(20, 21) == 42;
+    return add(20, 21) == 42;
 }
 
 proc test_imported_add() -> bool {
-    give local_lib::add(20, 22) == 42;
+    return local_lib::add(20, 22) == 42;
 }
 
 /// Type collision.
@@ -219,8 +217,8 @@ proc test_local_point() -> bool {
     let point: Point =
         make_default_point();
 
-    give point.x == 40 &&
-         point.y == 60 &&
+    return point.x == 40 and
+         point.y == 60 and
          point_sum(&point) == 100;
 }
 
@@ -228,8 +226,8 @@ proc test_imported_point() -> bool {
     let point: local_lib::Point =
         local_lib::make_default_point();
 
-    give local_lib::point_x(&point) == 20 &&
-         local_lib::point_y(&point) == 22 &&
+    return local_lib::point_x(&point) == 20 and
+         local_lib::point_y(&point) == 22 and
          local_lib::point_sum(&point) == 42;
 }
 
@@ -249,7 +247,7 @@ proc test_parallel_point_types() -> bool {
             20,
             22);
 
-    give point_sum(&local_point) == 100 &&
+    return point_sum(&local_point) == 100 and
          local_lib::point_sum(
              &imported_point) == 42;
 }
@@ -257,21 +255,21 @@ proc test_parallel_point_types() -> bool {
 proc consume_local_point(
     point: &Point
 ) -> i64 {
-    give point_sum(point);
+    return point_sum(point);
 }
 
 proc consume_imported_point(
     point: &local_lib::Point
 ) -> i64 {
-    give local_lib::point_sum(point);
+    return local_lib::point_sum(point);
 }
 
 proc produce_local_point() -> Point {
-    give make_default_point();
+    return make_default_point();
 }
 
 proc produce_imported_point() -> local_lib::Point {
-    give local_lib::make_default_point();
+    return local_lib::make_default_point();
 }
 
 proc test_point_parameter_identity() -> bool {
@@ -281,8 +279,8 @@ proc test_point_parameter_identity() -> bool {
     let imported_point: local_lib::Point =
         produce_imported_point();
 
-    give consume_local_point(
-               &local_point) == 100 &&
+    return consume_local_point(
+               &local_point) == 100 and
          consume_imported_point(
                &imported_point) == 42;
 }
@@ -294,7 +292,7 @@ proc test_local_record() -> bool {
         make_record(
             1000);
 
-    give record_value(&record) == 1000 &&
+    return record_value(&record) == 1000 and
          record_source(&record) == 99;
 }
 
@@ -303,10 +301,10 @@ proc test_imported_record() -> bool {
         local_lib::make_record(
             42);
 
-    give local_lib::record_value(
-               &record) == 42 &&
+    return local_lib::record_value(
+               &record) == 42 and
          local_lib::record_source(
-               &record) == 7 &&
+               &record) == 7 and
          local_lib::record_enabled(
                &record);
 }
@@ -320,12 +318,12 @@ proc test_parallel_record_types() -> bool {
         local_lib::make_record(
             42);
 
-    give record_value(
-               &local_record) == 1000 &&
+    return record_value(
+               &local_record) == 1000 and
          record_source(
-               &local_record) == 99 &&
+               &local_record) == 99 and
          local_lib::record_value(
-               &imported_record) == 42 &&
+               &imported_record) == 42 and
          local_lib::record_source(
                &imported_record) == 7;
 }
@@ -345,19 +343,19 @@ proc test_local_wrapper() -> bool {
             point,
             record);
 
-    give wrapper_value(&wrapper) == 1100;
+    return wrapper_value(&wrapper) == 1100;
 }
 
 proc test_imported_wrapper() -> bool {
     let wrapper: local_lib::Wrapper =
         local_lib::make_default_wrapper();
 
-    give local_lib::wrapper_point_sum(
-               &wrapper) == 42 &&
+    return local_lib::wrapper_point_sum(
+               &wrapper) == 42 and
          local_lib::wrapper_record_value(
-               &wrapper) == 42 &&
+               &wrapper) == 42 and
          local_lib::wrapper_source(
-               &wrapper) == 7 &&
+               &wrapper) == 7 and
          local_lib::wrapper_value(
                &wrapper) == 84;
 }
@@ -370,14 +368,14 @@ proc test_local_state() -> bool {
     let state: State =
         default_state();
 
-    give state == State.Local;
+    return state == State.Local;
 }
 
 proc test_imported_state() -> bool {
     let state: local_lib::State =
         local_lib::default_state();
 
-    give state ==
+    return state ==
          local_lib::State.Idle;
 }
 
@@ -394,12 +392,12 @@ proc test_imported_state_variants() -> bool {
     let finished: local_lib::State =
         local_lib::finished_state();
 
-    give idle ==
-             local_lib::State.Idle &&
+    return idle ==
+             local_lib::State.Idle and
          ready ==
-             local_lib::State.Ready &&
+             local_lib::State.Ready and
          running ==
-             local_lib::State.Running &&
+             local_lib::State.Running and
          finished ==
              local_lib::State.Finished;
 }
@@ -408,7 +406,7 @@ proc test_local_result_kind() -> bool {
     let result: ResultKind =
         success_kind();
 
-    give result ==
+    return result ==
          ResultKind.LocalSuccess;
 }
 
@@ -419,8 +417,8 @@ proc test_imported_result_kind() -> bool {
     let failure: local_lib::ResultKind =
         local_lib::failure_kind();
 
-    give success ==
-             local_lib::ResultKind.Success &&
+    return success ==
+             local_lib::ResultKind.Success and
          failure ==
              local_lib::ResultKind.Failure;
 }
@@ -433,8 +431,8 @@ proc test_non_conflicting_range() -> bool {
     let range: Range =
         make_default_range();
 
-    give range_width(&range) == 42 &&
-         range_valid(&range) &&
+    return range_width(&range) == 42 and
+         range_valid(&range) and
          range_contains(&range, 21);
 }
 
@@ -444,8 +442,8 @@ proc test_qualified_range() -> bool {
     let range: local_lib::Range =
         local_lib::make_default_range();
 
-    give local_lib::range_width(
-               &range) == 42 &&
+    return local_lib::range_width(
+               &range) == 42 and
          local_lib::range_valid(
                &range);
 }
@@ -456,14 +454,14 @@ proc test_non_conflicting_pair() -> bool {
     let pair: Pair =
         make_default_pair();
 
-    give pair_sum(&pair) == 42;
+    return pair_sum(&pair) == 42;
 }
 
 proc test_qualified_pair() -> bool {
     let pair: local_lib::Pair =
         local_lib::make_default_pair();
 
-    give local_lib::pair_sum(
+    return local_lib::pair_sum(
         &pair) == 42;
 }
 
@@ -473,10 +471,10 @@ proc test_non_conflicting_nested() -> bool {
     let nested: Nested =
         make_default_nested();
 
-    give nested_point_sum(&nested) == 42 &&
-         nested_range_width(&nested) == 42 &&
-         nested_record_value(&nested) == 42 &&
-         nested_pair_sum(&nested) == 42 &&
+    return nested_point_sum(&nested) == 42 and
+         nested_range_width(&nested) == 42 and
+         nested_record_value(&nested) == 42 and
+         nested_pair_sum(&nested) == 42 and
          nested_source(&nested) == 7;
 }
 
@@ -484,7 +482,7 @@ proc test_qualified_nested() -> bool {
     let nested: local_lib::Nested =
         local_lib::make_default_nested();
 
-    give local_lib::validate_nested(
+    return local_lib::validate_nested(
         &nested);
 }
 
@@ -497,7 +495,7 @@ proc test_non_conflicting_direction() -> bool {
     let right: Direction =
         right_direction();
 
-    give left == Direction.Left &&
+    return left == Direction.Left and
          right == Direction.Right;
 }
 
@@ -508,8 +506,8 @@ proc test_qualified_direction() -> bool {
     let right: local_lib::Direction =
         local_lib::right_direction();
 
-    give left ==
-             local_lib::Direction.Left &&
+    return left ==
+             local_lib::Direction.Left and
          right ==
              local_lib::Direction.Right;
 }
@@ -522,7 +520,7 @@ proc test_qualified_direction() -> bool {
 proc test_nested_value_shadowing() -> bool {
     let VALUE: i64 = 123;
 
-    give VALUE == 123 &&
+    return VALUE == 123 and
          local_lib::VALUE == 42;
 }
 
@@ -543,7 +541,7 @@ proc test_deep_shadowing() -> bool {
         }
     }
 
-    give result == 42 &&
+    return result == 42 and
          local_lib::VALUE == 42;
 }
 
@@ -551,24 +549,24 @@ proc test_deep_shadowing() -> bool {
 /// qualified imported lookups.
 
 proc test_repeated_local_resolution() -> bool {
-    give VALUE == 1000 &&
-         VALUE == 1000 &&
-         SOURCE_ID == 99 &&
-         SOURCE_ID == 99 &&
-         identity(41) == 42 &&
-         identity(41) == 42 &&
-         common_value() == 1000 &&
+    return VALUE == 1000 and
+         VALUE == 1000 and
+         SOURCE_ID == 99 and
+         SOURCE_ID == 99 and
+         identity(41) == 42 and
+         identity(41) == 42 and
+         common_value() == 1000 and
          common_value() == 1000;
 }
 
 proc test_repeated_imported_resolution() -> bool {
-    give local_lib::VALUE == 42 &&
-         local_lib::VALUE == 42 &&
-         local_lib::SOURCE_ID == 7 &&
-         local_lib::SOURCE_ID == 7 &&
-         local_lib::identity(42) == 42 &&
-         local_lib::identity(42) == 42 &&
-         local_lib::common_value() == 42 &&
+    return local_lib::VALUE == 42 and
+         local_lib::VALUE == 42 and
+         local_lib::SOURCE_ID == 7 and
+         local_lib::SOURCE_ID == 7 and
+         local_lib::identity(42) == 42 and
+         local_lib::identity(42) == 42 and
+         local_lib::common_value() == 42 and
          local_lib::common_value() == 42;
 }
 
@@ -576,13 +574,13 @@ proc test_repeated_imported_resolution() -> bool {
 /// identifier rather than by declaration owner/module.
 
 proc test_alternating_resolution() -> bool {
-    give VALUE == 1000 &&
-         local_lib::VALUE == 42 &&
-         VALUE == 1000 &&
-         local_lib::VALUE == 42 &&
-         source_id() == 99 &&
-         local_lib::source_id() == 7 &&
-         source_id() == 99 &&
+    return VALUE == 1000 and
+         local_lib::VALUE == 42 and
+         VALUE == 1000 and
+         local_lib::VALUE == 42 and
+         source_id() == 99 and
+         local_lib::source_id() == 7 and
+         source_id() == 99 and
          local_lib::source_id() == 7;
 }
 
@@ -595,8 +593,8 @@ proc test_mixed_values() -> bool {
     let imported_value: i64 =
         local_lib::VALUE;
 
-    give local_value == 1000 &&
-         imported_value == 42 &&
+    return local_value == 1000 and
+         imported_value == 42 and
          local_value - imported_value == 958;
 }
 
@@ -610,7 +608,7 @@ proc test_mixed_calls() -> bool {
     let imported_result: i64 =
         local_lib::identity(42);
 
-    give local_result == 42 &&
+    return local_result == 42 and
          imported_result == 42;
 }
 
@@ -625,8 +623,8 @@ proc test_mutation() -> bool {
     set value =
         identity(value - 1);
 
-    give value == 42 &&
-         VALUE == 1000 &&
+    return value == 42 and
+         VALUE == 1000 and
          local_lib::VALUE == 42;
 }
 
@@ -636,24 +634,24 @@ proc test_control_flow(
     use_imported: bool
 ) -> i64 {
     if use_imported {
-        give local_lib::VALUE;
+        return local_lib::VALUE;
     }
 
-    give identity(41);
+    return identity(41);
 }
 
 /// Imported functionality that internally resolves its own declarations must
 /// not accidentally bind to declarations in this consumer.
 
 proc test_imported_internal_resolution() -> bool {
-    give local_lib::composed_value() == 42 &&
-         local_lib::nested_call_value() == 42 &&
-         local_lib::arithmetic_pipeline(21) == 42 &&
-         local_lib::normalize_to_module_value(0) == 42 &&
-         local_lib::normalize_to_module_value(42) == 42 &&
-         local_lib::normalize_to_module_value(100) == 42 &&
-         local_lib::conditional_value(true) == 42 &&
-         local_lib::conditional_value(false) == 0 &&
+    return local_lib::composed_value() == 42 and
+         local_lib::nested_call_value() == 42 and
+         local_lib::arithmetic_pipeline(21) == 42 and
+         local_lib::normalize_to_module_value(0) == 42 and
+         local_lib::normalize_to_module_value(42) == 42 and
+         local_lib::normalize_to_module_value(100) == 42 and
+         local_lib::conditional_value(true) == 42 and
+         local_lib::conditional_value(false) == 0 and
          local_lib::accumulate_value() == 42;
 }
 
@@ -679,11 +677,11 @@ proc test_imported_validation() -> bool {
     let nested: local_lib::Nested =
         local_lib::make_default_nested();
 
-    give local_lib::validate_point(&point) &&
-         local_lib::validate_range(&range) &&
-         local_lib::validate_record(&record) &&
-         local_lib::validate_pair(&pair) &&
-         local_lib::validate_wrapper(&wrapper) &&
+    return local_lib::validate_point(&point) and
+         local_lib::validate_range(&range) and
+         local_lib::validate_record(&record) and
+         local_lib::validate_pair(&pair) and
+         local_lib::validate_wrapper(&wrapper) and
          local_lib::validate_nested(&nested);
 }
 
@@ -726,115 +724,115 @@ proc test_integrated_collision_resolution() -> bool {
     let imported_result: local_lib::ResultKind =
         local_lib::success_kind();
 
-    give VALUE == 1000 &&
-         local_lib::VALUE == 42 &&
+    return VALUE == 1000 and
+         local_lib::VALUE == 42 and
 
-         SOURCE_ID == 99 &&
-         local_lib::SOURCE_ID == 7 &&
+         SOURCE_ID == 99 and
+         local_lib::SOURCE_ID == 7 and
 
-         identity(41) == 42 &&
-         local_lib::identity(42) == 42 &&
+         identity(41) == 42 and
+         local_lib::identity(42) == 42 and
 
-         point_sum(&local_point) == 100 &&
+         point_sum(&local_point) == 100 and
          local_lib::point_sum(
-             &imported_point) == 42 &&
+             &imported_point) == 42 and
 
-         record_value(&local_record) == 1000 &&
-         record_source(&local_record) == 99 &&
+         record_value(&local_record) == 1000 and
+         record_source(&local_record) == 99 and
 
          local_lib::record_value(
-             &imported_record) == 42 &&
+             &imported_record) == 42 and
          local_lib::record_source(
-             &imported_record) == 7 &&
+             &imported_record) == 7 and
 
          wrapper_value(
-             &local_wrapper) == 1100 &&
+             &local_wrapper) == 1100 and
 
          local_lib::wrapper_value(
-             &imported_wrapper) == 84 &&
+             &imported_wrapper) == 84 and
 
          local_state ==
-             State.Local &&
+             State.Local and
 
          imported_state ==
-             local_lib::State.Idle &&
+             local_lib::State.Idle and
 
          local_result ==
-             ResultKind.LocalSuccess &&
+             ResultKind.LocalSuccess and
 
          imported_result ==
              local_lib::ResultKind.Success;
 }
 
 proc main() -> int {
-    if !test_local_constant_value() { give 1; }
-    if !test_imported_constant_value() { give 2; }
+    if not test_local_constant_value() { return 1; }
+    if not test_imported_constant_value() { return 2; }
 
-    if !test_local_source_id() { give 3; }
-    if !test_imported_source_id() { give 4; }
+    if not test_local_source_id() { return 3; }
+    if not test_imported_source_id() { return 4; }
 
-    if !test_local_module_value() { give 5; }
-    if !test_imported_module_value() { give 6; }
+    if not test_local_module_value() { return 5; }
+    if not test_imported_module_value() { return 6; }
 
-    if !test_local_identity() { give 7; }
-    if !test_imported_identity() { give 8; }
+    if not test_local_identity() { return 7; }
+    if not test_imported_identity() { return 8; }
 
-    if !test_local_add() { give 9; }
-    if !test_imported_add() { give 10; }
+    if not test_local_add() { return 9; }
+    if not test_imported_add() { return 10; }
 
-    if !test_local_point() { give 11; }
-    if !test_imported_point() { give 12; }
-    if !test_parallel_point_types() { give 13; }
-    if !test_point_parameter_identity() { give 14; }
+    if not test_local_point() { return 11; }
+    if not test_imported_point() { return 12; }
+    if not test_parallel_point_types() { return 13; }
+    if not test_point_parameter_identity() { return 14; }
 
-    if !test_local_record() { give 15; }
-    if !test_imported_record() { give 16; }
-    if !test_parallel_record_types() { give 17; }
+    if not test_local_record() { return 15; }
+    if not test_imported_record() { return 16; }
+    if not test_parallel_record_types() { return 17; }
 
-    if !test_local_wrapper() { give 18; }
-    if !test_imported_wrapper() { give 19; }
+    if not test_local_wrapper() { return 18; }
+    if not test_imported_wrapper() { return 19; }
 
-    if !test_local_state() { give 20; }
-    if !test_imported_state() { give 21; }
-    if !test_imported_state_variants() { give 22; }
+    if not test_local_state() { return 20; }
+    if not test_imported_state() { return 21; }
+    if not test_imported_state_variants() { return 22; }
 
-    if !test_local_result_kind() { give 23; }
-    if !test_imported_result_kind() { give 24; }
+    if not test_local_result_kind() { return 23; }
+    if not test_imported_result_kind() { return 24; }
 
-    if !test_non_conflicting_range() { give 25; }
-    if !test_qualified_range() { give 26; }
+    if not test_non_conflicting_range() { return 25; }
+    if not test_qualified_range() { return 26; }
 
-    if !test_non_conflicting_pair() { give 27; }
-    if !test_qualified_pair() { give 28; }
+    if not test_non_conflicting_pair() { return 27; }
+    if not test_qualified_pair() { return 28; }
 
-    if !test_non_conflicting_nested() { give 29; }
-    if !test_qualified_nested() { give 30; }
+    if not test_non_conflicting_nested() { return 29; }
+    if not test_qualified_nested() { return 30; }
 
-    if !test_non_conflicting_direction() { give 31; }
-    if !test_qualified_direction() { give 32; }
+    if not test_non_conflicting_direction() { return 31; }
+    if not test_qualified_direction() { return 32; }
 
-    if !test_nested_value_shadowing() { give 33; }
-    if !test_deep_shadowing() { give 34; }
+    if not test_nested_value_shadowing() { return 33; }
+    if not test_deep_shadowing() { return 34; }
 
-    if !test_repeated_local_resolution() { give 35; }
-    if !test_repeated_imported_resolution() { give 36; }
-    if !test_alternating_resolution() { give 37; }
+    if not test_repeated_local_resolution() { return 35; }
+    if not test_repeated_imported_resolution() { return 36; }
+    if not test_alternating_resolution() { return 37; }
 
-    if !test_mixed_values() { give 38; }
-    if !test_mixed_calls() { give 39; }
-    if !test_mutation() { give 40; }
+    if not test_mixed_values() { return 38; }
+    if not test_mixed_calls() { return 39; }
+    if not test_mutation() { return 40; }
 
-    if test_control_flow(true) != 42 { give 41; }
-    if test_control_flow(false) != 42 { give 42; }
+    if test_control_flow(true) != 42 { return 41; }
+    if test_control_flow(false) != 42 { return 42; }
 
-    if !test_imported_internal_resolution() { give 43; }
-    if !test_imported_validation() { give 44; }
+    if not test_imported_internal_resolution() { return 43; }
+    if not test_imported_validation() { return 44; }
 
-    if !local_lib::repeated_lookup_test() { give 45; }
-    if !local_lib::cross_category_test() { give 46; }
-    if !local_lib::library_self_test() { give 47; }
+    if not local_lib::repeated_lookup_test() { return 45; }
+    if not local_lib::cross_category_test() { return 46; }
+    if not local_lib::library_self_test() { return 47; }
 
-    if !test_integrated_collision_resolution() { give 48; }
+    if not test_integrated_collision_resolution() { return 48; }
 
-    give 0;
+    return 0;
 }

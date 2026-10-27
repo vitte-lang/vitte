@@ -8,7 +8,7 @@
 #     CMakeLists.txt
 #     Makefile
 #     runtime/
-#     src/
+#     bootstrap/
 #       api/
 #       arena/
 #       ast/
@@ -47,6 +47,10 @@
 
 PROJECT := Vitte
 TARGET  := vitte
+.DEFAULT_GOAL := all
+
+BUILD_HOST_OS := $(shell uname -s 2>/dev/null || echo unknown)
+EXE_SUFFIX ?= $(if $(filter MINGW% MSYS% CYGWIN%,$(BUILD_HOST_OS)),.exe,)
 
 CC ?= cc
 AR ?= ar
@@ -60,7 +64,7 @@ PYTHON ?= python3
 
 VITTE_ROOT := src
 
-SRC_ROOT     := $(VITTE_ROOT)/src
+SRC_ROOT     := $(VITTE_ROOT)/bootstrap
 RUNTIME_ROOT := $(VITTE_ROOT)/runtime
 TEST_DIR     := $(VITTE_ROOT)/tests
 DOC_DIR      := $(VITTE_ROOT)/docs
@@ -76,7 +80,8 @@ BIN_DIR := $(BUILD)/bin
 TMP_DIR := $(BUILD)/tmp
 LOG_DIR := $(BUILD)/logs
 
-TARGET_BIN := $(BIN_DIR)/$(TARGET)
+TARGET_BIN := $(BIN_DIR)/$(TARGET)$(EXE_SUFFIX)
+BOOTSTRAP_TARGET_BIN := $(BIN_DIR)/$(TARGET)-bootstrap$(EXE_SUFFIX)
 
 # -----------------------------------------------------------------------------
 # Source discovery
@@ -119,7 +124,9 @@ LIB_OBJECTS := $(filter-out $(MAIN_OBJECT),$(OBJECTS))
 
 CPPFLAGS := \
 	-I$(SRC_ROOT) \
-	-I$(VITTE_ROOT)
+	-I$(VITTE_ROOT) \
+	-Iinclude \
+	-Isrc/include
 
 # -----------------------------------------------------------------------------
 # Common compiler warnings
@@ -177,6 +184,7 @@ LDLIBS   :=
 # constant_fold and generated/runtime code require the C math library on
 # Unix platforms where libm is linked separately.
 UNAME_S := $(shell uname -s 2>/dev/null || echo unknown)
+UNAME_M := $(shell uname -m 2>/dev/null || echo unknown)
 
 ifneq ($(filter Linux FreeBSD OpenBSD NetBSD DragonFly,$(UNAME_S)),)
 LDLIBS += -lm
@@ -194,6 +202,36 @@ else
 	CFLAGS := $(CFLAGS_COMMON) $(CFLAGS_DEBUG)
 endif
 
+# Keep build products valid when the host, compiler, flags, or profile change.
+# A stable configuration is a no-op; a changed signature invalidates objects
+# and linked binaries.
+shell_quote = '$(subst ','"'"',$(1))'
+BUILD_CONFIG_KEY := $(shell printf '%s\n' \
+	$(call shell_quote,$(MODE)) \
+	$(call shell_quote,$(UNAME_S)) \
+	$(call shell_quote,$(UNAME_M)) \
+	$(call shell_quote,$(CC)) \
+	$(call shell_quote,$(AR)) \
+	$(call shell_quote,$(CPPFLAGS)) \
+	$(call shell_quote,$(CFLAGS)) \
+	$(call shell_quote,$(LDFLAGS)) \
+	$(call shell_quote,$(LDLIBS)) | shasum -a 256 | awk '{print $$1}')
+BUILD_CONFIG_STAMP := $(BUILD)/.config-$(BUILD_CONFIG_KEY)
+ACTIVE_BUILD_CONFIG := $(BUILD)/.active-config
+# A conditional phony stamp makes a profile switch invalidate outputs even on
+# filesystems whose timestamp precision is coarser than a fast rebuild.
+BUILD_CONFIG_CHANGED := $(shell \
+	if test -f '$(ACTIVE_BUILD_CONFIG)' && \
+		test "$$(cat '$(ACTIVE_BUILD_CONFIG)')" = '$(BUILD_CONFIG_KEY)'; then \
+		printf no; \
+	else \
+		printf yes; \
+	fi)
+
+ifeq ($(BUILD_CONFIG_CHANGED),yes)
+.PHONY: $(BUILD_CONFIG_STAMP)
+endif
+
 # -----------------------------------------------------------------------------
 # Default build
 # -----------------------------------------------------------------------------
@@ -201,20 +239,97 @@ endif
 .PHONY: all
 all: $(TARGET_BIN)
 
-$(TARGET_BIN): $(OBJECTS)
+$(BUILD_CONFIG_STAMP):
+	@mkdir -p $(BUILD)
+	@touch "$@"
+	@printf '%s\n' '$(BUILD_CONFIG_KEY)' > "$(ACTIVE_BUILD_CONFIG)"
+
+# The bootstrap binary compiles the Vitte API and its pipeline dependencies
+# into one native translation unit. The standard executable routes the public
+# API through it while retaining bootstrap objects for unmigrated stages.
+NATIVE_FRONTEND_ENTRY := $(VITTE_ROOT)/compiler/api/api.vitte
+NATIVE_FRONTEND_SOURCES := $(shell find $(VITTE_ROOT)/compiler -type f -name '*.vitte' | LC_ALL=C sort)
+# The manifest defines the package prefix stripped by the source module loader.
+NATIVE_MODULE_SOURCES := modules/core/Vitte.toml $(shell find modules/core/src -type f \( -name '*.vit' -o -name '*.vitte' \) | LC_ALL=C sort)
+VITTE_MODULE_PATH ?= modules/core/src
+NATIVE_FRONTEND_COMPILER ?= $(BOOTSTRAP_TARGET_BIN)
+NATIVE_FRONTEND_DIR := $(BUILD)/native-frontend
+NATIVE_FRONTEND_C := $(NATIVE_FRONTEND_DIR)/api-implementation.c
+NATIVE_FRONTEND_OBJECT := $(NATIVE_FRONTEND_DIR)/api-implementation.o
+NATIVE_CLI_PIPELINE_OBJECT := $(NATIVE_FRONTEND_DIR)/cli-pipeline.o
+NATIVE_CLI_PIPELINE_DEP := $(NATIVE_FRONTEND_DIR)/cli-pipeline.d
+NATIVE_API_OBJECT := $(NATIVE_FRONTEND_DIR)/api.o
+NATIVE_API_DEP := $(NATIVE_FRONTEND_DIR)/api.d
+NATIVE_FRONTEND_LIBRARY := $(NATIVE_FRONTEND_DIR)/libvitte-native-frontend.a
+SELFHOST_DIR := $(BUILD)/selfhost
+SELFHOST_STAGE1_C := $(SELFHOST_DIR)/stage1-api.c
+SELFHOST_STAGE2_C := $(SELFHOST_DIR)/stage2-api.c
+SELFHOST_STAGE1_BUILD := $(SELFHOST_DIR)/stage1-build
+SELFHOST_STAGE2_BUILD := $(SELFHOST_DIR)/stage2-build
+SELFHOST_STAGE1_BIN := $(SELFHOST_STAGE1_BUILD)/bin/$(TARGET)$(EXE_SUFFIX)
+SELFHOST_STAGE2_BIN := $(SELFHOST_STAGE2_BUILD)/bin/$(TARGET)$(EXE_SUFFIX)
+NATIVE_LINK_OBJECTS := \
+	$(filter-out $(OBJ_DIR)/cli/pipeline.o $(OBJ_DIR)/pointer/pointer.o $(OBJ_DIR)/api/api.o,$(OBJECTS)) \
+	$(NATIVE_CLI_PIPELINE_OBJECT) \
+	$(NATIVE_API_OBJECT)
+
+.PHONY: native-frontend
+native-frontend: $(NATIVE_FRONTEND_LIBRARY)
+
+$(NATIVE_FRONTEND_C): $(NATIVE_FRONTEND_COMPILER) $(NATIVE_FRONTEND_SOURCES) $(NATIVE_MODULE_SOURCES)
+	@mkdir -p $(NATIVE_FRONTEND_DIR)
+	@printf '[VITTE-C] %s\n' "$(NATIVE_FRONTEND_ENTRY)"
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(NATIVE_FRONTEND_COMPILER) compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color -o "$@"
+
+$(NATIVE_FRONTEND_OBJECT): $(NATIVE_FRONTEND_C) $(BUILD_CONFIG_STAMP)
+	@printf '[CC] %s\n' "$<"
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c "$<" -o "$@"
+
+$(NATIVE_CLI_PIPELINE_OBJECT): $(SRC_ROOT)/cli/pipeline.c $(SRC_ROOT)/cli/internal.h $(BUILD_CONFIG_STAMP)
+	@mkdir -p $(NATIVE_FRONTEND_DIR)
+	@printf '[CC-NATIVE-DRIVER] %s\n' "$<"
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DVITTE_NATIVE_FRONTEND_LINKED \
+		-MMD -MP -MF "$(NATIVE_CLI_PIPELINE_DEP)" -c "$<" -o "$@"
+
+$(NATIVE_API_OBJECT): $(SRC_ROOT)/api/api.c $(SRC_ROOT)/api/native_api_bridge.inc $(BUILD_CONFIG_STAMP)
+	@mkdir -p $(NATIVE_FRONTEND_DIR)
+	@printf '[CC-NATIVE-API] %s\n' "$<"
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DVITTE_NATIVE_FRONTEND_LINKED \
+		-MMD -MP -MF "$(NATIVE_API_DEP)" -c "$<" -o "$@"
+
+$(NATIVE_FRONTEND_LIBRARY): $(NATIVE_FRONTEND_OBJECT) Makefile
+	@printf '[AR] %s\n' "$@"
+	@rm -f "$@"
+	$(AR) rcs "$@" $(NATIVE_FRONTEND_OBJECT)
+
+$(BOOTSTRAP_TARGET_BIN): $(OBJECTS) $(BUILD_CONFIG_STAMP)
 	@mkdir -p $(dir $@)
 	@printf '\n[LD] %s\n' "$@"
 	$(CC) \
 		$(OBJECTS) \
 		$(LDFLAGS) \
-		-o $@ \
-		$(LDLIBS)
+		$(LDLIBS) \
+		-o $@
+	@printf '\nBuilt Vitte bootstrap compiler:\n'
+	@printf '  %s\n\n' "$@"
+
+$(TARGET_BIN): $(NATIVE_LINK_OBJECTS) $(NATIVE_FRONTEND_LIBRARY) $(BUILD_CONFIG_STAMP)
+	@mkdir -p $(dir $@)
+	@printf '\n[LD] %s\n' "$@"
+	$(CC) \
+		$(NATIVE_LINK_OBJECTS) \
+		$(NATIVE_FRONTEND_LIBRARY) \
+		$(LDFLAGS) \
+		$(LDLIBS) \
+		-o $@
+	@printf '\nBuilt Vitte compiler with native frontend:\n'
+	@printf '  %s\n\n' "$@"
 
 # -----------------------------------------------------------------------------
 # Object compilation
 # -----------------------------------------------------------------------------
 
-$(OBJ_DIR)/%.o: $(SRC_ROOT)/%.c
+$(OBJ_DIR)/%.o: $(SRC_ROOT)/%.c $(BUILD_CONFIG_STAMP)
 	@mkdir -p $(dir $@)
 	@mkdir -p $(dir $(DEP_DIR)/$*.d)
 	@printf '[CC] %s\n' "$<"
@@ -228,6 +343,8 @@ $(OBJ_DIR)/%.o: $(SRC_ROOT)/%.c
 		-o $@
 
 -include $(DEPS)
+-include $(NATIVE_CLI_PIPELINE_DEP)
+-include $(NATIVE_API_DEP)
 
 # -----------------------------------------------------------------------------
 # Build modes
@@ -287,12 +404,23 @@ endif
 test-cli-driver: $(TARGET_BIN)
 	@mkdir -p $(BUILD)
 	@set -e; \
-	fixture="$(TEST_DIR)/grammar_alignment/let_mut_ok.vit"; \
+	fixture="$(TEST_DIR)/native_selfhost_smoke.vit"; \
 	printf '[CLI] check and early-stop stages\n'; \
-	$(TARGET_BIN) check "$$fixture" \
+	if $(TARGET_BIN) check "$$fixture" \
 		>/dev/null \
-		2>$(BUILD)/cli-check.stderr; \
-	test ! -s $(BUILD)/cli-check.stderr; \
+		2>$(BUILD)/cli-check.stderr; then \
+		:; \
+	else \
+		status=$$?; \
+		printf '[CLI] check failed for %s (exit %s)\n' "$$fixture" "$$status" >&2; \
+		cat $(BUILD)/cli-check.stderr >&2; \
+		exit "$$status"; \
+	fi; \
+	if test -s $(BUILD)/cli-check.stderr; then \
+		printf '[CLI] check wrote unexpected stderr for %s\n' "$$fixture" >&2; \
+		cat $(BUILD)/cli-check.stderr >&2; \
+		exit 1; \
+	fi; \
 	$(TARGET_BIN) compile "$$fixture" \
 		--emit-tokens \
 		--stop-after-lexer \
@@ -309,6 +437,10 @@ test-cli-driver: $(TARGET_BIN)
 	"$(BUILD)/cli-native"; \
 	$(TARGET_BIN) run "$$fixture" --quiet; \
 	printf '[CLI] compile and run expo_math test declarations\n'; \
+	$(TARGET_BIN) compile "$(TEST_DIR)/expo_math.vit" \
+		--emit-c --quiet --no-color -o "$(BUILD)/cli-expo-math.c"; \
+	grep -q "vitte_test_0" \
+		"$(BUILD)/cli-expo-math.c"; \
 	$(TARGET_BIN) compile "$(TEST_DIR)/expo_math.vit" \
 		-o "$(BUILD)/cli-expo-math"; \
 	"$(BUILD)/cli-expo-math"; \
@@ -375,7 +507,7 @@ test-source:
 DIAGNOSTIC_RENDER_TEST_BIN := $(BIN_DIR)/diagnostic_render_test
 
 .PHONY: test-diagnostic
-test-diagnostic: $(TARGET_BIN)
+test-diagnostic: $(TARGET_BIN) $(LIB_OBJECTS)
 	@mkdir -p $(BIN_DIR)
 	@printf '[TEST-CC] diagnostic_render_test\n'
 	$(CC) \
@@ -395,7 +527,7 @@ test-diagnostic: $(TARGET_BIN)
 	test "$$status" -eq 1 && \
 	printf '%s\n' "$$output" | grep -F 'E0203' >/dev/null && \
 	printf '%s\n' "$$output" | grep -F 'phase: parser' >/dev/null && \
-	printf '%s\n' "$$output" | grep -F 'help: Add a valid expression' >/dev/null
+	printf '%s\n' "$$output" | grep -F 'help: Provide a valid expression' >/dev/null
 	@set +e; \
 	output=`$(TARGET_BIN) lex \
 		$(TEST_DIR)/diagnostic_lexer_invalid.vit \
@@ -411,7 +543,7 @@ test-diagnostic: $(TARGET_BIN)
 	test "$$status" -eq 2 && \
 	printf '%s\n' "$$output" | grep -F 'E0011' >/dev/null && \
 	printf '%s\n' "$$output" | grep -F 'phase: driver' >/dev/null && \
-	printf '%s\n' "$$output" | grep -F 'help: Check the option name' >/dev/null
+	printf '%s\n' "$$output" | grep -F 'help: Correct the option named' >/dev/null
 
 # -----------------------------------------------------------------------------
 # Diagnostic fuzz test
@@ -432,6 +564,28 @@ test-diagnostic-fuzz: $(TARGET_BIN)
 		$(LDLIBS) \
 		-o $(DIAGNOSTIC_FUZZ_TEST_BIN)
 	$(DIAGNOSTIC_FUZZ_TEST_BIN)
+
+# Contextual help through the real CLI and machine-readable consumers.
+.PHONY: test-diagnostic-help
+test-diagnostic-help: $(TARGET_BIN)
+	$(PYTHON) $(TEST_DIR)/diagnostic_help_test.py $(TARGET_BIN)
+
+.PHONY: test-diagnostic-parity
+test-diagnostic-parity: $(TARGET_BIN)
+	$(PYTHON) $(TEST_DIR)/diagnostic_parity_test.py $(TARGET_BIN)
+
+.PHONY: test-native-bootstrap-parity
+test-native-bootstrap-parity: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+	$(PYTHON) $(TEST_DIR)/native_bootstrap_parity_test.py $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+
+.PHONY: test-native-frontend-subset
+test-native-frontend-subset: $(TARGET_BIN)
+	$(PYTHON) $(TEST_DIR)/native_frontend_subset_test.py $(TARGET_BIN)
+
+# Targeted bootstrap import and diagnostic regressions.
+.PHONY: test-bootstrap-regressions
+test-bootstrap-regressions: $(TARGET_BIN)
+	$(PYTHON) $(TEST_DIR)/bootstrap_regression_test.py $(TARGET_BIN)
 
 # -----------------------------------------------------------------------------
 # Golden diagnostic tests
@@ -608,15 +762,17 @@ test-grammar: check-ebnf-frontend-sync $(GRAMMAR_TEST_BIN)
 
 FRONTEND_TOKEN_TEST_BIN := $(BIN_DIR)/frontend_token_test
 FRONTEND_FUZZ_TEST_BIN := $(BIN_DIR)/frontend_fuzz_test
+CONFIG_FUZZ_TEST_BIN := $(BIN_DIR)/config_fuzz_test
+ROBUSTNESS_TEST_BIN := $(BIN_DIR)/robustness_test
 
-$(FRONTEND_TOKEN_TEST_BIN): $(TEST_DIR)/frontend_token_test.c $(SRC_ROOT)/lexer/lexer.c
+$(FRONTEND_TOKEN_TEST_BIN): $(TEST_DIR)/frontend_token_test.c $(LIB_OBJECTS) $(SRC_ROOT)/unicode/unicode_xid_table.h
 	@mkdir -p $(BIN_DIR)
 	@printf '[TEST-CC] frontend_token_test\n'
 	$(CC) \
 		$(CPPFLAGS) \
 		$(CFLAGS) \
 		$(TEST_DIR)/frontend_token_test.c \
-		$(SRC_ROOT)/lexer/lexer.c \
+		$(LIB_OBJECTS) \
 		$(LDFLAGS) \
 		$(LDLIBS) \
 		-o $@
@@ -633,6 +789,24 @@ $(FRONTEND_FUZZ_TEST_BIN): $(TEST_DIR)/frontend_fuzz_test.c $(LIB_OBJECTS)
 		$(LDLIBS) \
 		-o $@
 
+$(CONFIG_FUZZ_TEST_BIN): \
+	$(TEST_DIR)/config_fuzz_test.c \
+	$(OBJ_DIR)/config/config.o \
+	$(OBJ_DIR)/filesystem/filesystem.o
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] config_fuzz_test\n'
+	$(CC) $(CPPFLAGS) $(CFLAGS) \
+		$(TEST_DIR)/config_fuzz_test.c \
+		$(OBJ_DIR)/config/config.o $(OBJ_DIR)/filesystem/filesystem.o \
+		$(LDFLAGS) $(LDLIBS) -o $@
+
+$(ROBUSTNESS_TEST_BIN): $(TEST_DIR)/robustness_test.c $(LIB_OBJECTS)
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] robustness_test\n'
+	$(CC) $(CPPFLAGS) $(CFLAGS) \
+		$(TEST_DIR)/robustness_test.c \
+		$(LIB_OBJECTS) $(LDFLAGS) $(LDLIBS) -o $@
+
 .PHONY: test-frontend-tokens
 test-frontend-tokens: $(FRONTEND_TOKEN_TEST_BIN)
 	$(FRONTEND_TOKEN_TEST_BIN)
@@ -640,6 +814,22 @@ test-frontend-tokens: $(FRONTEND_TOKEN_TEST_BIN)
 .PHONY: test-frontend-fuzz
 test-frontend-fuzz: $(FRONTEND_FUZZ_TEST_BIN)
 	$(FRONTEND_FUZZ_TEST_BIN)
+
+.PHONY: test-config-fuzz
+test-config-fuzz: $(CONFIG_FUZZ_TEST_BIN)
+	$(CONFIG_FUZZ_TEST_BIN)
+
+.PHONY: test-robustness
+test-robustness: $(ROBUSTNESS_TEST_BIN)
+	$(ROBUSTNESS_TEST_BIN)
+
+FUZZ_SECONDS ?= 60
+.PHONY: fuzz-continuous
+fuzz-continuous: $(FRONTEND_FUZZ_TEST_BIN) $(BIN_DIR)/import_fuzz_test $(CONFIG_FUZZ_TEST_BIN)
+	$(PYTHON) scripts/run-bootstrap-fuzz.py \
+		--seconds "$(FUZZ_SECONDS)" \
+		--iterations "$${VITTE_FUZZ_ITERATIONS:-1000}" \
+		$(FRONTEND_FUZZ_TEST_BIN) $(IMPORT_FUZZ_TEST_BIN) $(CONFIG_FUZZ_TEST_BIN)
 
 .PHONY: check-ebnf-frontend-sync
 check-ebnf-frontend-sync:
@@ -715,7 +905,7 @@ test-sema: $(TARGET_BIN)
 	test "$$status" -eq 1 && \
 	printf '%s\n' "$$output" | grep -F 'E0602' >/dev/null && \
 	printf '%s\n' "$$output" | grep -F 'expected i64, found string' >/dev/null && \
-	printf '%s\n' "$$output" | grep -F 'help: Make the expression' >/dev/null
+	printf '%s\n' "$$output" | grep -F 'help: Argument 1 does not match parameter' >/dev/null
 
 	@set +e; \
 	output=`$(TARGET_BIN) compile \
@@ -726,7 +916,7 @@ test-sema: $(TARGET_BIN)
 	set -e; \
 	test "$$status" -eq 1 && \
 	printf '%s\n' "$$output" | grep -F 'E0602' >/dev/null && \
-	printf '%s\n' "$$output" | grep -F 'help: Make the expression' >/dev/null
+	printf '%s\n' "$$output" | grep -F 'help: Argument 1 does not match parameter' >/dev/null
 
 # -----------------------------------------------------------------------------
 # Import/export tests
@@ -752,6 +942,51 @@ $(IMPORT_GRAPH_TEST_BIN): \
 .PHONY: test-imports
 test-imports: $(IMPORT_GRAPH_TEST_BIN)
 	$(IMPORT_GRAPH_TEST_BIN)
+
+IMPORT_FUZZ_TEST_BIN := $(BIN_DIR)/import_fuzz_test
+
+$(IMPORT_FUZZ_TEST_BIN): \
+	$(TEST_DIR)/import_fuzz_test.c \
+	$(SRC_ROOT)/import/import.c \
+	$(SRC_ROOT)/import/import.h
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] import_fuzz_test\n'
+	$(CC) \
+		$(CPPFLAGS) \
+		$(CFLAGS) \
+		$(TEST_DIR)/import_fuzz_test.c \
+		$(SRC_ROOT)/import/import.c \
+		$(LDFLAGS) \
+		$(LDLIBS) \
+		-o $@
+
+.PHONY: test-import-fuzz
+test-import-fuzz: $(IMPORT_FUZZ_TEST_BIN)
+	$(IMPORT_FUZZ_TEST_BIN)
+
+CONCURRENT_TEST_BIN := $(BIN_DIR)/concurrent_compile_test
+
+$(CONCURRENT_TEST_BIN): \
+	$(TEST_DIR)/concurrent_compile_test.c \
+	$(LIB_OBJECTS)
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] concurrent_compile_test\n'
+	$(CC) \
+		$(CPPFLAGS) \
+		$(CFLAGS) \
+		-pthread \
+		$(TEST_DIR)/concurrent_compile_test.c \
+		$(LIB_OBJECTS) \
+		$(LDFLAGS) \
+		-pthread \
+		$(LDLIBS) \
+		-o $@
+
+.PHONY: test-concurrent
+test-concurrent: $(CONCURRENT_TEST_BIN) $(TARGET_BIN)
+	$(CONCURRENT_TEST_BIN) \
+		examples/hello.vit \
+		$(TEST_DIR)/sema_calls/local_param_ok.vit
 
 # -----------------------------------------------------------------------------
 # Large-source compiler stress tests
@@ -788,6 +1023,7 @@ RUNTIME_CANDIDATES := \
 	$(TEST_DIR)/aggregate_runtime.vit \
 	$(TEST_DIR)/contracts_ok.vit \
 	$(TEST_DIR)/ir_declaration_runtime.vit \
+	$(TEST_DIR)/native_fixed_array_runtime.vit \
 	$(TEST_DIR)/llvm_array_runtime.vit \
 	$(TEST_DIR)/llvm_imports_runtime.vit \
 	$(TEST_DIR)/llvm_integer_width_runtime.vit \
@@ -821,6 +1057,113 @@ test-runtime: $(TARGET_BIN)
 		$(TARGET_BIN) run "$$file"; \
 	done
 
+# HIR/IR lowering and C17 backend contract smoke test.
+IR_BACKEND_TEST_BIN := $(BIN_DIR)/ir_backend_test
+
+$(IR_BACKEND_TEST_BIN): $(TEST_DIR)/ir_backend_test.c $(LIB_OBJECTS)
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] ir_backend_test\n'
+	$(CC) $(CPPFLAGS) $(CFLAGS) \
+		$(TEST_DIR)/ir_backend_test.c $(LIB_OBJECTS) \
+		$(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: test-ir-backend
+test-ir-backend: $(IR_BACKEND_TEST_BIN)
+	$(IR_BACKEND_TEST_BIN)
+
+.PHONY: test-mir-control-flow
+test-mir-control-flow: $(TARGET_BIN)
+	$(TARGET_BIN) run $(TEST_DIR)/mir_loop_targets_runtime.vit
+
+# Fast compiler-focused gate for diagnostics, semantics, lowering/backend, and
+# end-to-end driver behavior. Broader stress, fuzz, and sanitizer suites remain
+# part of `make test` and `make test-sanitizers`.
+.PHONY: test-build-invalidation
+test-build-invalidation:
+	$(PYTHON) $(TEST_DIR)/incremental_build_test.py
+
+.PHONY: test-packaging-matrix
+test-packaging-matrix:
+	$(PYTHON) scripts/test-packaging-matrix.py
+
+# Blocking release criteria: every diagnostic is owned and every native
+# frontend action/fallback path has a checked witness in the compiler gate.
+.PHONY: compiler-release-criteria
+compiler-release-criteria:
+	$(PYTHON) scripts/check-release-criteria.py
+
+.PHONY: compiler-power-gate
+compiler-power-gate: \
+	test-cli-driver \
+	test-diagnostic \
+	test-diagnostic-golden \
+	test-diagnostic-formats \
+	test-diagnostic-help \
+	test-diagnostic-parity \
+	test-bootstrap-regressions \
+	test-grammar \
+	test-sema \
+	test-imports \
+	test-native-frontend-subset \
+	test-native-bootstrap-parity \
+	test-ir-backend \
+	test-mir-control-flow \
+	test-build-invalidation \
+	test-packaging-matrix \
+	compiler-release-criteria
+	@printf '\nCompiler power gate passed.\n'
+
+# Maximum fast local gate: the focused semantic/backend gate, complete
+# deterministic compiler suite, and runtime fixtures. Run sequentially because
+# these targets share build outputs.
+.PHONY: compiler-max-gate-fast
+compiler-max-gate-fast:
+	$(MAKE) compiler-power-gate
+	$(MAKE) test
+	$(MAKE) test-runtime
+	@printf '\nMaximum fast compiler gate passed.\n'
+
+# Full local reliability gate: strict debug/release verification, runtime
+# fixtures, continuous fuzzing, and the sanitizer regression suite.
+.PHONY: compiler-gate
+compiler-gate: compiler-release-criteria
+	$(MAKE) test-build-invalidation test-packaging-matrix
+	$(MAKE) verify
+	$(MAKE) test-runtime
+	$(MAKE) FUZZ_SECONDS=60 fuzz-continuous
+	$(MAKE) test-sanitizers
+	@printf '\nFull local compiler gate passed.\n'
+
+# Rebuild the native frontend twice with the compiler being rebuilt, then
+# require stable generated C and smoke-check the final stage2 executable.
+.PHONY: compiler-selfhost-gate
+compiler-selfhost-gate: $(TARGET_BIN)
+	@mkdir -p "$(SELFHOST_DIR)"
+	@printf '\n[SELFHOST] stage0 generates the stage1 API\n'
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(TARGET_BIN) \
+		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
+		-o "$(SELFHOST_STAGE1_C)"
+	$(MAKE) BUILD="$(SELFHOST_STAGE1_BUILD)" \
+		NATIVE_FRONTEND_COMPILER="$(abspath $(TARGET_BIN))" \
+		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE1_C))" all
+	@printf '\n[SELFHOST] stage1 regenerates the stage2 API\n'
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(SELFHOST_STAGE1_BIN) \
+		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
+		-o "$(SELFHOST_STAGE2_C)"
+	@cmp -s "$(SELFHOST_STAGE1_C)" "$(SELFHOST_STAGE2_C)" || \
+		{ printf 'stage1 API output differs from stage0 output\n'; exit 1; }
+	@printf '[SELFHOST] stage0 and stage1 API output match\n'
+	$(MAKE) BUILD="$(SELFHOST_STAGE2_BUILD)" \
+		NATIVE_FRONTEND_COMPILER="$(abspath $(SELFHOST_STAGE1_BIN))" \
+		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE2_C))" all
+	@printf '\n[SELFHOST] stage2 checks the compiler API\n'
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(SELFHOST_STAGE2_BIN) \
+		check "$(NATIVE_FRONTEND_ENTRY)" --quiet
+	@printf '\n[SELFHOST] stage2 compiles a representative source\n'
+	$(SELFHOST_STAGE2_BIN) compile "$(TEST_DIR)/native_selfhost_smoke.vit" \
+		--emit-c --quiet --no-color -o "$(SELFHOST_DIR)/stage2-smoke.c"
+	@printf '\nNative compiler self-host gate passed.\n'
+
 # -----------------------------------------------------------------------------
 # Complete test suite
 # -----------------------------------------------------------------------------
@@ -833,12 +1176,20 @@ test: \
 	test-diagnostic-fuzz \
 	test-diagnostic-golden \
 	test-diagnostic-formats \
+	test-diagnostic-help \
+	test-diagnostic-parity \
+	test-bootstrap-regressions \
 	test-source-map \
 	test-grammar \
 	test-frontend-tokens \
 	test-frontend-fuzz \
+	test-config-fuzz \
+	test-robustness \
 	test-sema \
+	test-native-frontend-subset \
 	test-imports \
+	test-import-fuzz \
+	test-concurrent \
 	test-scale \
 	test-frontend \
 	test-corpus
@@ -854,10 +1205,14 @@ test-sanitizers:
 	$(MAKE) MODE=asan -j4 all
 	$(MAKE) MODE=asan \
 		test-source \
+		test-import-fuzz \
+		test-concurrent \
 		test-diagnostic \
 		test-diagnostic-fuzz \
 		test-frontend-tokens \
 		test-frontend-fuzz \
+		test-config-fuzz \
+		test-robustness \
 		test-diagnostic-golden
 	@printf '\nASan/UBSan tests completed successfully.\n'
 
@@ -1065,6 +1420,13 @@ macos-verify: macos-arm64-bin
 # Help
 # =============================================================================
 
+.PHONY: docs-site docs-site-check
+docs-site:
+	python3 scripts/generate_site_audits.py --write
+
+docs-site-check:
+	python3 scripts/generate_site_audits.py --check
+
 .PHONY: help
 help:
 	@printf '%s\n' \
@@ -1084,16 +1446,31 @@ help:
 		'  make compile FILE=x.vit      Run vitte build' \
 		'  make vitte-check FILE=x.vit  Run vitte check' \
 		'  make emit-c FILE=x.vit       Generate C17 source' \
+		'  make native-frontend         Compile the native frontend archive' \
+		'                               (also linked by the default build)' \
+		'  make compiler-selfhost-gate  Rebuild and compare native compiler stages' \
 		'' \
 		'Verification:' \
+		'  make docs-site               Regenerate static site audits and metadata' \
+		'  make docs-site-check         Check generated site audits and metadata' \
 		'  make check                   Syntax-check every C source' \
 		'  make test                    Run complete test suite' \
 		'  make test-corpus             Run corpus tests' \
 		'  make test-grammar            Run grammar tests' \
 		'  make test-sema               Run semantic tests' \
 		'  make test-imports            Run import/export tests' \
+		'  make test-import-fuzz        Run import graph fuzzing tests' \
+		'  make test-config-fuzz        Fuzz configuration adapters' \
+		'  make test-robustness         Check allocation, size and path limits' \
+		'  make fuzz-continuous         Repeat lexer/parser/import/config fuzzing' \
+		'  make test-concurrent        Run repeated concurrent compilation tests' \
 		'  make test-scale              Compile large Vitte source stress cases' \
 		'  make test-runtime            Build runtime test programs' \
+		'  make test-diagnostic-parity  Compare diagnostic output formats and explain codes' \
+		'  make test-build-invalidation Check incremental rebuild dependencies' \
+		'  make test-packaging-matrix     Check cross-platform package targets' \
+		'  make compiler-release-criteria Require diagnostic and compiler-path ownership' \
+		'  make compiler-power-gate       Run the focused compiler reliability gate' \
 		'  make test-sanitizers         Run sanitizer tests' \
 		'  make verify                  Debug + tests + release verification' \
 		'' \

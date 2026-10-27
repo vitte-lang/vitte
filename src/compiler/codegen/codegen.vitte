@@ -1,0 +1,753 @@
+/// Native Vitte implementation of the code-generation orchestration API.
+/// The public records and procedures preserve the C ABI in codegen.h so the
+/// native driver and existing ABI clients share the same codegen contract.
+space compiler::codegen::codegen;
+
+use compiler::api::version::{version_architecture, version_platform};
+use vitte::core::memory::{allocate, copy, deallocate, fill};
+
+const VITTE_CODEGEN_MAGIC: u64 = 0x564954434F444547;
+const VITTE_CODEGEN_DEAD_MAGIC: u64 = 0x44454144434F4445;
+const VITTE_CODEGEN_FNV_OFFSET: u64 = 14695981039346656037;
+const VITTE_CODEGEN_FNV_PRIME: u64 = 1099511628211;
+const VITTE_CODEGEN_DEFAULT_MAX_ERRORS: usize = 100;
+const VITTE_CODEGEN_DEFAULT_MAX_UNITS: usize = 65536;
+const VITTE_CODEGEN_DEFAULT_INITIAL_UNIT_CAPACITY: usize = 16;
+
+export pick CodegenError {
+    None,
+    InvalidCodegen,
+    InvalidArgument,
+    InvalidState,
+    InvalidConfig,
+    InvalidTarget,
+    InvalidBackend,
+    DuplicateUnit,
+    TooManyUnits,
+    TooManyErrors,
+    Output,
+    OutputLimit,
+    Overflow,
+    OutOfMemory,
+    Unsupported,
+    Cancelled,
+    Backend,
+    Internal,
+    Corruption,
+    Count
+}
+
+export pick CodegenState {
+    Invalid,
+    Ready,
+    Prepared,
+    Generating,
+    Finished,
+    Failed,
+    Cancelled,
+    Destroyed,
+    Count
+}
+
+export pick CodegenBackendKind { Invalid, C17, Native, Bytecode, Count }
+export pick CodegenArch { Invalid, X8664, Aarch64, Riscv64, Wasm32, Host, Count }
+export pick CodegenOs { Invalid, Linux, Macos, Windows, Freebsd, None, Host, Count }
+export pick CodegenAbi { Invalid, Sysv, Win64, Aapcs64, Wasm, Freestanding, Host, Count }
+export pick CodegenEndian { Invalid, Little, Big, Count }
+export pick CodegenOptimization { Invalid, None, Debug, Balanced, Speed, Size, Aggressive, Count }
+export pick CodegenSeverity { Invalid, Note, Warning, Error, Count }
+
+export form CodegenSourceLocation {
+    file_id: u32,
+    begin: usize,
+    end: usize,
+    valid: bool
+}
+
+export form CodegenTarget {
+    architecture: CodegenArch,
+    operating_system: CodegenOs,
+    abi: CodegenAbi,
+    endian: CodegenEndian,
+    pointer_bits: u32,
+    size_bits: u32,
+    char_bits: u32,
+    hosted: bool
+}
+
+export form CodegenConfig {
+    backend: CodegenBackendKind,
+    optimization: CodegenOptimization,
+    max_units: usize,
+    max_errors: usize,
+    max_output_bytes: usize,
+    deterministic: bool,
+    emit_debug_info: bool,
+    emit_source_map: bool,
+    emit_comments: bool,
+    runtime_checks: bool,
+    bounds_checks: bool,
+    null_checks: bool,
+    overflow_checks: bool,
+    fail_fast: bool
+}
+
+export form CodegenUnit {
+    id: u64,
+    name: *const char,
+    input: *const u8,
+    location: CodegenSourceLocation
+}
+
+export type CodegenDiagnosticFn = proc(
+    user_data: *mut u8,
+    severity: CodegenSeverity,
+    error: CodegenError,
+    message: *const char,
+    location: CodegenSourceLocation
+) -> void;
+
+export type CodegenBackendPrepareFn = proc(codegen: *mut Codegen, backend_data: *mut u8) -> bool;
+export type CodegenBackendBeginFn = proc(codegen: *mut Codegen, backend_data: *mut u8) -> bool;
+export type CodegenBackendEmitUnitFn = proc(codegen: *mut Codegen, unit: *const CodegenUnit, backend_data: *mut u8) -> bool;
+export type CodegenBackendEndFn = proc(codegen: *mut Codegen, backend_data: *mut u8) -> bool;
+export type CodegenBackendDestroyFn = proc(backend_data: *mut u8) -> void;
+
+export form CodegenBackendInterface {
+    prepare: ?CodegenBackendPrepareFn,
+    begin: ?CodegenBackendBeginFn,
+    emit_unit: ?CodegenBackendEmitUnitFn,
+    end: ?CodegenBackendEndFn,
+    destroy: ?CodegenBackendDestroyFn
+}
+
+export form CodegenStats {
+    unit_count: usize,
+    generated_unit_count: usize,
+    error_count: usize,
+    warning_count: usize,
+    note_count: usize,
+    output_bytes: usize,
+    input_fingerprint: u64,
+    prepared: bool,
+    generated: bool,
+    failed: bool,
+    cancelled: bool
+}
+
+export form Codegen {
+    magic: u64,
+    state: CodegenState,
+    last_error: CodegenError,
+    config: CodegenConfig,
+    target: CodegenTarget,
+    units: *mut CodegenUnit,
+    unit_count: usize,
+    unit_capacity: usize,
+    backend_interface: CodegenBackendInterface,
+    backend_data: *mut u8,
+    diagnostic_callback: ?CodegenDiagnosticFn,
+    diagnostic_data: *mut u8,
+    stats: CodegenStats,
+    generation: u64
+}
+
+proc codegen_size_add(left: usize, right: usize, result: *mut usize) -> bool {
+    if result == null or left > usize.MAX - right { return false; }
+    set *result = left + right;
+    return true;
+}
+
+proc codegen_size_mul(left: usize, right: usize, result: *mut usize) -> bool {
+    if result == null or (left != 0 and right > usize.MAX / left) { return false; }
+    set *result = left * right;
+    return true;
+}
+
+proc codegen_hash_byte(hash: u64, byte: u8) -> u64 {
+    return (hash ^ (byte as u64)).wrapping_mul(VITTE_CODEGEN_FNV_PRIME);
+}
+
+proc codegen_hash_u64(hash: u64, value: u64) -> u64 {
+    let mut result = hash;
+    let mut shift: u32 = 0;
+    while shift < 64 {
+        set result = codegen_hash_byte(result, ((value >> shift) & 255) as u8);
+        set shift += 8;
+    }
+    return result;
+}
+
+proc codegen_hash_c_string(hash: u64, text: *const u8) -> u64 {
+    if text == null { return codegen_hash_u64(hash, 18446744073709551615); }
+    let mut result = hash;
+    let mut index: usize = 0;
+    while text[index] != 0 {
+        set result = codegen_hash_byte(result, text[index]);
+        set index += 1;
+    }
+    return codegen_hash_u64(result, 0);
+}
+
+proc codegen_location_empty() -> CodegenSourceLocation {
+    return CodegenSourceLocation { file_id: 0, begin: 0, end: 0, valid: false };
+}
+
+proc codegen_stats_empty() -> CodegenStats {
+    return CodegenStats {
+        unit_count: 0, generated_unit_count: 0, error_count: 0,
+        warning_count: 0, note_count: 0, output_bytes: 0,
+        input_fingerprint: 0, prepared: false, generated: false,
+        failed: false, cancelled: false
+    };
+}
+
+export proc vitte_codegen_error_name(error: CodegenError) -> string {
+    match error {
+        case CodegenError.None => return "none";
+        case CodegenError.InvalidCodegen => return "invalid-codegen";
+        case CodegenError.InvalidArgument => return "invalid-argument";
+        case CodegenError.InvalidState => return "invalid-state";
+        case CodegenError.InvalidConfig => return "invalid-config";
+        case CodegenError.InvalidTarget => return "invalid-target";
+        case CodegenError.InvalidBackend => return "invalid-backend";
+        case CodegenError.DuplicateUnit => return "duplicate-unit";
+        case CodegenError.TooManyUnits => return "too-many-units";
+        case CodegenError.TooManyErrors => return "too-many-errors";
+        case CodegenError.Output => return "output";
+        case CodegenError.OutputLimit => return "output-limit";
+        case CodegenError.Overflow => return "overflow";
+        case CodegenError.OutOfMemory => return "out-of-memory";
+        case CodegenError.Unsupported => return "unsupported";
+        case CodegenError.Cancelled => return "cancelled";
+        case CodegenError.Backend => return "backend";
+        case CodegenError.Internal => return "internal";
+        case CodegenError.Corruption => return "corruption";
+        case CodegenError.Count => return "count"
+    }
+    return "invalid";
+}
+
+export proc vitte_codegen_state_name(state: CodegenState) -> string {
+    match state {
+        case CodegenState.Invalid => return "invalid";
+        case CodegenState.Ready => return "ready";
+        case CodegenState.Prepared => return "prepared";
+        case CodegenState.Generating => return "generating";
+        case CodegenState.Finished => return "finished";
+        case CodegenState.Failed => return "failed";
+        case CodegenState.Cancelled => return "cancelled";
+        case CodegenState.Destroyed => return "destroyed";
+        case CodegenState.Count => return "count"
+    }
+    return "invalid";
+}
+
+export proc vitte_codegen_backend_name(backend: CodegenBackendKind) -> string {
+    match backend {
+        case CodegenBackendKind.Invalid => return "invalid";
+        case CodegenBackendKind.C17 => return "c17";
+        case CodegenBackendKind.Native => return "native";
+        case CodegenBackendKind.Bytecode => return "bytecode";
+        case CodegenBackendKind.Count => return "count"
+    }
+    return "invalid";
+}
+
+export proc vitte_codegen_arch_name(architecture: CodegenArch) -> string {
+    match architecture {
+        case CodegenArch.Invalid => return "invalid";
+        case CodegenArch.X8664 => return "x86_64";
+        case CodegenArch.Aarch64 => return "aarch64";
+        case CodegenArch.Riscv64 => return "riscv64";
+        case CodegenArch.Wasm32 => return "wasm32";
+        case CodegenArch.Host => return "host";
+        case CodegenArch.Count => return "count"
+    }
+    return "invalid";
+}
+
+export proc vitte_codegen_os_name(operating_system: CodegenOs) -> string {
+    match operating_system {
+        case CodegenOs.Invalid => return "invalid";
+        case CodegenOs.Linux => return "linux";
+        case CodegenOs.Macos => return "macos";
+        case CodegenOs.Windows => return "windows";
+        case CodegenOs.Freebsd => return "freebsd";
+        case CodegenOs.None => return "none";
+        case CodegenOs.Host => return "host";
+        case CodegenOs.Count => return "count"
+    }
+    return "invalid";
+}
+
+export proc vitte_codegen_abi_name(abi: CodegenAbi) -> string {
+    match abi {
+        case CodegenAbi.Invalid => return "invalid";
+        case CodegenAbi.Sysv => return "sysv";
+        case CodegenAbi.Win64 => return "win64";
+        case CodegenAbi.Aapcs64 => return "aapcs64";
+        case CodegenAbi.Wasm => return "wasm";
+        case CodegenAbi.Freestanding => return "freestanding";
+        case CodegenAbi.Host => return "host";
+        case CodegenAbi.Count => return "count"
+    }
+    return "invalid";
+}
+
+export proc vitte_codegen_config_default() -> CodegenConfig {
+    return CodegenConfig {
+        backend: CodegenBackendKind.C17,
+        optimization: CodegenOptimization.None,
+        max_units: VITTE_CODEGEN_DEFAULT_MAX_UNITS,
+        max_errors: VITTE_CODEGEN_DEFAULT_MAX_ERRORS,
+        max_output_bytes: 0,
+        deterministic: true,
+        emit_debug_info: false,
+        emit_source_map: true,
+        emit_comments: false,
+        runtime_checks: true,
+        bounds_checks: true,
+        null_checks: true,
+        overflow_checks: true,
+        fail_fast: false
+    };
+}
+
+export proc vitte_codegen_target_default() -> CodegenTarget {
+    let platform = version_platform();
+    let architecture_name = version_architecture();
+    let mut operating_system: CodegenOs = CodegenOs.None;
+    let mut architecture: CodegenArch = CodegenArch.Invalid;
+
+    if platform == "windows" or platform == "win32" or platform == "win64" {
+        set operating_system = CodegenOs.Windows;
+    } elif platform == "darwin" or platform == "macos" or platform == "macosx" {
+        set operating_system = CodegenOs.Macos;
+    } elif platform == "linux" {
+        set operating_system = CodegenOs.Linux;
+    } elif platform == "freebsd" {
+        set operating_system = CodegenOs.Freebsd;
+    }
+
+    if architecture_name == "x86_64" or architecture_name == "amd64" or architecture_name == "x64" {
+        set architecture = CodegenArch.X8664;
+    } elif architecture_name == "aarch64" or architecture_name == "arm64" {
+        set architecture = CodegenArch.Aarch64;
+    } elif architecture_name == "riscv64" {
+        set architecture = CodegenArch.Riscv64;
+    } elif architecture_name == "wasm32" {
+        set architecture = CodegenArch.Wasm32;
+    }
+
+    // A C17 backend can delegate an unspecified host triple to the system C
+    // compiler. Keep that state explicit instead of rejecting the native
+    // pipeline when build metadata was not injected by the bootstrap build.
+    if architecture == CodegenArch.Invalid { set architecture = CodegenArch.Host; }
+    if operating_system == CodegenOs.None { set operating_system = CodegenOs.Host; }
+
+    let mut abi: CodegenAbi = CodegenAbi.Host;
+    if architecture == CodegenArch.X8664 {
+        set abi = CodegenAbi.Sysv;
+    } elif architecture == CodegenArch.Aarch64 {
+        set abi = CodegenAbi.Aapcs64;
+    } elif operating_system == CodegenOs.Windows {
+        set abi = CodegenAbi.Win64;
+    } elif architecture == CodegenArch.Wasm32 {
+        set abi = CodegenAbi.Wasm;
+    }
+
+    let probe: u16 = 258;
+    let probe_bytes = (&probe) as *const u16 as *const u8;
+    let endian: CodegenEndian = if probe_bytes[0] == 2 { CodegenEndian.Little } else { CodegenEndian.Big };
+    return CodegenTarget {
+        architecture: architecture,
+        operating_system: operating_system,
+        abi: abi,
+        endian: endian,
+        pointer_bits: (sizeof(*const u8) * 8) as u32,
+        size_bits: (sizeof(usize) * 8) as u32,
+        char_bits: 8,
+        hosted: true
+    };
+}
+
+export proc vitte_codegen_config_validate(config: *const CodegenConfig) -> bool {
+    if config == null { return false; }
+    return (*config).backend > CodegenBackendKind.Invalid and
+        (*config).backend < CodegenBackendKind.Count and
+        (*config).optimization > CodegenOptimization.Invalid and
+        (*config).optimization < CodegenOptimization.Count and
+        (*config).max_units != 0 and (*config).max_errors != 0;
+}
+
+export proc vitte_codegen_target_validate(target: *const CodegenTarget) -> bool {
+    if target == null { return false; }
+    return (*target).architecture > CodegenArch.Invalid and
+        (*target).architecture < CodegenArch.Count and
+        (*target).operating_system > CodegenOs.Invalid and
+        (*target).operating_system < CodegenOs.Count and
+        (*target).abi > CodegenAbi.Invalid and (*target).abi < CodegenAbi.Count and
+        (*target).endian > CodegenEndian.Invalid and (*target).endian < CodegenEndian.Count and
+        (*target).pointer_bits != 0 and (*target).size_bits != 0 and (*target).char_bits != 0;
+}
+
+export proc vitte_codegen_is_valid(codegen: *const Codegen) -> bool {
+    if codegen == null or (*codegen).magic != VITTE_CODEGEN_MAGIC { return false; }
+    if (*codegen).state <= CodegenState.Invalid or (*codegen).state >= CodegenState.Destroyed { return false; }
+    if not vitte_codegen_config_validate(&(*codegen).config) or
+       not vitte_codegen_target_validate(&(*codegen).target) or
+       (*codegen).unit_count > (*codegen).unit_capacity {
+        return false;
+    }
+    if (*codegen).unit_count != 0 and (*codegen).units == null { return false; }
+    return true;
+}
+
+proc codegen_emit_diagnostic(
+    codegen: *mut Codegen,
+    severity: CodegenSeverity,
+    error: CodegenError,
+    message: string,
+    location: CodegenSourceLocation
+) {
+    if codegen == null { return; }
+    if severity == CodegenSeverity.Note {
+        if (*codegen).stats.note_count != usize.MAX { set (*codegen).stats.note_count += 1; }
+    } elif severity == CodegenSeverity.Warning {
+        if (*codegen).stats.warning_count != usize.MAX { set (*codegen).stats.warning_count += 1; }
+    } elif severity == CodegenSeverity.Error {
+        if (*codegen).stats.error_count != usize.MAX { set (*codegen).stats.error_count += 1; }
+    }
+    if (*codegen).diagnostic_callback != null {
+        let handler: CodegenDiagnosticFn = (*codegen).diagnostic_callback?;
+        handler((*codegen).diagnostic_data, severity, error, message.as_ptr() as *const char, location);
+    }
+}
+
+proc codegen_fail(codegen: *mut Codegen, error: CodegenError, message: string) -> bool {
+    if codegen == null { return false; }
+    set (*codegen).last_error = error;
+    if error == CodegenError.Cancelled {
+        set (*codegen).state = CodegenState.Cancelled;
+        set (*codegen).stats.cancelled = true;
+    } else {
+        set (*codegen).state = CodegenState.Failed;
+        set (*codegen).stats.failed = true;
+    }
+    codegen_emit_diagnostic(codegen, CodegenSeverity.Error, error, message, codegen_location_empty());
+    return false;
+}
+
+proc codegen_reserve_units(codegen: *mut Codegen, required: usize) -> bool {
+    if required <= (*codegen).unit_capacity { return true; }
+    if required > (*codegen).config.max_units {
+        return codegen_fail(codegen, CodegenError.TooManyUnits, "code generation unit limit exceeded");
+    }
+
+    let mut capacity: usize = (*codegen).unit_capacity;
+    if capacity == 0 { set capacity = VITTE_CODEGEN_DEFAULT_INITIAL_UNIT_CAPACITY; }
+    while capacity < required {
+        if capacity > usize.MAX / 2 {
+            return codegen_fail(codegen, CodegenError.Overflow, "code generation unit capacity overflow");
+        }
+        set capacity *= 2;
+        if capacity > (*codegen).config.max_units {
+            set capacity = (*codegen).config.max_units;
+            break;
+        }
+    }
+    if capacity < required {
+        return codegen_fail(codegen, CodegenError.TooManyUnits, "code generation unit limit exceeded");
+    }
+
+    let mut bytes: usize = 0;
+    if not codegen_size_mul(capacity, sizeof(CodegenUnit), &mut bytes) {
+        return codegen_fail(codegen, CodegenError.Overflow, "code generation allocation size overflow");
+    }
+    let replacement: *mut u8 = allocate(bytes);
+    if replacement == null {
+        return codegen_fail(codegen, CodegenError.OutOfMemory, "unable to grow code generation unit storage");
+    }
+    if (*codegen).unit_count != 0 {
+        copy(replacement, (*codegen).units as *const u8, (*codegen).unit_count * sizeof(CodegenUnit));
+    }
+    deallocate((*codegen).units as *mut u8);
+    set (*codegen).units = replacement as *mut CodegenUnit;
+    set (*codegen).unit_capacity = capacity;
+    return true;
+}
+
+export proc vitte_codegen_init(codegen: *mut Codegen, config: *const CodegenConfig, target: *const CodegenTarget) -> bool {
+    if codegen == null { return false; }
+    let effective_config: CodegenConfig = if config == null { vitte_codegen_config_default() } else { *config };
+    let effective_target: CodegenTarget = if target == null { vitte_codegen_target_default() } else { *target };
+    if not vitte_codegen_config_validate(&effective_config) or not vitte_codegen_target_validate(&effective_target) {
+        return false;
+    }
+    fill(codegen as *mut u8, 0, sizeof(Codegen));
+    set (*codegen).magic = VITTE_CODEGEN_MAGIC;
+    set (*codegen).state = CodegenState.Ready;
+    set (*codegen).last_error = CodegenError.None;
+    set (*codegen).config = effective_config;
+    set (*codegen).target = effective_target;
+    set (*codegen).stats = codegen_stats_empty();
+    set (*codegen).generation = 1;
+    return true;
+}
+
+export proc vitte_codegen_destroy(codegen: *mut Codegen) {
+    if codegen == null or (*codegen).magic != VITTE_CODEGEN_MAGIC { return; }
+    if (*codegen).backend_interface.destroy != null {
+        let destroy: CodegenBackendDestroyFn = (*codegen).backend_interface.destroy?;
+        destroy((*codegen).backend_data);
+    }
+    deallocate((*codegen).units as *mut u8);
+    set (*codegen).units = null;
+    set (*codegen).unit_count = 0;
+    set (*codegen).unit_capacity = 0;
+    set (*codegen).backend_data = null;
+    set (*codegen).backend_interface = CodegenBackendInterface {};
+    set (*codegen).state = CodegenState.Destroyed;
+    set (*codegen).magic = VITTE_CODEGEN_DEAD_MAGIC;
+}
+
+export proc vitte_codegen_reset(codegen: *mut Codegen) -> bool {
+    if codegen == null or (*codegen).magic != VITTE_CODEGEN_MAGIC or (*codegen).state == CodegenState.Generating { return false; }
+    set (*codegen).unit_count = 0;
+    set (*codegen).stats = codegen_stats_empty();
+    set (*codegen).last_error = CodegenError.None;
+    set (*codegen).state = CodegenState.Ready;
+    if (*codegen).generation != 18446744073709551615 { set (*codegen).generation += 1; }
+    return true;
+}
+
+export proc vitte_codegen_set_backend(codegen: *mut Codegen, interface: *const CodegenBackendInterface, backend_data: *mut u8) -> bool {
+    if not vitte_codegen_is_valid(codegen) or interface == null or (*interface).emit_unit == null { return false; }
+    if (*codegen).state != CodegenState.Ready {
+        return codegen_fail(codegen, CodegenError.InvalidState, "backend can only be configured in ready state");
+    }
+    set (*codegen).backend_interface = *interface;
+    set (*codegen).backend_data = backend_data;
+    return true;
+}
+
+export proc vitte_codegen_set_diagnostic(codegen: *mut Codegen, diagnostic_callback: ?CodegenDiagnosticFn, user_data: *mut u8) -> bool {
+    if not vitte_codegen_is_valid(codegen) { return false; }
+    set (*codegen).diagnostic_callback = diagnostic_callback;
+    set (*codegen).diagnostic_data = user_data;
+    return true;
+}
+
+proc codegen_unit_id_exists(codegen: *const Codegen, id: u64) -> bool {
+    let mut index: usize = 0;
+    while index < (*codegen).unit_count {
+        if (*codegen).units[index].id == id { return true; }
+        set index += 1;
+    }
+    return false;
+}
+
+export proc vitte_codegen_add_unit(codegen: *mut Codegen, unit: *const CodegenUnit) -> bool {
+    if not vitte_codegen_is_valid(codegen) or unit == null or (*unit).id == 0 or
+       (*unit).name == null or (*unit).name[0] == 0 or (*unit).input == null {
+        return false;
+    }
+    if (*codegen).state != CodegenState.Ready {
+        return codegen_fail(codegen, CodegenError.InvalidState, "units can only be added in ready state");
+    }
+    if codegen_unit_id_exists(codegen, (*unit).id) {
+        return codegen_fail(codegen, CodegenError.DuplicateUnit, "duplicate code generation unit identifier");
+    }
+    let mut required: usize = 0;
+    if not codegen_size_add((*codegen).unit_count, 1, &mut required) {
+        return codegen_fail(codegen, CodegenError.Overflow, "code generation unit count overflow");
+    }
+    if not codegen_reserve_units(codegen, required) { return false; }
+    set (*codegen).units[(*codegen).unit_count] = *unit;
+    set (*codegen).unit_count = required;
+    set (*codegen).stats.unit_count = required;
+    return true;
+}
+
+export proc vitte_codegen_unit_count(codegen: *const Codegen) -> usize {
+    if not vitte_codegen_is_valid(codegen) { return 0; }
+    return (*codegen).unit_count;
+}
+
+export proc vitte_codegen_unit_at(codegen: *const Codegen, index: usize) -> *const CodegenUnit {
+    if not vitte_codegen_is_valid(codegen) or index >= (*codegen).unit_count { return null; }
+    return (&(*codegen).units[index]) as *const CodegenUnit;
+}
+
+export proc vitte_codegen_fingerprint(codegen: *const Codegen) -> u64 {
+    if not vitte_codegen_is_valid(codegen) { return 0; }
+    let mut hash = VITTE_CODEGEN_FNV_OFFSET;
+    set hash = codegen_hash_u64(hash, (*codegen).config.backend as u64);
+    set hash = codegen_hash_u64(hash, (*codegen).config.optimization as u64);
+    set hash = codegen_hash_u64(hash, (*codegen).target.architecture as u64);
+    set hash = codegen_hash_u64(hash, (*codegen).target.operating_system as u64);
+    set hash = codegen_hash_u64(hash, (*codegen).target.abi as u64);
+    set hash = codegen_hash_u64(hash, (*codegen).target.endian as u64);
+    set hash = codegen_hash_u64(hash, (*codegen).target.pointer_bits as u64);
+    set hash = codegen_hash_u64(hash, (*codegen).target.size_bits as u64);
+    let mut index: usize = 0;
+    while index < (*codegen).unit_count {
+        let unit: &CodegenUnit = &(*codegen).units[index];
+        set hash = codegen_hash_u64(hash, (*unit).id);
+        set hash = codegen_hash_c_string(hash, (*unit).name as *const u8);
+        // Opaque input addresses are process-specific and stay out of hashes.
+        set index += 1;
+    }
+    return hash;
+}
+
+export proc vitte_codegen_prepare(codegen: *mut Codegen) -> bool {
+    if not vitte_codegen_is_valid(codegen) { return false; }
+    if (*codegen).state != CodegenState.Ready {
+        return codegen_fail(codegen, CodegenError.InvalidState, "code generator is not in ready state");
+    }
+    if (*codegen).backend_interface.emit_unit == null {
+        return codegen_fail(codegen, CodegenError.InvalidBackend, "no code generation backend is installed");
+    }
+    if (*codegen).backend_interface.prepare != null {
+        let prepare: CodegenBackendPrepareFn = (*codegen).backend_interface.prepare?;
+        if not prepare(codegen, (*codegen).backend_data) {
+            if (*codegen).state == CodegenState.Failed or (*codegen).state == CodegenState.Cancelled { return false; }
+            return codegen_fail(codegen, CodegenError.Backend, "backend preparation failed");
+        }
+    }
+    set (*codegen).stats.input_fingerprint = vitte_codegen_fingerprint(codegen);
+    set (*codegen).stats.prepared = true;
+    set (*codegen).state = CodegenState.Prepared;
+    set (*codegen).last_error = CodegenError.None;
+    return true;
+}
+
+export proc vitte_codegen_cancel(codegen: *mut Codegen) -> bool {
+    if not vitte_codegen_is_valid(codegen) { return false; }
+    if (*codegen).state == CodegenState.Finished or (*codegen).state == CodegenState.Failed or (*codegen).state == CodegenState.Cancelled {
+        return false;
+    }
+    return codegen_fail(codegen, CodegenError.Cancelled, "code generation cancelled");
+}
+
+export proc vitte_codegen_account_output(codegen: *mut Codegen, byte_count: usize) -> bool {
+    if not vitte_codegen_is_valid(codegen) { return false; }
+    let mut total: usize = 0;
+    if not codegen_size_add((*codegen).stats.output_bytes, byte_count, &mut total) {
+        return codegen_fail(codegen, CodegenError.Overflow, "generated output byte count overflow");
+    }
+    if (*codegen).config.max_output_bytes != 0 and total > (*codegen).config.max_output_bytes {
+        return codegen_fail(codegen, CodegenError.OutputLimit, "generated output exceeds configured limit");
+    }
+    set (*codegen).stats.output_bytes = total;
+    return true;
+}
+
+export proc vitte_codegen_generate(codegen: *mut Codegen) -> bool {
+    if not vitte_codegen_is_valid(codegen) { return false; }
+    if (*codegen).state == CodegenState.Ready and not vitte_codegen_prepare(codegen) { return false; }
+    if (*codegen).state != CodegenState.Prepared {
+        return codegen_fail(codegen, CodegenError.InvalidState, "code generator is not prepared");
+    }
+
+    set (*codegen).state = CodegenState.Generating;
+    if (*codegen).backend_interface.begin != null {
+        let begin: CodegenBackendBeginFn = (*codegen).backend_interface.begin?;
+        if not begin(codegen, (*codegen).backend_data) {
+            if (*codegen).state == CodegenState.Failed or (*codegen).state == CodegenState.Cancelled { return false; }
+            return codegen_fail(codegen, CodegenError.Backend, "backend begin operation failed");
+        }
+    }
+
+    let emit_unit: CodegenBackendEmitUnitFn = (*codegen).backend_interface.emit_unit?;
+    let mut index: usize = 0;
+    while index < (*codegen).unit_count {
+        if (*codegen).state == CodegenState.Cancelled { return false; }
+        if not emit_unit(codegen, &(*codegen).units[index], (*codegen).backend_data) {
+            if (*codegen).state == CodegenState.Failed or (*codegen).state == CodegenState.Cancelled { return false; }
+            return codegen_fail(codegen, CodegenError.Backend, "backend failed to emit translation unit");
+        }
+        if (*codegen).stats.generated_unit_count != usize.MAX { set (*codegen).stats.generated_unit_count += 1; }
+        if (*codegen).stats.error_count >= (*codegen).config.max_errors {
+            return codegen_fail(codegen, CodegenError.TooManyErrors, "maximum code generation error count reached");
+        }
+        if (*codegen).config.fail_fast and (*codegen).stats.error_count != 0 {
+            return codegen_fail(codegen, CodegenError.Backend, "code generation stopped after first error");
+        }
+        set index += 1;
+    }
+
+    if (*codegen).backend_interface.end != null {
+        let end: CodegenBackendEndFn = (*codegen).backend_interface.end?;
+        if not end(codegen, (*codegen).backend_data) {
+            if (*codegen).state == CodegenState.Failed or (*codegen).state == CodegenState.Cancelled { return false; }
+            return codegen_fail(codegen, CodegenError.Backend, "backend finalization failed");
+        }
+    }
+    set (*codegen).state = CodegenState.Finished;
+    set (*codegen).last_error = CodegenError.None;
+    set (*codegen).stats.generated = true;
+    return true;
+}
+
+export proc vitte_codegen_last_error(codegen: *const Codegen) -> CodegenError {
+    if codegen == null or (*codegen).magic != VITTE_CODEGEN_MAGIC { return CodegenError.InvalidCodegen; }
+    return (*codegen).last_error;
+}
+
+export proc vitte_codegen_state(codegen: *const Codegen) -> CodegenState {
+    if codegen == null or (*codegen).magic != VITTE_CODEGEN_MAGIC { return CodegenState.Invalid; }
+    return (*codegen).state;
+}
+
+export proc vitte_codegen_stats(codegen: *const Codegen) -> CodegenStats {
+    if codegen == null or (*codegen).magic != VITTE_CODEGEN_MAGIC { return codegen_stats_empty(); }
+    return (*codegen).stats;
+}
+
+export proc vitte_codegen_is_ready(codegen: *const Codegen) -> bool {
+    return codegen != null and (*codegen).magic == VITTE_CODEGEN_MAGIC and (*codegen).state == CodegenState.Ready;
+}
+
+export proc vitte_codegen_is_prepared(codegen: *const Codegen) -> bool {
+    return codegen != null and (*codegen).magic == VITTE_CODEGEN_MAGIC and (*codegen).state == CodegenState.Prepared;
+}
+
+export proc vitte_codegen_is_generating(codegen: *const Codegen) -> bool {
+    return codegen != null and (*codegen).magic == VITTE_CODEGEN_MAGIC and (*codegen).state == CodegenState.Generating;
+}
+
+export proc vitte_codegen_is_finished(codegen: *const Codegen) -> bool {
+    return codegen != null and (*codegen).magic == VITTE_CODEGEN_MAGIC and (*codegen).state == CodegenState.Finished;
+}
+
+export proc vitte_codegen_has_failed(codegen: *const Codegen) -> bool {
+    return codegen != null and (*codegen).magic == VITTE_CODEGEN_MAGIC and (*codegen).state == CodegenState.Failed;
+}
+
+export proc vitte_codegen_is_cancelled(codegen: *const Codegen) -> bool {
+    return codegen != null and (*codegen).magic == VITTE_CODEGEN_MAGIC and (*codegen).state == CodegenState.Cancelled;
+}
+
+export proc vitte_codegen_has_errors(codegen: *const Codegen) -> bool {
+    return codegen != null and (*codegen).magic == VITTE_CODEGEN_MAGIC and (*codegen).stats.error_count != 0;
+}
+
+export proc vitte_codegen_has_warnings(codegen: *const Codegen) -> bool {
+    return codegen != null and (*codegen).magic == VITTE_CODEGEN_MAGIC and (*codegen).stats.warning_count != 0;
+}
+
+export proc vitte_codegen_target_is_64_bit(target: *const CodegenTarget) -> bool {
+    return target != null and (*target).pointer_bits == 64;
+}
+
+export proc vitte_codegen_target_is_little_endian(target: *const CodegenTarget) -> bool {
+    return target != null and (*target).endian == CodegenEndian.Little;
+}
+
+export proc vitte_codegen_target_is_big_endian(target: *const CodegenTarget) -> bool {
+    return target != null and (*target).endian == CodegenEndian.Big;
+}
+

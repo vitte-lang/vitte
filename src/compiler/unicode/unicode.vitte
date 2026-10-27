@@ -1,0 +1,640 @@
+/// Unicode implementation for the Vitte compiler, ported from the C bootstrap.
+space compiler::unicode::unicode;
+
+proc unicode_in_range(codepoint: u64, first: u64, last: u64) -> bool {
+    return codepoint >= first  and  codepoint <= last;
+}
+
+proc unicode_result(error: UnicodeError, codepoint: u64, length: usize) -> UnicodeResult {
+    return UnicodeResult { error: error, codepoint: codepoint, length: length };
+}
+
+proc unicode_is_continuation(byte: u64) -> bool {
+    return (byte & 0xc0) == 0x80;
+}
+
+export pick UnicodeError {
+    None,
+    InvalidArgument,
+    EndOfInput,
+    InvalidUtf8,
+    TruncatedUtf8,
+    OverlongUtf8,
+    Surrogate,
+    OutOfRange,
+    InvalidUtf16,
+    OutputTooSmall,
+    Overflow,
+    Count
+}
+
+export form UnicodeResult {
+    error: UnicodeError,
+    codepoint: u64,
+    length: usize
+}
+
+/// UTF-8 bytes occupy successive octets; UTF-16 units occupy 16-bit slots.
+export form UnicodeEncodedResult {
+    error: UnicodeError,
+    packed: u64,
+    length: usize
+}
+
+export form UnicodeScanResult {
+    valid: bool,
+    count: usize,
+    error_offset: usize
+}
+
+export form UnicodeCursorResult {
+    valid: bool,
+    codepoint: u64,
+    offset: usize,
+    error: UnicodeError
+}
+
+export form UnicodeWidthResult {
+    valid: bool,
+    width: usize,
+    error_offset: usize
+}
+
+export form UnicodeStats {
+    bytes: usize,
+    codepoints: usize,
+    ascii_codepoints: usize,
+    non_ascii_codepoints: usize,
+    newlines: usize,
+    whitespace_codepoints: usize,
+    combining_codepoints: usize,
+    invalid_sequences: usize,
+    first_error_offset: usize,
+    valid_utf8: bool,
+    has_bom: bool
+}
+
+export proc vitte_unicode_error_name(error: UnicodeError) -> string {
+    if error == UnicodeError.None { return "none"; }
+    if error == UnicodeError.InvalidArgument { return "invalid_argument"; }
+    if error == UnicodeError.EndOfInput { return "end_of_input"; }
+    if error == UnicodeError.InvalidUtf8 { return "invalid_utf8"; }
+    if error == UnicodeError.TruncatedUtf8 { return "truncated_utf8"; }
+    if error == UnicodeError.OverlongUtf8 { return "overlong_utf8"; }
+    if error == UnicodeError.Surrogate { return "surrogate"; }
+    if error == UnicodeError.OutOfRange { return "out_of_range"; }
+    if error == UnicodeError.InvalidUtf16 { return "invalid_utf16"; }
+    if error == UnicodeError.OutputTooSmall { return "output_too_small"; }
+    if error == UnicodeError.Overflow { return "overflow"; }
+    if error == UnicodeError.Count { return "count"; }
+    return "unknown";
+}
+
+export proc vitte_unicode_is_scalar(codepoint: u64) -> bool {
+    return codepoint <= 0x10ffff  and  not vitte_unicode_is_surrogate(codepoint);
+}
+
+export proc vitte_unicode_is_ascii(codepoint: u64) -> bool {
+    return codepoint <= 0x7f;
+}
+
+export proc vitte_unicode_is_surrogate(codepoint: u64) -> bool {
+    return unicode_in_range(codepoint, 0xd800, 0xdfff);
+}
+
+/// Decode the scalar at `offset`; `length` is the available byte count from
+/// the start of `input`. Invalid sequences consume one byte, as in stage zero.
+export proc vitte_unicode_decode_utf8(input: string, offset: usize, length: usize) -> UnicodeResult {
+    if length > len(input) as u64  or  offset > length {
+        return unicode_result(UnicodeError.InvalidArgument, 0xfffd, 0);
+    }
+    if offset == length {
+        return unicode_result(UnicodeError.EndOfInput, 0xfffd, 0);
+    }
+    let b0: u64 = (input[offset] as u8) as u64;
+    if b0 <= 0x7f { return unicode_result(UnicodeError.None, b0, 1); }
+
+    if unicode_in_range(b0, 0xc2, 0xdf) {
+        if length - offset < 2 { return unicode_result(UnicodeError.TruncatedUtf8, 0xfffd, 1); }
+        let b1: u64 = (input[offset + 1] as u8) as u64;
+        if not unicode_is_continuation(b1) {
+            return unicode_result(UnicodeError.InvalidUtf8, 0xfffd, 1);
+        }
+        return unicode_result(UnicodeError.None, ((b0 & 0x1f) << 6) | (b1 & 0x3f), 2);
+    }
+
+    if unicode_in_range(b0, 0xe0, 0xef) {
+        if length - offset < 3 { return unicode_result(UnicodeError.TruncatedUtf8, 0xfffd, 1); }
+        let b1: u64 = (input[offset + 1] as u8) as u64;
+        let b2: u64 = (input[offset + 2] as u8) as u64;
+        if not unicode_is_continuation(b1)  or  not unicode_is_continuation(b2) {
+            return unicode_result(UnicodeError.InvalidUtf8, 0xfffd, 1);
+        }
+        if b0 == 0xe0  and  b1 < 0xa0 {
+            return unicode_result(UnicodeError.OverlongUtf8, 0xfffd, 1);
+        }
+        if b0 == 0xed  and  b1 >= 0xa0 {
+            return unicode_result(UnicodeError.Surrogate, 0xfffd, 1);
+        }
+        let codepoint: u64 = ((b0 & 0x0f) << 12) |
+                             ((b1 & 0x3f) << 6) | (b2 & 0x3f);
+        if not vitte_unicode_is_scalar(codepoint) {
+            return unicode_result(UnicodeError.Surrogate, 0xfffd, 1);
+        }
+        return unicode_result(UnicodeError.None, codepoint, 3);
+    }
+
+    if unicode_in_range(b0, 0xf0, 0xf4) {
+        if length - offset < 4 { return unicode_result(UnicodeError.TruncatedUtf8, 0xfffd, 1); }
+        let b1: u64 = (input[offset + 1] as u8) as u64;
+        let b2: u64 = (input[offset + 2] as u8) as u64;
+        let b3: u64 = (input[offset + 3] as u8) as u64;
+        if not unicode_is_continuation(b1)  or  not unicode_is_continuation(b2)  or 
+           not unicode_is_continuation(b3) {
+            return unicode_result(UnicodeError.InvalidUtf8, 0xfffd, 1);
+        }
+        if b0 == 0xf0  and  b1 < 0x90 {
+            return unicode_result(UnicodeError.OverlongUtf8, 0xfffd, 1);
+        }
+        if b0 == 0xf4  and  b1 > 0x8f {
+            return unicode_result(UnicodeError.OutOfRange, 0xfffd, 1);
+        }
+        let codepoint: u64 = ((b0 & 0x07) << 18) |
+                             ((b1 & 0x3f) << 12) |
+                             ((b2 & 0x3f) << 6) | (b3 & 0x3f);
+        if codepoint > 0x10ffff {
+            return unicode_result(UnicodeError.OutOfRange, 0xfffd, 1);
+        }
+        return unicode_result(UnicodeError.None, codepoint, 4);
+    }
+
+    if b0 == 0xc0  or  b0 == 0xc1 {
+        return unicode_result(UnicodeError.OverlongUtf8, 0xfffd, 1);
+    }
+    if b0 >= 0xf5 { return unicode_result(UnicodeError.OutOfRange, 0xfffd, 1); }
+    return unicode_result(UnicodeError.InvalidUtf8, 0xfffd, 1);
+}
+
+export proc vitte_unicode_encode_utf8(codepoint: u64) -> UnicodeEncodedResult {
+    if not vitte_unicode_is_scalar(codepoint) {
+        if vitte_unicode_is_surrogate(codepoint) {
+            return UnicodeEncodedResult { error: UnicodeError.Surrogate, packed: 0, length: 0 };
+        }
+        return UnicodeEncodedResult { error: UnicodeError.OutOfRange, packed: 0, length: 0 };
+    }
+    if codepoint <= 0x7f {
+        return UnicodeEncodedResult { error: UnicodeError.None, packed: codepoint, length: 1 };
+    }
+    if codepoint <= 0x7ff {
+        let packed: u64 = (0xc0 | (codepoint >> 6)) |
+                          ((0x80 | (codepoint & 0x3f)) << 8);
+        return UnicodeEncodedResult { error: UnicodeError.None, packed: packed, length: 2 };
+    }
+    if codepoint <= 0xffff {
+        let packed: u64 = (0xe0 | (codepoint >> 12)) |
+                          ((0x80 | ((codepoint >> 6) & 0x3f)) << 8) |
+                          ((0x80 | (codepoint & 0x3f)) << 16);
+        return UnicodeEncodedResult { error: UnicodeError.None, packed: packed, length: 3 };
+    }
+    let packed: u64 = (0xf0 | (codepoint >> 18)) |
+                      ((0x80 | ((codepoint >> 12) & 0x3f)) << 8) |
+                      ((0x80 | ((codepoint >> 6) & 0x3f)) << 16) |
+                      ((0x80 | (codepoint & 0x3f)) << 24);
+    return UnicodeEncodedResult { error: UnicodeError.None, packed: packed, length: 4 };
+}
+
+export proc vitte_unicode_validate_utf8(input: string, length: usize) -> UnicodeScanResult {
+    return vitte_unicode_count_utf8(input, length);
+}
+
+export proc vitte_unicode_count_utf8(input: string, length: usize) -> UnicodeScanResult {
+    if length > len(input) as u64 {
+        return UnicodeScanResult { valid: false, count: 0, error_offset: 0 };
+    }
+    let mut offset: u64 = 0;
+    let mut count: u64 = 0;
+    while offset < length {
+        let result: UnicodeResult = vitte_unicode_decode_utf8(input, offset, length);
+        if result.error != UnicodeError.None  or  result.length == 0  or 
+           result.length > length - offset {
+            return UnicodeScanResult { valid: false, count: count, error_offset: offset };
+        }
+        if count == 18446744073709551615 {
+            return UnicodeScanResult { valid: false, count: count, error_offset: offset };
+        }
+        set offset = offset + result.length;
+        set count += 1;
+    }
+    return UnicodeScanResult { valid: true, count: count, error_offset: length };
+}
+
+export proc vitte_unicode_next_utf8(input: string, length: usize, offset: usize) -> UnicodeCursorResult {
+    let result: UnicodeResult = vitte_unicode_decode_utf8(input, offset, length);
+    if result.error != UnicodeError.None {
+        return UnicodeCursorResult {
+            valid: false, codepoint: 0xfffd, offset: offset, error: result.error
+        };
+    }
+    return UnicodeCursorResult {
+        valid: true,
+        codepoint: result.codepoint,
+        offset: offset + result.length,
+        error: UnicodeError.None
+    };
+}
+
+export proc vitte_unicode_previous_utf8(input: string, length: usize, offset: usize) -> UnicodeCursorResult {
+    if length > len(input) as u64  or  offset == 0  or  offset > length {
+        return UnicodeCursorResult {
+            valid: false, codepoint: 0xfffd, offset: offset, error: UnicodeError.InvalidArgument
+        };
+    }
+    let mut start: u64 = offset - 1;
+    let mut continuation_count: u64 = 0;
+    while start > 0  and  unicode_is_continuation((input[start] as u8) as u64) {
+        set continuation_count += 1;
+        if continuation_count > 3 {
+            return UnicodeCursorResult {
+                valid: false, codepoint: 0xfffd, offset: offset, error: UnicodeError.InvalidUtf8
+            };
+        }
+        set start -= 1;
+    }
+    let result: UnicodeResult = vitte_unicode_decode_utf8(input, start, offset);
+    if result.error != UnicodeError.None {
+        return UnicodeCursorResult {
+            valid: false, codepoint: 0xfffd, offset: offset, error: result.error
+        };
+    }
+    if result.length != offset - start {
+        return UnicodeCursorResult {
+            valid: false, codepoint: 0xfffd, offset: offset, error: UnicodeError.InvalidUtf8
+        };
+    }
+    return UnicodeCursorResult {
+        valid: true, codepoint: result.codepoint, offset: start, error: UnicodeError.None
+    };
+}
+
+export proc vitte_unicode_utf8_length(codepoint: u64) -> usize {
+    if not vitte_unicode_is_scalar(codepoint) { return 0; }
+    if codepoint <= 0x7f { return 1; }
+    if codepoint <= 0x7ff { return 2; }
+    if codepoint <= 0xffff { return 3; }
+    return 4;
+}
+
+export proc vitte_unicode_decode_utf16(first: u64, second: u64, has_second: bool) -> UnicodeResult {
+    if first > 0xffff  or  (has_second  and  second > 0xffff) {
+        return unicode_result(UnicodeError.InvalidArgument, 0xfffd, 0);
+    }
+    if unicode_in_range(first, 0xd800, 0xdbff) {
+        if not has_second  or  not unicode_in_range(second, 0xdc00, 0xdfff) {
+            return unicode_result(UnicodeError.InvalidUtf16, 0xfffd, 0);
+        }
+        let codepoint: u64 = 0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00);
+        return unicode_result(UnicodeError.None, codepoint, 2);
+    }
+    if unicode_in_range(first, 0xdc00, 0xdfff) {
+        return unicode_result(UnicodeError.InvalidUtf16, 0xfffd, 0);
+    }
+    return unicode_result(UnicodeError.None, first, 1);
+}
+
+export proc vitte_unicode_encode_utf16(codepoint: u64) -> UnicodeEncodedResult {
+    if not vitte_unicode_is_scalar(codepoint) {
+        if vitte_unicode_is_surrogate(codepoint) {
+            return UnicodeEncodedResult { error: UnicodeError.Surrogate, packed: 0, length: 0 };
+        }
+        return UnicodeEncodedResult { error: UnicodeError.OutOfRange, packed: 0, length: 0 };
+    }
+    if codepoint <= 0xffff {
+        return UnicodeEncodedResult { error: UnicodeError.None, packed: codepoint, length: 1 };
+    }
+    let value: u64 = codepoint - 0x10000;
+    let first: u64 = 0xd800 + (value >> 10);
+    let second: u64 = 0xdc00 + (value & 0x3ff);
+    return UnicodeEncodedResult {
+        error: UnicodeError.None,
+        packed: first | (second << 16),
+        length: 2
+    };
+}
+
+export proc vitte_unicode_is_ascii_alpha(codepoint: u64) -> bool {
+    return unicode_in_range(codepoint, 65, 90)  or 
+           unicode_in_range(codepoint, 97, 122);
+}
+
+export proc vitte_unicode_is_ascii_digit(codepoint: u64) -> bool {
+    return unicode_in_range(codepoint, 48, 57);
+}
+
+export proc vitte_unicode_is_ascii_alnum(codepoint: u64) -> bool {
+    return vitte_unicode_is_ascii_alpha(codepoint)  or 
+           vitte_unicode_is_ascii_digit(codepoint);
+}
+
+export proc vitte_unicode_is_ascii_hex_digit(codepoint: u64) -> bool {
+    return vitte_unicode_is_ascii_digit(codepoint)  or 
+           unicode_in_range(codepoint, 65, 70)  or 
+           unicode_in_range(codepoint, 97, 102);
+}
+
+export proc vitte_unicode_ascii_to_lower(codepoint: u64) -> u64 {
+    if unicode_in_range(codepoint, 65, 90) { return codepoint + 32; }
+    return codepoint;
+}
+
+export proc vitte_unicode_ascii_to_upper(codepoint: u64) -> u64 {
+    if unicode_in_range(codepoint, 97, 122) { return codepoint - 32; }
+    return codepoint;
+}
+
+export proc vitte_unicode_is_newline(codepoint: u64) -> bool {
+    return codepoint == 0x000a  or  codepoint == 0x000d  or 
+           codepoint == 0x0085  or  codepoint == 0x2028  or 
+           codepoint == 0x2029;
+}
+
+export proc vitte_unicode_is_whitespace(codepoint: u64) -> bool {
+    if unicode_in_range(codepoint, 0x0009, 0x000d) { return true; }
+    if codepoint == 0x0020  or  codepoint == 0x0085  or  codepoint == 0x00a0  or 
+       codepoint == 0x1680  or  codepoint == 0x2028  or  codepoint == 0x2029  or 
+       codepoint == 0x202f  or  codepoint == 0x205f  or  codepoint == 0x3000 {
+        return true;
+    }
+    return unicode_in_range(codepoint, 0x2000, 0x200a);
+}
+
+export proc vitte_unicode_is_combining_mark(codepoint: u64) -> bool {
+    return unicode_in_range(codepoint, 0x0300, 0x036f)  or 
+           unicode_in_range(codepoint, 0x0483, 0x0489)  or 
+           unicode_in_range(codepoint, 0x0591, 0x05bd)  or 
+           codepoint == 0x05bf  or 
+           unicode_in_range(codepoint, 0x05c1, 0x05c2)  or 
+           unicode_in_range(codepoint, 0x05c4, 0x05c5)  or 
+           codepoint == 0x05c7  or 
+           unicode_in_range(codepoint, 0x0610, 0x061a)  or 
+           unicode_in_range(codepoint, 0x064b, 0x065f)  or 
+           codepoint == 0x0670  or 
+           unicode_in_range(codepoint, 0x06d6, 0x06ed)  or 
+           codepoint == 0x0711  or 
+           unicode_in_range(codepoint, 0x0730, 0x074a)  or 
+           unicode_in_range(codepoint, 0x07a6, 0x07b0)  or 
+           unicode_in_range(codepoint, 0x07eb, 0x07f3)  or 
+           unicode_in_range(codepoint, 0x0816, 0x082d)  or 
+           unicode_in_range(codepoint, 0x0859, 0x085b)  or 
+           unicode_in_range(codepoint, 0x08d3, 0x0903)  or 
+           unicode_in_range(codepoint, 0x093a, 0x094f)  or 
+           unicode_in_range(codepoint, 0x0951, 0x0957)  or 
+           unicode_in_range(codepoint, 0x0962, 0x0963)  or 
+           unicode_in_range(codepoint, 0x1ab0, 0x1aff)  or 
+           unicode_in_range(codepoint, 0x1dc0, 0x1dff)  or 
+           unicode_in_range(codepoint, 0x20d0, 0x20ff)  or 
+           unicode_in_range(codepoint, 0xfe00, 0xfe0f)  or 
+           unicode_in_range(codepoint, 0xfe20, 0xfe2f)  or 
+           unicode_in_range(codepoint, 0xe0100, 0xe01ef);
+}
+
+export proc vitte_unicode_is_decimal_digit(codepoint: u64) -> bool {
+    return unicode_in_range(codepoint, 0x0030, 0x0039)  or 
+           unicode_in_range(codepoint, 0x0660, 0x0669)  or 
+           unicode_in_range(codepoint, 0x06f0, 0x06f9)  or 
+           unicode_in_range(codepoint, 0x07c0, 0x07c9)  or 
+           unicode_in_range(codepoint, 0x0966, 0x096f)  or 
+           unicode_in_range(codepoint, 0x09e6, 0x09ef)  or 
+           unicode_in_range(codepoint, 0x0a66, 0x0a6f)  or 
+           unicode_in_range(codepoint, 0x0ae6, 0x0aef)  or 
+           unicode_in_range(codepoint, 0x0b66, 0x0b6f)  or 
+           unicode_in_range(codepoint, 0x0be6, 0x0bef)  or 
+           unicode_in_range(codepoint, 0x0c66, 0x0c6f)  or 
+           unicode_in_range(codepoint, 0x0ce6, 0x0cef)  or 
+           unicode_in_range(codepoint, 0x0d66, 0x0d6f)  or 
+           unicode_in_range(codepoint, 0x0de6, 0x0def)  or 
+           unicode_in_range(codepoint, 0x0e50, 0x0e59)  or 
+           unicode_in_range(codepoint, 0x0ed0, 0x0ed9)  or 
+           unicode_in_range(codepoint, 0x0f20, 0x0f29)  or 
+           unicode_in_range(codepoint, 0x1040, 0x1049)  or 
+           unicode_in_range(codepoint, 0x17e0, 0x17e9)  or 
+           unicode_in_range(codepoint, 0x1810, 0x1819)  or 
+           unicode_in_range(codepoint, 0xff10, 0xff19);
+}
+
+export proc vitte_unicode_is_identifier_start(codepoint: u64) -> bool {
+    if codepoint == 95  or  vitte_unicode_is_ascii_alpha(codepoint) { return true; }
+    if not vitte_unicode_is_scalar(codepoint)  or 
+       vitte_unicode_is_whitespace(codepoint)  or 
+       vitte_unicode_is_decimal_digit(codepoint)  or 
+       vitte_unicode_is_combining_mark(codepoint) {
+        return false;
+    }
+    return unicode_in_range(codepoint, 0x00c0, 0x02ff)  or 
+           unicode_in_range(codepoint, 0x0370, 0x052f)  or 
+           unicode_in_range(codepoint, 0x0531, 0x08ff)  or 
+           unicode_in_range(codepoint, 0x0900, 0x1cff)  or 
+           unicode_in_range(codepoint, 0x1e00, 0x2cff)  or 
+           unicode_in_range(codepoint, 0x3040, 0x30ff)  or 
+           unicode_in_range(codepoint, 0x3100, 0x312f)  or 
+           unicode_in_range(codepoint, 0x3130, 0x318f)  or 
+           unicode_in_range(codepoint, 0x31a0, 0x31bf)  or 
+           unicode_in_range(codepoint, 0x3400, 0x4dbf)  or 
+           unicode_in_range(codepoint, 0x4e00, 0x9fff)  or 
+           unicode_in_range(codepoint, 0xac00, 0xd7a3)  or 
+           unicode_in_range(codepoint, 0xf900, 0xfaff)  or 
+           unicode_in_range(codepoint, 0xff21, 0xff3a)  or 
+           unicode_in_range(codepoint, 0xff41, 0xff5a)  or 
+           unicode_in_range(codepoint, 0x10000, 0x1d7ff)  or 
+           unicode_in_range(codepoint, 0x20000, 0x3134f);
+}
+
+export proc vitte_unicode_is_identifier_continue(codepoint: u64) -> bool {
+    return vitte_unicode_is_identifier_start(codepoint)  or 
+           vitte_unicode_is_decimal_digit(codepoint)  or 
+           vitte_unicode_is_combining_mark(codepoint)  or 
+           codepoint == 0x200c  or  codepoint == 0x200d  or 
+           codepoint == 0x203f  or  codepoint == 0x2040  or 
+           codepoint == 0x2054  or  codepoint == 0xff3f  or 
+           unicode_in_range(codepoint, 0xfe33, 0xfe34)  or 
+           unicode_in_range(codepoint, 0xfe4d, 0xfe4f);
+}
+
+export proc vitte_unicode_validate_identifier(input: string, length: usize) -> UnicodeScanResult {
+    if length == 0  or  length > len(input) as u64 {
+        return UnicodeScanResult { valid: false, count: 0, error_offset: 0 };
+    }
+    let mut offset: u64 = 0;
+    let mut count: u64 = 0;
+    while offset < length {
+        let result: UnicodeResult = vitte_unicode_decode_utf8(input, offset, length);
+        if result.error != UnicodeError.None {
+            return UnicodeScanResult { valid: false, count: count, error_offset: offset };
+        }
+        if count == 0 {
+            if not vitte_unicode_is_identifier_start(result.codepoint) {
+                return UnicodeScanResult { valid: false, count: count, error_offset: offset };
+            }
+        } else if not vitte_unicode_is_identifier_continue(result.codepoint) {
+            return UnicodeScanResult { valid: false, count: count, error_offset: offset };
+        }
+        set offset = offset + result.length;
+        set count += 1;
+    }
+    return UnicodeScanResult { valid: true, count: count, error_offset: length };
+}
+
+export proc vitte_unicode_is_control(codepoint: u64) -> bool {
+    return codepoint <= 0x001f  or  unicode_in_range(codepoint, 0x007f, 0x009f);
+}
+
+export proc vitte_unicode_is_printable(codepoint: u64) -> bool {
+    if not vitte_unicode_is_scalar(codepoint)  or  vitte_unicode_is_control(codepoint) {
+        return false;
+    }
+    if unicode_in_range(codepoint, 0xfdd0, 0xfdef) { return false; }
+    let plane_value: u64 = codepoint & 0xffff;
+    return plane_value != 0xfffe  and  plane_value != 0xffff;
+}
+
+export proc vitte_unicode_display_width(codepoint: u64) -> i64 {
+    if not vitte_unicode_is_scalar(codepoint) { return -1; }
+    if codepoint == 0 { return 0; }
+    if vitte_unicode_is_control(codepoint) { return -1; }
+    if vitte_unicode_is_combining_mark(codepoint) { return 0; }
+    if codepoint == 0x200b  or  codepoint == 0x200c  or  codepoint == 0x200d  or 
+       codepoint == 0x2060  or  codepoint == 0xfeff  or 
+       unicode_in_range(codepoint, 0xfe00, 0xfe0f)  or 
+       unicode_in_range(codepoint, 0xe0100, 0xe01ef) {
+        return 0;
+    }
+    if unicode_in_range(codepoint, 0x1100, 0x115f)  or 
+       codepoint == 0x2329  or  codepoint == 0x232a  or 
+       unicode_in_range(codepoint, 0x2e80, 0xa4cf)  or 
+       unicode_in_range(codepoint, 0xac00, 0xd7a3)  or 
+       unicode_in_range(codepoint, 0xf900, 0xfaff)  or 
+       unicode_in_range(codepoint, 0xfe10, 0xfe19)  or 
+       unicode_in_range(codepoint, 0xfe30, 0xfe6f)  or 
+       unicode_in_range(codepoint, 0xff00, 0xff60)  or 
+       unicode_in_range(codepoint, 0xffe0, 0xffe6)  or 
+       unicode_in_range(codepoint, 0x1f300, 0x1faff)  or 
+       unicode_in_range(codepoint, 0x20000, 0x3fffd) {
+        return 2;
+    }
+    return 1;
+}
+
+export proc vitte_unicode_utf8_display_width(
+    input: string,
+    length: usize,
+    tab_width: usize,
+    initial_column: usize
+) -> UnicodeWidthResult {
+    if length > len(input) as u64 {
+        return UnicodeWidthResult { valid: false, width: 0, error_offset: 0 };
+    }
+    let effective_tab_width: u64 = if tab_width == 0 { 4 as u64 } else { tab_width };
+    let mut offset: u64 = 0;
+    let mut column: u64 = initial_column;
+    while offset < length {
+        let result: UnicodeResult = vitte_unicode_decode_utf8(input, offset, length);
+        if result.error != UnicodeError.None {
+            return UnicodeWidthResult { valid: false, width: 0, error_offset: offset };
+        }
+        let mut addition: u64 = 0;
+        if result.codepoint == 9 {
+            let remainder: u64 = column % effective_tab_width;
+            if remainder == 0 {
+                set addition = effective_tab_width;
+            } else {
+                set addition = effective_tab_width - remainder;
+            }
+        } else {
+            let width: i64 = vitte_unicode_display_width(result.codepoint);
+            if width > 0 { set addition = width as u64; }
+        }
+        if column > 18446744073709551615 - addition {
+            return UnicodeWidthResult { valid: false, width: 0, error_offset: offset };
+        }
+        set column = column + addition;
+        set offset = offset + result.length;
+    }
+    return UnicodeWidthResult {
+        valid: true, width: column - initial_column, error_offset: length
+    };
+}
+
+export proc vitte_unicode_has_utf8_bom(input: string, length: usize) -> bool {
+    return length >= 3  and  len(input) >= 3  and 
+           (input[0] as u64) == 0xef  and 
+           (input[1] as u64) == 0xbb  and 
+           (input[2] as u64) == 0xbf;
+}
+
+export proc vitte_unicode_skip_utf8_bom(input: string, length: usize) -> usize {
+    if vitte_unicode_has_utf8_bom(input, length) { return 3; }
+    return 0;
+}
+
+export proc vitte_unicode_hash_utf8(input: string, length: usize) -> u64 {
+    if length > len(input) as u64 { return 0; }
+    let mut hash: u64 = 14695981039346656037;
+    let mut index: u64 = 0;
+    while index < length {
+        set hash = (hash ^ ((input[index] as u8) as u64)) * 1099511628211;
+        set index += 1;
+    }
+    return hash;
+}
+
+export proc vitte_unicode_analyze_utf8(input: string, length: usize, stats: *mut UnicodeStats) -> bool {
+    if stats == null or length > len(input) as u64 {
+        return false;
+    }
+    set *stats = UnicodeStats {
+        bytes: length,
+        codepoints: 0,
+        ascii_codepoints: 0,
+        non_ascii_codepoints: 0,
+        newlines: 0,
+        whitespace_codepoints: 0,
+        combining_codepoints: 0,
+        invalid_sequences: 0,
+        first_error_offset: length,
+        valid_utf8: true,
+        has_bom: vitte_unicode_has_utf8_bom(input, length)
+    };
+
+    let mut offset: usize = 0;
+    while offset < length {
+        let decoded = vitte_unicode_decode_utf8(input, offset, length);
+        if decoded.error != UnicodeError.None or decoded.length == 0 or decoded.length > length - offset {
+            if (*stats).invalid_sequences == 0 {
+                set (*stats).first_error_offset = offset;
+            }
+            set (*stats).invalid_sequences += 1;
+            set (*stats).valid_utf8 = false;
+            set offset += if decoded.length == 0 { 1 as usize } else { decoded.length };
+            continue;
+        }
+
+        set (*stats).codepoints += 1;
+        if decoded.codepoint <= 0x7f {
+            set (*stats).ascii_codepoints += 1;
+        } else {
+            set (*stats).non_ascii_codepoints += 1;
+        }
+        if vitte_unicode_is_newline(decoded.codepoint) {
+            set (*stats).newlines += 1;
+        }
+        if vitte_unicode_is_whitespace(decoded.codepoint) {
+            set (*stats).whitespace_codepoints += 1;
+        }
+        if vitte_unicode_is_combining_mark(decoded.codepoint) {
+            set (*stats).combining_codepoints += 1;
+        }
+        set offset += decoded.length;
+    }
+    return (*stats).valid_utf8;
+}
+
+export proc vitte_unicode_translation_unit_anchor() {}

@@ -1,0 +1,24 @@
+/// Accès borné aux octets d'une chaîne Vitte.
+space core::str::bytes;
+
+export proc str_byte_length(value: str) -> usize { return value.length; }
+
+export proc str_byte_at(value: str, index: usize) -> ?u8 {
+    if index >= value.length { return null; }
+    return value[index] as u8;
+}
+
+export proc str_copy_bytes(value: str, destination: &mut [u8]) -> usize {
+    let mut count: usize = value.length;
+    if destination.len() < count { set count = destination.len(); }
+    for index in 0..count { set destination[index] = value[index] as u8; }
+    return count;
+}
+
+export proc str_equal_bytes(left: str, right: str) -> bool {
+    if left.length != right.length { return false; }
+    for index in 0..left.length {
+        if left[index] != right[index] { return false; }
+    }
+    return true;
+}

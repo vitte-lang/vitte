@@ -1,0 +1,340 @@
+space core::array::iterator
+
+/// Parcourt chaque élément d'un tableau.
+proc array_for_each<T>(
+    array: &[T],
+    callback: proc(&T)
+) {
+    for i in 0..array.len() {
+        callback(&array[i]);
+    }
+}
+
+/// Parcourt chaque élément avec son indice.
+proc array_for_each_indexed<T>(
+    array: &[T],
+    callback: proc(usize, &T)
+) {
+    for i in 0..array.len() {
+        callback(i, &array[i]);
+    }
+}
+
+/// Parcourt les éléments dans l'ordre inverse.
+proc array_for_each_reverse<T>(
+    array: &[T],
+    callback: proc(&T)
+) {
+    let mut i: usize = array.len();
+
+    while i > 0 {
+        set i = i - 1;
+        callback(&array[i]);
+    }
+}
+
+/// Vérifie si tous les éléments satisfont un prédicat.
+proc array_all<T>(
+    array: &[T],
+    predicate: proc(&T) -> bool
+) -> bool {
+    for i in 0..array.len() {
+        if not predicate(&array[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// Vérifie si au moins un élément satisfait un prédicat.
+proc array_any<T>(
+    array: &[T],
+    predicate: proc(&T) -> bool
+) -> bool {
+    for i in 0..array.len() {
+        if predicate(&array[i]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// Vérifie qu'aucun élément ne satisfait un prédicat.
+proc array_none<T>(
+    array: &[T],
+    predicate: proc(&T) -> bool
+) -> bool {
+    return not array_any(array, predicate);
+}
+
+/// Compte les éléments satisfaisant un prédicat.
+proc array_count_if<T>(
+    array: &[T],
+    predicate: proc(&T) -> bool
+) -> usize {
+    let mut count: usize = 0;
+
+    for i in 0..array.len() {
+        if predicate(&array[i]) {
+            set count = count + 1;
+        }
+    }
+
+    return count;
+}
+
+/// Recherche le premier indice satisfaisant un prédicat.
+/// Retourne -1 si aucun élément ne correspond.
+proc array_find_index<T>(
+    array: &[T],
+    predicate: proc(&T) -> bool
+) -> isize {
+    for i in 0..array.len() {
+        if predicate(&array[i]) {
+            return i as isize;
+        }
+    }
+
+    return -1;
+}
+
+/// Recherche le dernier indice satisfaisant un prédicat.
+proc array_find_last_index<T>(
+    array: &[T],
+    predicate: proc(&T) -> bool
+) -> isize {
+    let mut i: usize = array.len();
+
+    while i > 0 {
+        set i = i - 1;
+
+        if predicate(&array[i]) {
+            return i as isize;
+        }
+    }
+
+    return -1;
+}
+
+/// Compte les éléments consécutifs satisfaisant un prédicat
+/// depuis le début du tableau.
+proc array_take_while_count<T>(
+    array: &[T],
+    predicate: proc(&T) -> bool
+) -> usize {
+    let mut count: usize = 0;
+
+    for i in 0..array.len() {
+        if not predicate(&array[i]) {
+            return count;
+        }
+
+        set count = count + 1;
+    }
+
+    return count;
+}
+
+/// Compte les éléments consécutifs ne satisfaisant pas
+/// un prédicat depuis le début du tableau.
+proc array_skip_while_count<T>(
+    array: &[T],
+    predicate: proc(&T) -> bool
+) -> usize {
+    for i in 0..array.len() {
+        if not predicate(&array[i]) {
+            return i;
+        }
+    }
+
+    return array.len();
+}
+
+/// Applique une transformation à chaque élément.
+/// Les tableaux source et destination peuvent avoir
+/// des tailles différentes.
+proc array_map<T, U>(
+    source: &[T],
+    destination: &mut [U],
+    transform: proc(&T) -> U
+) -> usize {
+    let mut limit: usize = source.len();
+
+    if destination.len() < limit {
+        set limit = destination.len();
+    }
+
+    for i in 0..limit {
+        set destination[i] = transform(&source[i]);
+    }
+
+    return limit;
+}
+
+/// Copie dans destination les éléments acceptés
+/// par le prédicat, sans dépasser sa capacité.
+proc array_filter<T>(
+    source: &[T],
+    destination: &mut [T],
+    predicate: proc(&T) -> bool
+) -> usize {
+    let mut written: usize = 0;
+
+    for i in 0..source.len() {
+        if predicate(&source[i]) {
+            if written >= destination.len() {
+                return written;
+            }
+
+            set destination[written] = source[i];
+            set written = written + 1;
+        }
+    }
+
+    return written;
+}
+
+/// Réduit un tableau à une valeur unique.
+proc array_fold<T, U>(
+    array: &[T],
+    initial: U,
+    reducer: proc(U, &T) -> U
+) -> U {
+    let mut accumulator: U = initial;
+
+    for i in 0..array.len() {
+        set accumulator = reducer(accumulator, &array[i]);
+    }
+
+    return accumulator;
+}
+
+/// Réduit un tableau en partant du dernier élément.
+proc array_fold_right<T, U>(
+    array: &[T],
+    initial: U,
+    reducer: proc(U, &T) -> U
+) -> U {
+    let mut accumulator: U = initial;
+    let mut i: usize = array.len();
+
+    while i > 0 {
+        set i = i - 1;
+        set accumulator = reducer(accumulator, &array[i]);
+    }
+
+    return accumulator;
+}
+
+/// Parcourt simultanément deux tableaux.
+/// Le parcours s'arrête à la fin du plus court.
+proc array_zip_for_each<T, U>(
+    left: &[T],
+    right: &[U],
+    callback: proc(&T, &U)
+) {
+    let mut limit: usize = left.len();
+
+    if right.len() < limit {
+        set limit = right.len();
+    }
+
+    for i in 0..limit {
+        callback(&left[i], &right[i]);
+    }
+}
+
+/// Vérifie si deux tableaux satisfont une relation
+/// élément par élément.
+proc array_equal_by<T, U>(
+    left: &[T],
+    right: &[U],
+    comparator: proc(&T, &U) -> bool
+) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    for i in 0..left.len() {
+        if not comparator(&left[i], &right[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// Parcourt un tableau en sautant un nombre fixe d'éléments.
+/// Un pas nul est refusé.
+proc array_step_by<T>(
+    array: &[T],
+    step: usize,
+    callback: proc(&T)
+) {
+    if step == 0 {
+        return;
+    }
+
+    let mut i: usize = 0;
+
+    while i < array.len() {
+        callback(&array[i]);
+
+        if step >= array.len() - i {
+            return;
+        }
+
+        set i = i + step;
+    }
+}
+
+/// Parcourt les éléments compris dans une plage.
+proc array_for_each_range<T>(
+    array: &[T],
+    start: usize,
+    end: usize,
+    callback: proc(&T)
+) {
+    let mut begin: usize = start;
+    let mut limit: usize = end;
+
+    if begin > array.len() {
+        set begin = array.len();
+    }
+
+    if limit > array.len() {
+        set limit = array.len();
+    }
+
+    for i in begin..limit {
+        callback(&array[i]);
+    }
+}
+
+/// Classe les éléments en trois catégories selon
+/// le résultat d'un comparateur.
+proc array_partition_count<T>(
+    array: &[T],
+    comparator: proc(&T) -> i32,
+    less: &mut usize,
+    equal: &mut usize,
+    greater: &mut usize
+) {
+    set *less = 0;
+    set *equal = 0;
+    set *greater = 0;
+
+    for i in 0..array.len() {
+        let result: i32 = comparator(&array[i]);
+
+        if result < 0 {
+            set *less = *less + 1;
+        } elif result == 0 {
+            set *equal = *equal + 1;
+        } else {
+            set *greater = *greater + 1;
+        }
+    }
+}

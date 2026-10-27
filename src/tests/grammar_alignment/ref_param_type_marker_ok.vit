@@ -44,21 +44,21 @@ form Record {
 proc read_i64(
     value: &i64
 ) -> i64 {
-    give value;
+    return value;
 }
 
 /// Reference to an unsigned integer.
 proc read_u64(
     value: &u64
 ) -> u64 {
-    give value;
+    return value;
 }
 
 /// Reference to a boolean.
 proc read_bool(
     value: &bool
 ) -> bool {
-    give value;
+    return value;
 }
 
 /// Multiple reference parameters of the same type.
@@ -66,7 +66,7 @@ proc add_refs(
     left: &i64,
     right: &i64
 ) -> i64 {
-    give left + right;
+    return left + right;
 }
 
 /// Multiple reference parameters with different primitive types.
@@ -75,8 +75,8 @@ proc validate_values(
     value: &i64,
     enabled: &bool
 ) -> bool {
-    give id == 42 &&
-         value == 42 &&
+    return id == 42 and
+         value == 42 and
          enabled;
 }
 
@@ -84,7 +84,7 @@ proc validate_values(
 proc point_sum(
     point: &Point
 ) -> i64 {
-    give point.x + point.y;
+    return point.x + point.y;
 }
 
 /// Multiple references to user-defined forms.
@@ -92,7 +92,7 @@ proc pair_sum(
     first: &Pair,
     second: &Pair
 ) -> i64 {
-    give first.left +
+    return first.left +
          first.right +
          second.left +
          second.right;
@@ -102,8 +102,8 @@ proc pair_sum(
 proc validate_record(
     record: &Record
 ) -> bool {
-    give record.id == 42 &&
-         record.value == 42 &&
+    return record.id == 42 and
+         record.value == 42 and
          record.enabled;
 }
 
@@ -113,20 +113,20 @@ proc validate_record(
 proc forward_i64(
     value: &i64
 ) -> i64 {
-    give read_i64(value);
+    return read_i64(value);
 }
 
 /// Forward through several procedures.
 proc forward_i64_level_two(
     value: &i64
 ) -> i64 {
-    give forward_i64(value);
+    return forward_i64(value);
 }
 
 proc forward_i64_level_three(
     value: &i64
 ) -> i64 {
-    give forward_i64_level_two(value);
+    return forward_i64_level_two(value);
 }
 
 /// Forward several references.
@@ -134,21 +134,21 @@ proc forward_add(
     left: &i64,
     right: &i64
 ) -> i64 {
-    give add_refs(left, right);
+    return add_refs(left, right);
 }
 
 /// Reference parameter used in an expression.
 proc reference_expression(
     value: &i64
 ) -> i64 {
-    give value + 1;
+    return value + 1;
 }
 
 /// Reference parameter used repeatedly.
 proc repeated_reference_read(
     value: &i64
 ) -> i64 {
-    give value +
+    return value +
          value +
          value;
 }
@@ -158,10 +158,10 @@ proc reference_in_condition(
     value: &i64
 ) -> bool {
     if value == 42 {
-        give true;
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 /// Boolean reference inside control flow.
@@ -169,24 +169,24 @@ proc boolean_reference_condition(
     enabled: &bool
 ) -> i64 {
     if enabled {
-        give 42;
+        return 42;
     }
 
-    give 0;
+    return 0;
 }
 
 /// Reference to a form forwarded to another procedure.
 proc forward_point(
     point: &Point
 ) -> i64 {
-    give point_sum(point);
+    return point_sum(point);
 }
 
 /// Reference to a record forwarded to another procedure.
 proc forward_record(
     record: &Record
 ) -> bool {
-    give validate_record(record);
+    return validate_record(record);
 }
 
 /// Mix value and reference parameters.
@@ -194,7 +194,7 @@ proc add_value_and_reference(
     left: i64,
     right: &i64
 ) -> i64 {
-    give left + right;
+    return left + right;
 }
 
 /// Reference parameter after a value parameter.
@@ -203,7 +203,7 @@ proc mixed_parameter_order_a(
     value: &i64,
     suffix: i64
 ) -> i64 {
-    give prefix + value + suffix;
+    return prefix + value + suffix;
 }
 
 /// Reference parameter before value parameters.
@@ -212,7 +212,7 @@ proc mixed_parameter_order_b(
     left: i64,
     right: i64
 ) -> i64 {
-    give value + left + right;
+    return value + left + right;
 }
 
 /// Several alternating value/reference parameters.
@@ -222,14 +222,14 @@ proc alternating_parameters(
     c: i64,
     d: &i64
 ) -> i64 {
-    give a + b + c + d;
+    return a + b + c + d;
 }
 
 /// Local immutable value passed by reference.
 proc local_immutable_reference() -> i64 {
     let value: i64 = 42;
 
-    give read_i64(&value);
+    return read_i64(&value);
 }
 
 /// Local mutable value passed by reference.
@@ -238,7 +238,7 @@ proc local_mutable_reference() -> i64 {
 
     set value += 22;
 
-    give read_i64(&value);
+    return read_i64(&value);
 }
 
 /// Two locals passed by reference.
@@ -246,7 +246,7 @@ proc two_local_references() -> i64 {
     let left: i64 = 20;
     let right: i64 = 22;
 
-    give add_refs(
+    return add_refs(
         &left,
         &right);
 }
@@ -256,7 +256,7 @@ proc computed_local_references() -> i64 {
     let left: i64 = 10 + 10;
     let right: i64 = 11 + 11;
 
-    give add_refs(
+    return add_refs(
         &left,
         &right);
 }
@@ -269,7 +269,7 @@ proc local_point_reference() -> i64 {
             y: 22,
         };
 
-    give point_sum(&point);
+    return point_sum(&point);
 }
 
 /// Mutable form passed by reference after field-independent initialization.
@@ -282,7 +282,7 @@ proc local_mutable_point_reference() -> i64 {
 
     set point.x = 20;
 
-    give point_sum(&point);
+    return point_sum(&point);
 }
 
 /// Several forms passed by reference.
@@ -299,7 +299,7 @@ proc multiple_form_references() -> i64 {
             right: 11,
         };
 
-    give pair_sum(
+    return pair_sum(
         &first,
         &second);
 }
@@ -313,7 +313,7 @@ proc local_record_reference() -> bool {
             enabled: true,
         };
 
-    give validate_record(&record);
+    return validate_record(&record);
 }
 
 /// Mixed primitive references.
@@ -322,7 +322,7 @@ proc mixed_primitive_references() -> bool {
     let value: i64 = 42;
     let enabled: bool = true;
 
-    give validate_values(
+    return validate_values(
         &id,
         &value,
         &enabled);
@@ -332,7 +332,7 @@ proc mixed_primitive_references() -> bool {
 proc deep_forwarding() -> i64 {
     let value: i64 = 42;
 
-    give forward_i64_level_three(
+    return forward_i64_level_three(
         &value);
 }
 
@@ -346,14 +346,14 @@ proc nested_reference_calls() -> i64 {
             &left,
             &right);
 
-    give read_i64(&sum);
+    return read_i64(&sum);
 }
 
 /// Value and reference parameters in the same call.
 proc mixed_value_reference_call() -> i64 {
     let right: i64 = 22;
 
-    give add_value_and_reference(
+    return add_value_and_reference(
         20,
         &right);
 }
@@ -382,8 +382,8 @@ proc mixed_parameter_positions() -> bool {
             5,
             &second);
 
-    give a == 42 &&
-         b == 42 &&
+    return a == 42 and
+         b == 42 and
          c == 42;
 }
 
@@ -400,8 +400,8 @@ proc repeated_calls() -> bool {
     let third: i64 =
         forward_i64_level_two(&value);
 
-    give first == 42 &&
-         second == 42 &&
+    return first == 42 and
+         second == 42 and
          third == 42;
 }
 
@@ -412,11 +412,11 @@ proc reference_nested_control_flow(
 ) -> i64 {
     if enabled {
         if value == 42 {
-            give value;
+            return value;
         }
     }
 
-    give 0;
+    return 0;
 }
 
 /// Integrated reference-type test.
@@ -438,13 +438,13 @@ proc integrated_reference_test() -> bool {
             enabled: enabled,
         };
 
-    give read_i64(&number) == 42 &&
-         read_u64(&id) == 42 &&
-         read_bool(&enabled) &&
-         point_sum(&point) == 42 &&
-         validate_record(&record) &&
-         reference_in_condition(&number) &&
-         boolean_reference_condition(&enabled) == 42 &&
+    return read_i64(&number) == 42 and
+         read_u64(&id) == 42 and
+         read_bool(&enabled) and
+         point_sum(&point) == 42 and
+         validate_record(&record) and
+         reference_in_condition(&number) and
+         boolean_reference_condition(&enabled) == 42 and
          reference_nested_control_flow(
              &number,
              &enabled) == 42;
@@ -460,92 +460,92 @@ proc main() -> int {
     let enabled: bool = true;
 
     if read_i64(&value) != 42 {
-        give 1;
+        return 1;
     }
 
     if read_u64(&unsigned_value) != 42 {
-        give 2;
+        return 2;
     }
 
-    if !read_bool(&enabled) {
-        give 3;
+    if not read_bool(&enabled) {
+        return 3;
     }
 
     if local_immutable_reference() != 42 {
-        give 4;
+        return 4;
     }
 
     if local_mutable_reference() != 42 {
-        give 5;
+        return 5;
     }
 
     if two_local_references() != 42 {
-        give 6;
+        return 6;
     }
 
     if computed_local_references() != 42 {
-        give 7;
+        return 7;
     }
 
     if local_point_reference() != 42 {
-        give 8;
+        return 8;
     }
 
     if local_mutable_point_reference() != 42 {
-        give 9;
+        return 9;
     }
 
     if multiple_form_references() != 42 {
-        give 10;
+        return 10;
     }
 
-    if !local_record_reference() {
-        give 11;
+    if not local_record_reference() {
+        return 11;
     }
 
-    if !mixed_primitive_references() {
-        give 12;
+    if not mixed_primitive_references() {
+        return 12;
     }
 
     if deep_forwarding() != 42 {
-        give 13;
+        return 13;
     }
 
     if nested_reference_calls() != 42 {
-        give 14;
+        return 14;
     }
 
     if mixed_value_reference_call() != 42 {
-        give 15;
+        return 15;
     }
 
-    if !mixed_parameter_positions() {
-        give 16;
+    if not mixed_parameter_positions() {
+        return 16;
     }
 
-    if !repeated_calls() {
-        give 17;
+    if not repeated_calls() {
+        return 17;
     }
 
-    if !reference_in_condition(&value) {
-        give 18;
+    if not reference_in_condition(&value) {
+        return 18;
     }
 
     if boolean_reference_condition(&enabled) != 42 {
-        give 19;
+        return 19;
     }
 
     if reference_expression(&value) != 43 {
-        give 20;
+        return 20;
     }
 
     if repeated_reference_read(&value) != 126 {
-        give 21;
+        return 21;
     }
 
-    if !integrated_reference_test() {
-        give 22;
+    if not integrated_reference_test() {
+        return 22;
     }
 
-    give 0;
+    return 0;
 }

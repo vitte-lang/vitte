@@ -1,0 +1,770 @@
+/// Native Vitte source mapping for transformed compiler locations.
+space compiler::diagnostic::source_map;
+
+use compiler::api::error::{Status};
+use compiler::ast::ast::{AstSpan, ast_span_invalid};
+use compiler::source::source::{SourceId};
+
+export const VITTE_SOURCE_MAP_INDEX_NONE: usize = usize.MAX;
+export const VITTE_SOURCE_MAP_TRACE_CAPACITY: usize = 64;
+
+export pick SourceMapKind {
+    Exact,
+    Token,
+    Expression,
+    Statement,
+    Declaration,
+    Synthetic,
+    Lowered,
+    Generated
+}
+
+export form SourceMapEntry {
+    kind: SourceMapKind,
+    generated: AstSpan,
+    original: AstSpan
+}
+
+export form SourceMap {
+    entries: [SourceMapEntry],
+    count: usize,
+    capacity: usize,
+    normalized: bool
+}
+
+export form SourceMapPosition {
+    source_id: SourceId,
+    source_name: *const u8,
+    offset: usize,
+    mapping_kind: SourceMapKind,
+    mapped: bool
+}
+
+export form SourceMapTraceStep {
+    kind: SourceMapKind,
+    generated: AstSpan,
+    original: AstSpan
+}
+
+export form SourceMapTrace {
+    steps: [SourceMapTraceStep; VITTE_SOURCE_MAP_TRACE_CAPACITY],
+    count: usize,
+    truncated: bool,
+    final_span: AstSpan,
+    has_final_span: bool
+}
+
+export form SourceMapValidation {
+    valid: bool,
+    entry_count: usize,
+    invalid_entry_count: usize,
+    duplicate_count: usize,
+    first_invalid_index: usize
+}
+
+export form SourceMapStatistics {
+    entry_count: usize,
+    capacity: usize,
+    generated_bytes: usize,
+    original_bytes: usize,
+    exact_length_count: usize,
+    transformed_length_count: usize,
+    zero_width_count: usize,
+    normalized: bool
+}
+
+export type SourceMapVisitor = proc(
+    entry: *const SourceMapEntry,
+    index: usize,
+    user_data: *mut u8
+) -> bool;
+
+const SOURCE_MAP_INITIAL_CAPACITY: usize = 64;
+const SOURCE_MAP_MAX_DEPTH: usize = 128;
+const SOURCE_MAP_FNV_OFFSET: u64 = 1469598103934665603;
+const SOURCE_MAP_FNV_PRIME: u64 = 1099511628211;
+
+proc source_map_kind_valid(kind: SourceMapKind) -> bool {
+    return kind >= SourceMapKind.Exact and kind <= SourceMapKind.Generated;
+}
+
+proc source_map_span_valid(span: *const AstSpan) -> bool {
+    return span != null and (*span).valid and (*span).end_offset >= (*span).start_offset;
+}
+
+proc source_map_span_length(span: *const AstSpan) -> usize {
+    if not source_map_span_valid(span) { return usize.MAX; }
+    return (*span).end_offset - (*span).start_offset;
+}
+
+proc source_map_same_source(left: *const AstSpan, right: *const AstSpan) -> bool {
+    if left == null or right == null { return false; }
+    if (*left).source_id != 0 and (*right).source_id != 0 {
+        return (*left).source_id == (*right).source_id;
+    }
+    return (*left).source_name != "" and (*right).source_name != "" and
+        (*left).source_name == (*right).source_name;
+}
+
+proc source_map_raw_name_matches(name: *const u8, text: string) -> bool {
+    if name == null or text.len() == 0 { return false; }
+    let bytes = text.bytes();
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        if name[index] != bytes[index] { return false; }
+        set index += 1;
+    }
+    return name[index] == 0;
+}
+
+proc source_map_name_order(left: string, right: string) -> i32 {
+    let left_bytes = left.bytes();
+    let right_bytes = right.bytes();
+    let mut index: usize = 0;
+    while index < left_bytes.len() and index < right_bytes.len() {
+        if left_bytes[index] < right_bytes[index] { return -1; }
+        if left_bytes[index] > right_bytes[index] { return 1; }
+        set index += 1;
+    }
+    if left_bytes.len() < right_bytes.len() { return -1; }
+    if left_bytes.len() > right_bytes.len() { return 1; }
+    return 0;
+}
+
+proc source_map_compare_source(left: *const AstSpan, right: *const AstSpan) -> i32 {
+    if left == null or right == null {
+        if left == right { return 0; }
+        return if left == null { -1 } else { 1 };
+    }
+    if (*left).source_id != 0 and (*right).source_id != 0 {
+        if (*left).source_id < (*right).source_id { return -1; }
+        if (*left).source_id > (*right).source_id { return 1; }
+    }
+    if (*left).source_name != "" and (*right).source_name != "" {
+        return source_map_name_order((*left).source_name, (*right).source_name);
+    }
+    if (*left).source_name != "" { return 1; }
+    if (*right).source_name != "" { return -1; }
+    return 0;
+}
+
+proc source_map_span_contains_offset(span: *const AstSpan, offset: usize) -> bool {
+    if not source_map_span_valid(span) { return false; }
+    if (*span).start_offset == (*span).end_offset { return offset == (*span).start_offset; }
+    return offset >= (*span).start_offset and offset < (*span).end_offset;
+}
+
+proc source_map_span_contains_span(outer: *const AstSpan, inner: *const AstSpan) -> bool {
+    if not source_map_span_valid(outer) or not source_map_span_valid(inner) or
+       not source_map_same_source(outer, inner) { return false; }
+    return (*inner).start_offset >= (*outer).start_offset and
+        (*inner).end_offset <= (*outer).end_offset;
+}
+
+proc source_map_span_overlaps(left: *const AstSpan, right: *const AstSpan) -> bool {
+    if not source_map_span_valid(left) or not source_map_span_valid(right) or
+       not source_map_same_source(left, right) { return false; }
+    let left_empty = (*left).start_offset == (*left).end_offset;
+    let right_empty = (*right).start_offset == (*right).end_offset;
+    if left_empty and right_empty { return (*left).start_offset == (*right).start_offset; }
+    if left_empty { return (*left).start_offset >= (*right).start_offset and (*left).start_offset <= (*right).end_offset; }
+    if right_empty { return (*right).start_offset >= (*left).start_offset and (*right).start_offset <= (*left).end_offset; }
+    return (*left).start_offset < (*right).end_offset and (*right).start_offset < (*left).end_offset;
+}
+
+proc source_map_span_equal(left: *const AstSpan, right: *const AstSpan) -> bool {
+    return source_map_span_valid(left) and source_map_span_valid(right) and
+        source_map_same_source(left, right) and
+        (*left).start_offset == (*right).start_offset and
+        (*left).end_offset == (*right).end_offset;
+}
+
+proc source_map_entry_valid(entry_value: *const SourceMapEntry) -> bool {
+    return entry_value != null and source_map_kind_valid((*entry_value).kind) and
+        source_map_span_valid(&(*entry_value).generated) and
+        source_map_span_valid(&(*entry_value).original);
+}
+
+proc source_map_entry_equal(left: *const SourceMapEntry, right: *const SourceMapEntry) -> bool {
+    return left != null and right != null and (*left).kind == (*right).kind and
+        source_map_span_equal(&(*left).generated, &(*right).generated) and
+        source_map_span_equal(&(*left).original, &(*right).original);
+}
+
+proc source_map_entry_compare(left: *const SourceMapEntry, right: *const SourceMapEntry) -> i32 {
+    let generated_source = source_map_compare_source(&(*left).generated, &(*right).generated);
+    if generated_source != 0 { return generated_source; }
+    if (*left).generated.start_offset < (*right).generated.start_offset { return -1; }
+    if (*left).generated.start_offset > (*right).generated.start_offset { return 1; }
+    if (*left).generated.end_offset < (*right).generated.end_offset { return -1; }
+    if (*left).generated.end_offset > (*right).generated.end_offset { return 1; }
+    let original_source = source_map_compare_source(&(*left).original, &(*right).original);
+    if original_source != 0 { return original_source; }
+    if (*left).original.start_offset < (*right).original.start_offset { return -1; }
+    if (*left).original.start_offset > (*right).original.start_offset { return 1; }
+    if (*left).original.end_offset < (*right).original.end_offset { return -1; }
+    if (*left).original.end_offset > (*right).original.end_offset { return 1; }
+    if (*left).kind < (*right).kind { return -1; }
+    if (*left).kind > (*right).kind { return 1; }
+    return 0;
+}
+
+proc source_map_entry_better(candidate: *const SourceMapEntry, current: *const SourceMapEntry) -> bool {
+    if candidate == null { return false; }
+    if current == null { return true; }
+    let candidate_length = source_map_span_length(&(*candidate).generated);
+    let current_length = source_map_span_length(&(*current).generated);
+    if candidate_length < current_length { return true; }
+    if candidate_length > current_length { return false; }
+    if (*candidate).kind < (*current).kind { return true; }
+    if (*candidate).kind > (*current).kind { return false; }
+    return (*candidate).generated.start_offset > (*current).generated.start_offset;
+}
+
+proc source_map_project_offset(entry_value: *const SourceMapEntry, generated_offset: usize) -> usize {
+    if entry_value == null { return 0; }
+    let generated_length = source_map_span_length(&(*entry_value).generated);
+    let original_length = source_map_span_length(&(*entry_value).original);
+    if generated_offset <= (*entry_value).generated.start_offset { return (*entry_value).original.start_offset; }
+    if generated_offset >= (*entry_value).generated.end_offset { return (*entry_value).original.end_offset; }
+    let relative = generated_offset - (*entry_value).generated.start_offset;
+    if generated_length == original_length { return (*entry_value).original.start_offset + relative; }
+    if generated_length != 0 and original_length != 0 {
+        return (*entry_value).original.start_offset + (((relative as u64) * (original_length as u64) / (generated_length as u64)) as usize);
+    }
+    return (*entry_value).original.start_offset;
+}
+
+proc source_map_entry_hash_byte(hash: u64, byte: u8) -> u64 {
+    return (hash ^ (byte as u64)) * SOURCE_MAP_FNV_PRIME;
+}
+
+proc source_map_entry_hash_size(hash: u64, value: usize) -> u64 {
+    let mut result = hash;
+    let mut index: usize = 0;
+    while index < sizeof(usize) {
+        set result = source_map_entry_hash_byte(result, ((value >> (index * 8)) & 255) as u8);
+        set index += 1;
+    }
+    return result;
+}
+
+proc source_map_entry_hash_text(hash: u64, value: string) -> u64 {
+    let bytes = value.bytes();
+    let mut result = hash;
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        set result = source_map_entry_hash_byte(result, bytes[index]);
+        set index += 1;
+    }
+    return source_map_entry_hash_byte(result, 0);
+}
+
+proc source_map_entry_hash_span(hash: u64, span: *const AstSpan) -> u64 {
+    if span == null { return source_map_entry_hash_byte(hash, 0); }
+    let mut result = source_map_entry_hash_size(hash, (*span).source_id as usize);
+    set result = source_map_entry_hash_text(result, (*span).source_name);
+    set result = source_map_entry_hash_size(result, (*span).start_offset);
+    return source_map_entry_hash_size(result, (*span).end_offset);
+}
+
+export proc vitte_source_map_init(map: *mut SourceMap) {
+    if map == null { return; }
+    set *map = SourceMap { entries: [], count: 0, capacity: 0, normalized: true };
+}
+
+export proc vitte_source_map_destroy(map: *mut SourceMap) {
+    if map == null { return; }
+    set *map = SourceMap {};
+}
+
+export proc vitte_source_map_clear(map: *mut SourceMap) {
+    if map == null { return; }
+    (*map).entries.clear();
+    set (*map).count = 0;
+    set (*map).capacity = (*map).entries.capacity();
+    set (*map).normalized = true;
+}
+
+export proc vitte_source_map_count(map: *const SourceMap) -> usize {
+    if map == null { return 0; }
+    return (*map).entries.len();
+}
+
+export proc vitte_source_map_empty(map: *const SourceMap) -> bool {
+    return map == null or (*map).entries.len() == 0;
+}
+
+export proc vitte_source_map_at(map: *const SourceMap, index: usize) -> *const SourceMapEntry {
+    if map == null or index >= (*map).entries.len() { return null; }
+    return &(*map).entries[index];
+}
+
+export proc vitte_source_map_at_mut(map: *mut SourceMap, index: usize) -> *mut SourceMapEntry {
+    if map == null or index >= (*map).entries.len() { return null; }
+    set (*map).normalized = false;
+    return &(*map).entries[index];
+}
+
+export proc vitte_source_map_add_entry(map: *mut SourceMap, entry_value: *const SourceMapEntry) -> Status {
+    if map == null or not source_map_entry_valid(entry_value) { return Status.ErrorInvalidArgument; }
+    let mut index: usize = 0;
+    while index < (*map).entries.len() {
+        if source_map_entry_equal(&(*map).entries[index], entry_value) { return Status.Ok; }
+        set index += 1;
+    }
+    if (*map).entries.len() == 0 and not (*map).entries.reserve(SOURCE_MAP_INITIAL_CAPACITY) {
+        return Status.ErrorOutOfMemory;
+    }
+    if not (*map).entries.push(*entry_value) { return Status.ErrorOutOfMemory; }
+    set (*map).count = (*map).entries.len();
+    set (*map).capacity = (*map).entries.capacity();
+    set (*map).normalized = false;
+    return Status.Ok;
+}
+
+export proc vitte_source_map_add(map: *mut SourceMap, kind: SourceMapKind, generated: *const AstSpan, original: *const AstSpan) -> Status {
+    if map == null or generated == null or original == null or not source_map_kind_valid(kind) {
+        return Status.ErrorInvalidArgument;
+    }
+    let candidate = SourceMapEntry { kind: kind, generated: *generated, original: *original };
+    return vitte_source_map_add_entry(map, &candidate);
+}
+
+export proc vitte_source_map_remove(map: *mut SourceMap, index: usize) -> Status {
+    if map == null or index >= (*map).entries.len() { return Status.ErrorInvalidArgument; }
+    let mut retained: [SourceMapEntry] = [];
+    let mut cursor: usize = 0;
+    while cursor < (*map).entries.len() {
+        if cursor != index and not retained.push((*map).entries[cursor]) { return Status.ErrorOutOfMemory; }
+        set cursor += 1;
+    }
+    set (*map).entries = retained;
+    set (*map).count = (*map).entries.len();
+    set (*map).capacity = (*map).entries.capacity();
+    set (*map).normalized = false;
+    return Status.Ok;
+}
+
+export proc vitte_source_map_normalize(map: *mut SourceMap) -> Status {
+    if map == null { return Status.ErrorInvalidArgument; }
+    let mut index: usize = 1;
+    while index < (*map).entries.len() {
+        let key = (*map).entries[index];
+        let mut destination = index;
+        while destination > 0 {
+            if source_map_entry_compare(&(*map).entries[destination - 1], &key) <= 0 { break; }
+            set (*map).entries[destination] = (*map).entries[destination - 1];
+            set destination -= 1;
+        }
+        set (*map).entries[destination] = key;
+        set index += 1;
+    }
+    let mut unique: [SourceMapEntry] = [];
+    index = 0;
+    while index < (*map).entries.len() {
+        let duplicate = unique.len() != 0 and source_map_entry_equal(&unique[unique.len() - 1], &(*map).entries[index]);
+        if not duplicate and not unique.push((*map).entries[index]) { return Status.ErrorOutOfMemory; }
+        set index += 1;
+    }
+    set (*map).entries = unique;
+    set (*map).count = (*map).entries.len();
+    set (*map).capacity = (*map).entries.capacity();
+    set (*map).normalized = true;
+    return Status.Ok;
+}
+
+export proc vitte_source_map_find_offset(map: *const SourceMap, generated_source_id: SourceId, generated_source_name: *const u8, generated_offset: usize) -> *const SourceMapEntry {
+    if map == null { return null; }
+    let mut best: *const SourceMapEntry = null;
+    let mut index: usize = 0;
+    while index < (*map).entries.len() {
+        let candidate = &(*map).entries[index];
+        let same_source = if generated_source_id != 0 and (*candidate).generated.source_id != 0 {
+            generated_source_id == (*candidate).generated.source_id
+        } else {
+            source_map_raw_name_matches(generated_source_name, (*candidate).generated.source_name)
+        };
+        if same_source and source_map_span_contains_offset(&(*candidate).generated, generated_offset) and
+           source_map_entry_better(candidate, best) { set best = candidate; }
+        set index += 1;
+    }
+    return best;
+}
+
+export proc vitte_source_map_find_span(map: *const SourceMap, generated_span: *const AstSpan) -> *const SourceMapEntry {
+    if map == null or not source_map_span_valid(generated_span) { return null; }
+    let mut best: *const SourceMapEntry = null;
+    let mut index: usize = 0;
+    while index < (*map).entries.len() {
+        let candidate = &(*map).entries[index];
+        if source_map_span_contains_span(&(*candidate).generated, generated_span) and source_map_entry_better(candidate, best) {
+            set best = candidate;
+        }
+        set index += 1;
+    }
+    if best != null { return best; }
+    index = 0;
+    while index < (*map).entries.len() {
+        let candidate = &(*map).entries[index];
+        if source_map_span_overlaps(&(*candidate).generated, generated_span) and source_map_entry_better(candidate, best) {
+            set best = candidate;
+        }
+        set index += 1;
+    }
+    return best;
+}
+
+export proc vitte_source_map_find_original_offset(map: *const SourceMap, original_source_id: SourceId, original_source_name: *const u8, original_offset: usize) -> *const SourceMapEntry {
+    if map == null { return null; }
+    let mut best: *const SourceMapEntry = null;
+    let mut index: usize = 0;
+    while index < (*map).entries.len() {
+        let candidate = &(*map).entries[index];
+        let same_source = if original_source_id != 0 and (*candidate).original.source_id != 0 {
+            original_source_id == (*candidate).original.source_id
+        } else {
+            source_map_raw_name_matches(original_source_name, (*candidate).original.source_name)
+        };
+        if same_source and source_map_span_contains_offset(&(*candidate).original, original_offset) and
+           (best == null or source_map_span_length(&(*candidate).original) < source_map_span_length(&(*best).original)) {
+            set best = candidate;
+        }
+        set index += 1;
+    }
+    return best;
+}
+
+export proc vitte_source_map_has_mapping_for_span(map: *const SourceMap, span: *const AstSpan) -> bool {
+    return vitte_source_map_find_span(map, span) != null;
+}
+
+export proc vitte_source_map_has_mapping_for_offset(map: *const SourceMap, source_id: SourceId, source_name: *const u8, offset: usize) -> bool {
+    return vitte_source_map_find_offset(map, source_id, source_name, offset) != null;
+}
+
+export proc vitte_source_map_remap_offset(map: *const SourceMap, generated_source_id: SourceId, generated_source_name: *const u8, generated_offset: usize, result: *mut SourceMapPosition) -> bool {
+    if result == null { return false; }
+    set *result = SourceMapPosition {};
+    let entry = vitte_source_map_find_offset(map, generated_source_id, generated_source_name, generated_offset);
+    if entry == null { return false; }
+    set (*result).source_id = (*entry).original.source_id;
+    set (*result).source_name = (*entry).original.source_name.as_ptr();
+    set (*result).offset = source_map_project_offset(entry, generated_offset);
+    set (*result).mapping_kind = (*entry).kind;
+    set (*result).mapped = true;
+    return true;
+}
+
+export proc vitte_source_map_remap_span(map: *const SourceMap, generated_span: *const AstSpan, original_span: *mut AstSpan) -> bool {
+    if original_span == null { return false; }
+    let entry = vitte_source_map_find_span(map, generated_span);
+    if entry == null { return false; }
+    set *original_span = (*entry).original;
+    set (*original_span).start_offset = source_map_project_offset(entry, (*generated_span).start_offset);
+    set (*original_span).end_offset = source_map_project_offset(entry, (*generated_span).end_offset);
+    if (*original_span).end_offset < (*original_span).start_offset { set (*original_span).end_offset = (*original_span).start_offset; }
+    return true;
+}
+
+export proc vitte_source_map_original_span(map: *const SourceMap, generated_span: *const AstSpan, original_span: *mut AstSpan) -> bool {
+    if original_span == null { return false; }
+    let entry = vitte_source_map_find_span(map, generated_span);
+    if entry == null { return false; }
+    set *original_span = (*entry).original;
+    return true;
+}
+
+export proc vitte_source_map_trace(map: *const SourceMap, start: *const AstSpan, trace: *mut SourceMapTrace) -> usize {
+    if trace != null {
+        set *trace = SourceMapTrace {};
+        let invalid = ast_span_invalid();
+        let empty_step = SourceMapTraceStep { kind: SourceMapKind.Exact, generated: invalid, original: invalid };
+        let mut slot: usize = 0;
+        while slot < VITTE_SOURCE_MAP_TRACE_CAPACITY { set (*trace).steps[slot] = empty_step; set slot += 1; }
+    }
+    if map == null or not source_map_span_valid(start) { return 0; }
+    let mut current = *start;
+    let mut depth: usize = 0;
+    while depth < SOURCE_MAP_MAX_DEPTH {
+        let entry = vitte_source_map_find_span(map, &current);
+        if entry == null { break; }
+        let next = (*entry).original;
+        if source_map_span_equal(&current, &next) { break; }
+        if trace != null and depth < VITTE_SOURCE_MAP_TRACE_CAPACITY {
+            set (*trace).steps[depth] = SourceMapTraceStep { kind: (*entry).kind, generated: current, original: next };
+            set (*trace).count = depth + 1;
+        }
+        set current = next;
+        set depth += 1;
+    }
+    if trace != null {
+        set (*trace).truncated = depth >= SOURCE_MAP_MAX_DEPTH;
+        set (*trace).final_span = current;
+        set (*trace).has_final_span = true;
+    }
+    return depth;
+}
+
+export proc vitte_source_map_remap_to_root(map: *const SourceMap, generated_span: *const AstSpan, root_span: *mut AstSpan) -> bool {
+    if root_span == null or not source_map_span_valid(generated_span) { return false; }
+    let mut current = *generated_span;
+    let mut changed = false;
+    let mut depth: usize = 0;
+    while depth < SOURCE_MAP_MAX_DEPTH {
+        let mut next = ast_span_invalid();
+        if not vitte_source_map_remap_span(map, &current, &mut next) { break; }
+        if source_map_span_equal(&current, &next) { break; }
+        set current = next;
+        set changed = true;
+        set depth += 1;
+    }
+    set *root_span = current;
+    return changed;
+}
+
+export proc vitte_source_map_validate(map: *const SourceMap) -> SourceMapValidation {
+    let mut result = SourceMapValidation { valid: true, entry_count: 0, invalid_entry_count: 0, duplicate_count: 0, first_invalid_index: VITTE_SOURCE_MAP_INDEX_NONE };
+    if map == null { set result.valid = false; return result; }
+    set result.entry_count = (*map).entries.len();
+    let mut index: usize = 0;
+    while index < (*map).entries.len() {
+        if not source_map_entry_valid(&(*map).entries[index]) {
+            set result.valid = false;
+            set result.invalid_entry_count += 1;
+            if result.first_invalid_index == VITTE_SOURCE_MAP_INDEX_NONE { set result.first_invalid_index = index; }
+        }
+        let mut other = index + 1;
+        while other < (*map).entries.len() {
+            if source_map_entry_equal(&(*map).entries[index], &(*map).entries[other]) { set result.duplicate_count += 1; }
+            set other += 1;
+        }
+        set index += 1;
+    }
+    return result;
+}
+
+export proc vitte_source_map_statistics(map: *const SourceMap) -> SourceMapStatistics {
+    let mut result = SourceMapStatistics {};
+    if map == null { return result; }
+    set result.entry_count = (*map).entries.len();
+    set result.capacity = (*map).entries.capacity();
+    set result.normalized = (*map).normalized;
+    let mut index: usize = 0;
+    while index < (*map).entries.len() {
+        let entry = &(*map).entries[index];
+        let generated_length = source_map_span_length(&(*entry).generated);
+        let original_length = source_map_span_length(&(*entry).original);
+        if generated_length != usize.MAX { set result.generated_bytes += generated_length; }
+        if original_length != usize.MAX { set result.original_bytes += original_length; }
+        if generated_length == original_length { set result.exact_length_count += 1; }
+        else { set result.transformed_length_count += 1; }
+        if (*entry).generated.start_offset == (*entry).generated.end_offset { set result.zero_width_count += 1; }
+        set index += 1;
+    }
+    return result;
+}
+
+export proc vitte_source_map_entry_fingerprint(entry_value: *const SourceMapEntry) -> u64 {
+    if entry_value == null { return 0; }
+    let mut hash = SOURCE_MAP_FNV_OFFSET;
+    set hash = source_map_entry_hash_size(hash, (*entry_value).kind as usize);
+    set hash = source_map_entry_hash_span(hash, &(*entry_value).generated);
+    return source_map_entry_hash_span(hash, &(*entry_value).original);
+}
+
+export proc vitte_source_map_fingerprint(map: *const SourceMap) -> u64 {
+    if map == null { return 0; }
+    let mut hash = SOURCE_MAP_FNV_OFFSET;
+    let mut index: usize = 0;
+    while index < (*map).entries.len() {
+        let entry_hash = vitte_source_map_entry_fingerprint(&(*map).entries[index]);
+        let mut byte_index: usize = 0;
+        while byte_index < sizeof(u64) {
+            set hash = source_map_entry_hash_byte(hash, ((entry_hash >> (byte_index * 8)) & 255) as u8);
+            set byte_index += 1;
+        }
+        set index += 1;
+    }
+    return hash;
+}
+
+export proc vitte_source_map_kind_name(kind: SourceMapKind) -> *const u8 {
+    match kind {
+        case SourceMapKind.Exact => return "exact".as_ptr(),
+        case SourceMapKind.Token => return "token".as_ptr(),
+        case SourceMapKind.Expression => return "expression".as_ptr(),
+        case SourceMapKind.Statement => return "statement".as_ptr(),
+        case SourceMapKind.Declaration => return "declaration".as_ptr(),
+        case SourceMapKind.Synthetic => return "synthetic".as_ptr(),
+        case SourceMapKind.Lowered => return "lowered".as_ptr(),
+        case SourceMapKind.Generated => return "generated".as_ptr(),
+        else => return "unknown".as_ptr()
+    }
+}
+
+export proc vitte_source_map_merge(destination: *mut SourceMap, source: *const SourceMap) -> Status {
+    if destination == null or source == null { return Status.ErrorInvalidArgument; }
+    if destination == source { return Status.Ok; }
+    let mut index: usize = 0;
+    while index < (*source).entries.len() {
+        let status = vitte_source_map_add_entry(destination, &(*source).entries[index]);
+        if status != Status.Ok { return status; }
+        set index += 1;
+    }
+    return Status.Ok;
+}
+
+export proc vitte_source_map_copy(destination: *mut SourceMap, source: *const SourceMap) -> Status {
+    if destination == null or source == null { return Status.ErrorInvalidArgument; }
+    if destination == source { return Status.Ok; }
+    set (*destination).entries = (*source).entries;
+    set (*destination).count = (*destination).entries.len();
+    set (*destination).capacity = (*destination).entries.capacity();
+    set (*destination).normalized = (*source).normalized;
+    return Status.Ok;
+}
+
+export proc vitte_source_map_swap(left: *mut SourceMap, right: *mut SourceMap) {
+    if left == null or right == null or left == right { return; }
+    let temporary = *left;
+    set *left = *right;
+    set *right = temporary;
+}
+
+proc source_map_unique_source_count(map: *const SourceMap, generated_side: bool) -> usize {
+    if map == null { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+    while index < (*map).entries.len() {
+        let span = if generated_side { &(*map).entries[index].generated } else { &(*map).entries[index].original };
+        let mut seen = false;
+        let mut previous: usize = 0;
+        while previous < index {
+            let earlier = if generated_side { &(*map).entries[previous].generated } else { &(*map).entries[previous].original };
+            if source_map_same_source(span, earlier) { set seen = true; break; }
+            set previous += 1;
+        }
+        if not seen { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+export proc vitte_source_map_generated_source_count(map: *const SourceMap) -> usize {
+    return source_map_unique_source_count(map, true);
+}
+
+export proc vitte_source_map_original_source_count(map: *const SourceMap) -> usize {
+    return source_map_unique_source_count(map, false);
+}
+
+export proc vitte_source_map_visit(map: *const SourceMap, visitor: ?SourceMapVisitor, user_data: *mut u8) -> Status {
+    if map == null or visitor == null { return Status.ErrorInvalidArgument; }
+    let callback = visitor?;
+    let mut index: usize = 0;
+    while index < (*map).entries.len() {
+        if not callback(&(*map).entries[index], index, user_data) { break; }
+        set index += 1;
+    }
+    return Status.Ok;
+}
+
+export proc vitte_source_map_shrink_to_fit(map: *mut SourceMap) -> Status {
+    if map == null { return Status.ErrorInvalidArgument; }
+    (*map).entries.shrink_to_fit();
+    set (*map).count = (*map).entries.len();
+    set (*map).capacity = (*map).entries.capacity();
+    return Status.Ok;
+}
+
+export proc vitte_source_map_component_name() -> string {
+    return "diagnostic-source-map";
+}
+
+export proc vitte_source_map_max_trace_depth() -> usize {
+    return SOURCE_MAP_MAX_DEPTH;
+}
+
+/// Convenience helpers matching the inline functions in `source_map.h`.
+export proc vitte_source_map_is_normalized(map: *const SourceMap) -> bool {
+    return map != null and (*map).normalized;
+}
+
+export proc vitte_source_map_capacity(map: *const SourceMap) -> usize {
+    if map == null {
+        return 0;
+    }
+
+    return (*map).capacity;
+}
+
+export proc vitte_source_map_mark_dirty(map: *mut SourceMap) -> void {
+    if map != null {
+        set (*map).normalized = false;
+    }
+}
+
+export proc vitte_source_map_add_exact(
+    map: *mut SourceMap,
+    generated: *const AstSpan,
+    original: *const AstSpan
+) -> Status {
+    return vitte_source_map_add(map, SourceMapKind.Exact, generated, original);
+}
+
+export proc vitte_source_map_add_token(
+    map: *mut SourceMap,
+    generated: *const AstSpan,
+    original: *const AstSpan
+) -> Status {
+    return vitte_source_map_add(map, SourceMapKind.Token, generated, original);
+}
+
+export proc vitte_source_map_add_expression(
+    map: *mut SourceMap,
+    generated: *const AstSpan,
+    original: *const AstSpan
+) -> Status {
+    return vitte_source_map_add(map, SourceMapKind.Expression, generated, original);
+}
+
+export proc vitte_source_map_add_statement(
+    map: *mut SourceMap,
+    generated: *const AstSpan,
+    original: *const AstSpan
+) -> Status {
+    return vitte_source_map_add(map, SourceMapKind.Statement, generated, original);
+}
+
+export proc vitte_source_map_add_declaration(
+    map: *mut SourceMap,
+    generated: *const AstSpan,
+    original: *const AstSpan
+) -> Status {
+    return vitte_source_map_add(map, SourceMapKind.Declaration, generated, original);
+}
+
+export proc vitte_source_map_add_synthetic(
+    map: *mut SourceMap,
+    generated: *const AstSpan,
+    original: *const AstSpan
+) -> Status {
+    return vitte_source_map_add(map, SourceMapKind.Synthetic, generated, original);
+}
+
+export proc vitte_source_map_add_lowered(
+    map: *mut SourceMap,
+    generated: *const AstSpan,
+    original: *const AstSpan
+) -> Status {
+    return vitte_source_map_add(map, SourceMapKind.Lowered, generated, original);
+}
+
+export proc vitte_source_map_add_generated(
+    map: *mut SourceMap,
+    generated: *const AstSpan,
+    original: *const AstSpan
+) -> Status {
+    return vitte_source_map_add(map, SourceMapKind.Generated, generated, original);
+}

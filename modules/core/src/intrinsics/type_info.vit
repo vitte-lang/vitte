@@ -1,0 +1,18 @@
+/// Requêtes statiques de layout du compilateur.
+space core::intrinsics::type_info;
+
+export form TypeLayout {
+    size: usize,
+    align: usize,
+}
+
+export proc type_layout<T>() -> TypeLayout {
+    return TypeLayout { size: sizeof(T), align: alignof(T) };
+}
+
+export proc type_size<T>() -> usize { return sizeof(T); }
+export proc type_alignment<T>() -> usize { return alignof(T); }
+
+export proc type_layout_is_valid(value: &TypeLayout) -> bool {
+    return value.align != 0 && (value.align & (value.align - 1)) == 0;
+}

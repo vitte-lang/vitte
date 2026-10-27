@@ -1,0 +1,22 @@
+/// Recherche des séparateurs et calcul des segments résultants.
+space core::slice::split;
+
+export form SplitPoint {
+    found: bool,
+    index: usize,
+}
+
+export proc slice_find_separator<T>(
+    value: &[T],
+    equal_separator: proc(&T) -> bool
+) -> SplitPoint {
+    for index in 0..value.len() {
+        if equal_separator(&value[index]) { return SplitPoint { found: true, index: index }; }
+    }
+    return SplitPoint { found: false, index: value.len() };
+}
+
+export proc slice_split_segment_end(length: usize, separator: SplitPoint) -> usize {
+    if separator.found { return separator.index; }
+    return length;
+}

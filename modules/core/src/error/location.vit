@@ -1,0 +1,52 @@
+/// Position source et intervalle demi-ouvert dans un fichier.
+space core::error::location;
+
+export form SourceLocation {
+    file: u64,
+    offset: usize,
+    line: usize,
+    column: usize,
+}
+
+export form SourceSpan {
+    start: SourceLocation,
+    end: SourceLocation,
+}
+
+export proc source_location(file: u64, offset: usize, line: usize, column: usize) -> SourceLocation {
+    return SourceLocation { file: file, offset: offset, line: line, column: column };
+}
+
+export proc source_location_is_valid(value: &SourceLocation) -> bool {
+    return value.line != 0 && value.column != 0;
+}
+
+export proc source_span_is_valid(value: &SourceSpan) -> bool {
+    if not source_location_is_valid(&value.start) || not source_location_is_valid(&value.end) { return false; }
+    if value.start.file != value.end.file || value.start.offset > value.end.offset { return false; }
+    if value.start.line > value.end.line { return false; }
+    if value.start.line == value.end.line && value.start.column > value.end.column { return false; }
+    if value.start.offset == value.end.offset {
+        return value.start.line == value.end.line && value.start.column == value.end.column;
+    }
+    return true;
+}
+
+export proc source_span_length(value: &SourceSpan) -> usize {
+    if not source_span_is_valid(value) { return 0; }
+    return value.end.offset - value.start.offset;
+}
+
+export proc source_span_is_empty(value: &SourceSpan) -> bool {
+    return source_span_is_valid(value) && value.start.offset == value.end.offset;
+}
+
+export proc source_span_contains_offset(value: &SourceSpan, file: u64, offset: usize) -> bool {
+    if not source_span_is_valid(value) || file != value.start.file { return false; }
+    return offset >= value.start.offset && offset < value.end.offset;
+}
+
+export proc source_span_covers_offset(value: &SourceSpan, file: u64, offset: usize) -> bool {
+    if not source_span_is_valid(value) || file != value.start.file { return false; }
+    return offset >= value.start.offset && offset <= value.end.offset;
+}

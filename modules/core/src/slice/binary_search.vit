@@ -1,0 +1,28 @@
+/// Recherche dichotomique sur une tranche triée.
+space core::slice::binary_search;
+
+export form BinarySearchResult {
+    found: bool,
+    index: usize,
+}
+
+export proc slice_binary_search<T>(
+    value: &[T],
+    target: &T,
+    compare: proc(&T, &T) -> i8
+) -> BinarySearchResult {
+    let mut low: usize = 0;
+    let mut high: usize = value.len();
+    while low < high {
+        let middle: usize = low + (high - low) / 2;
+        let order: i8 = compare(&value[middle], target);
+        if order < 0 {
+            set low = middle + 1;
+        } else if order > 0 {
+            set high = middle;
+        } else {
+            return BinarySearchResult { found: true, index: middle };
+        }
+    }
+    return BinarySearchResult { found: false, index: low };
+}

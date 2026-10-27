@@ -29,7 +29,6 @@
 space tests::import_visibility::module_private;
 
 use tests::import_visibility::lib;
-
 /// --------------------------------------------------------------------------
 /// Control case
 /// --------------------------------------------------------------------------
@@ -40,7 +39,7 @@ use tests::import_visibility::lib;
 /// declarations. If this lookup fails, the test is not exercising the intended
 /// private-member visibility boundary.
 proc control_public_access() -> i64 {
-    give lib::PUBLIC_ANSWER;
+    return lib::PUBLIC_ANSWER;
 }
 
 /// --------------------------------------------------------------------------
@@ -48,31 +47,31 @@ proc control_public_access() -> i64 {
 /// --------------------------------------------------------------------------
 
 proc access_private_zero() -> i64 {
-    give lib::PRIVATE_ZERO;
+    return lib::PRIVATE_ZERO;
 }
 
 proc access_private_one() -> i64 {
-    give lib::PRIVATE_ONE;
+    return lib::PRIVATE_ONE;
 }
 
 proc access_private_answer() -> i64 {
-    give lib::PRIVATE_ANSWER;
+    return lib::PRIVATE_ANSWER;
 }
 
 proc access_private_limit() -> u64 {
-    give lib::PRIVATE_LIMIT;
+    return lib::PRIVATE_LIMIT;
 }
 
 proc access_private_offset() -> i64 {
-    give lib::PRIVATE_OFFSET;
+    return lib::PRIVATE_OFFSET;
 }
 
 proc access_private_min_identifier() -> u64 {
-    give lib::PRIVATE_MIN_ID;
+    return lib::PRIVATE_MIN_ID;
 }
 
 proc access_private_max_identifier() -> u64 {
-    give lib::PRIVATE_MAX_ID;
+    return lib::PRIVATE_MAX_ID;
 }
 
 /// Repeated lookup must remain inaccessible and deterministic.
@@ -86,7 +85,7 @@ proc repeated_private_constant() -> i64 {
     let third: i64 =
         lib::PRIVATE_ANSWER;
 
-    give first + second + third;
+    return first + second + third;
 }
 
 /// --------------------------------------------------------------------------
@@ -96,25 +95,25 @@ proc repeated_private_constant() -> i64 {
 proc accept_private_point(
     point: &lib::PrivatePoint
 ) -> i64 {
-    give point.x + point.y;
+    return point.x + point.y;
 }
 
 proc accept_private_range(
     range: &lib::PrivateRange
 ) -> bool {
-    give range.minimum <= range.maximum;
+    return range.minimum <= range.maximum;
 }
 
 proc accept_private_record(
     record: &lib::PrivateRecord
 ) -> i64 {
-    give record.value;
+    return record.value;
 }
 
 proc accept_private_pair(
     pair: &lib::PrivatePair
 ) -> i64 {
-    give pair.first + pair.second;
+    return pair.first + pair.second;
 }
 
 /// --------------------------------------------------------------------------
@@ -128,7 +127,7 @@ proc construct_private_point() -> i64 {
             y: 22,
         };
 
-    give point.x + point.y;
+    return point.x + point.y;
 }
 
 proc construct_private_range() -> i64 {
@@ -138,7 +137,7 @@ proc construct_private_range() -> i64 {
             maximum: 42,
         };
 
-    give range.maximum;
+    return range.maximum;
 }
 
 proc construct_private_record() -> i64 {
@@ -149,7 +148,7 @@ proc construct_private_record() -> i64 {
             enabled: true,
         };
 
-    give record.value;
+    return record.value;
 }
 
 proc construct_private_pair() -> i64 {
@@ -159,7 +158,7 @@ proc construct_private_pair() -> i64 {
             second: 22,
         };
 
-    give pair.first + pair.second;
+    return pair.first + pair.second;
 }
 
 /// --------------------------------------------------------------------------
@@ -167,27 +166,27 @@ proc construct_private_pair() -> i64 {
 /// --------------------------------------------------------------------------
 
 proc call_private_identity() -> i64 {
-    give lib::private_identity(42);
+    return lib::private_identity(42);
 }
 
 proc call_private_add() -> i64 {
-    give lib::private_add(20, 22);
+    return lib::private_add(20, 22);
 }
 
 proc call_private_subtract() -> i64 {
-    give lib::private_subtract(100, 58);
+    return lib::private_subtract(100, 58);
 }
 
 proc call_private_multiply() -> i64 {
-    give lib::private_multiply(6, 7);
+    return lib::private_multiply(6, 7);
 }
 
 proc call_private_only_proc() -> i64 {
-    give lib::private_only_proc();
+    return lib::private_only_proc();
 }
 
 proc call_private_only_predicate() -> bool {
-    give lib::private_only_predicate();
+    return lib::private_only_predicate();
 }
 
 /// --------------------------------------------------------------------------
@@ -195,7 +194,7 @@ proc call_private_only_predicate() -> bool {
 /// --------------------------------------------------------------------------
 
 proc call_private_identifier_predicate() -> bool {
-    give lib::private_valid_identifier(42);
+    return lib::private_valid_identifier(42);
 }
 
 proc call_private_range_predicate() -> bool {
@@ -205,7 +204,7 @@ proc call_private_range_predicate() -> bool {
             maximum: 100,
         };
 
-    give lib::private_valid_range(&range);
+    return lib::private_valid_range(&range);
 }
 
 /// --------------------------------------------------------------------------
@@ -218,7 +217,7 @@ proc call_private_point_factory() -> i64 {
             20,
             22);
 
-    give point.x + point.y;
+    return point.x + point.y;
 }
 
 proc call_private_record_factory() -> i64 {
@@ -227,21 +226,21 @@ proc call_private_record_factory() -> i64 {
             42,
             42);
 
-    give record.value;
+    return record.value;
 }
 
 proc call_private_record_provider() -> i64 {
     let record: lib::PrivateRecord =
         lib::private_only_record();
 
-    give record.value;
+    return record.value;
 }
 
 proc call_private_range_provider() -> i64 {
     let range: lib::PrivateRange =
         lib::private_only_range();
 
-    give range.maximum;
+    return range.maximum;
 }
 
 /// --------------------------------------------------------------------------
@@ -252,12 +251,12 @@ proc call_private_range_provider() -> i64 {
 ///
 /// Prefix similarity must not affect visibility lookup.
 proc access_similar_private_procedure() -> i64 {
-    give lib::visible_symbol_private();
+    return lib::visible_symbol_private();
 }
 
 /// `VISIBLE_VALUE` is exported while `VISIBLE_VALUE_PRIVATE` is private.
 proc access_similar_private_constant() -> i64 {
-    give lib::VISIBLE_VALUE_PRIVATE;
+    return lib::VISIBLE_VALUE_PRIVATE;
 }
 
 /// `VisibleForm` is exported while `VisibleFormPrivate` is private.
@@ -267,7 +266,7 @@ proc construct_similar_private_form() -> i64 {
             value: 42,
         };
 
-    give value.value;
+    return value.value;
 }
 
 /// --------------------------------------------------------------------------
@@ -283,7 +282,7 @@ proc mixed_constant_visibility() -> i64 {
     let hidden: i64 =
         lib::PRIVATE_ANSWER;
 
-    give visible + hidden;
+    return visible + hidden;
 }
 
 /// A public form does not make a private form accessible.
@@ -300,7 +299,7 @@ proc mixed_type_visibility() -> i64 {
             y: 22,
         };
 
-    give visible.x +
+    return visible.x +
          hidden.y;
 }
 
@@ -313,7 +312,7 @@ proc compare_public_and_private_calls() -> bool {
     let private_value: i64 =
         lib::private_identity(42);
 
-    give public_value == private_value;
+    return public_value == private_value;
 }
 
 /// --------------------------------------------------------------------------
@@ -326,10 +325,10 @@ proc compare_public_and_private_calls() -> bool {
 /// rejected normally.
 proc private_access_in_branch() -> i64 {
     if false {
-        give lib::PRIVATE_ANSWER;
+        return lib::PRIVATE_ANSWER;
     }
 
-    give lib::PUBLIC_ANSWER;
+    return lib::PUBLIC_ANSWER;
 }
 
 /// Private declarations remain private inside nested blocks.
@@ -341,10 +340,10 @@ proc private_access_nested() -> i64 {
         let hidden: i64 =
             lib::PRIVATE_ANSWER;
 
-        give hidden;
+        return hidden;
     }
 
-    give visible;
+    return visible;
 }
 
 /// --------------------------------------------------------------------------
@@ -352,14 +351,14 @@ proc private_access_nested() -> i64 {
 /// --------------------------------------------------------------------------
 
 proc private_access_expression_tree() -> i64 {
-    give lib::private_add(
+    return lib::private_add(
         lib::private_identity(20),
         lib::private_identity(22));
 }
 
 /// Qualification at every level must still perform visibility checking.
 proc mixed_expression_tree() -> i64 {
-    give lib::public_add(
+    return lib::public_add(
         lib::PUBLIC_ANSWER,
         lib::PRIVATE_OFFSET);
 }
@@ -475,42 +474,42 @@ proc main() -> int {
     let mixed_expression: i64 =
         mixed_expression_tree();
 
-    if predicate &&
-       identifier_valid &&
-       range_valid &&
-       control == 42 &&
-       zero == 0 &&
-       one == 1 &&
-       answer == 42 &&
-       limit > 0 &&
-       offset == 10 &&
-       minimum > 0 &&
-       maximum >= minimum &&
-       repeated > 0 &&
-       point == 42 &&
-       range == 42 &&
-       record == 42 &&
-       pair == 42 &&
-       identity == 42 &&
-       sum == 42 &&
-       difference == 42 &&
-       product == 42 &&
-       only_value == 42 &&
-       factory_point == 42 &&
-       factory_record == 42 &&
-       provided_record == 42 &&
-       provided_range == 42 &&
-       similar_proc == 84 &&
-       similar_constant == 84 &&
-       similar_form == 42 &&
-       mixed_constant > 0 &&
-       mixed_type == 42 &&
-       branch == 42 &&
-       nested == 42 &&
-       expression == 42 &&
+    if predicate and
+       identifier_valid and
+       range_valid and
+       control == 42 and
+       zero == 0 and
+       one == 1 and
+       answer == 42 and
+       limit > 0 and
+       offset == 10 and
+       minimum > 0 and
+       maximum >= minimum and
+       repeated > 0 and
+       point == 42 and
+       range == 42 and
+       record == 42 and
+       pair == 42 and
+       identity == 42 and
+       sum == 42 and
+       difference == 42 and
+       product == 42 and
+       only_value == 42 and
+       factory_point == 42 and
+       factory_record == 42 and
+       provided_record == 42 and
+       provided_range == 42 and
+       similar_proc == 84 and
+       similar_constant == 84 and
+       similar_form == 42 and
+       mixed_constant > 0 and
+       mixed_type == 42 and
+       branch == 42 and
+       nested == 42 and
+       expression == 42 and
        mixed_expression > 0 {
-        give 0;
+        return 0;
     }
 
-    give 1;
+    return 1;
 }

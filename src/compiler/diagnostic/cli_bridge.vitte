@@ -1,0 +1,638 @@
+/// Native validation and metadata for the CLI diagnostic transport contract.
+space compiler::diagnostic::cli_bridge;
+
+use compiler::source::source::{SourceContext, SourceId};
+use compiler::diagnostic::registry::{vitte_diagnostic_registry_contains};
+use vitte::core::memory::{fill};
+
+export const VITTE_CLI_DIAGNOSTIC_CODE_CAPACITY: usize = 128;
+export const VITTE_CLI_DIAGNOSTIC_SHORT_CODE_CAPACITY: usize = 16;
+export const VITTE_CLI_DIAGNOSTIC_CATEGORY_CAPACITY: usize = 128;
+export const VITTE_CLI_DIAGNOSTIC_MESSAGE_CAPACITY: usize = 1024;
+export const VITTE_CLI_DIAGNOSTIC_DETAILS_CAPACITY: usize = 4096;
+export const VITTE_CLI_DIAGNOSTIC_SOURCE_NAME_CAPACITY: usize = 4096;
+export const VITTE_CLI_DIAGNOSTIC_LABEL_CAPACITY: usize = 4096;
+export const VITTE_CLI_DIAGNOSTIC_TEXT_CAPACITY: usize = 1024;
+export const VITTE_CLI_DIAGNOSTIC_REPLACEMENT_CAPACITY: usize = 1024;
+export const VITTE_CLI_DIAGNOSTIC_SYMBOL_CAPACITY: usize = 256;
+export const VITTE_CLI_DIAGNOSTIC_TYPE_CAPACITY: usize = 512;
+export const VITTE_CLI_DIAGNOSTIC_CONTEXT_CAPACITY: usize = 1024;
+export const VITTE_CLI_DIAGNOSTIC_PACKAGE_CAPACITY: usize = 256;
+export const VITTE_CLI_DIAGNOSTIC_MODULE_CAPACITY: usize = 512;
+export const VITTE_CLI_DIAGNOSTIC_PROCEDURE_CAPACITY: usize = 512;
+export const VITTE_CLI_DIAGNOSTIC_TOOL_CAPACITY: usize = 256;
+export const VITTE_CLI_DIAGNOSTIC_RULE_CAPACITY: usize = 256;
+export const VITTE_CLI_DIAGNOSTIC_EXPRESSION_CAPACITY: usize = 1024;
+
+export const VITTE_CLI_DIAGNOSTIC_MAX_LABELS: usize = 16;
+export const VITTE_CLI_DIAGNOSTIC_MAX_RELATED: usize = 16;
+export const VITTE_CLI_DIAGNOSTIC_MAX_CAUSES: usize = 16;
+export const VITTE_CLI_DIAGNOSTIC_MAX_ANNOTATIONS: usize = 16;
+export const VITTE_CLI_DIAGNOSTIC_MAX_SUGGESTIONS: usize = 16;
+export const VITTE_CLI_DIAGNOSTIC_MAX_TRACE: usize = 32;
+export const VITTE_CLI_DIAGNOSTIC_MAX_FIX_PARTS: usize = 16;
+
+export const VITTE_CLI_DIAGNOSTIC_INDEX_NONE: usize = 18446744073709551615 as usize;
+
+export pick CliDiagnosticSeverity {
+    Note,
+    Help,
+    Warning,
+    Error,
+    Fatal
+}
+
+export pick CliDiagnosticFormat {
+    Terminal,
+    Json,
+    Sarif,
+    Lsp
+}
+
+export pick CliDiagnosticOrigin {
+    Unknown,
+    Io,
+    Lexer,
+    Scanner,
+    Parser,
+    Import,
+    NameResolution,
+    TypeCheck,
+    Contract,
+    ConstantEval,
+    Hir,
+    Ir,
+    Codegen,
+    C17Backend,
+    CCompiler,
+    Linker,
+    Runtime,
+    Driver,
+    Internal
+}
+
+export pick CliDiagnosticLabelStyle {
+    Primary,
+    Secondary
+}
+
+export pick CliDiagnosticLocationKind {
+    Primary,
+    Declaration,
+    Definition,
+    Origin,
+    Use,
+    CallSite,
+    Instantiation,
+    Related
+}
+
+export pick CliDiagnosticAnnotationKind {
+    Note,
+    Help
+}
+
+export pick CliDiagnosticApplicability {
+    Machine,
+    Maybe,
+    Placeholders,
+    Manual
+}
+
+export pick CliDiagnosticConfidence {
+    None,
+    Low,
+    Medium,
+    High,
+    Certain
+}
+
+export pick CliDiagnosticCauseKind {
+    Unknown,
+    Syntax,
+    MissingToken,
+    UnexpectedToken,
+    UnresolvedName,
+    TypeMismatch,
+    ArityMismatch,
+    Constraint,
+    Import,
+    Contract,
+    ConstantEval,
+    UnsafeOperation,
+    Lowering,
+    ExternalTool,
+    Link,
+    Runtime,
+    Internal
+}
+
+export pick CliDiagnosticTraceKind {
+    Call,
+    Instantiation,
+    Constraint,
+    Import,
+    Expansion,
+    Lowering,
+    GeneratedCode,
+    Related
+}
+
+export pick CliDiagnosticContractKind {
+    None,
+    Requires,
+    Ensures,
+    Invariant,
+    Assertion
+}
+
+export form CliDiagnosticSpan {
+    valid: bool,
+    file_id: u32,
+    source_id: SourceId,
+    source_name: *const char,
+    start_offset: usize,
+    end_offset: usize,
+    start_line: usize,
+    start_column: usize,
+    end_line: usize,
+    end_column: usize
+}
+
+export form CliDiagnosticLabel {
+    style: CliDiagnosticLabelStyle,
+    span: CliDiagnosticSpan,
+    message: *const char
+}
+
+export form CliDiagnosticLocation {
+    kind: CliDiagnosticLocationKind,
+    span: CliDiagnosticSpan,
+    label: *const char
+}
+
+export form CliDiagnosticCause {
+    kind: CliDiagnosticCauseKind,
+    message: *const char,
+    has_span: bool,
+    span: CliDiagnosticSpan,
+    confidence: CliDiagnosticConfidence
+}
+
+export form CliDiagnosticAnnotation {
+    kind: CliDiagnosticAnnotationKind,
+    message: *const char,
+    has_span: bool,
+    span: CliDiagnosticSpan
+}
+
+export form CliDiagnosticFixPart {
+    span: CliDiagnosticSpan,
+    replacement: *const char
+}
+
+export form CliDiagnosticSuggestion {
+    message: *const char,
+    applicability: CliDiagnosticApplicability,
+    confidence: CliDiagnosticConfidence,
+    preferred: bool,
+    suggestion_id: u64,
+    has_span: bool,
+    span: CliDiagnosticSpan,
+    has_replacement: bool,
+    replacement: *const char,
+    parts: *const CliDiagnosticFixPart,
+    part_count: usize
+}
+
+export form CliDiagnosticTrace {
+    kind: CliDiagnosticTraceKind,
+    message: *const char,
+    has_span: bool,
+    span: CliDiagnosticSpan
+}
+
+export form CliDiagnosticContract {
+    kind: CliDiagnosticContractKind,
+    expression: *const char,
+    procedure: *const char,
+    reason: *const char,
+    has_contract_span: bool,
+    contract_span: CliDiagnosticSpan,
+    has_call_span: bool,
+    call_span: CliDiagnosticSpan,
+    has_declaration_span: bool,
+    declaration_span: CliDiagnosticSpan
+}
+
+export form CliDiagnosticExternalTool {
+    present: bool,
+    tool: *const char,
+    rule: *const char,
+    external_code: *const char,
+    original_message: *const char
+}
+
+export form CliDiagnostic {
+    diagnostic_id: u64,
+    fingerprint: u64,
+    code: *const char,
+    short_code: *const char,
+    category: *const char,
+    severity: CliDiagnosticSeverity,
+    origin: CliDiagnosticOrigin,
+    message: *const char,
+    details: *const char,
+    details_storage: [u8; 4096],
+    has_span: bool,
+    file_id: u32,
+    source_id: SourceId,
+    source_name: *const char,
+    start_offset: usize,
+    end_offset: usize,
+    start_line: usize,
+    start_column: usize,
+    end_line: usize,
+    end_column: usize,
+    symbol: *const char,
+    expected_type: *const char,
+    actual_type: *const char,
+    expected: *const char,
+    found: *const char,
+    probable_cause: *const char,
+    package: *const char,
+    module: *const char,
+    procedure: *const char,
+    context: *const char,
+    labels: *const CliDiagnosticLabel,
+    label_count: usize,
+    related: *const CliDiagnosticLocation,
+    related_count: usize,
+    causes: *const CliDiagnosticCause,
+    cause_count: usize,
+    annotations: *const CliDiagnosticAnnotation,
+    annotation_count: usize,
+    help: *const char,
+    suggestions: *const CliDiagnosticSuggestion,
+    suggestion_count: usize,
+    has_machine_fix: bool,
+    trace: *const CliDiagnosticTrace,
+    trace_count: usize,
+    parent_diagnostic: usize,
+    root_diagnostic: usize,
+    parent_id: u64,
+    root_id: u64,
+    is_primary: bool,
+    is_cascade: bool,
+    is_suppressed: bool,
+    poisons_analysis: bool,
+    is_internal: bool,
+    provenance_id: u64,
+    poison_id: u64,
+    has_contract: bool,
+    contract: CliDiagnosticContract,
+    external_tool: CliDiagnosticExternalTool
+}
+
+export type CliLspPositionConverter = proc(
+    source_id: SourceId,
+    source_name: *const char,
+    byte_offset: usize,
+    encoding: i32,
+    position: *mut u8,
+    user_data: *mut u8
+) -> bool;
+
+export type CliLspUriConverter = proc(
+    source_id: SourceId,
+    source_name: *const char,
+    buffer: *mut u8,
+    capacity: usize,
+    user_data: *mut u8
+) -> bool;
+
+export form CliDiagnosticRenderOptions {
+    format: CliDiagnosticFormat,
+    color: bool,
+    show_source: bool,
+    show_source_line: bool,
+    show_codes: bool,
+    show_details: bool,
+    show_origin: bool,
+    show_category: bool,
+    show_labels: bool,
+    show_expected_found: bool,
+    show_causes: bool,
+    show_notes: bool,
+    show_help: bool,
+    show_related: bool,
+    show_suggestions: bool,
+    show_trace: bool,
+    show_suppressed: bool,
+    show_cascades: bool,
+    show_internal: bool,
+    show_summary: bool,
+    context_lines_before: usize,
+    context_lines_after: usize,
+    position_encoding: i32,
+    position_converter: ?CliLspPositionConverter,
+    position_user_data: *mut u8,
+    uri_converter: ?CliLspUriConverter,
+    uri_user_data: *mut u8,
+    pretty: bool,
+    trailing_newline: bool
+}
+
+export form CliDiagnosticStatistics {
+    total: usize,
+    note_count: usize,
+    help_count: usize,
+    warning_count: usize,
+    error_count: usize,
+    fatal_count: usize,
+    primary_count: usize,
+    cascade_count: usize,
+    suppressed_count: usize,
+    machine_fix_count: usize
+}
+
+export proc vitte_cli_diagnostic_init(diagnostic_value: *mut CliDiagnostic) {
+    if diagnostic_value == null {
+        return;
+    }
+
+    fill(diagnostic_value as *mut u8, 0, sizeof(CliDiagnostic));
+    set (*diagnostic_value).severity = CliDiagnosticSeverity.Error;
+    set (*diagnostic_value).origin = CliDiagnosticOrigin.Unknown;
+    set (*diagnostic_value).source_id = 0;
+    set (*diagnostic_value).parent_diagnostic = VITTE_CLI_DIAGNOSTIC_INDEX_NONE;
+    set (*diagnostic_value).root_diagnostic = VITTE_CLI_DIAGNOSTIC_INDEX_NONE;
+    set (*diagnostic_value).is_primary = true;
+}
+
+export proc vitte_cli_diagnostic_span_init(span: *mut CliDiagnosticSpan) {
+    if span == null {
+        return;
+    }
+
+    fill(span as *mut u8, 0, sizeof(CliDiagnosticSpan));
+    set (*span).source_id = 0;
+}
+
+export proc vitte_cli_diagnostic_render_options_init(options: *mut CliDiagnosticRenderOptions) {
+    if options == null {
+        return;
+    }
+
+    fill(options as *mut u8, 0, sizeof(CliDiagnosticRenderOptions));
+    set (*options).format = CliDiagnosticFormat.Terminal;
+    set (*options).show_source = true;
+    set (*options).show_source_line = true;
+    set (*options).show_codes = true;
+    set (*options).show_details = true;
+    set (*options).show_origin = true;
+    set (*options).show_category = true;
+    set (*options).show_labels = true;
+    set (*options).show_expected_found = true;
+    set (*options).show_causes = true;
+    set (*options).show_notes = true;
+    set (*options).show_help = true;
+    set (*options).show_related = true;
+    set (*options).show_suggestions = true;
+    set (*options).show_trace = true;
+    set (*options).show_cascades = true;
+    set (*options).show_summary = true;
+    set (*options).context_lines_before = 1;
+    set (*options).context_lines_after = 1;
+    set (*options).position_encoding = 1;
+    set (*options).pretty = true;
+    set (*options).trailing_newline = true;
+}
+
+export proc vitte_cli_diagnostic_statistics_init(statistics: *mut CliDiagnosticStatistics) {
+    if statistics == null {
+        return;
+    }
+
+    fill(statistics as *mut u8, 0, sizeof(CliDiagnosticStatistics));
+}
+
+proc cli_bridge_cstring(text: *const char) -> string {
+    if text == null { return ""; }
+    let mut length: usize = 0;
+    while text[length] != 0 { set length += 1; }
+    return string.from_bytes(text as *mut u8, length);
+}
+
+proc cli_bridge_array_is_valid(items: *const char, count: usize, maximum: usize) -> bool {
+    if count > maximum { return false; }
+    return count == 0 or items != null;
+}
+
+export proc vitte_cli_diagnostic_severity_is_valid(severity: CliDiagnosticSeverity) -> bool {
+    return severity >= CliDiagnosticSeverity.Note and severity <= CliDiagnosticSeverity.Fatal;
+}
+
+export proc vitte_cli_diagnostic_format_is_valid(format: CliDiagnosticFormat) -> bool {
+    return format >= CliDiagnosticFormat.Terminal and
+           format <= CliDiagnosticFormat.Lsp;
+}
+
+export proc vitte_cli_diagnostic_origin_is_valid(origin: CliDiagnosticOrigin) -> bool {
+    return origin >= CliDiagnosticOrigin.Unknown and origin <= CliDiagnosticOrigin.Internal;
+}
+
+export proc vitte_cli_diagnostic_span_is_valid(span: *const CliDiagnosticSpan) -> bool {
+    if span == null or not (*span).valid or (*span).end_offset < (*span).start_offset { return false; }
+    return (*span).source_id != 0 or (*span).source_name != null;
+}
+
+export proc vitte_cli_diagnostic_validate(diagnostic_value: *const CliDiagnostic) -> bool {
+    if diagnostic_value == null or
+       not vitte_cli_diagnostic_severity_is_valid((*diagnostic_value).severity) or
+       not vitte_cli_diagnostic_origin_is_valid((*diagnostic_value).origin) or
+       (*diagnostic_value).message == null or
+       cli_bridge_cstring((*diagnostic_value).message).len() == 0 { return false; }
+    if (*diagnostic_value).has_span {
+        let span = CliDiagnosticSpan {
+            valid: true,
+            file_id: (*diagnostic_value).file_id,
+            source_id: (*diagnostic_value).source_id,
+            source_name: (*diagnostic_value).source_name,
+            start_offset: (*diagnostic_value).start_offset,
+            end_offset: (*diagnostic_value).end_offset,
+            start_line: (*diagnostic_value).start_line,
+            start_column: (*diagnostic_value).start_column,
+            end_line: (*diagnostic_value).end_line,
+            end_column: (*diagnostic_value).end_column
+        };
+        if not vitte_cli_diagnostic_span_is_valid(&span) { return false; }
+    }
+    return cli_bridge_array_is_valid((*diagnostic_value).labels as *const char, (*diagnostic_value).label_count, VITTE_CLI_DIAGNOSTIC_MAX_LABELS) and
+        cli_bridge_array_is_valid((*diagnostic_value).related as *const char, (*diagnostic_value).related_count, VITTE_CLI_DIAGNOSTIC_MAX_RELATED) and
+        cli_bridge_array_is_valid((*diagnostic_value).causes as *const char, (*diagnostic_value).cause_count, VITTE_CLI_DIAGNOSTIC_MAX_CAUSES) and
+        cli_bridge_array_is_valid((*diagnostic_value).annotations as *const char, (*diagnostic_value).annotation_count, VITTE_CLI_DIAGNOSTIC_MAX_ANNOTATIONS) and
+        cli_bridge_array_is_valid((*diagnostic_value).suggestions as *const char, (*diagnostic_value).suggestion_count, VITTE_CLI_DIAGNOSTIC_MAX_SUGGESTIONS) and
+        cli_bridge_array_is_valid((*diagnostic_value).trace as *const char, (*diagnostic_value).trace_count, VITTE_CLI_DIAGNOSTIC_MAX_TRACE);
+}
+
+export proc vitte_cli_diagnostic_validate_batch(diagnostics: *const CliDiagnostic, diagnostic_count: usize) -> bool {
+    if diagnostic_count != 0 and diagnostics == null { return false; }
+    let mut index: usize = 0;
+    while index < diagnostic_count {
+        if not vitte_cli_diagnostic_validate(&diagnostics[index]) { return false; }
+        set index += 1;
+    }
+    return true;
+}
+
+export proc vitte_cli_diagnostic_severity_name(severity: CliDiagnosticSeverity) -> string {
+    match severity {
+        case CliDiagnosticSeverity.Note => return "note";
+        case CliDiagnosticSeverity.Help => return "help";
+        case CliDiagnosticSeverity.Warning => return "warning";
+        case CliDiagnosticSeverity.Error => return "error";
+        case CliDiagnosticSeverity.Fatal => return "fatal";
+        else => return "unknown"
+    }
+}
+
+export proc vitte_cli_diagnostic_format_name(format: CliDiagnosticFormat) -> string {
+    match format {
+        case CliDiagnosticFormat.Terminal => return "terminal";
+        case CliDiagnosticFormat.Json => return "json";
+        case CliDiagnosticFormat.Sarif => return "sarif";
+        case CliDiagnosticFormat.Lsp => return "lsp";
+        else => return "unknown"
+    }
+}
+
+export proc vitte_cli_diagnostic_origin_name(origin: CliDiagnosticOrigin) -> string {
+    match origin {
+        case CliDiagnosticOrigin.Unknown => return "unknown";
+        case CliDiagnosticOrigin.Io => return "io";
+        case CliDiagnosticOrigin.Lexer => return "lexer";
+        case CliDiagnosticOrigin.Scanner => return "scanner";
+        case CliDiagnosticOrigin.Parser => return "parser";
+        case CliDiagnosticOrigin.Import => return "import";
+        case CliDiagnosticOrigin.NameResolution => return "name-resolution";
+        case CliDiagnosticOrigin.TypeCheck => return "type-check";
+        case CliDiagnosticOrigin.Contract => return "contract";
+        case CliDiagnosticOrigin.ConstantEval => return "constant-eval";
+        case CliDiagnosticOrigin.Hir => return "hir";
+        case CliDiagnosticOrigin.Ir => return "ir";
+        case CliDiagnosticOrigin.Codegen => return "codegen";
+        case CliDiagnosticOrigin.C17Backend => return "c17-backend";
+        case CliDiagnosticOrigin.CCompiler => return "c-compiler";
+        case CliDiagnosticOrigin.Linker => return "linker";
+        case CliDiagnosticOrigin.Runtime => return "runtime";
+        case CliDiagnosticOrigin.Driver => return "driver";
+        case CliDiagnosticOrigin.Internal => return "internal";
+        else => return "unknown"
+    }
+}
+
+export proc vitte_cli_diagnostic_applicability_name(applicability: CliDiagnosticApplicability) -> string {
+    match applicability {
+        case CliDiagnosticApplicability.Machine => return "machine-applicable";
+        case CliDiagnosticApplicability.Maybe => return "maybe-incorrect";
+        case CliDiagnosticApplicability.Placeholders => return "has-placeholders";
+        case CliDiagnosticApplicability.Manual => return "manual";
+        else => return "unknown"
+    }
+}
+
+export proc vitte_cli_diagnostic_confidence_name(confidence: CliDiagnosticConfidence) -> string {
+    match confidence {
+        case CliDiagnosticConfidence.None => return "none";
+        case CliDiagnosticConfidence.Low => return "low";
+        case CliDiagnosticConfidence.Medium => return "medium";
+        case CliDiagnosticConfidence.High => return "high";
+        case CliDiagnosticConfidence.Certain => return "certain";
+        else => return "unknown"
+    }
+}
+
+export proc vitte_cli_diagnostic_cause_kind_name(kind: CliDiagnosticCauseKind) -> string {
+    match kind {
+        case CliDiagnosticCauseKind.Unknown => return "unknown";
+        case CliDiagnosticCauseKind.Syntax => return "syntax";
+        case CliDiagnosticCauseKind.MissingToken => return "missing-token";
+        case CliDiagnosticCauseKind.UnexpectedToken => return "unexpected-token";
+        case CliDiagnosticCauseKind.UnresolvedName => return "unresolved-name";
+        case CliDiagnosticCauseKind.TypeMismatch => return "type-mismatch";
+        case CliDiagnosticCauseKind.ArityMismatch => return "arity-mismatch";
+        case CliDiagnosticCauseKind.Constraint => return "constraint";
+        case CliDiagnosticCauseKind.Import => return "import";
+        case CliDiagnosticCauseKind.Contract => return "contract";
+        case CliDiagnosticCauseKind.ConstantEval => return "constant-evaluation";
+        case CliDiagnosticCauseKind.UnsafeOperation => return "unsafe-operation";
+        case CliDiagnosticCauseKind.Lowering => return "lowering";
+        case CliDiagnosticCauseKind.ExternalTool => return "external-tool";
+        case CliDiagnosticCauseKind.Link => return "link";
+        case CliDiagnosticCauseKind.Runtime => return "runtime";
+        case CliDiagnosticCauseKind.Internal => return "internal";
+        else => return "unknown"
+    }
+}
+
+export proc vitte_cli_diagnostic_trace_kind_name(kind: CliDiagnosticTraceKind) -> string {
+    match kind {
+        case CliDiagnosticTraceKind.Call => return "call";
+        case CliDiagnosticTraceKind.Instantiation => return "instantiation";
+        case CliDiagnosticTraceKind.Constraint => return "constraint";
+        case CliDiagnosticTraceKind.Import => return "import";
+        case CliDiagnosticTraceKind.Expansion => return "expansion";
+        case CliDiagnosticTraceKind.Lowering => return "lowering";
+        case CliDiagnosticTraceKind.GeneratedCode => return "generated-code";
+        case CliDiagnosticTraceKind.Related => return "related";
+        else => return "unknown"
+    }
+}
+
+export proc vitte_diagnostic_cli_code_exists(code: *const char) -> bool {
+    if code == null { return false; }
+    return vitte_diagnostic_registry_contains(cli_bridge_cstring(code));
+}
+
+/// Opaque host-side allocation and population boundary for CLI diagnostics.
+/// The Vitte compiler passes scalar fields only; the C adapter owns the
+/// bootstrap `vitte_cli_diagnostic_t` layout consumed by the renderers.
+export extern proc vitte_cli_diagnostic_transport_create(count: usize) -> *mut u8;
+export extern proc vitte_cli_diagnostic_transport_set(batch: *mut u8, count: usize, index: usize, diagnostic_id: u64, code: *const char, severity: u32, origin: u32, message: *const char, details: *const char, help: *const char, has_span: bool, file_id: u32, source_id: u64, source_name: *const char, start_offset: usize, end_offset: usize, start_line: usize, start_column: usize, end_line: usize, end_column: usize, expected: *const char, found: *const char) -> bool;
+export extern proc vitte_cli_diagnostic_transport_set_semantic(batch: *mut u8, count: usize, index: usize, symbol: *const char, probable_cause: *const char, context: *const char, has_related: bool, related_file_id: u32, related_source_id: u64, related_source_name: *const char, related_start_offset: usize, related_end_offset: usize, related_start_line: usize, related_start_column: usize, related_end_line: usize, related_end_column: usize, related_label: *const char) -> bool;
+export extern proc vitte_cli_diagnostic_transport_destroy(batch: *mut u8);
+
+export extern proc vitte_diagnostic_explain_cli(stream: *mut u8, code: *const char, json: bool) -> bool;
+
+export proc vitte_diagnostic_cli_collect_statistics(diagnostics: *const CliDiagnostic, diagnostic_count: usize, statistics: *mut CliDiagnosticStatistics) -> bool {
+    if statistics == null or (diagnostic_count != 0 and diagnostics == null) { return false; }
+    vitte_cli_diagnostic_statistics_init(statistics);
+    let mut index: usize = 0;
+    while index < diagnostic_count {
+        let diagnostic_value = &diagnostics[index];
+        if not vitte_cli_diagnostic_validate(diagnostic_value) { return false; }
+        set (*statistics).total += 1;
+        match (*diagnostic_value).severity {
+            case CliDiagnosticSeverity.Note => { set (*statistics).note_count += 1; },
+            case CliDiagnosticSeverity.Help => { set (*statistics).help_count += 1; },
+            case CliDiagnosticSeverity.Warning => { set (*statistics).warning_count += 1; },
+            case CliDiagnosticSeverity.Error => { set (*statistics).error_count += 1; },
+            case CliDiagnosticSeverity.Fatal => { set (*statistics).fatal_count += 1; }
+        }
+        if (*diagnostic_value).is_primary { set (*statistics).primary_count += 1; }
+        if (*diagnostic_value).is_cascade { set (*statistics).cascade_count += 1; }
+        if (*diagnostic_value).is_suppressed { set (*statistics).suppressed_count += 1; }
+        if (*diagnostic_value).has_machine_fix { set (*statistics).machine_fix_count += 1; }
+        set index += 1;
+    }
+    return true;
+}
+
+export extern proc vitte_diagnostic_render_cli_batch_ex(stream: *mut u8, sources: *const SourceContext, source_id: SourceId, source_name: *const char, diagnostics: *const CliDiagnostic, diagnostic_count: usize, options: *const CliDiagnosticRenderOptions) -> bool;
+
+export extern proc vitte_diagnostic_render_cli_batch(stream: *mut u8, sources: *const SourceContext, source_id: SourceId, source_name: *const char, diagnostics: *const CliDiagnostic, diagnostic_count: usize, color: bool, format: CliDiagnosticFormat) -> bool;
+
+export extern proc vitte_diagnostic_render_cli_diagnostic(stream: *mut u8, sources: *const SourceContext, source_id: SourceId, source_name: *const char, diagnostic_value: *const CliDiagnostic, options: *const CliDiagnosticRenderOptions) -> bool;
+
+export extern proc vitte_diagnostic_render_cli(stream: *mut u8, sources: *const SourceContext, source_id: SourceId, source_name: *const char, severity: CliDiagnosticSeverity, code: *const char, message: *const char, details: *const char, has_span: bool, file_id: u32, start_offset: usize, end_offset: usize, start_line: usize, start_column: usize, end_line: usize, end_column: usize, procedure: *const char, context: *const char, color: bool, format: CliDiagnosticFormat) -> bool;

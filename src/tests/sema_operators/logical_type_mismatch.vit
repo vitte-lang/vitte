@@ -51,32 +51,32 @@ pick State {
 proc bool_identity(
     value: bool
 ) -> bool {
-    give value;
+    return value;
 }
 
 proc signed_identity(
     value: i64
 ) -> i64 {
-    give value;
+    return value;
 }
 
 proc unsigned_identity(
     value: u64
 ) -> u64 {
-    give value;
+    return value;
 }
 
 proc float_identity(
     value: f64
 ) -> f64 {
-    give value;
+    return value;
 }
 
 proc make_point(
     x: i64,
     y: i64
 ) -> Point {
-    give Point {
+    return Point {
         x: x,
         y: y,
     };
@@ -86,20 +86,20 @@ proc make_record(
     value: i64,
     enabled: bool
 ) -> Record {
-    give Record {
+    return Record {
         value: value,
         enabled: enabled,
     };
 }
 
 proc valid_bool_source() -> bool {
-    give true;
+    return true;
 }
 
 proc valid_comparison_source(
     value: i64
 ) -> bool {
-    give value == 42;
+    return value == 42;
 }
 
 /// Unary `!` with a signed integer literal.
@@ -108,7 +108,7 @@ proc valid_comparison_source(
 /// expected operand of type `bool`, found integer.
 
 proc mismatch_not_signed_literal() -> bool {
-    give !42;
+    return not 42;
 }
 
 /// Unary `!` with a signed integer variable.
@@ -119,7 +119,7 @@ proc mismatch_not_signed_literal() -> bool {
 proc mismatch_not_signed_variable() -> bool {
     let value: i64 = 42;
 
-    give !value;
+    return not value;
 }
 
 /// Unary `!` with an unsigned integer variable.
@@ -130,7 +130,7 @@ proc mismatch_not_signed_variable() -> bool {
 proc mismatch_not_unsigned_variable() -> bool {
     let value: u64 = 42;
 
-    give !value;
+    return not value;
 }
 
 /// Unary `!` with a floating-point variable.
@@ -141,7 +141,7 @@ proc mismatch_not_unsigned_variable() -> bool {
 proc mismatch_not_float_variable() -> bool {
     let value: f64 = 42.0;
 
-    give !value;
+    return not value;
 }
 
 /// Unary `!` with a character.
@@ -152,7 +152,7 @@ proc mismatch_not_float_variable() -> bool {
 proc mismatch_not_character() -> bool {
     let value: char = 'x';
 
-    give !value;
+    return not value;
 }
 
 /// Unary `!` with a string.
@@ -163,7 +163,7 @@ proc mismatch_not_character() -> bool {
 proc mismatch_not_string() -> bool {
     let value: string = "vitte";
 
-    give !value;
+    return not value;
 }
 
 /// Unary `!` with an aggregate value.
@@ -177,7 +177,7 @@ proc mismatch_not_form_value() -> bool {
             20,
             22);
 
-    give !point;
+    return not point;
 }
 
 /// Unary `!` with an aggregate reference.
@@ -194,7 +194,7 @@ proc mismatch_not_form_reference() -> bool {
     let reference: &Point =
         &point;
 
-    give !reference;
+    return not reference;
 }
 
 /// Unary `!` with a pick value.
@@ -206,25 +206,25 @@ proc mismatch_not_pick() -> bool {
     let state: State =
         State.Ready;
 
-    give !state;
+    return not state;
 }
 
 /// Unary `!` applied to the result of a procedure returning `i64`.
 
 proc mismatch_not_signed_call() -> bool {
-    give !signed_identity(42);
+    return not signed_identity(42);
 }
 
 /// Unary `!` applied to the result of a procedure returning `u64`.
 
 proc mismatch_not_unsigned_call() -> bool {
-    give !unsigned_identity(42);
+    return not unsigned_identity(42);
 }
 
 /// Unary `!` applied to the result of a procedure returning `f64`.
 
 proc mismatch_not_float_call() -> bool {
-    give !float_identity(42.0);
+    return not float_identity(42.0);
 }
 
 /// `&&` with invalid left operand.
@@ -235,7 +235,7 @@ proc mismatch_not_float_call() -> bool {
 proc mismatch_and_signed_left() -> bool {
     let value: i64 = 42;
 
-    give value && true;
+    return value and true;
 }
 
 /// `&&` with invalid right operand.
@@ -246,7 +246,7 @@ proc mismatch_and_signed_left() -> bool {
 proc mismatch_and_signed_right() -> bool {
     let value: i64 = 42;
 
-    give true && value;
+    return true and value;
 }
 
 /// `&&` with both operands invalid.
@@ -258,7 +258,7 @@ proc mismatch_and_signed_both() -> bool {
     let left: i64 = 20;
     let right: i64 = 22;
 
-    give left && right;
+    return left and right;
 }
 
 /// `&&` with unsigned left operand.
@@ -266,7 +266,7 @@ proc mismatch_and_signed_both() -> bool {
 proc mismatch_and_unsigned_left() -> bool {
     let value: u64 = 42;
 
-    give value && true;
+    return value and true;
 }
 
 /// `&&` with unsigned right operand.
@@ -274,7 +274,7 @@ proc mismatch_and_unsigned_left() -> bool {
 proc mismatch_and_unsigned_right() -> bool {
     let value: u64 = 42;
 
-    give true && value;
+    return true and value;
 }
 
 /// `&&` with floating-point left operand.
@@ -282,7 +282,7 @@ proc mismatch_and_unsigned_right() -> bool {
 proc mismatch_and_float_left() -> bool {
     let value: f64 = 42.0;
 
-    give value && true;
+    return value and true;
 }
 
 /// `&&` with floating-point right operand.
@@ -290,7 +290,7 @@ proc mismatch_and_float_left() -> bool {
 proc mismatch_and_float_right() -> bool {
     let value: f64 = 42.0;
 
-    give true && value;
+    return true and value;
 }
 
 /// `&&` with character operand.
@@ -298,7 +298,7 @@ proc mismatch_and_float_right() -> bool {
 proc mismatch_and_character() -> bool {
     let value: char = 'x';
 
-    give true && value;
+    return true and value;
 }
 
 /// `&&` with string operand.
@@ -306,7 +306,7 @@ proc mismatch_and_character() -> bool {
 proc mismatch_and_string() -> bool {
     let value: string = "vitte";
 
-    give value && true;
+    return value and true;
 }
 
 /// `&&` with aggregate operand.
@@ -317,7 +317,7 @@ proc mismatch_and_form() -> bool {
             20,
             22);
 
-    give true && point;
+    return true and point;
 }
 
 /// `&&` with aggregate reference.
@@ -328,7 +328,7 @@ proc mismatch_and_reference() -> bool {
             20,
             22);
 
-    give &point && true;
+    return &point and true;
 }
 
 /// `&&` with pick operand.
@@ -337,7 +337,7 @@ proc mismatch_and_pick() -> bool {
     let state: State =
         State.Ready;
 
-    give state && true;
+    return state and true;
 }
 
 /// `||` with invalid signed left operand.
@@ -345,7 +345,7 @@ proc mismatch_and_pick() -> bool {
 proc mismatch_or_signed_left() -> bool {
     let value: i64 = 42;
 
-    give value || false;
+    return value or false;
 }
 
 /// `||` with invalid signed right operand.
@@ -353,7 +353,7 @@ proc mismatch_or_signed_left() -> bool {
 proc mismatch_or_signed_right() -> bool {
     let value: i64 = 42;
 
-    give false || value;
+    return false or value;
 }
 
 /// `||` with both operands invalid.
@@ -362,7 +362,7 @@ proc mismatch_or_signed_both() -> bool {
     let left: i64 = 20;
     let right: i64 = 22;
 
-    give left || right;
+    return left or right;
 }
 
 /// `||` with unsigned left operand.
@@ -370,7 +370,7 @@ proc mismatch_or_signed_both() -> bool {
 proc mismatch_or_unsigned_left() -> bool {
     let value: u64 = 42;
 
-    give value || false;
+    return value or false;
 }
 
 /// `||` with unsigned right operand.
@@ -378,7 +378,7 @@ proc mismatch_or_unsigned_left() -> bool {
 proc mismatch_or_unsigned_right() -> bool {
     let value: u64 = 42;
 
-    give false || value;
+    return false or value;
 }
 
 /// `||` with floating-point operand.
@@ -386,13 +386,13 @@ proc mismatch_or_unsigned_right() -> bool {
 proc mismatch_or_float_left() -> bool {
     let value: f64 = 42.0;
 
-    give value || false;
+    return value or false;
 }
 
 proc mismatch_or_float_right() -> bool {
     let value: f64 = 42.0;
 
-    give false || value;
+    return false or value;
 }
 
 /// `||` with character operand.
@@ -400,7 +400,7 @@ proc mismatch_or_float_right() -> bool {
 proc mismatch_or_character() -> bool {
     let value: char = 'x';
 
-    give value || false;
+    return value or false;
 }
 
 /// `||` with string operand.
@@ -408,7 +408,7 @@ proc mismatch_or_character() -> bool {
 proc mismatch_or_string() -> bool {
     let value: string = "vitte";
 
-    give false || value;
+    return false or value;
 }
 
 /// `||` with aggregate operand.
@@ -419,7 +419,7 @@ proc mismatch_or_form() -> bool {
             20,
             22);
 
-    give point || false;
+    return point or false;
 }
 
 /// `||` with aggregate reference.
@@ -430,7 +430,7 @@ proc mismatch_or_reference() -> bool {
             20,
             22);
 
-    give false || &point;
+    return false or &point;
 }
 
 /// `||` with pick operand.
@@ -439,7 +439,7 @@ proc mismatch_or_pick() -> bool {
     let state: State =
         State.Running;
 
-    give state || false;
+    return state or false;
 }
 
 /// Invalid operand hidden behind a valid logical left-hand side.
@@ -449,8 +449,8 @@ proc mismatch_or_pick() -> bool {
 proc mismatch_nested_and_right() -> bool {
     let value: i64 = 42;
 
-    give true &&
-         (true && value);
+    return true and
+         (true and value);
 }
 
 /// Invalid operand hidden in the left branch of a nested expression.
@@ -458,7 +458,7 @@ proc mismatch_nested_and_right() -> bool {
 proc mismatch_nested_and_left() -> bool {
     let value: i64 = 42;
 
-    give (value && true) &&
+    return (value and true) and
          true;
 }
 
@@ -467,8 +467,8 @@ proc mismatch_nested_and_left() -> bool {
 proc mismatch_nested_or_right() -> bool {
     let value: i64 = 42;
 
-    give false ||
-         (false || value);
+    return false or
+         (false or value);
 }
 
 /// Invalid operand inside a mixed logical expression.
@@ -476,8 +476,8 @@ proc mismatch_nested_or_right() -> bool {
 proc mismatch_mixed_and_or() -> bool {
     let value: i64 = 42;
 
-    give true &&
-         false ||
+    return true and
+         false or
          value;
 }
 
@@ -486,8 +486,8 @@ proc mismatch_mixed_and_or() -> bool {
 proc mismatch_mixed_left() -> bool {
     let value: i64 = 42;
 
-    give value &&
-         true ||
+    return value and
+         true or
          false;
 }
 
@@ -496,8 +496,8 @@ proc mismatch_mixed_left() -> bool {
 proc mismatch_nested_not() -> bool {
     let value: i64 = 42;
 
-    give true &&
-         !value;
+    return true and
+         not value;
 }
 
 /// Multiple unary logical operators do not make a non-boolean operand valid.
@@ -505,7 +505,7 @@ proc mismatch_nested_not() -> bool {
 proc mismatch_double_not_signed() -> bool {
     let value: i64 = 42;
 
-    give !!value;
+    return not not value;
 }
 
 /// Deep unary nesting still reaches an invalid non-boolean operand.
@@ -513,7 +513,7 @@ proc mismatch_double_not_signed() -> bool {
 proc mismatch_deep_not_signed() -> bool {
     let value: i64 = 42;
 
-    give !!!!!value;
+    return not not not not not value;
 }
 
 /// Parentheses do not alter the operand type.
@@ -521,7 +521,7 @@ proc mismatch_deep_not_signed() -> bool {
 proc mismatch_parenthesized_signed() -> bool {
     let value: i64 = 42;
 
-    give !(value);
+    return not (value);
 }
 
 /// Deep parentheses do not create truthiness.
@@ -529,7 +529,7 @@ proc mismatch_parenthesized_signed() -> bool {
 proc mismatch_deep_parenthesized_signed() -> bool {
     let value: i64 = 42;
 
-    give !((((value))));
+    return not ((((value))));
 }
 
 /// A valid comparison on the left does not permit an invalid right operand.
@@ -537,7 +537,7 @@ proc mismatch_deep_parenthesized_signed() -> bool {
 proc mismatch_comparison_and_integer() -> bool {
     let value: i64 = 42;
 
-    give (value == 42) &&
+    return (value == 42) and
          value;
 }
 
@@ -546,7 +546,7 @@ proc mismatch_comparison_and_integer() -> bool {
 proc mismatch_integer_and_comparison() -> bool {
     let value: i64 = 42;
 
-    give value &&
+    return value and
          (value == 42);
 }
 
@@ -555,14 +555,14 @@ proc mismatch_integer_and_comparison() -> bool {
 proc mismatch_comparison_or_integer() -> bool {
     let value: i64 = 42;
 
-    give (value == 42) ||
+    return (value == 42) or
          value;
 }
 
 proc mismatch_integer_or_comparison() -> bool {
     let value: i64 = 42;
 
-    give value ||
+    return value or
          (value == 42);
 }
 
@@ -572,7 +572,7 @@ proc mismatch_arithmetic_and() -> bool {
     let left: i64 = 20;
     let right: i64 = 22;
 
-    give (left + right) &&
+    return (left + right) and
          true;
 }
 
@@ -580,7 +580,7 @@ proc mismatch_arithmetic_or() -> bool {
     let left: i64 = 20;
     let right: i64 = 22;
 
-    give false ||
+    return false or
          (left + right);
 }
 
@@ -588,25 +588,25 @@ proc mismatch_arithmetic_not() -> bool {
     let left: i64 = 20;
     let right: i64 = 22;
 
-    give !(left + right);
+    return not (left + right);
 }
 
 /// A procedure call returning an integer remains numeric.
 
 proc mismatch_call_and() -> bool {
-    give signed_identity(42) &&
+    return signed_identity(42) and
          true;
 }
 
 proc mismatch_call_or() -> bool {
-    give false ||
+    return false or
          signed_identity(42);
 }
 
 /// Nested numeric calls must not be coerced to boolean.
 
 proc mismatch_nested_numeric_call() -> bool {
-    give bool_identity(true) &&
+    return bool_identity(true) and
          signed_identity(
              signed_identity(42));
 }
@@ -621,7 +621,7 @@ proc mismatch_form_member_and() -> bool {
             42,
             true);
 
-    give record.enabled &&
+    return record.enabled and
          record.value;
 }
 
@@ -631,7 +631,7 @@ proc mismatch_form_member_or() -> bool {
             42,
             false);
 
-    give record.value ||
+    return record.value or
          record.enabled;
 }
 
@@ -641,7 +641,7 @@ proc mismatch_form_member_not() -> bool {
             42,
             true);
 
-    give !record.value;
+    return not record.value;
 }
 
 /// Assignment does not change the semantic requirements of logical operators.
@@ -650,9 +650,9 @@ proc mismatch_initializer() -> bool {
     let number: i64 = 42;
 
     let invalid: bool =
-        true && number;
+        true and number;
 
-    give invalid;
+    return invalid;
 }
 
 proc mismatch_assignment() -> bool {
@@ -660,9 +660,9 @@ proc mismatch_assignment() -> bool {
     let mut value: bool = false;
 
     set value =
-        number || value;
+        number or value;
 
-    give value;
+    return value;
 }
 
 /// Procedure arguments preserve the invalid logical expression's type-checking
@@ -671,8 +671,8 @@ proc mismatch_assignment() -> bool {
 proc mismatch_as_call_argument() -> bool {
     let number: i64 = 42;
 
-    give bool_identity(
-        true && number);
+    return bool_identity(
+        true and number);
 }
 
 /// Nested calls do not hide the invalid operand.
@@ -680,8 +680,8 @@ proc mismatch_as_call_argument() -> bool {
 proc mismatch_nested_call_argument() -> bool {
     let number: i64 = 42;
 
-    give bool_identity(
-        bool_identity(true) &&
+    return bool_identity(
+        bool_identity(true) and
         number);
 }
 
@@ -691,31 +691,31 @@ proc mismatch_nested_call_argument() -> bool {
 proc mismatch_if_and_condition() -> bool {
     let number: i64 = 42;
 
-    if true && number {
-        give true;
+    if true and number {
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 proc mismatch_if_or_condition() -> bool {
     let number: i64 = 42;
 
-    if false || number {
-        give true;
+    if false or number {
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 proc mismatch_if_not_condition() -> bool {
     let number: i64 = 42;
 
-    if !number {
-        give true;
+    if not number {
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 /// `while` coverage.
@@ -724,32 +724,32 @@ proc mismatch_while_and_condition() -> bool {
     let number: i64 = 42;
     let mut running: bool = true;
 
-    while running && number {
+    while running and number {
         set running = false;
     }
 
-    give !running;
+    return not running;
 }
 
 proc mismatch_while_or_condition() -> bool {
     let number: i64 = 42;
     let mut running: bool = false;
 
-    while running || number {
+    while running or number {
         set running = false;
     }
 
-    give !running;
+    return not running;
 }
 
 proc mismatch_while_not_condition() -> bool {
     let number: i64 = 42;
 
-    while !number {
-        give false;
+    while not number {
+        return false;
     }
 
-    give true;
+    return true;
 }
 
 /// Parameter-based mismatch ensures diagnostics point to the use site while
@@ -758,31 +758,31 @@ proc mismatch_while_not_condition() -> bool {
 proc mismatch_parameter_not(
     value: i64
 ) -> bool {
-    give !value;
+    return not value;
 }
 
 proc mismatch_parameter_and_left(
     value: i64
 ) -> bool {
-    give value && true;
+    return value and true;
 }
 
 proc mismatch_parameter_and_right(
     value: i64
 ) -> bool {
-    give true && value;
+    return true and value;
 }
 
 proc mismatch_parameter_or_left(
     value: i64
 ) -> bool {
-    give value || false;
+    return value or false;
 }
 
 proc mismatch_parameter_or_right(
     value: i64
 ) -> bool {
-    give false || value;
+    return false or value;
 }
 
 /// Unsigned parameter coverage.
@@ -790,7 +790,7 @@ proc mismatch_parameter_or_right(
 proc mismatch_unsigned_parameter(
     value: u64
 ) -> bool {
-    give true && value;
+    return true and value;
 }
 
 /// Floating-point parameter coverage.
@@ -798,7 +798,7 @@ proc mismatch_unsigned_parameter(
 proc mismatch_float_parameter(
     value: f64
 ) -> bool {
-    give value || false;
+    return value or false;
 }
 
 /// Character parameter coverage.
@@ -806,7 +806,7 @@ proc mismatch_float_parameter(
 proc mismatch_char_parameter(
     value: char
 ) -> bool {
-    give !value;
+    return not value;
 }
 
 /// String parameter coverage.
@@ -814,7 +814,7 @@ proc mismatch_char_parameter(
 proc mismatch_string_parameter(
     value: string
 ) -> bool {
-    give value && true;
+    return value and true;
 }
 
 /// Aggregate value parameter coverage.
@@ -822,7 +822,7 @@ proc mismatch_string_parameter(
 proc mismatch_form_parameter(
     point: Point
 ) -> bool {
-    give point || false;
+    return point or false;
 }
 
 /// Aggregate reference parameter coverage.
@@ -830,7 +830,7 @@ proc mismatch_form_parameter(
 proc mismatch_reference_parameter(
     point: &Point
 ) -> bool {
-    give true && point;
+    return true and point;
 }
 
 /// Pick parameter coverage.
@@ -838,7 +838,7 @@ proc mismatch_reference_parameter(
 proc mismatch_pick_parameter(
     state: State
 ) -> bool {
-    give !state;
+    return not state;
 }
 
 /// Local shadowing must not confuse the diagnostic type.
@@ -853,12 +853,12 @@ proc mismatch_shadowed_local() -> bool {
     {
         let value: i64 = 42;
 
-        if value && true {
-            give false;
+        if value and true {
+            return false;
         }
     }
 
-    give value;
+    return value;
 }
 
 /// Nested scope lookup must preserve the non-boolean type.
@@ -869,7 +869,7 @@ proc mismatch_nested_scope() -> bool {
     {
         {
             {
-                give true &&
+                return true and
                      number;
             }
         }
@@ -885,16 +885,16 @@ proc mismatch_repeated_symbol() -> bool {
     let number: i64 = 42;
 
     let first: bool =
-        true && number;
+        true and number;
 
     let second: bool =
-        number || false;
+        number or false;
 
     let third: bool =
-        !number;
+        not number;
 
-    give first ||
-         second ||
+    return first or
+         second or
          third;
 }
 
@@ -911,24 +911,24 @@ proc mismatch_recovery_multiple_types() -> bool {
     let string_value: string = "vitte";
 
     let first: bool =
-        signed_value && true;
+        signed_value and true;
 
     let second: bool =
-        false || unsigned_value;
+        false or unsigned_value;
 
     let third: bool =
-        !float_value;
+        not float_value;
 
     let fourth: bool =
-        true && character_value;
+        true and character_value;
 
     let fifth: bool =
-        string_value || false;
+        string_value or false;
 
-    give first ||
-         second ||
-         third ||
-         fourth ||
+    return first or
+         second or
+         third or
+         fourth or
          fifth;
 }
 
@@ -939,31 +939,31 @@ proc mismatch_recovery_multiple_types() -> bool {
 /// mismatch corrupts the type of later expressions.
 
 proc valid_control_literals() -> bool {
-    give true &&
-         !false &&
-         (true || false);
+    return true and
+         not false and
+         (true or false);
 }
 
 proc valid_control_variables() -> bool {
     let left: bool = true;
     let right: bool = false;
 
-    give left &&
-         !right &&
-         (left || right);
+    return left and
+         not right and
+         (left or right);
 }
 
 proc valid_control_comparisons() -> bool {
     let value: i64 = 42;
 
-    give value == 42 &&
-         value > 0 &&
+    return value == 42 and
+         value > 0 and
          value < 100;
 }
 
 proc valid_control_calls() -> bool {
-    give valid_bool_source() &&
-         valid_comparison_source(42) &&
+    return valid_bool_source() and
+         valid_comparison_source(42) and
          bool_identity(true);
 }
 
@@ -973,8 +973,8 @@ proc valid_control_record_member() -> bool {
             42,
             true);
 
-    give record.enabled &&
-         !false;
+    return record.enabled and
+         not false;
 }
 
 /// Final intentional mismatch.
@@ -985,7 +985,7 @@ proc valid_control_record_member() -> bool {
 proc final_mismatch() -> bool {
     let value: i64 = 42;
 
-    give true &&
+    return true and
          value;
 }
 
@@ -996,15 +996,15 @@ proc main() -> int {
     /// compile-fail assertions above exercise logical operand diagnostics.
 
     let controls: bool =
-        valid_control_literals() &&
-        valid_control_variables() &&
-        valid_control_comparisons() &&
-        valid_control_calls() &&
+        valid_control_literals() and
+        valid_control_variables() and
+        valid_control_comparisons() and
+        valid_control_calls() and
         valid_control_record_member();
 
     if controls {
-        give 0;
+        return 0;
     }
 
-    give 1;
+    return 1;
 }

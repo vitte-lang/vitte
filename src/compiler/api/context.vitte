@@ -1,0 +1,1711 @@
+///
+/// Vitte Compiler
+/// src/compiler/api/context.vitte
+///
+/// Central compiler context implementation.
+///
+/// The context owns reusable compiler infrastructure and per-compilation
+/// state. It is the bridge between the stable API layer and the compiler
+/// pipeline.
+///
+/// Core responsibilities:
+///
+/// - lifecycle and invariants
+/// - source ownership and registration
+/// - diagnostic ownership
+/// - compilation generations
+/// - per-compilation reset
+/// - source IDs
+/// - statistics
+/// - cancellation/failure state
+/// - deterministic cleanup
+///
+/// The context does not implement lexer/parser/sema/backend algorithms.
+///
+
+space compiler::api::context;
+
+use compiler::api::error::{
+    Status,
+    Error,
+    error_init,
+    error_reset,
+    error_set,
+    error_set_last,
+    error_last,
+};
+use compiler::diagnostic::diagnostic::{
+    DiagnosticBag,
+    diagnostic_bag_default,
+    diagnostic_bag_init,
+    diagnostic_bag_reset,
+    diagnostic_bag_validate,
+    diagnostic_bag_count,
+    diagnostic_error_count,
+    diagnostic_warning_count,
+};
+use compiler::source::source::{SourceId};
+
+/// =========================================================================
+/// Configuration
+/// =========================================================================
+
+const CONTEXT_MAGIC: u64 = 0x5649545445434F4E;
+const CONTEXT_DEAD_MAGIC: u64 = 0x44454144434F4E54;
+
+const CONTEXT_INITIAL_SOURCE_CAPACITY: usize = 8;
+const CONTEXT_INITIAL_DIAGNOSTIC_CAPACITY: usize = 32;
+
+const CONTEXT_MAX_SOURCE_COUNT: usize = 1048576;
+const CONTEXT_MAX_SOURCE_SIZE: usize = (1024 * 1024 * 1024) as usize;
+const CONTEXT_MAX_SOURCE_NAME: usize = 32768;
+
+const SOURCE_ID_NONE: SourceId = 0;
+const CONTEXT_SOURCE_ID_MAX: SourceId = 0xffffffffffffffff;
+
+const CONTEXT_FNV_OFFSET: u64 = 14695981039346656037 as u64;
+const CONTEXT_FNV_PRIME: u64 = 1099511628211 as u64;
+
+const CONTEXT_SIZE_MAX_VALUE: usize = 18446744073709551615 as usize;
+
+
+/// =========================================================================
+/// Context state
+/// =========================================================================
+
+export pick ContextState {
+    Uninitialized,
+    Ready,
+    Compiling,
+    Failed,
+    Destroyed,
+}
+
+
+/// =========================================================================
+/// Source record
+/// =========================================================================
+
+export form ContextSource {
+    id: SourceId,
+
+    name: string,
+    data: string,
+    length: usize,
+
+    generation: u64,
+    hash: u64,
+}
+
+
+/// =========================================================================
+/// Compiler context
+/// =========================================================================
+
+export form Context {
+    magic: u64,
+    state: ContextState,
+
+    generation: u64,
+    next_source_id: SourceId,
+
+    sources: [ContextSource],
+    source_count: usize,
+    source_capacity: usize,
+
+    total_source_bytes: usize,
+
+    diagnostics: DiagnosticBag,
+
+    compilation_count: usize,
+    successful_compilation_count: usize,
+    failed_compilation_count: usize,
+
+    cancel_requested: bool,
+
+    last_error: Error,
+}
+
+
+/// =========================================================================
+/// Integer safety
+/// =========================================================================
+
+proc size_add_overflow(
+    left: usize,
+    right: usize,
+    result: &mut usize
+) -> bool {
+    if left > CONTEXT_SIZE_MAX_VALUE - right {
+        return true;
+    }
+
+    set *result = left + right;
+
+    return false;
+}
+
+proc size_mul_overflow(
+    left: usize,
+    right: usize,
+    result: &mut usize
+) -> bool {
+    if left != 0  and 
+       right > CONTEXT_SIZE_MAX_VALUE / left {
+        return true;
+    }
+
+    set *result = left * right;
+
+    return false;
+}
+
+
+/// =========================================================================
+/// Error propagation
+/// =========================================================================
+
+proc set_thread_error(
+    status: Status,
+    code: str,
+    message: str
+) {
+    let mut error: Error = Error {
+        status: status,
+        code: code,
+        message: message,
+        details: "",
+    };
+
+    error_set_last(&error);
+}
+
+
+/// =========================================================================
+/// Text helpers
+/// =========================================================================
+
+proc bounded_strlen(
+    text: str,
+    maximum: usize
+) -> usize {
+    let mut length: usize = 0;
+
+    while length < maximum  and 
+          text[length] != '\0' {
+        set length += 1;
+    }
+
+    return length;
+}
+
+proc duplicate_string_n(
+    text: str,
+    length: usize
+) -> ?string {
+    let mut allocation_size: usize = 0;
+
+    if size_add_overflow(
+        length,
+        1,
+        &mut allocation_size
+    ) {
+        return null;
+    }
+
+    return string.from_bytes(
+        text,
+        length
+    );
+}
+
+proc duplicate_string(
+    text: str
+) -> ?string {
+    return duplicate_string_n(
+        text,
+        text.length
+    );
+}
+
+
+/// =========================================================================
+/// Source record lifecycle
+/// =========================================================================
+
+proc source_init() -> ContextSource {
+    return ContextSource {
+        id: SOURCE_ID_NONE,
+
+        name: "",
+        data: "",
+        length: 0,
+
+        generation: 0,
+        hash: 0,
+    };
+}
+
+proc source_destroy(
+    source: &mut ContextSource
+) {
+    set source.id = SOURCE_ID_NONE;
+
+    set source.name = "";
+    set source.data = "";
+    set source.length = 0;
+
+    set source.generation = 0;
+    set source.hash = 0;
+}
+
+
+/// =========================================================================
+/// Source hashing
+/// =========================================================================
+
+proc hash_bytes(
+    data: str,
+    length: usize
+) -> u64 {
+    let mut hash: u64 = CONTEXT_FNV_OFFSET;
+    let mut index: usize = 0;
+
+    while index < length {
+        set hash ^= data[index] as u64;
+        set hash *= CONTEXT_FNV_PRIME;
+
+        set index += 1;
+    }
+
+    return hash;
+}
+
+
+/// =========================================================================
+/// Context state helpers
+/// =========================================================================
+
+proc magic_valid(
+    context: ?&Context
+) -> bool {
+    return context != null  and 
+           context.magic == CONTEXT_MAGIC;
+}
+
+proc state_valid(
+    state: ContextState
+) -> bool {
+    match state {
+        case ContextState.Ready => {
+            return true;
+        }
+
+        case ContextState.Compiling => {
+            return true;
+        }
+
+        case ContextState.Failed => {
+            return true;
+        }
+
+        else => {
+            return false;
+        }
+    }
+}
+
+export proc context_is_valid(
+    context: ?&Context
+) -> bool {
+    if not magic_valid(context) {
+        return false;
+    }
+
+    if not state_valid(context.state) {
+        return false;
+    }
+
+    if context.source_count >
+       context.source_capacity {
+        return false;
+    }
+
+    if context.source_count >
+       context.sources.length {
+        return false;
+    }
+
+    if not diagnostic_bag_validate(
+        &context?.diagnostics
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+export proc context_is_compiling(
+    context: ?&Context
+) -> bool {
+    return magic_valid(context)  and 
+           context.state == ContextState.Compiling;
+}
+
+export proc context_has_failed(
+    context: ?&Context
+) -> bool {
+    return magic_valid(context)  and 
+           context.state == ContextState.Failed;
+}
+
+
+/// =========================================================================
+/// Error helpers
+/// =========================================================================
+
+proc context_fail(
+    context: ?&mut Context,
+    status: Status,
+    code: str,
+    message: str
+) -> Status {
+    if context != null  and 
+       context.magic == CONTEXT_MAGIC {
+        let context_value = context?;
+        error_set(
+            &mut context_value.last_error,
+            status,
+            code,
+            message
+        );
+    } else {
+        set_thread_error(
+            status,
+            code,
+            message
+        );
+    }
+
+    return status;
+}
+
+proc invalid_argument(
+    context: ?&mut Context,
+    message: str
+) -> Status {
+    return context_fail(
+        context,
+        Status.ErrorInvalidArgument,
+        "VITTE_CONTEXT_INVALID_ARGUMENT",
+        message
+    );
+}
+
+proc invalid_state(
+    context: ?&mut Context,
+    message: str
+) -> Status {
+    return context_fail(
+        context,
+        Status.ErrorInvalidState,
+        "VITTE_CONTEXT_INVALID_STATE",
+        message
+    );
+}
+
+proc out_of_memory(
+    context: ?&mut Context
+) -> Status {
+    return context_fail(
+        context,
+        Status.ErrorOutOfMemory,
+        "VITTE_CONTEXT_OUT_OF_MEMORY",
+        "out of memory"
+    );
+}
+
+proc internal_error(
+    context: ?&mut Context,
+    message: str
+) -> Status {
+    return context_fail(
+        context,
+        Status.ErrorInternal,
+        "VITTE_CONTEXT_INTERNAL",
+        message
+    );
+}
+
+
+/// =========================================================================
+/// Source capacity
+/// =========================================================================
+
+proc reserve_sources(
+    context: &mut Context,
+    required: usize
+) -> Status {
+    if required <= context.source_capacity {
+        return Status.Ok;
+    }
+
+    if required > CONTEXT_MAX_SOURCE_COUNT {
+        return invalid_argument(
+            context,
+            "source count exceeds compiler limit"
+        );
+    }
+
+    let mut capacity: usize =
+        context.source_capacity;
+
+    if capacity == 0 {
+        set capacity =
+            CONTEXT_INITIAL_SOURCE_CAPACITY;
+    }
+
+    while capacity < required {
+        if capacity >
+           CONTEXT_MAX_SOURCE_COUNT / 2 {
+            set capacity =
+                CONTEXT_MAX_SOURCE_COUNT;
+        } else {
+            let next: usize =
+                capacity * 2;
+
+            if next <= capacity {
+                return out_of_memory(context);
+            }
+
+            set capacity = next;
+        }
+
+        if capacity < required  and 
+           capacity == CONTEXT_MAX_SOURCE_COUNT {
+            return invalid_argument(
+                context,
+                "source count exceeds compiler limit"
+            );
+        }
+    }
+
+    let mut allocation_bytes: usize = 0;
+
+    if size_mul_overflow(
+        capacity,
+        sizeof(ContextSource),
+        &mut allocation_bytes
+    ) {
+        return out_of_memory(context);
+    }
+
+    if not context.sources.reserve(capacity) {
+        return out_of_memory(context);
+    }
+
+    set context.source_capacity = capacity;
+
+    return Status.Ok;
+}
+
+
+/// =========================================================================
+/// Source reset
+/// =========================================================================
+
+proc clear_sources(
+    context: &mut Context
+) {
+    let mut index: usize = 0;
+
+    while index < context.source_count {
+        let mut source_value = context.sources[index];
+        source_destroy(&mut source_value);
+        set context.sources[index] = source_value;
+
+        set index += 1;
+    }
+
+    context.sources.clear();
+
+    set context.source_count = 0;
+    set context.total_source_bytes = 0;
+}
+
+
+/// =========================================================================
+/// Diagnostics
+/// =========================================================================
+
+proc reset_diagnostics(
+    context: &mut Context
+) {
+    diagnostic_bag_reset(
+        &mut context.diagnostics
+    );
+}
+
+export proc context_diagnostics(
+    context: &Context
+) -> ?&DiagnosticBag {
+    if not magic_valid(context) {
+        return null;
+    }
+
+    return &context.diagnostics;
+}
+
+export proc context_diagnostics_mut(
+    context: &mut Context
+) -> ?&mut DiagnosticBag {
+    if not magic_valid(context) {
+        return null;
+    }
+
+    return &mut context.diagnostics;
+}
+
+
+/// =========================================================================
+/// Initialization
+/// =========================================================================
+
+export proc context_init(
+    context: &mut Context
+) -> Status {
+    set *context = Context {
+        magic: CONTEXT_MAGIC,
+        state: ContextState.Uninitialized,
+
+        generation: 0,
+        next_source_id: 1,
+
+        sources: [],
+        source_count: 0,
+        source_capacity: 0,
+
+        total_source_bytes: 0,
+
+        diagnostics:
+            diagnostic_bag_default(),
+
+        compilation_count: 0,
+        successful_compilation_count: 0,
+        failed_compilation_count: 0,
+
+        cancel_requested: false,
+
+        last_error: Error {},
+    };
+
+    error_init(
+        &mut context.last_error
+    );
+
+    let diagnostic_status: Status =
+        diagnostic_bag_init(
+            &mut context.diagnostics,
+            CONTEXT_INITIAL_DIAGNOSTIC_CAPACITY
+        );
+
+    if diagnostic_status != Status.Ok {
+        set context.magic = 0;
+
+        return diagnostic_status;
+    }
+
+    let reserve_status: Status =
+        reserve_sources(
+            context,
+            CONTEXT_INITIAL_SOURCE_CAPACITY
+        );
+
+    if reserve_status != Status.Ok {
+        diagnostic_bag_reset(
+            &mut context.diagnostics
+        );
+
+        set context.magic = 0;
+
+        return reserve_status;
+    }
+
+    set context.state =
+        ContextState.Ready;
+
+    return Status.Ok;
+}
+
+
+/// =========================================================================
+/// Destruction
+/// =========================================================================
+
+export proc context_destroy(
+    context: &mut Context
+) {
+    if context.magic != CONTEXT_MAGIC {
+        return;
+    }
+
+    set context.cancel_requested = true;
+
+    clear_sources(context);
+    set context.sources = [];
+
+    set context.diagnostics =
+        diagnostic_bag_default();
+
+    error_reset(
+        &mut context.last_error
+    );
+
+    set context.state =
+        ContextState.Destroyed;
+
+    set context.magic =
+        CONTEXT_DEAD_MAGIC;
+
+    set context.generation = 0;
+    set context.next_source_id = SOURCE_ID_NONE;
+
+    set context.source_count = 0;
+    set context.source_capacity = 0;
+    set context.total_source_bytes = 0;
+
+    set context.compilation_count = 0;
+    set context.successful_compilation_count = 0;
+    set context.failed_compilation_count = 0;
+
+    set context.cancel_requested = false;
+}
+
+
+/// =========================================================================
+/// Compilation lifecycle
+/// =========================================================================
+
+export proc context_begin_compilation(
+    context: &mut Context
+) -> Status {
+    if not magic_valid(context) {
+        return Status.ErrorInvalidState;
+    }
+
+    if context.state ==
+       ContextState.Compiling {
+        return invalid_state(
+            context,
+            "context is already compiling"
+        );
+    }
+
+    if context.state != ContextState.Ready  and 
+       context.state != ContextState.Failed {
+        return invalid_state(
+            context,
+            "context cannot begin compilation in current state"
+        );
+    }
+
+    set context.generation += 1;
+
+    if context.generation == 0 {
+        set context.generation += 1;
+    }
+
+    set context.compilation_count += 1;
+
+    set context.state =
+        ContextState.Compiling;
+
+    set context.cancel_requested = false;
+
+    error_reset(
+        &mut context.last_error
+    );
+
+    clear_sources(context);
+    reset_diagnostics(context);
+
+    return Status.Ok;
+}
+
+export proc context_end_compilation(
+    context: &mut Context
+) -> Status {
+    if not magic_valid(context) {
+        return Status.ErrorInvalidState;
+    }
+
+    if context.state !=
+       ContextState.Compiling {
+        return invalid_state(
+            context,
+            "context is not compiling"
+        );
+    }
+
+    let failed: bool =
+        diagnostic_error_count(
+            &context.diagnostics
+        ) != 0  or 
+        context.last_error.status != Status.Ok  or 
+        context.cancel_requested;
+
+    if failed {
+        set context.state =
+            ContextState.Failed;
+
+        set context.failed_compilation_count += 1;
+    } else {
+        set context.state =
+            ContextState.Ready;
+
+        set context.successful_compilation_count += 1;
+    }
+
+    return context.last_error.status;
+}
+
+
+/// =========================================================================
+/// Compilation abort
+/// =========================================================================
+
+export proc context_abort_compilation(
+    context: &mut Context,
+    status: Status,
+    code: ?str,
+    message: ?str
+) -> Status {
+    if not magic_valid(context) {
+        return Status.ErrorInvalidState;
+    }
+
+    if context.state !=
+       ContextState.Compiling {
+        return invalid_state(
+            context,
+            "cannot abort a context that is not compiling"
+        );
+    }
+
+    let mut failure_status: Status =
+        status;
+
+    if failure_status == Status.Ok {
+        set failure_status =
+            Status.ErrorInternal;
+    }
+
+    context_fail(
+        context,
+        failure_status,
+        if code == null { "VITTE_CONTEXT_ABORT" } else { code? },
+        if message == null { "compilation aborted" } else { message? }
+    );
+
+    set context.state =
+        ContextState.Failed;
+
+    set context.failed_compilation_count += 1;
+
+    return failure_status;
+}
+
+
+/// =========================================================================
+/// Cancellation
+/// =========================================================================
+
+export proc context_request_cancel(
+    context: &mut Context
+) {
+    if not magic_valid(context) {
+        return;
+    }
+
+    set context.cancel_requested = true;
+}
+
+export proc context_cancel_requested(
+    context: &Context
+) -> bool {
+    if not magic_valid(context) {
+        return false;
+    }
+
+    return context.cancel_requested;
+}
+
+export proc context_check_cancel(
+    context: &mut Context
+) -> Status {
+    if not magic_valid(context) {
+        return Status.ErrorInvalidState;
+    }
+
+    if not context.cancel_requested {
+        return Status.Ok;
+    }
+
+    return context_fail(
+        context,
+        Status.ErrorInvalidState,
+        "VITTE_CONTEXT_CANCELLED",
+        "compilation cancelled"
+    );
+}
+
+
+/// =========================================================================
+/// Source validation
+/// =========================================================================
+
+proc validate_source_input(
+    context: &mut Context,
+    name: str,
+    data: ?str,
+    length: usize
+) -> Status {
+    if name[0] == '\0' {
+        return invalid_argument(
+            context,
+            "source name is empty"
+        );
+    }
+
+    let name_length: usize =
+        bounded_strlen(
+            name,
+            CONTEXT_MAX_SOURCE_NAME
+        );
+
+    if name_length == 0  or 
+       name_length >= CONTEXT_MAX_SOURCE_NAME {
+        return invalid_argument(
+            context,
+            "source name exceeds compiler limit"
+        );
+    }
+
+    if data == null  and 
+       length != 0 {
+        return invalid_argument(
+            context,
+            "source data is null with non-zero length"
+        );
+    }
+
+    if length >
+       CONTEXT_MAX_SOURCE_SIZE {
+        return invalid_argument(
+            context,
+            "source exceeds compiler size limit"
+        );
+    }
+
+    return Status.Ok;
+}
+
+
+/// =========================================================================
+/// Source registration
+/// =========================================================================
+
+export proc context_add_source(
+    context: &mut Context,
+    name: str,
+    data: ?str,
+    length: usize,
+    out_source_id: ?&mut SourceId
+) -> Status {
+    if out_source_id != null {
+        let output = out_source_id?;
+        set *output = SOURCE_ID_NONE;
+    }
+
+    if not magic_valid(context) {
+        return Status.ErrorInvalidState;
+    }
+
+    if context.state !=
+       ContextState.Compiling {
+        return invalid_state(
+            context,
+            "sources can only be added during compilation"
+        );
+    }
+
+    let validation_status: Status =
+        validate_source_input(
+            context,
+            name,
+            data,
+            length
+        );
+
+    if validation_status != Status.Ok {
+        return validation_status;
+    }
+
+    if context.source_count >=
+       CONTEXT_MAX_SOURCE_COUNT {
+        return invalid_argument(
+            context,
+            "maximum source count reached"
+        );
+    }
+
+    if context.next_source_id == SOURCE_ID_NONE {
+        return internal_error(
+            context,
+            "source identifier space exhausted"
+        );
+    }
+
+    let mut total_bytes: usize = 0;
+
+    if size_add_overflow(
+        context.total_source_bytes,
+        length,
+        &mut total_bytes
+    ) {
+        return out_of_memory(context);
+    }
+
+    let reserve_status: Status =
+        reserve_sources(
+            context,
+            context.source_count + 1
+        );
+
+    if reserve_status != Status.Ok {
+        return reserve_status;
+    }
+
+    let source_name =
+        duplicate_string(name);
+
+    if source_name == null {
+        return out_of_memory(context);
+    }
+
+    let source_data =
+        duplicate_string_n(
+            if data == null { "" } else { data? },
+            length
+        );
+
+    if source_data == null {
+        return out_of_memory(context);
+    }
+
+    let source_id: SourceId =
+        context.next_source_id;
+
+    if context.next_source_id == CONTEXT_SOURCE_ID_MAX {
+        set context.next_source_id = SOURCE_ID_NONE;
+    } else {
+        set context.next_source_id += 1;
+    }
+
+    let source_hash: u64 =
+        hash_bytes(
+            if data == null { "" } else { data? },
+            length
+        );
+
+    let source: ContextSource =
+        ContextSource {
+            id: source_id,
+
+            name: source_name?,
+            data: source_data?,
+            length: length,
+
+            generation:
+                context.generation,
+
+            hash:
+                source_hash,
+        };
+
+    context.sources.push(source);
+
+    set context.source_count += 1;
+    set context.total_source_bytes =
+        total_bytes;
+
+    if out_source_id != null {
+        let output = out_source_id?;
+        set *output = source_id;
+    }
+
+    return Status.Ok;
+}
+
+
+/// =========================================================================
+/// Source lookup
+/// =========================================================================
+
+export proc context_source_at(
+    context: &Context,
+    index: usize
+) -> ?&ContextSource {
+    if not magic_valid(context) {
+        return null;
+    }
+
+    if index >= context.source_count {
+        return null;
+    }
+
+    return &context.sources[index];
+}
+
+export proc context_source_at_mut(
+    context: &mut Context,
+    index: usize
+) -> *mut ContextSource {
+    if not magic_valid(context) {
+        return null;
+    }
+
+    if index >= context.source_count {
+        return null;
+    }
+
+    let source_pointer: *ContextSource = &context.sources[index];
+    return source_pointer as *mut ContextSource;
+}
+
+export proc context_find_source(
+    context: &Context,
+    source_id: SourceId
+) -> ?&ContextSource {
+    if not magic_valid(context) {
+        return null;
+    }
+
+    if source_id == SOURCE_ID_NONE {
+        return null;
+    }
+
+    let mut index: usize = 0;
+
+    while index < context.source_count {
+        if context.sources[index].id ==
+           source_id {
+            return &context.sources[index];
+        }
+
+        set index += 1;
+    }
+
+    return null;
+}
+
+export proc context_find_source_mut(
+    context: &mut Context,
+    source_id: SourceId
+) -> *mut ContextSource {
+    if not magic_valid(context) {
+        return null;
+    }
+
+    if source_id == SOURCE_ID_NONE {
+        return null;
+    }
+
+    let mut index: usize = 0;
+
+    while index < context.source_count {
+        if context.sources[index].id ==
+           source_id {
+            let source_pointer: *ContextSource = &context.sources[index];
+            return source_pointer as *mut ContextSource;
+        }
+
+        set index += 1;
+    }
+
+    return null;
+}
+
+export proc context_find_source_by_name(
+    context: &Context,
+    name: str
+) -> ?&ContextSource {
+    if not magic_valid(context)  or 
+       name.length == 0 {
+        return null;
+    }
+
+    let mut index: usize = 0;
+
+    while index < context.source_count {
+        if context.sources[index].name ==
+           name {
+            return &context.sources[index];
+        }
+
+        set index += 1;
+    }
+
+    return null;
+}
+
+
+/// =========================================================================
+/// Source properties
+/// =========================================================================
+
+export proc context_source_count(
+    context: &Context
+) -> usize {
+    if not magic_valid(context) {
+        return 0;
+    }
+
+    return context.source_count;
+}
+
+export proc context_total_source_bytes(
+    context: &Context
+) -> usize {
+    if not magic_valid(context) {
+        return 0;
+    }
+
+    return context.total_source_bytes;
+}
+
+export proc context_source_name(
+    context: &Context,
+    source_id: SourceId
+) -> ?str {
+    let source =
+        context_find_source(
+            context,
+            source_id
+        );
+
+    if source == null {
+        return null;
+    }
+
+    return source.name;
+}
+
+export proc context_source_data(
+    context: &Context,
+    source_id: SourceId
+) -> ?str {
+    let source =
+        context_find_source(
+            context,
+            source_id
+        );
+
+    if source == null {
+        return null;
+    }
+
+    return source.data;
+}
+
+export proc context_source_length(
+    context: &Context,
+    source_id: SourceId
+) -> usize {
+    let source =
+        context_find_source(
+            context,
+            source_id
+        );
+
+    if source == null {
+        return 0;
+    }
+
+    return source.length;
+}
+
+export proc context_source_hash(
+    context: &Context,
+    source_id: SourceId
+) -> u64 {
+    let source =
+        context_find_source(
+            context,
+            source_id
+        );
+
+    if source == null {
+        return 0;
+    }
+
+    return source.hash;
+}
+
+
+/// =========================================================================
+/// Generation
+/// =========================================================================
+
+export proc context_generation(
+    context: &Context
+) -> u64 {
+    if not magic_valid(context) {
+        return 0;
+    }
+
+    return context.generation;
+}
+
+
+/// =========================================================================
+/// Statistics
+/// =========================================================================
+
+export proc context_compilation_count(
+    context: &Context
+) -> usize {
+    if not magic_valid(context) {
+        return 0;
+    }
+
+    return context.compilation_count;
+}
+
+export proc context_successful_compilation_count(
+    context: &Context
+) -> usize {
+    if not magic_valid(context) {
+        return 0;
+    }
+
+    return context.successful_compilation_count;
+}
+
+export proc context_failed_compilation_count(
+    context: &Context
+) -> usize {
+    if not magic_valid(context) {
+        return 0;
+    }
+
+    return context.failed_compilation_count;
+}
+
+
+/// =========================================================================
+/// Error state
+/// =========================================================================
+
+export proc context_last_error(
+    context: &Context
+) -> &Error {
+    if not magic_valid(context) {
+        return error_last();
+    }
+
+    return &context.last_error;
+}
+
+export proc context_clear_error(
+    context: &mut Context
+) {
+    if not magic_valid(context) {
+        return;
+    }
+
+    error_reset(
+        &mut context.last_error
+    );
+}
+
+
+/// =========================================================================
+/// Failure state
+/// =========================================================================
+
+export proc context_set_failure(
+    context: &mut Context,
+    status: Status,
+    code: ?str,
+    message: ?str
+) -> Status {
+    if not magic_valid(context) {
+        return Status.ErrorInvalidState;
+    }
+
+    if status == Status.Ok {
+        return invalid_argument(
+            context,
+            "failure status cannot be Status.Ok"
+        );
+    }
+
+    context_fail(
+        context,
+        status,
+        if code == null { "VITTE_CONTEXT_FAILURE" } else { code? },
+        if message == null { "compiler context failure" } else { message? }
+    );
+
+    return status;
+}
+
+
+/// =========================================================================
+/// Reset
+/// =========================================================================
+
+export proc context_reset(
+    context: &mut Context
+) -> Status {
+    if not magic_valid(context) {
+        return Status.ErrorInvalidState;
+    }
+
+    if context.state ==
+       ContextState.Compiling {
+        return invalid_state(
+            context,
+            "cannot reset context during compilation"
+        );
+    }
+
+    clear_sources(context);
+    reset_diagnostics(context);
+
+    error_reset(
+        &mut context.last_error
+    );
+
+    set context.state =
+        ContextState.Ready;
+
+    set context.cancel_requested = false;
+
+    return Status.Ok;
+}
+
+
+/// =========================================================================
+/// Full invariant validation
+/// =========================================================================
+
+export proc context_validate(
+    context: &Context
+) -> bool {
+    if not context_is_valid(context) {
+        return false;
+    }
+
+    if context.source_count >
+       CONTEXT_MAX_SOURCE_COUNT {
+        return false;
+    }
+
+    if context.successful_compilation_count >
+       context.compilation_count {
+        return false;
+    }
+
+    if context.failed_compilation_count >
+       context.compilation_count {
+        return false;
+    }
+
+    let mut completed_count: usize = 0;
+
+    if size_add_overflow(
+        context.successful_compilation_count,
+        context.failed_compilation_count,
+        &mut completed_count
+    ) {
+        return false;
+    }
+
+    if completed_count >
+       context.compilation_count {
+        return false;
+    }
+
+    let mut calculated_bytes: usize = 0;
+    let mut index: usize = 0;
+
+    while index < context.source_count {
+        let source: &ContextSource =
+            &context.sources[index];
+
+        if source.id == SOURCE_ID_NONE {
+            return false;
+        }
+
+        if source.name.length == 0 {
+            return false;
+        }
+
+        if source.length >
+           CONTEXT_MAX_SOURCE_SIZE {
+            return false;
+        }
+
+        if source.length >
+           source.data.length {
+            return false;
+        }
+
+        if source.generation !=
+           context.generation {
+            return false;
+        }
+
+        if source.hash !=
+           hash_bytes(
+               source.data,
+               source.length
+           ) {
+            return false;
+        }
+
+        let mut new_total: usize = 0;
+
+        if size_add_overflow(
+            calculated_bytes,
+            source.length,
+            &mut new_total
+        ) {
+            return false;
+        }
+
+        set calculated_bytes =
+            new_total;
+
+        let mut other: usize =
+            index + 1;
+
+        while other <
+              context.source_count {
+            if source.id ==
+               context.sources[other].id {
+                return false;
+            }
+
+            set other += 1;
+        }
+
+        set index += 1;
+    }
+
+    if calculated_bytes !=
+       context.total_source_bytes {
+        return false;
+    }
+
+    if not diagnostic_bag_validate(
+        &context.diagnostics
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Debug state names
+/// =========================================================================
+
+export proc context_state_name(
+    state: ContextState
+) -> str {
+    match state {
+        case ContextState.Uninitialized => {
+            return "uninitialized";
+        }
+
+        case ContextState.Ready => {
+            return "ready";
+        }
+
+        case ContextState.Compiling => {
+            return "compiling";
+        }
+
+        case ContextState.Failed => {
+            return "failed";
+        }
+
+        case ContextState.Destroyed => {
+            return "destroyed";
+        }
+
+        else => {
+            return "unknown";
+        }
+    }
+}
+
+
+/// =========================================================================
+/// Memory release
+/// =========================================================================
+
+export proc context_release_unused_memory(
+    context: &mut Context
+) -> Status {
+    if not magic_valid(context) {
+        return Status.ErrorInvalidState;
+    }
+
+    if context.state ==
+       ContextState.Compiling {
+        return invalid_state(
+            context,
+            "cannot release context memory during compilation"
+        );
+    }
+
+    if context.source_count == 0 {
+        context.sources.clear();
+        context.sources.shrink_to_fit();
+
+        set context.source_capacity = 0;
+
+        return Status.Ok;
+    }
+
+    if context.source_capacity ==
+       context.source_count {
+        return Status.Ok;
+    }
+
+    let mut bytes: usize = 0;
+
+    if size_mul_overflow(
+        context.source_count,
+        sizeof(ContextSource),
+        &mut bytes
+    ) {
+        return internal_error(
+            context,
+            "source allocation size overflow"
+        );
+    }
+
+    ///
+    /// Failure to shrink storage is not a compiler failure.
+    ///
+    context.sources.try_shrink_to(
+        context.source_count
+    );
+
+    set context.source_capacity =
+        context.sources.capacity;
+
+    return Status.Ok;
+}
+
+
+/// =========================================================================
+/// Convenience predicates
+/// =========================================================================
+
+export proc context_is_ready(
+    context: ?&Context
+) -> bool {
+    return magic_valid(context)  and
+           context.state == ContextState.Ready;
+}
+
+export proc context_has_sources(
+    context: ?&Context
+) -> bool {
+    return magic_valid(context)  and
+           context.source_count != 0;
+}
+
+export proc context_has_diagnostics(
+    context: ?&Context
+) -> bool {
+    if context == null {
+        return false;
+    }
+
+    let context_value = context?;
+    let bag = context_diagnostics(context_value);
+
+    if bag == null {
+        return false;
+    }
+
+    return diagnostic_bag_count(bag?) != 0;
+}
+
+export proc context_has_errors(
+    context: ?&Context
+) -> bool {
+    if context == null {
+        return false;
+    }
+
+    let context_value = context?;
+    let bag = context_diagnostics(context_value);
+
+    if bag == null {
+        return false;
+    }
+
+    return diagnostic_error_count(bag?) != 0;
+}
+
+export proc context_has_warnings(
+    context: ?&Context
+) -> bool {
+    if context == null {
+        return false;
+    }
+
+    let context_value = context?;
+    let bag = context_diagnostics(context_value);
+
+    if bag == null {
+        return false;
+    }
+
+    return diagnostic_warning_count(bag?) != 0;
+}
+
+
+/// =========================================================================
+/// Source predicates
+/// =========================================================================
+
+export proc source_id_is_valid(
+    source_id: SourceId
+) -> bool {
+    return source_id != SOURCE_ID_NONE;
+}
+
+export proc context_source_is_empty(
+    source: ?&ContextSource
+) -> bool {
+    return source == null  or
+           source.length == 0;
+}
+
+export proc context_source_belongs_to_generation(
+    source: ?&ContextSource,
+    generation: u64
+) -> bool {
+    return source != null  and
+           source.generation == generation;
+}

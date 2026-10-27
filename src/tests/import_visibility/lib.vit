@@ -136,39 +136,39 @@ pick PrivateResultKind {
 /// --------------------------------------------------------------------------
 
 proc private_identity(value: i64) -> i64 {
-    give value;
+    return value;
 }
 
 proc private_add(
     left: i64,
     right: i64
 ) -> i64 {
-    give left + right;
+    return left + right;
 }
 
 proc private_subtract(
     left: i64,
     right: i64
 ) -> i64 {
-    give left - right;
+    return left - right;
 }
 
 proc private_multiply(
     left: i64,
     right: i64
 ) -> i64 {
-    give left * right;
+    return left * right;
 }
 
 proc private_valid_identifier(id: u64) -> bool {
-    give id >= PRIVATE_MIN_ID &&
+    return id >= PRIVATE_MIN_ID and
          id <= PRIVATE_MAX_ID;
 }
 
 proc private_valid_range(
     range: &PrivateRange
 ) -> bool {
-    give range.minimum <= range.maximum;
+    return range.minimum <= range.maximum;
 }
 
 proc private_clamp(
@@ -177,21 +177,21 @@ proc private_clamp(
     maximum: i64
 ) -> i64 {
     if value < minimum {
-        give minimum;
+        return minimum;
     }
 
     if value > maximum {
-        give maximum;
+        return maximum;
     }
 
-    give value;
+    return value;
 }
 
 proc private_make_point(
     x: i64,
     y: i64
 ) -> PrivatePoint {
-    give PrivatePoint {
+    return PrivatePoint {
         x: x,
         y: y,
     };
@@ -201,7 +201,7 @@ proc private_make_record(
     id: u64,
     value: i64
 ) -> PrivateRecord {
-    give PrivateRecord {
+    return PrivateRecord {
         id: id,
         value: value,
         enabled: true,
@@ -213,34 +213,34 @@ proc private_make_record(
 /// --------------------------------------------------------------------------
 
 export proc public_is_zero(value: i64) -> bool {
-    give value == PUBLIC_ZERO;
+    return value == PUBLIC_ZERO;
 }
 
 export proc public_is_positive(value: i64) -> bool {
-    give value > 0;
+    return value > 0;
 }
 
 export proc public_is_non_negative(value: i64) -> bool {
-    give value >= 0;
+    return value >= 0;
 }
 
 export proc public_valid_identifier(id: u64) -> bool {
-    give id >= PUBLIC_MIN_ID &&
+    return id >= PUBLIC_MIN_ID and
          id <= PUBLIC_MAX_ID;
 }
 
 export proc public_valid_range(
     range: &PublicRange
 ) -> bool {
-    give range.minimum <= range.maximum;
+    return range.minimum <= range.maximum;
 }
 
 export proc public_value_in_range(
     value: i64,
     range: &PublicRange
 ) -> bool {
-    give public_valid_range(range) &&
-         value >= range.minimum &&
+    return public_valid_range(range) and
+         value >= range.minimum and
          value <= range.maximum;
 }
 
@@ -249,40 +249,40 @@ export proc public_value_in_range(
 /// --------------------------------------------------------------------------
 
 export proc public_identity(value: i64) -> i64 {
-    give private_identity(value);
+    return private_identity(value);
 }
 
 export proc public_increment(value: i64) -> i64 {
-    give private_add(value, PRIVATE_ONE);
+    return private_add(value, PRIVATE_ONE);
 }
 
 export proc public_add(
     left: i64,
     right: i64
 ) -> i64 {
-    give private_add(left, right);
+    return private_add(left, right);
 }
 
 export proc public_subtract(
     left: i64,
     right: i64
 ) -> i64 {
-    give private_subtract(left, right);
+    return private_subtract(left, right);
 }
 
 export proc public_multiply(
     left: i64,
     right: i64
 ) -> i64 {
-    give private_multiply(left, right);
+    return private_multiply(left, right);
 }
 
 export proc public_answer() -> i64 {
-    give PRIVATE_ANSWER;
+    return PRIVATE_ANSWER;
 }
 
 export proc public_add_offset(value: i64) -> i64 {
-    give private_add(value, PRIVATE_OFFSET);
+    return private_add(value, PRIVATE_OFFSET);
 }
 
 export proc public_clamp(
@@ -290,7 +290,7 @@ export proc public_clamp(
     minimum: i64,
     maximum: i64
 ) -> i64 {
-    give private_clamp(
+    return private_clamp(
         value,
         minimum,
         maximum);
@@ -304,7 +304,7 @@ export proc public_make_point(
     x: i64,
     y: i64
 ) -> PublicPoint {
-    give PublicPoint {
+    return PublicPoint {
         x: x,
         y: y,
     };
@@ -314,7 +314,7 @@ export proc public_make_range(
     minimum: i64,
     maximum: i64
 ) -> PublicRange {
-    give PublicRange {
+    return PublicRange {
         minimum: minimum,
         maximum: maximum,
     };
@@ -325,7 +325,7 @@ export proc public_make_record(
     value: i64,
     enabled: bool
 ) -> PublicRecord {
-    give PublicRecord {
+    return PublicRecord {
         id: id,
         value: value,
         enabled: enabled,
@@ -336,7 +336,7 @@ export proc public_make_pair(
     first: i64,
     second: i64
 ) -> PublicPair {
-    give PublicPair {
+    return PublicPair {
         first: first,
         second: second,
     };
@@ -349,26 +349,26 @@ export proc public_make_pair(
 export proc public_point_sum(
     point: &PublicPoint
 ) -> i64 {
-    give point.x + point.y;
+    return point.x + point.y;
 }
 
 export proc public_range_width(
     range: &PublicRange
 ) -> i64 {
-    give range.maximum -
+    return range.maximum -
          range.minimum;
 }
 
 export proc public_record_value(
     record: &PublicRecord
 ) -> i64 {
-    give record.value;
+    return record.value;
 }
 
 export proc public_pair_sum(
     pair: &PublicPair
 ) -> i64 {
-    give pair.first +
+    return pair.first +
          pair.second;
 }
 
@@ -389,7 +389,7 @@ export proc public_private_point_sum(
             x,
             y);
 
-    give point.x + point.y;
+    return point.x + point.y;
 }
 
 /// Uses a private record internally without exposing its type.
@@ -402,7 +402,7 @@ export proc public_private_record_value(
             id,
             value);
 
-    give record.value;
+    return record.value;
 }
 
 /// Exercises private constants and private functions behind a public API.
@@ -422,7 +422,7 @@ export proc public_private_pipeline(
             second,
             PRIVATE_OFFSET);
 
-    give third;
+    return third;
 }
 
 /// --------------------------------------------------------------------------
@@ -452,7 +452,7 @@ export proc public_make_nested(
             enabled: true,
         };
 
-    give PublicNested {
+    return PublicNested {
         point: point,
         range: range,
         record: record,
@@ -462,7 +462,7 @@ export proc public_make_nested(
 export proc public_nested_value(
     nested: &PublicNested
 ) -> i64 {
-    give nested.record.value;
+    return nested.record.value;
 }
 
 /// --------------------------------------------------------------------------
@@ -470,15 +470,15 @@ export proc public_nested_value(
 /// --------------------------------------------------------------------------
 
 export proc public_default_state() -> PublicState {
-    give PublicState.Ready;
+    return PublicState.Ready;
 }
 
 export proc public_running_state() -> PublicState {
-    give PublicState.Running;
+    return PublicState.Running;
 }
 
 export proc public_success_kind() -> PublicResultKind {
-    give PublicResultKind.Success;
+    return PublicResultKind.Success;
 }
 
 /// --------------------------------------------------------------------------
@@ -486,15 +486,15 @@ export proc public_success_kind() -> PublicResultKind {
 /// --------------------------------------------------------------------------
 
 proc private_only_proc() -> i64 {
-    give PRIVATE_ANSWER;
+    return PRIVATE_ANSWER;
 }
 
 proc private_only_predicate() -> bool {
-    give true;
+    return true;
 }
 
 proc private_only_record() -> PrivateRecord {
-    give PrivateRecord {
+    return PrivateRecord {
         id: PRIVATE_MIN_ID,
         value: PRIVATE_ANSWER,
         enabled: true,
@@ -502,7 +502,7 @@ proc private_only_record() -> PrivateRecord {
 }
 
 proc private_only_range() -> PrivateRange {
-    give PrivateRange {
+    return PrivateRange {
         minimum: 0,
         maximum: PRIVATE_ANSWER,
     };
@@ -515,29 +515,29 @@ proc private_only_range() -> PrivateRange {
 /// A public declaration is allowed to depend on a private declaration from
 /// its own module.
 export proc public_calls_private_proc() -> i64 {
-    give private_only_proc();
+    return private_only_proc();
 }
 
 export proc public_calls_private_predicate() -> bool {
-    give private_only_predicate();
+    return private_only_predicate();
 }
 
 export proc public_uses_private_record() -> i64 {
     let record: PrivateRecord =
         private_only_record();
 
-    give record.value;
+    return record.value;
 }
 
 export proc public_uses_private_range() -> i64 {
     let range: PrivateRange =
         private_only_range();
 
-    if !private_valid_range(&range) {
-        give 0;
+    if not private_valid_range(&range) {
+        return 0;
     }
 
-    give range.maximum;
+    return range.maximum;
 }
 
 /// --------------------------------------------------------------------------
@@ -548,11 +548,11 @@ export proc public_uses_private_range() -> i64 {
 ///
 /// This helps detect incorrect prefix matching or visibility-table lookup.
 export proc visible_symbol() -> i64 {
-    give 42;
+    return 42;
 }
 
 proc visible_symbol_private() -> i64 {
-    give 84;
+    return 84;
 }
 
 export const VISIBLE_VALUE: i64 = 42;
@@ -613,27 +613,27 @@ export proc library_self_test() -> bool {
             maximum: 42,
         };
 
-    give public_answer() == 42 &&
-         public_identity(42) == 42 &&
-         public_increment(41) == 42 &&
-         public_add(20, 22) == 42 &&
-         public_subtract(100, 58) == 42 &&
-         public_multiply(6, 7) == 42 &&
-         public_point_sum(&point) == 42 &&
-         public_range_width(&range) == 100 &&
-         public_record_value(&record) == 42 &&
-         public_pair_sum(&pair) == 42 &&
-         public_nested_value(&nested) == 42 &&
-         public_private_point_sum(20, 22) == 42 &&
-         public_private_record_value(42, 42) == 42 &&
-         public_private_pipeline(42) == 42 &&
-         private_record.value == 42 &&
-         private_valid_identifier(private_record.id) &&
-         private_valid_range(&private_range) &&
-         public_calls_private_proc() == 42 &&
-         public_calls_private_predicate() &&
-         public_uses_private_record() == 42 &&
-         public_uses_private_range() == 42 &&
-         visible_symbol() == 42 &&
+    return public_answer() == 42 and
+         public_identity(42) == 42 and
+         public_increment(41) == 42 and
+         public_add(20, 22) == 42 and
+         public_subtract(100, 58) == 42 and
+         public_multiply(6, 7) == 42 and
+         public_point_sum(&point) == 42 and
+         public_range_width(&range) == 100 and
+         public_record_value(&record) == 42 and
+         public_pair_sum(&pair) == 42 and
+         public_nested_value(&nested) == 42 and
+         public_private_point_sum(20, 22) == 42 and
+         public_private_record_value(42, 42) == 42 and
+         public_private_pipeline(42) == 42 and
+         private_record.value == 42 and
+         private_valid_identifier(private_record.id) and
+         private_valid_range(&private_range) and
+         public_calls_private_proc() == 42 and
+         public_calls_private_predicate() and
+         public_uses_private_record() == 42 and
+         public_uses_private_range() == 42 and
+         visible_symbol() == 42 and
          VISIBLE_VALUE == 42;
 }

@@ -1,0 +1,2579 @@
+space compiler::diagnostic::diagnostic;
+
+use compiler::source::source::{    SourceContext,
+    SourceLocation
+};
+
+use compiler::ast::ast::{    AstSpan,
+    ast_span_invalid
+};
+
+use compiler::api::error::{    Status,
+    Error
+};
+
+export type SourceManager = SourceContext;
+
+proc replacement_pointer_is_null(value: *const string) -> bool {
+    return value as usize == 0;
+}
+
+const DIAGNOSTIC_INDEX_NONE: usize = 18446744073709551615 as usize;
+const SOURCE_ID_INVALID: u64 = 0;
+
+const FNV_OFFSET: u64 = 14695981039346656037;
+const FNV_PRIME: u64 = 1099511628211;
+const DECIMAL_DIGITS: [string] = [
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"
+];
+
+const DEFAULT_MAX_DIAGNOSTICS: usize = 100;
+
+const MAX_RELATED: usize = 16;
+const MAX_LABELS: usize = 16;
+const MAX_CAUSES: usize = 16;
+const MAX_ANNOTATIONS: usize = 16;
+const MAX_SUGGESTIONS: usize = 16;
+const MAX_TRACE: usize = 32;
+
+/// Diagnostic severity.
+export pick DiagnosticSeverity {
+    Note,
+    Help,
+    Warning,
+    Error,
+    Fatal
+}
+
+/// Compiler phase that produced a diagnostic.
+export pick DiagnosticOrigin {
+    Unknown,
+    Io,
+
+    Scanner,
+    Lexer,
+    Parser,
+
+    Import,
+    NameResolution,
+    TypeCheck,
+    Contract,
+    ConstantEval,
+
+    Hir,
+    Ir,
+    Codegen,
+
+    C17Backend,
+    CCompiler,
+    Linker,
+
+    Runtime,
+    Driver,
+    Internal
+}
+
+/// Meaning of a secondary source location.
+export pick DiagnosticLocationKind {
+    Primary,
+    Declaration,
+    Definition,
+    Origin,
+    Use,
+    CallSite,
+    Instantiation,
+    Related
+}
+
+export pick DiagnosticLabelStyle {
+    Primary,
+    Secondary
+}
+
+export pick DiagnosticAnnotationKind {
+    Note,
+    Help
+}
+
+export pick DiagnosticApplicability {
+    Machine,
+    Maybe,
+    Placeholders,
+    Manual
+}
+
+export pick DiagnosticConfidence {
+    None,
+    Low,
+    Medium,
+    High,
+    Certain
+}
+
+export pick DiagnosticCauseKind {
+    Unknown,
+    Syntax,
+    MissingToken,
+    UnexpectedToken,
+    UnresolvedName,
+    TypeMismatch,
+    ArityMismatch,
+    Constraint,
+    Import,
+    Contract,
+    ConstantEval,
+    UnsafeOperation,
+    Lowering,
+    ExternalTool,
+    Link,
+    Runtime,
+    Internal
+}
+
+export pick DiagnosticTraceKind {
+    Call,
+    Instantiation,
+    Constraint,
+    Import,
+    Expansion,
+    Lowering,
+    GeneratedCode,
+    Related
+}
+
+export pick DiagnosticFormat {
+    Terminal,
+    Json,
+    Sarif,
+    Lsp
+}
+
+export pick DiagnosticContractKind {
+    None,
+    Requires,
+    Ensures,
+    Invariant,
+    Assertion
+}
+
+/// Rendering and policy configuration.
+export form DiagnosticOptions {
+    max_diagnostics: usize,
+
+    warnings_as_errors: bool,
+
+    color_enabled: bool,
+
+    show_source_line: bool,
+    show_codes: bool,
+    show_details: bool,
+    show_phase: bool,
+    show_causes: bool,
+    show_suggestions: bool,
+
+    show_expected_found: bool,
+    show_related: bool,
+    show_trace: bool,
+    show_suppressed: bool,
+    show_summary: bool,
+
+    context_lines_before: usize,
+    context_lines_after: usize,
+
+    sources: *SourceContext
+}
+
+/// Diagnostic counters.
+export form DiagnosticCounts {
+    note_count: usize,
+    help_count: usize,
+
+    warning_count: usize,
+
+    error_count: usize,
+    fatal_count: usize,
+
+    suppressed_count: usize,
+
+    primary_count: usize,
+    cascade_count: usize
+}
+
+/// Highlight attached to a diagnostic.
+export form DiagnosticLabel {
+    style: DiagnosticLabelStyle,
+    span: AstSpan,
+    message: string
+}
+
+/// Related source location.
+export form DiagnosticLocation {
+    kind: DiagnosticLocationKind,
+    span: AstSpan,
+    label: string
+}
+
+/// Structured causal information.
+export form DiagnosticCause {
+    kind: DiagnosticCauseKind,
+    message: string,
+
+    span: *AstSpan,
+
+    confidence: DiagnosticConfidence
+}
+
+/// Note/help annotation.
+export form DiagnosticAnnotation {
+    kind: DiagnosticAnnotationKind,
+    message: string,
+    span: *AstSpan
+}
+
+/// Structured source edit.
+export form DiagnosticSuggestion {
+    suggestion_id: u64,
+
+    message: string,
+
+    span: AstSpan,
+    has_span: bool,
+    replacement: string,
+    has_replacement: bool,
+
+    applicability: DiagnosticApplicability,
+    confidence: DiagnosticConfidence,
+
+    preferred: bool
+}
+
+/// Causal/provenance trace entry.
+export form DiagnosticTrace {
+    kind: DiagnosticTraceKind,
+    message: string,
+    span: *AstSpan
+}
+
+/// Contract-specific metadata.
+export form DiagnosticContract {
+    kind: DiagnosticContractKind,
+
+    expression: string,
+    procedure: string,
+    reason: string,
+
+    contract_span: *AstSpan,
+    call_span: *AstSpan,
+    declaration_span: *AstSpan
+}
+
+/// Main diagnostic object.
+export form Diagnostic {
+    severity: DiagnosticSeverity,
+    origin: DiagnosticOrigin,
+
+    code: string,
+    short_code: string,
+    category: string,
+
+    fingerprint: u64,
+
+    diagnostic_id: u64,
+    root_id: u64,
+    parent_id: u64,
+    provenance_id: u64,
+    poison_id: u64,
+
+    message: string,
+    details: string,
+
+    symbol: string,
+
+    expected_type: string,
+    actual_type: string,
+
+    expected: string,
+    found: string,
+
+    probable_cause: string,
+    context: string,
+
+    package: string,
+    module: string,
+    procedure: string,
+
+    source_name: string,
+    source_id: u64,
+
+    start_offset: usize,
+    end_offset: usize,
+
+    start_line: usize,
+    start_column: usize,
+
+    end_line: usize,
+    end_column: usize,
+
+    has_span: bool,
+
+    labels: [DiagnosticLabel],
+    related: [DiagnosticLocation],
+    causes: [DiagnosticCause],
+    trace: [DiagnosticTrace],
+    annotations: [DiagnosticAnnotation],
+    suggestions: [DiagnosticSuggestion],
+
+    contract: DiagnosticContract,
+
+    root_diagnostic: usize,
+    parent_diagnostic: usize,
+
+    is_primary: bool,
+    is_cascade: bool,
+    is_suppressed: bool,
+
+    poisons_analysis: bool,
+    is_internal: bool,
+    has_machine_fix: bool
+}
+
+/// Fixed-capacity diagnostic collection.
+///
+/// The Vitte version owns its diagnostics directly instead of maintaining
+/// self-referential pointers into inline C character arrays.
+export form DiagnosticBag {
+    initialized: bool,
+
+    storage: [Diagnostic],
+    capacity: usize,
+
+    counts: DiagnosticCounts,
+    options: DiagnosticOptions,
+
+    last_error: Error,
+
+    next_diagnostic_id: u64,
+
+    limit_reached: bool
+}
+
+/// -------------------------------------------------------------------------
+/// Names
+/// -------------------------------------------------------------------------
+
+export proc severity_name(severity: DiagnosticSeverity) -> string {
+    match severity {
+        DiagnosticSeverity.Note => { return "note"; },
+        DiagnosticSeverity.Help => { return "help"; },
+        DiagnosticSeverity.Warning => { return "warning"; },
+        DiagnosticSeverity.Error => { return "error"; },
+        DiagnosticSeverity.Fatal => { return "fatal"; }
+    }
+}
+
+export proc severity_is_error(severity: DiagnosticSeverity) -> bool {
+    return severity == DiagnosticSeverity.Error or
+         severity == DiagnosticSeverity.Fatal;
+}
+
+export proc origin_name(origin: DiagnosticOrigin) -> string {
+    match origin {
+        DiagnosticOrigin.Unknown => { return "unknown"; },
+        DiagnosticOrigin.Io => { return "io"; },
+
+        DiagnosticOrigin.Scanner => { return "scanner"; },
+        DiagnosticOrigin.Lexer => { return "lexer"; },
+        DiagnosticOrigin.Parser => { return "parser"; },
+
+        DiagnosticOrigin.Import => { return "import"; },
+        DiagnosticOrigin.NameResolution => { return "name-resolution"; },
+        DiagnosticOrigin.TypeCheck => { return "type-check"; },
+        DiagnosticOrigin.Contract => { return "contract"; },
+        DiagnosticOrigin.ConstantEval => { return "constant-eval"; },
+
+        DiagnosticOrigin.Hir => { return "hir"; },
+        DiagnosticOrigin.Ir => { return "ir"; },
+        DiagnosticOrigin.Codegen => { return "codegen"; },
+
+        DiagnosticOrigin.C17Backend => { return "c17-backend"; },
+        DiagnosticOrigin.CCompiler => { return "c-compiler"; },
+        DiagnosticOrigin.Linker => { return "linker"; },
+
+        DiagnosticOrigin.Runtime => { return "runtime"; },
+        DiagnosticOrigin.Driver => { return "driver"; },
+        DiagnosticOrigin.Internal => { return "internal"; }
+    }
+}
+
+export proc location_kind_name(kind: DiagnosticLocationKind) -> string {
+    match kind {
+        DiagnosticLocationKind.Primary => { return "primary"; },
+        DiagnosticLocationKind.Declaration => { return "declaration"; },
+        DiagnosticLocationKind.Definition => { return "definition"; },
+        DiagnosticLocationKind.Origin => { return "origin"; },
+        DiagnosticLocationKind.Use => { return "use"; },
+        DiagnosticLocationKind.CallSite => { return "call-site"; },
+        DiagnosticLocationKind.Instantiation => { return "instantiation"; },
+        DiagnosticLocationKind.Related => { return "related"; }
+    }
+}
+
+export proc label_style_name(style: DiagnosticLabelStyle) -> string {
+    match style {
+        DiagnosticLabelStyle.Primary => { return "primary"; },
+        DiagnosticLabelStyle.Secondary => { return "secondary"; }
+    }
+}
+
+export proc annotation_kind_name(kind: DiagnosticAnnotationKind) -> string {
+    match kind {
+        DiagnosticAnnotationKind.Note => { return "note"; },
+        DiagnosticAnnotationKind.Help => { return "help"; }
+    }
+}
+
+export proc applicability_name(
+    applicability: DiagnosticApplicability
+) -> string {
+    match applicability {
+        DiagnosticApplicability.Machine => { return "machine"; },
+        DiagnosticApplicability.Maybe => { return "maybe"; },
+        DiagnosticApplicability.Placeholders => { return "placeholders"; },
+        DiagnosticApplicability.Manual => { return "manual"; }
+    }
+}
+
+export proc confidence_name(confidence: DiagnosticConfidence) -> string {
+    match confidence {
+        DiagnosticConfidence.None => { return "null"; },
+        DiagnosticConfidence.Low => { return "low"; },
+        DiagnosticConfidence.Medium => { return "medium"; },
+        DiagnosticConfidence.High => { return "high"; },
+        DiagnosticConfidence.Certain => { return "certain"; }
+    }
+}
+
+export proc cause_kind_name(kind: DiagnosticCauseKind) -> string {
+    match kind {
+        DiagnosticCauseKind.Unknown => { return "unknown"; },
+        DiagnosticCauseKind.Syntax => { return "syntax"; },
+        DiagnosticCauseKind.MissingToken => { return "missing-token"; },
+        DiagnosticCauseKind.UnexpectedToken => { return "unexpected-token"; },
+        DiagnosticCauseKind.UnresolvedName => { return "unresolved-name"; },
+        DiagnosticCauseKind.TypeMismatch => { return "type-mismatch"; },
+        DiagnosticCauseKind.ArityMismatch => { return "arity-mismatch"; },
+        DiagnosticCauseKind.Constraint => { return "constraint"; },
+        DiagnosticCauseKind.Import => { return "import"; },
+        DiagnosticCauseKind.Contract => { return "contract"; },
+        DiagnosticCauseKind.ConstantEval => { return "constant-eval"; },
+        DiagnosticCauseKind.UnsafeOperation => { return "unsafe-operation"; },
+        DiagnosticCauseKind.Lowering => { return "lowering"; },
+        DiagnosticCauseKind.ExternalTool => { return "external-tool"; },
+        DiagnosticCauseKind.Link => { return "link"; },
+        DiagnosticCauseKind.Runtime => { return "runtime"; },
+        DiagnosticCauseKind.Internal => { return "internal"; }
+    }
+}
+
+export proc trace_kind_name(kind: DiagnosticTraceKind) -> string {
+    match kind {
+        DiagnosticTraceKind.Call => { return "call"; },
+        DiagnosticTraceKind.Instantiation => { return "instantiation"; },
+        DiagnosticTraceKind.Constraint => { return "constraint"; },
+        DiagnosticTraceKind.Import => { return "import"; },
+        DiagnosticTraceKind.Expansion => { return "expansion"; },
+        DiagnosticTraceKind.Lowering => { return "lowering"; },
+        DiagnosticTraceKind.GeneratedCode => { return "generated-code"; },
+        DiagnosticTraceKind.Related => { return "related"; }
+    }
+}
+
+export proc format_name(format: DiagnosticFormat) -> string {
+    match format {
+        DiagnosticFormat.Terminal => { return "terminal"; },
+        DiagnosticFormat.Json => { return "json"; },
+        DiagnosticFormat.Sarif => { return "sarif"; },
+        DiagnosticFormat.Lsp => { return "lsp"; }
+    }
+}
+
+/// -------------------------------------------------------------------------
+/// Default values
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_options_default() -> DiagnosticOptions {
+    return DiagnosticOptions {
+        max_diagnostics: DEFAULT_MAX_DIAGNOSTICS,
+
+        warnings_as_errors: false,
+
+        color_enabled: true,
+
+        show_source_line: true,
+        show_codes: true,
+        show_details: true,
+        show_phase: true,
+        show_causes: true,
+        show_suggestions: true,
+
+        show_expected_found: true,
+        show_related: true,
+        show_trace: true,
+        show_suppressed: false,
+        show_summary: true,
+
+        context_lines_before: 1,
+        context_lines_after: 1,
+
+        sources: null
+    };
+}
+
+export proc diagnostic_counts_default() -> DiagnosticCounts {
+    return DiagnosticCounts {
+        note_count: 0,
+        help_count: 0,
+
+        warning_count: 0,
+
+        error_count: 0,
+        fatal_count: 0,
+
+        suppressed_count: 0,
+
+        primary_count: 0,
+        cascade_count: 0
+    };
+}
+
+export proc diagnostic_default() -> Diagnostic {
+    return Diagnostic {
+        severity: DiagnosticSeverity.Error,
+        origin: DiagnosticOrigin.Unknown,
+
+        code: "",
+        short_code: "",
+        category: "",
+
+        fingerprint: 0,
+
+        diagnostic_id: 0,
+        root_id: 0,
+        parent_id: 0,
+        provenance_id: 0,
+        poison_id: 0,
+
+        message: "",
+        details: "",
+
+        symbol: "",
+
+        expected_type: "",
+        actual_type: "",
+
+        expected: "",
+        found: "",
+
+        probable_cause: "",
+        context: "",
+
+        package: "",
+        module: "",
+        procedure: "",
+
+        source_name: "",
+        source_id: SOURCE_ID_INVALID,
+
+        start_offset: 0,
+        end_offset: 0,
+
+        start_line: 0,
+        start_column: 0,
+
+        end_line: 0,
+        end_column: 0,
+
+        has_span: false,
+
+        labels: [],
+        related: [],
+        causes: [],
+        trace: [],
+        annotations: [],
+        suggestions: [],
+
+        contract: DiagnosticContract {
+            kind: DiagnosticContractKind.None,
+            expression: "",
+            procedure: "",
+            reason: "",
+            contract_span: null,
+            call_span: null,
+            declaration_span: null
+        },
+
+        root_diagnostic: DIAGNOSTIC_INDEX_NONE,
+        parent_diagnostic: DIAGNOSTIC_INDEX_NONE,
+
+        is_primary: true,
+        is_cascade: false,
+        is_suppressed: false,
+
+        poisons_analysis: false,
+        is_internal: false,
+        has_machine_fix: false
+    };
+}
+
+export proc diagnostic_bag(
+    capacity: usize,
+    options: DiagnosticOptions
+) -> DiagnosticBag {
+    return DiagnosticBag {
+        initialized: true,
+
+        storage: [],
+        capacity: capacity,
+
+        counts: diagnostic_counts_default(),
+        options: options,
+
+        last_error: Error {
+            status: Status.Ok,
+            code: "",
+            message: "",
+            details: ""
+        },
+
+        next_diagnostic_id: 1,
+
+        limit_reached: false
+    };
+}
+
+export proc diagnostic_bag_default() -> DiagnosticBag {
+    return diagnostic_bag(
+        DEFAULT_MAX_DIAGNOSTICS,
+        diagnostic_options_default()
+    );
+}
+
+export proc diagnostic_bag_init(
+    bag: &mut DiagnosticBag,
+    capacity: usize
+) -> Status {
+    if capacity == 0 {
+        return Status.ErrorInvalidArgument;
+    }
+    set *bag = diagnostic_bag(
+        capacity,
+        diagnostic_options_default()
+    );
+    return Status.Ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Span helpers
+/// -------------------------------------------------------------------------
+
+export proc source_id_valid(source_id: u64) -> bool {
+    return source_id != SOURCE_ID_INVALID;
+}
+
+export proc span_valid(span: &AstSpan) -> bool {
+    if not span.valid {
+        return false;
+    }
+
+    if span.end_offset < span.start_offset {
+        return false;
+    }
+
+    if span.end_line < span.start_line {
+        return false;
+    }
+
+    if span.end_line == span.start_line and
+       span.end_column < span.start_column {
+        return false;
+    }
+
+    if source_id_valid(span.source_id) {
+        return true;
+    }
+
+    return span.source_name != "";
+}
+
+export proc same_source(
+    left_id: u64,
+    left_name: string,
+    right_id: u64,
+    right_name: string
+) -> bool {
+    if source_id_valid(left_id) and source_id_valid(right_id) {
+        return left_id == right_id;
+    }
+
+    if left_name != "" and right_name != "" {
+        return left_name == right_name;
+    }
+
+    return false;
+}
+
+export proc span_same(
+    left: &AstSpan,
+    right: &AstSpan
+) -> bool {
+    if not span_valid(left) or not span_valid(right) {
+        return false;
+    }
+
+    if not same_source(
+        left.source_id,
+        left.source_name,
+        right.source_id,
+        right.source_name
+    ) {
+        return false;
+    }
+
+    return left.start_offset == right.start_offset and
+         left.end_offset == right.end_offset;
+}
+
+/// -------------------------------------------------------------------------
+/// Hashing
+/// -------------------------------------------------------------------------
+
+export proc hash_byte(hash: u64, byte: u8) -> u64 {
+    return (hash ^ (byte as u64)) * FNV_PRIME;
+}
+
+export proc hash_u64(hash: u64, value: u64) -> u64 {
+    let mut result: u64 = hash;
+    let mut shift: u64 = 0;
+
+    while shift < 64 {
+        let byte: u8 = ((value >> shift) & 0xff) as u8;
+
+        set result = hash_byte(result, byte);
+        set shift = shift + 8;
+    }
+
+    return result;
+}
+
+export proc hash_usize(hash: u64, value: usize) -> u64 {
+    return hash_u64(hash, value as u64);
+}
+
+proc diagnostic_u64_to_string(value: u64) -> string {
+    if value < 10 {
+        return DECIMAL_DIGITS[value as i64];
+    }
+
+    return diagnostic_u64_to_string(value / 10) +
+         DECIMAL_DIGITS[(value % 10) as i64];
+}
+
+export proc hash_string(hash: u64, text: string) -> u64 {
+    let mut result: u64 = hash;
+    let bytes: [u8] = text.bytes();
+    let mut index: usize = 0;
+
+    set result = hash_usize(result, bytes.len());
+
+    while index < bytes.len() {
+        set result = hash_byte(result, bytes[index]);
+        set index = index + 1;
+    }
+
+    return result;
+}
+
+export proc diagnostic_fingerprint(
+    diagnostic_value: &Diagnostic
+) -> u64 {
+    let mut hash: u64 = FNV_OFFSET;
+
+    set hash = hash_string(hash, diagnostic_value.code);
+    set hash = hash_string(hash, diagnostic_value.short_code);
+
+    set hash = hash_string(hash, origin_name(diagnostic_value.origin));
+
+    set hash = hash_string(hash, severity_name(diagnostic_value.severity));
+
+    if source_id_valid(diagnostic_value.source_id) {
+        set hash = hash_u64(
+            hash,
+            diagnostic_value.source_id as u64
+        );
+    } else {
+        set hash = hash_string(
+            hash,
+            diagnostic_value.source_name
+        );
+    }
+
+    set hash = hash_usize(
+        hash,
+        diagnostic_value.start_offset
+    );
+
+    set hash = hash_usize(
+        hash,
+        diagnostic_value.end_offset
+    );
+
+    set hash = hash_string(
+        hash,
+        diagnostic_value.message
+    );
+
+    set hash = hash_string(
+        hash,
+        diagnostic_value.symbol
+    );
+
+    set hash = hash_string(
+        hash,
+        diagnostic_value.expected_type
+    );
+
+    set hash = hash_string(
+        hash,
+        diagnostic_value.actual_type
+    );
+
+    return hash;
+}
+
+export proc diagnostic_refresh_fingerprint(
+    diagnostic_value: &mut Diagnostic
+) {
+    set diagnostic_value.fingerprint =
+        diagnostic_fingerprint(diagnostic_value);
+}
+
+/// -------------------------------------------------------------------------
+/// Metadata
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_set_subject(
+    diagnostic_value: &mut Diagnostic,
+    symbol: string,
+    expected_type: string,
+    actual_type: string
+) {
+    set diagnostic_value.symbol = symbol;
+    set diagnostic_value.expected_type = expected_type;
+    set diagnostic_value.actual_type = actual_type;
+}
+
+export proc diagnostic_set_context(
+    diagnostic_value: &mut Diagnostic,
+    package: string,
+    module: string,
+    procedure: string,
+    context: string
+) {
+    set diagnostic_value.package = package;
+    set diagnostic_value.module = module;
+    set diagnostic_value.procedure = procedure;
+    set diagnostic_value.context = context;
+}
+
+export proc diagnostic_set_expected_found(
+    diagnostic_value: &mut Diagnostic,
+    expected: string,
+    found: string
+) {
+    set diagnostic_value.expected = expected;
+    set diagnostic_value.found = found;
+}
+
+export proc diagnostic_set_probable_cause(
+    diagnostic_value: &mut Diagnostic,
+    probable_cause: string
+) {
+    set diagnostic_value.probable_cause = probable_cause;
+}
+
+/// -------------------------------------------------------------------------
+/// Primary span
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_set_span(
+    diagnostic_value: &mut Diagnostic,
+    span: &AstSpan
+) -> bool {
+    if not span_valid(span) {
+        return false;
+    }
+
+    set diagnostic_value.source_id = span.source_id;
+    set diagnostic_value.source_name = span.source_name;
+
+    set diagnostic_value.start_offset = span.start_offset;
+    set diagnostic_value.end_offset = span.end_offset;
+
+    set diagnostic_value.start_line = span.start_line;
+    set diagnostic_value.start_column = span.start_column;
+
+    set diagnostic_value.end_line = span.end_line;
+    set diagnostic_value.end_column = span.end_column;
+
+    set diagnostic_value.has_span = true;
+
+    return true;
+}
+
+/// -------------------------------------------------------------------------
+/// Labels
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_add_label(
+    diagnostic_value: &mut Diagnostic,
+    style: DiagnosticLabelStyle,
+    span: AstSpan,
+    message: string
+) -> bool {
+    if not span_valid(&span) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < diagnostic_value.labels.len() {
+        let existing: &DiagnosticLabel =
+            &diagnostic_value.labels[index];
+
+        if existing.style == style and
+           span_same(&existing.span, &span) and
+           existing.message == message {
+            return true;
+        }
+
+        set index = index + 1;
+    }
+
+    if diagnostic_value.labels.len() >= MAX_LABELS {
+        return false;
+    }
+
+    diagnostic_value.labels.push(DiagnosticLabel {
+        style: style,
+        span: span,
+        message: message
+    });
+
+    return true;
+}
+
+/// -------------------------------------------------------------------------
+/// Related locations
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_add_location(
+    diagnostic_value: &mut Diagnostic,
+    kind: DiagnosticLocationKind,
+    span: AstSpan,
+    label: string
+) -> bool {
+    if not span_valid(&span) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < diagnostic_value.related.len() {
+        let existing: &DiagnosticLocation =
+            &diagnostic_value.related[index];
+
+        if existing.kind == kind and
+           span_same(&existing.span, &span) and
+           existing.label == label {
+            return true;
+        }
+
+        set index = index + 1;
+    }
+
+    if diagnostic_value.related.len() >= MAX_RELATED {
+        return false;
+    }
+
+    diagnostic_value.related.push(DiagnosticLocation {
+        kind: kind,
+        span: span,
+        label: label
+    });
+
+    return true;
+}
+
+/// -------------------------------------------------------------------------
+/// Causes
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_add_cause_ex(
+    diagnostic_value: &mut Diagnostic,
+    kind: DiagnosticCauseKind,
+    message: string,
+    span: *AstSpan,
+    confidence: DiagnosticConfidence
+) -> bool {
+    if message == "" {
+        return false;
+    }
+
+    if span != null {
+        if not span_valid(&*span) {
+            return false;
+        }
+    }
+
+    let mut index: usize = 0;
+
+    while index < diagnostic_value.causes.len() {
+        let existing: &DiagnosticCause =
+            &diagnostic_value.causes[index];
+
+        if existing.kind == kind and
+           existing.message == message and
+           existing.confidence == confidence {
+
+            if existing.span == null and span == null {
+                return true;
+            }
+
+            if existing.span != null and span != null {
+                if span_same(
+                    &*existing.span,
+                    &*span
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    if diagnostic_value.causes.len() >= MAX_CAUSES {
+        return false;
+    }
+
+    diagnostic_value.causes.push(DiagnosticCause {
+        kind: kind,
+        message: message,
+        span: span,
+        confidence: confidence
+    });
+
+    return true;
+}
+
+export proc diagnostic_add_cause(
+    diagnostic_value: &mut Diagnostic,
+    message: string,
+    span: *AstSpan
+) -> bool {
+    return diagnostic_add_cause_ex(
+        diagnostic_value,
+        DiagnosticCauseKind.Unknown,
+        message,
+        span,
+        DiagnosticConfidence.None
+    );
+}
+
+/// -------------------------------------------------------------------------
+/// Trace
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_add_trace(
+    diagnostic_value: &mut Diagnostic,
+    kind: DiagnosticTraceKind,
+    message: string,
+    span: *AstSpan
+) -> bool {
+    if span != null and not span_valid(&*span) {
+        return false;
+    }
+
+    if diagnostic_value.trace.len() >= MAX_TRACE {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < diagnostic_value.trace.len() {
+        let existing: &DiagnosticTrace =
+            &diagnostic_value.trace[index];
+
+        if existing.kind == kind and
+           existing.message == message {
+
+            if existing.span == null and span == null {
+                return true;
+            }
+
+            if existing.span != null and span != null and
+               span_same(&*existing.span, &*span) {
+                return true;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    diagnostic_value.trace.push(DiagnosticTrace {
+        kind: kind,
+        message: message,
+        span: span
+    });
+
+    return true;
+}
+
+/// -------------------------------------------------------------------------
+/// Annotations
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_add_annotation(
+    diagnostic_value: &mut Diagnostic,
+    kind: DiagnosticAnnotationKind,
+    message: string,
+    span: *AstSpan
+) -> bool {
+    if message == "" {
+        return false;
+    }
+
+    if span != null and not span_valid(&*span) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < diagnostic_value.annotations.len() {
+        let existing: &DiagnosticAnnotation =
+            &diagnostic_value.annotations[index];
+
+        if existing.kind == kind and
+           existing.message == message {
+
+            if existing.span == null and span == null {
+                return true;
+            }
+
+            if existing.span != null and span != null and
+               span_same(&*existing.span, &*span) {
+                return true;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    if diagnostic_value.annotations.len() >= MAX_ANNOTATIONS {
+        return false;
+    }
+
+    diagnostic_value.annotations.push(DiagnosticAnnotation {
+        kind: kind,
+        message: message,
+        span: span
+    });
+
+    return true;
+}
+
+export proc diagnostic_add_note(
+    diagnostic_value: &mut Diagnostic,
+    message: string,
+    span: *AstSpan
+) -> bool {
+    return diagnostic_add_annotation(
+        diagnostic_value,
+        DiagnosticAnnotationKind.Note,
+        message,
+        span
+    );
+}
+
+export proc diagnostic_add_help(
+    diagnostic_value: &mut Diagnostic,
+    message: string,
+    span: *AstSpan
+) -> bool {
+    return diagnostic_add_annotation(
+        diagnostic_value,
+        DiagnosticAnnotationKind.Help,
+        message,
+        span
+    );
+}
+
+/// -------------------------------------------------------------------------
+/// Suggestions
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_add_suggestion_ex(
+    diagnostic_value: &mut Diagnostic,
+    message: string,
+    span: *const AstSpan,
+    replacement: *const string,
+    applicability: DiagnosticApplicability,
+    confidence: DiagnosticConfidence,
+    preferred: bool
+) -> bool {
+    if span != null and not span_valid(&*span) {
+        return false;
+    }
+
+    if not replacement_pointer_is_null(replacement) and span == null {
+        return false;
+    }
+
+    if applicability == DiagnosticApplicability.Machine and
+       (span == null or replacement_pointer_is_null(replacement)) {
+        return false;
+    }
+
+    if message == "" and
+       (span == null or replacement_pointer_is_null(replacement)) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < diagnostic_value.suggestions.len() {
+        let existing: &DiagnosticSuggestion =
+            &diagnostic_value.suggestions[index];
+
+        let has_replacement = not replacement_pointer_is_null(replacement);
+        let replacement_equal = existing.has_replacement == has_replacement and
+            (not has_replacement or existing.replacement == *replacement);
+
+        if existing.message == message and
+           replacement_equal and
+           existing.applicability == applicability and
+           existing.confidence == confidence {
+
+            if not existing.has_span and span == null {
+                return true;
+            }
+
+            if existing.has_span and span != null and
+               span_same(&existing.span, &*span) {
+                return true;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    if diagnostic_value.suggestions.len() >= MAX_SUGGESTIONS {
+        return false;
+    }
+
+    let suggestion_id: u64 =
+        (diagnostic_value.suggestions.len() + 1) as u64;
+
+    diagnostic_value.suggestions.push(DiagnosticSuggestion {
+        suggestion_id: suggestion_id,
+
+        message: message,
+
+        span: if span == null { ast_span_invalid() } else { *span },
+        has_span: span != null,
+        replacement: if replacement_pointer_is_null(replacement) { "" } else { *replacement },
+        has_replacement: not replacement_pointer_is_null(replacement),
+
+        applicability: applicability,
+        confidence: confidence,
+
+        preferred: preferred
+    });
+
+    if applicability == DiagnosticApplicability.Machine {
+        set diagnostic_value.has_machine_fix = true;
+    }
+
+    return true;
+}
+
+export proc diagnostic_add_suggestion(
+    diagnostic_value: &mut Diagnostic,
+    message: string,
+    span: *const AstSpan,
+    replacement: *const string,
+    applicability: DiagnosticApplicability
+) -> bool {
+    return diagnostic_add_suggestion_ex(
+        diagnostic_value,
+        message,
+        span,
+        replacement,
+        applicability,
+        DiagnosticConfidence.None,
+        false
+    );
+}
+
+export proc diagnostic_has_machine_fix(
+    diagnostic_value: &Diagnostic
+) -> bool {
+    if diagnostic_value.has_machine_fix {
+        return true;
+    }
+
+    let mut index: usize = 0;
+
+    while index < diagnostic_value.suggestions.len() {
+        let suggestion: &DiagnosticSuggestion =
+            &diagnostic_value.suggestions[index];
+
+        if suggestion.applicability ==
+               DiagnosticApplicability.Machine and
+           suggestion.has_span and
+           suggestion.has_replacement {
+            return true;
+        }
+
+        set index = index + 1;
+    }
+
+    return false;
+}
+
+/// -------------------------------------------------------------------------
+/// Contract
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_set_contract(
+    diagnostic_value: &mut Diagnostic,
+    kind: DiagnosticContractKind,
+    expression: string,
+    procedure: string,
+    reason: string,
+    contract_span: *AstSpan,
+    call_span: *AstSpan,
+    declaration_span: *AstSpan
+) -> bool {
+    if contract_span != null and
+       not span_valid(&*contract_span) {
+        return false;
+    }
+
+    if call_span != null and
+       not span_valid(&*call_span) {
+        return false;
+    }
+
+    if declaration_span != null and
+       not span_valid(&*declaration_span) {
+        return false;
+    }
+
+    set diagnostic_value.contract = DiagnosticContract {
+        kind: kind,
+
+        expression: expression,
+        procedure: procedure,
+        reason: reason,
+
+        contract_span: contract_span,
+        call_span: call_span,
+        declaration_span: declaration_span
+    };
+
+    return true;
+}
+
+/// -------------------------------------------------------------------------
+/// Counters
+/// -------------------------------------------------------------------------
+
+export proc counts_increment(
+    counts: &mut DiagnosticCounts,
+    diagnostic_value: &Diagnostic
+) {
+    match diagnostic_value.severity {
+        DiagnosticSeverity.Note => {
+            set counts.note_count =
+                counts.note_count + 1;
+        },
+
+        DiagnosticSeverity.Help => {
+            set counts.help_count =
+                counts.help_count + 1;
+        },
+
+        DiagnosticSeverity.Warning => {
+            set counts.warning_count =
+                counts.warning_count + 1;
+        },
+
+        DiagnosticSeverity.Error => {
+            set counts.error_count =
+                counts.error_count + 1;
+        },
+
+        DiagnosticSeverity.Fatal => {
+            set counts.fatal_count =
+                counts.fatal_count + 1;
+        }
+    }
+
+    if diagnostic_value.is_suppressed {
+        set counts.suppressed_count =
+            counts.suppressed_count + 1;
+    }
+
+    if diagnostic_value.is_primary {
+        set counts.primary_count =
+            counts.primary_count + 1;
+    }
+
+    if diagnostic_value.is_cascade {
+        set counts.cascade_count =
+            counts.cascade_count + 1;
+    }
+}
+
+export proc bag_rebuild_counts(
+    bag: &mut DiagnosticBag
+) {
+    let mut counts: DiagnosticCounts =
+        diagnostic_counts_default();
+
+    let mut index: usize = 0;
+
+    while index < bag.storage.len() {
+        counts_increment(
+            &mut counts,
+            &bag.storage[index]
+        );
+
+        set index = index + 1;
+    }
+
+    set bag.counts = counts;
+}
+
+/// -------------------------------------------------------------------------
+/// Diagnostic identity
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_same_identity(
+    left: &Diagnostic,
+    right: &Diagnostic
+) -> bool {
+    if left.severity != right.severity or
+       left.origin != right.origin {
+        return false;
+    }
+
+    if left.short_code != right.short_code {
+        return false;
+    }
+
+    if left.message != right.message {
+        return false;
+    }
+
+    if left.symbol != right.symbol or
+       left.expected_type != right.expected_type or
+       left.actual_type != right.actual_type {
+        return false;
+    }
+
+    if left.has_span != right.has_span {
+        return false;
+    }
+
+    if not left.has_span {
+        return true;
+    }
+
+    if not same_source(
+        left.source_id,
+        left.source_name,
+        right.source_id,
+        right.source_name
+    ) {
+        return false;
+    }
+
+    return left.start_offset == right.start_offset and
+         left.end_offset == right.end_offset;
+}
+
+export proc bag_find_duplicate(
+    bag: &DiagnosticBag,
+    diagnostic_value: &Diagnostic
+) -> usize {
+    let mut index: usize = 0;
+
+    while index < bag.storage.len() {
+        let candidate: &Diagnostic =
+            &bag.storage[index];
+
+        if candidate.fingerprint ==
+               diagnostic_value.fingerprint and
+           diagnostic_same_identity(
+               candidate,
+               diagnostic_value
+           ) {
+            return index;
+        }
+
+        set index = index + 1;
+    }
+
+    return DIAGNOSTIC_INDEX_NONE;
+}
+
+/// -------------------------------------------------------------------------
+/// Registry fallback metadata
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_fallback_code(
+    severity: DiagnosticSeverity
+) -> string {
+    match severity {
+        DiagnosticSeverity.Error => { return "E????"; },
+        DiagnosticSeverity.Fatal => { return "E????"; },
+        DiagnosticSeverity.Warning => { return "W????"; },
+        DiagnosticSeverity.Note => { return "N????"; },
+        DiagnosticSeverity.Help => { return "H????"; }
+    }
+}
+
+export proc diagnostic_normalize_metadata(
+    diagnostic_value: &mut Diagnostic
+) {
+    if diagnostic_value.short_code == "" {
+        set diagnostic_value.short_code =
+            diagnostic_fallback_code(
+                diagnostic_value.severity
+            );
+    }
+
+    if diagnostic_value.category == "" {
+        set diagnostic_value.category = "general";
+    }
+}
+
+/// -------------------------------------------------------------------------
+/// Bag operations
+/// -------------------------------------------------------------------------
+
+export proc bag_effective_limit(
+    bag: &DiagnosticBag
+) -> usize {
+    let mut limit: usize = bag.capacity;
+
+    if bag.options.max_diagnostics != 0 and
+       bag.options.max_diagnostics < limit {
+        set limit =
+            bag.options.max_diagnostics;
+    }
+
+    return limit;
+}
+
+export proc diagnostic_bag_reset(
+    bag: &mut DiagnosticBag
+) {
+    set bag.storage = [];
+    set bag.counts = diagnostic_counts_default();
+    set bag.next_diagnostic_id = 1;
+    set bag.limit_reached = false;
+}
+
+export proc diagnostic_bag_count(
+    bag: &DiagnosticBag
+) -> usize {
+    if not bag.initialized {
+        return 0;
+    }
+
+    return bag.storage.len();
+}
+
+export proc diagnostic_bag_empty(
+    bag: &DiagnosticBag
+) -> bool {
+    return diagnostic_bag_count(bag) == 0;
+}
+
+export proc diagnostic_at(
+    bag: &DiagnosticBag,
+    index: usize
+) -> *Diagnostic {
+    if not bag.initialized or
+       index >= bag.storage.len() {
+        return null;
+    }
+
+    return &bag.storage[index];
+}
+
+export proc diagnostic_at_mut(
+    bag: &mut DiagnosticBag,
+    index: usize
+) -> *mut Diagnostic {
+    if not bag.initialized or
+       index >= bag.storage.len() {
+        return null;
+    }
+
+    let diagnostic_entry: *Diagnostic = &bag.storage[index];
+    return diagnostic_entry as *mut Diagnostic;
+}
+
+export proc diagnostic_add(
+    bag: &mut DiagnosticBag,
+    source: Diagnostic
+) -> bool {
+    if not bag.initialized {
+        return false;
+    }
+
+    if not diagnostic_validate(&source) {
+        return false;
+    }
+
+    let mut diagnostic_value: Diagnostic = source;
+
+    diagnostic_normalize_metadata(
+        &mut diagnostic_value
+    );
+
+    if bag.options.warnings_as_errors and
+       diagnostic_value.severity ==
+           DiagnosticSeverity.Warning {
+        set diagnostic_value.severity =
+            DiagnosticSeverity.Error;
+    }
+
+    diagnostic_refresh_fingerprint(
+        &mut diagnostic_value
+    );
+
+    let duplicate: usize =
+        bag_find_duplicate(
+            bag,
+            &diagnostic_value
+        );
+
+    if duplicate != DIAGNOSTIC_INDEX_NONE {
+        return true;
+    }
+
+    let limit: usize =
+        bag_effective_limit(bag);
+
+    if bag.storage.len() >= limit {
+        set bag.limit_reached = true;
+        return false;
+    }
+
+    if diagnostic_value.diagnostic_id == 0 {
+        set diagnostic_value.diagnostic_id =
+            bag.next_diagnostic_id;
+
+        if bag.next_diagnostic_id != 18446744073709551615 as u64 {
+            set bag.next_diagnostic_id =
+                bag.next_diagnostic_id + 1;
+        }
+    }
+
+    if diagnostic_value.is_primary {
+        if diagnostic_value.root_id == 0 {
+            set diagnostic_value.root_id =
+                diagnostic_value.diagnostic_id;
+        }
+    }
+
+    let added_index: usize = bag.storage.len();
+    bag.storage.push(diagnostic_value);
+
+    counts_increment(
+        &mut bag.counts,
+        &bag.storage[added_index]
+    );
+
+    return true;
+}
+
+export proc diagnostic_emit(
+    bag: &mut DiagnosticBag,
+    severity: DiagnosticSeverity,
+    origin: DiagnosticOrigin,
+    code: string,
+    message: string,
+    span: *AstSpan
+) -> bool {
+    if message == "" {
+        return false;
+    }
+
+    let mut diagnostic_value: Diagnostic =
+        diagnostic_default();
+
+    set diagnostic_value.severity = severity;
+    set diagnostic_value.origin = origin;
+    set diagnostic_value.code = code;
+    set diagnostic_value.message = message;
+
+    if span != null {
+        if not diagnostic_set_span(
+            &mut diagnostic_value,
+            &*span
+        ) {
+            return false;
+        }
+    }
+
+    return diagnostic_add(
+        bag,
+        diagnostic_value
+    );
+}
+
+/// -------------------------------------------------------------------------
+/// Cascade graph
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_set_parent(
+    bag: &mut DiagnosticBag,
+    diagnostic_index: usize,
+    parent_index: usize
+) -> bool {
+    if diagnostic_index >= bag.storage.len() or
+       parent_index >= bag.storage.len() or
+       diagnostic_index == parent_index or
+       parent_index >= diagnostic_index {
+        return false;
+    }
+
+    let parent_root: usize =
+        bag.storage[parent_index].root_diagnostic;
+
+    let root: usize =
+        if parent_root == DIAGNOSTIC_INDEX_NONE {
+            parent_index
+        } else {
+            parent_root
+        };
+
+    if root >= diagnostic_index {
+        return false;
+    }
+
+    let parent_id: u64 =
+        bag.storage[parent_index].diagnostic_id;
+
+    let root_id: u64 =
+        bag.storage[root].diagnostic_id;
+
+    set bag.storage[diagnostic_index]
+        .parent_diagnostic = parent_index;
+
+    set bag.storage[diagnostic_index]
+        .root_diagnostic = root;
+
+    set bag.storage[diagnostic_index]
+        .parent_id = parent_id;
+
+    set bag.storage[diagnostic_index]
+        .root_id = root_id;
+
+    set bag.storage[diagnostic_index]
+        .is_primary = false;
+
+    set bag.storage[diagnostic_index]
+        .is_cascade = true;
+
+    bag_rebuild_counts(bag);
+
+    return true;
+}
+
+export proc diagnostic_mark_cascade(
+    bag: &mut DiagnosticBag,
+    diagnostic_index: usize,
+    root_index: usize
+) -> bool {
+    if diagnostic_index >= bag.storage.len() or
+       root_index >= bag.storage.len() or
+       diagnostic_index == root_index or
+       root_index >= diagnostic_index {
+        return false;
+    }
+
+    set bag.storage[diagnostic_index]
+        .root_diagnostic = root_index;
+
+    set bag.storage[diagnostic_index]
+        .parent_diagnostic = root_index;
+
+    set bag.storage[diagnostic_index]
+        .root_id =
+            bag.storage[root_index].diagnostic_id;
+
+    set bag.storage[diagnostic_index]
+        .parent_id =
+            bag.storage[root_index].diagnostic_id;
+
+    set bag.storage[diagnostic_index]
+        .is_primary = false;
+
+    set bag.storage[diagnostic_index]
+        .is_cascade = true;
+
+    bag_rebuild_counts(bag);
+
+    return true;
+}
+
+export proc diagnostic_suppress(
+    bag: &mut DiagnosticBag,
+    index: usize
+) -> bool {
+    if index >= bag.storage.len() {
+        return false;
+    }
+
+    if not bag.storage[index].is_suppressed {
+        set bag.storage[index].is_suppressed = true;
+
+        set bag.counts.suppressed_count =
+            bag.counts.suppressed_count + 1;
+    }
+
+    return true;
+}
+
+export proc diagnostic_root(
+    bag: &DiagnosticBag,
+    diagnostic_index: usize
+) -> *Diagnostic {
+    if diagnostic_index >= bag.storage.len() {
+        return null;
+    }
+
+    let diagnostic_value: &Diagnostic =
+        &bag.storage[diagnostic_index];
+
+    if diagnostic_value.root_diagnostic ==
+           DIAGNOSTIC_INDEX_NONE {
+        if diagnostic_value.is_primary {
+            return diagnostic_value;
+        }
+
+        return null;
+    }
+
+    if diagnostic_value.root_diagnostic >=
+       diagnostic_index {
+        return null;
+    }
+
+    return &bag.storage[
+        diagnostic_value.root_diagnostic
+    ];
+}
+
+export proc diagnostic_parent(
+    bag: &DiagnosticBag,
+    diagnostic_index: usize
+) -> *Diagnostic {
+    if diagnostic_index >= bag.storage.len() {
+        return null;
+    }
+
+    let parent: usize =
+        bag.storage[
+            diagnostic_index
+        ].parent_diagnostic;
+
+    if parent == DIAGNOSTIC_INDEX_NONE {
+        return null;
+    }
+
+    if parent >= diagnostic_index {
+        return null;
+    }
+
+    return &bag.storage[parent];
+}
+
+/// -------------------------------------------------------------------------
+/// Queries
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_has_errors(
+    bag: &DiagnosticBag
+) -> bool {
+    return bag.counts.error_count != 0 or
+         bag.counts.fatal_count != 0;
+}
+
+export proc diagnostic_has_fatal(
+    bag: &DiagnosticBag
+) -> bool {
+    return bag.counts.fatal_count != 0;
+}
+
+export proc diagnostic_has_warnings(
+    bag: &DiagnosticBag
+) -> bool {
+    return bag.counts.warning_count != 0;
+}
+
+export proc diagnostic_bag_limit_reached(
+    bag: &DiagnosticBag
+) -> bool {
+    return bag.limit_reached;
+}
+
+export proc diagnostic_error_count(
+    bag: &DiagnosticBag
+) -> usize {
+    return bag.counts.error_count +
+         bag.counts.fatal_count;
+}
+
+export proc diagnostic_warning_count(
+    bag: &DiagnosticBag
+) -> usize {
+    return bag.counts.warning_count;
+}
+
+export proc diagnostic_suppressed_count(
+    bag: &DiagnosticBag
+) -> usize {
+    return bag.counts.suppressed_count;
+}
+
+export proc diagnostic_primary_count(
+    bag: &DiagnosticBag
+) -> usize {
+    return bag.counts.primary_count;
+}
+
+export proc diagnostic_cascade_count(
+    bag: &DiagnosticBag
+) -> usize {
+    return bag.counts.cascade_count;
+}
+
+/// -------------------------------------------------------------------------
+/// Merge
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_merge(
+    destination: &mut DiagnosticBag,
+    source: &DiagnosticBag
+) -> bool {
+    if not destination.initialized or
+       not source.initialized {
+        return false;
+    }
+
+    let source_count: usize =
+        source.storage.len();
+
+    let mut remap: [usize] = [];
+
+    let mut index: usize = 0;
+
+    while index < source_count {
+        let source_diagnostic: &Diagnostic =
+            &source.storage[index];
+
+        let mut copy: Diagnostic =
+            *source_diagnostic;
+
+        set copy.root_diagnostic =
+            DIAGNOSTIC_INDEX_NONE;
+
+        set copy.parent_diagnostic =
+            DIAGNOSTIC_INDEX_NONE;
+
+        set copy.root_id = 0;
+        set copy.parent_id = 0;
+
+        let before: usize =
+            destination.storage.len();
+
+        if not diagnostic_add(
+            destination,
+            copy
+        ) {
+            return false;
+        }
+
+        if destination.storage.len() == before {
+            let duplicate: usize =
+                bag_find_duplicate(
+                    destination,
+                    source_diagnostic
+                );
+
+            remap.push(duplicate);
+        } else {
+            let destination_index: usize = destination.storage.len() - 1;
+            remap.push(destination_index);
+        }
+
+        set index = index + 1;
+    }
+
+    set index = 0;
+
+    while index < source_count {
+        let mapped: usize = remap[index];
+
+        if mapped != DIAGNOSTIC_INDEX_NONE and
+           mapped < destination.storage.len() {
+
+            let source_diagnostic: &Diagnostic =
+                &source.storage[index];
+
+            if source_diagnostic.parent_diagnostic !=
+                   DIAGNOSTIC_INDEX_NONE and
+               source_diagnostic.parent_diagnostic < index {
+
+                let mapped_parent: usize =
+                    remap[
+                        source_diagnostic
+                            .parent_diagnostic
+                    ];
+
+                if mapped_parent !=
+                       DIAGNOSTIC_INDEX_NONE and
+                   mapped_parent < mapped {
+
+                    set destination.storage[mapped]
+                        .parent_diagnostic =
+                            mapped_parent;
+
+                    set destination.storage[mapped]
+                        .parent_id =
+                            destination.storage[
+                                mapped_parent
+                            ].diagnostic_id;
+                }
+            }
+
+            if source_diagnostic.root_diagnostic !=
+                   DIAGNOSTIC_INDEX_NONE and
+               source_diagnostic.root_diagnostic < index {
+
+                let mapped_root: usize =
+                    remap[
+                        source_diagnostic
+                            .root_diagnostic
+                    ];
+
+                if mapped_root !=
+                       DIAGNOSTIC_INDEX_NONE and
+                   mapped_root < mapped {
+
+                    set destination.storage[mapped]
+                        .root_diagnostic =
+                            mapped_root;
+
+                    set destination.storage[mapped]
+                        .root_id =
+                            destination.storage[
+                                mapped_root
+                            ].diagnostic_id;
+                }
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    bag_rebuild_counts(destination);
+
+    return true;
+}
+
+/// -------------------------------------------------------------------------
+/// Formatting
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_format_one(
+    diagnostic_value: &Diagnostic
+) -> string {
+    let severity: string =
+        severity_name(diagnostic_value.severity);
+
+    let code: string =
+        if diagnostic_value.short_code != "" {
+            diagnostic_value.short_code
+        } else {
+            diagnostic_fallback_code(
+                diagnostic_value.severity
+            )
+        };
+
+    let message: string =
+        if diagnostic_value.message != "" {
+            diagnostic_value.message
+        } else {
+            "diagnostic"
+        };
+
+    if diagnostic_value.has_span and
+       diagnostic_value.source_name != "" {
+
+        return diagnostic_value.source_name +
+            ":" +
+            diagnostic_u64_to_string(diagnostic_value.start_line + 1) +
+            ":" +
+            diagnostic_u64_to_string(diagnostic_value.start_column + 1) +
+            ": " +
+            severity +
+            "[" +
+            code +
+            "]: " +
+            message;
+    }
+
+    return severity +
+        "[" +
+        code +
+        "]: " +
+        message;
+}
+
+export proc diagnostic_format_one_ex(
+    diagnostic_value: &Diagnostic,
+    options: &DiagnosticOptions
+) -> string {
+    let severity: string =
+        severity_name(diagnostic_value.severity);
+
+    let code: string =
+        if diagnostic_value.short_code != "" {
+            diagnostic_value.short_code
+        } else {
+            diagnostic_fallback_code(
+                diagnostic_value.severity
+            )
+        };
+
+    let message: string =
+        if diagnostic_value.message != "" {
+            diagnostic_value.message
+        } else {
+            "diagnostic"
+        };
+
+    let origin: string =
+        origin_name(diagnostic_value.origin);
+
+    let category: string =
+        if diagnostic_value.category != "" {
+            diagnostic_value.category
+        } else {
+            "general"
+        };
+
+    let mut prefix: string = "";
+
+    if diagnostic_value.has_span and
+       diagnostic_value.source_name != "" {
+
+        set prefix =
+            diagnostic_value.source_name +
+            ":" +
+            diagnostic_u64_to_string(diagnostic_value.start_line + 1) +
+            ":" +
+            diagnostic_u64_to_string(diagnostic_value.start_column + 1) +
+            ": ";
+    }
+
+    if options.show_codes and
+       options.show_phase {
+
+        return prefix +
+            severity +
+            "[" +
+            code +
+            "] (" +
+            origin +
+            "/" +
+            category +
+            "): " +
+            message;
+    }
+
+    if options.show_codes {
+        return prefix +
+            severity +
+            "[" +
+            code +
+            "]: " +
+            message;
+    }
+
+    if options.show_phase {
+        return prefix +
+            severity +
+            " (" +
+            origin +
+            "/" +
+            category +
+            "): " +
+            message;
+    }
+
+    return prefix +
+        severity +
+        ": " +
+        message;
+}
+
+export proc diagnostic_format_summary(
+    bag: &DiagnosticBag
+) -> string {
+    return diagnostic_u64_to_string(bag.counts.error_count) +
+        " error(s), " +
+        diagnostic_u64_to_string(bag.counts.fatal_count) +
+        " fatal error(s), " +
+        diagnostic_u64_to_string(bag.counts.warning_count) +
+        " warning(s), " +
+        diagnostic_u64_to_string(bag.counts.note_count) +
+        " note(s), " +
+        diagnostic_u64_to_string(bag.counts.help_count) +
+        " help message(s), " +
+        diagnostic_u64_to_string(bag.counts.suppressed_count) +
+        " suppressed";
+}
+
+/// -------------------------------------------------------------------------
+/// Validation
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_validate(
+    diagnostic_value: &Diagnostic
+) -> bool {
+    if diagnostic_value.message == "" {
+        return false;
+    }
+
+    if diagnostic_value.has_span {
+        if diagnostic_value.end_offset <
+           diagnostic_value.start_offset {
+            return false;
+        }
+
+        if diagnostic_value.end_line <
+           diagnostic_value.start_line {
+            return false;
+        }
+
+        if diagnostic_value.end_line ==
+               diagnostic_value.start_line and
+           diagnostic_value.end_column <
+               diagnostic_value.start_column {
+            return false;
+        }
+
+        if not source_id_valid(
+               diagnostic_value.source_id
+           ) and
+           diagnostic_value.source_name == "" {
+            return false;
+        }
+    }
+
+    if diagnostic_value.labels.len() > MAX_LABELS or
+       diagnostic_value.related.len() > MAX_RELATED or
+       diagnostic_value.causes.len() > MAX_CAUSES or
+       diagnostic_value.annotations.len() > MAX_ANNOTATIONS or
+       diagnostic_value.suggestions.len() > MAX_SUGGESTIONS or
+       diagnostic_value.trace.len() > MAX_TRACE {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < diagnostic_value.labels.len() {
+        if not span_valid(
+            &diagnostic_value.labels[index].span
+        ) {
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    set index = 0;
+
+    while index < diagnostic_value.related.len() {
+        if not span_valid(
+            &diagnostic_value.related[index].span
+        ) {
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    set index = 0;
+
+    while index < diagnostic_value.causes.len() {
+        let cause: &DiagnosticCause =
+            &diagnostic_value.causes[index];
+
+        if cause.message == "" {
+            return false;
+        }
+
+        if cause.span != null and
+           not span_valid(&*cause.span) {
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    set index = 0;
+
+    while index < diagnostic_value.annotations.len() {
+        let annotation: &DiagnosticAnnotation =
+            &diagnostic_value.annotations[index];
+
+        if annotation.message == "" {
+            return false;
+        }
+
+        if annotation.span != null and
+           not span_valid(&*annotation.span) {
+            return false;
+        }
+
+        set index = index + 1;
+    }
+
+    set index = 0;
+
+    let mut machine_fix: bool = false;
+
+    while index < diagnostic_value.suggestions.len() {
+        let suggestion: &DiagnosticSuggestion =
+            &diagnostic_value.suggestions[index];
+
+        if suggestion.message == "" {
+            return false;
+        }
+
+        if suggestion.has_span and
+           not span_valid(&suggestion.span) {
+            return false;
+        }
+
+        if suggestion.has_replacement and
+           not suggestion.has_span {
+            return false;
+        }
+
+        if suggestion.applicability ==
+               DiagnosticApplicability.Machine {
+
+            if not suggestion.has_span or
+               not suggestion.has_replacement {
+                return false;
+            }
+
+            set machine_fix = true;
+        }
+
+        set index = index + 1;
+    }
+
+    if diagnostic_value.has_machine_fix != machine_fix {
+        return false;
+    }
+
+    if diagnostic_value.contract.kind != DiagnosticContractKind.None {
+        let contract: &DiagnosticContract =
+            &diagnostic_value.contract;
+
+        if contract.contract_span != null and
+           not span_valid(&*contract.contract_span) {
+            return false;
+        }
+
+        if contract.call_span != null and
+           not span_valid(&*contract.call_span) {
+            return false;
+        }
+
+        if contract.declaration_span != null and
+           not span_valid(
+               &*contract.declaration_span
+           ) {
+            return false;
+        }
+    }
+
+    if diagnostic_value.is_primary {
+        if diagnostic_value.is_cascade {
+            return false;
+        }
+
+        if diagnostic_value.parent_diagnostic !=
+           DIAGNOSTIC_INDEX_NONE {
+            return false;
+        }
+    }
+
+    if diagnostic_value.is_cascade and
+       diagnostic_value.root_diagnostic ==
+           DIAGNOSTIC_INDEX_NONE {
+        return false;
+    }
+
+    if diagnostic_value.fingerprint != 0 and
+       diagnostic_value.fingerprint !=
+           diagnostic_fingerprint(diagnostic_value) {
+        return false;
+    }
+
+    return true;
+}
+
+export proc diagnostic_bag_validate(
+    bag: &DiagnosticBag
+) -> bool {
+    if not bag.initialized {
+        return false;
+    }
+
+    if bag.storage.len() > bag.capacity {
+        return false;
+    }
+
+    if bag.storage.len() >
+       bag_effective_limit(bag) {
+        return false;
+    }
+
+    let mut expected: DiagnosticCounts =
+        diagnostic_counts_default();
+
+    let mut index: usize = 0;
+
+    while index < bag.storage.len() {
+        let diagnostic_value: &Diagnostic =
+            &bag.storage[index];
+
+        if not diagnostic_validate(diagnostic_value) {
+            return false;
+        }
+
+        if diagnostic_value.parent_diagnostic !=
+               DIAGNOSTIC_INDEX_NONE and
+           diagnostic_value.parent_diagnostic >= index {
+            return false;
+        }
+
+        if diagnostic_value.root_diagnostic !=
+               DIAGNOSTIC_INDEX_NONE and
+           diagnostic_value.root_diagnostic >= index {
+            return false;
+        }
+
+        if diagnostic_value.is_cascade {
+            if diagnostic_value.root_diagnostic ==
+               DIAGNOSTIC_INDEX_NONE {
+                return false;
+            }
+
+            let root: &Diagnostic =
+                &bag.storage[
+                    diagnostic_value.root_diagnostic
+                ];
+
+            if root.is_cascade {
+                return false;
+            }
+
+            if diagnostic_value.root_id != 0 and
+               root.diagnostic_id !=
+                   diagnostic_value.root_id {
+                return false;
+            }
+        }
+
+        if diagnostic_value.parent_diagnostic !=
+           DIAGNOSTIC_INDEX_NONE {
+
+            let parent: &Diagnostic =
+                &bag.storage[
+                    diagnostic_value.parent_diagnostic
+                ];
+
+            if diagnostic_value.parent_id != 0 and
+               diagnostic_value.parent_id !=
+                   parent.diagnostic_id {
+                return false;
+            }
+        }
+
+        counts_increment(
+            &mut expected,
+            diagnostic_value
+        );
+
+        set index = index + 1;
+    }
+
+    if expected.note_count !=
+           bag.counts.note_count or
+       expected.help_count !=
+           bag.counts.help_count or
+       expected.warning_count !=
+           bag.counts.warning_count or
+       expected.error_count !=
+           bag.counts.error_count or
+       expected.fatal_count !=
+           bag.counts.fatal_count or
+       expected.suppressed_count !=
+           bag.counts.suppressed_count or
+       expected.primary_count !=
+           bag.counts.primary_count or
+       expected.cascade_count !=
+           bag.counts.cascade_count {
+        return false;
+    }
+
+    return true;
+}
+
+/// -------------------------------------------------------------------------
+/// Component metadata
+/// -------------------------------------------------------------------------
+
+export proc diagnostic_component_name() -> string {
+    return "diagnostic";
+}
+
+export proc diagnostic_component_version() -> u64 {
+    return 1;
+}

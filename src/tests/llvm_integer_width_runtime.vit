@@ -15,7 +15,7 @@ proc counter() -> u64 {
     while value < 5 {
         set value = value + 1;
     }
-    give value;
+    return value;
 }
 
 proc narrow_counter() -> u8 {
@@ -23,21 +23,21 @@ proc narrow_counter() -> u8 {
     while value < 5 {
         set value = value + (1 as u8);
     }
-    give value;
+    return value;
 }
 
 proc layout(windows: bool) -> Layout {
-    give Layout {
+    return Layout {
         redzone: if windows { 0 as u64 } else { 128 as u64 },
     };
 }
 
 proc mixed_add(small: u8, wide: i64) -> i64 {
-    give small + wide;
+    return small + wide;
 }
 
 proc signed_float(value: i64) -> f64 {
-    give value as f64;
+    return value as f64;
 }
 
 proc shadow(flag: bool) -> i64 {
@@ -46,17 +46,17 @@ proc shadow(flag: bool) -> i64 {
     if flag {
         let value: bool = true;
         if not value {
-            give 1;
+            return 1;
         }
     } else {
         let value: u64 = 4294967296;
         if value != 4294967296 {
-            give 2;
+            return 2;
         }
     }
 
     set value = value + 1;
-    give value;
+    return value;
 }
 
 proc main() -> int {
@@ -64,19 +64,19 @@ proc main() -> int {
     let other: Layout = layout(false);
 
     if counter() != 5 or narrow_counter() != 5 {
-        give 1;
+        return 1;
     }
     if mixed_add(3 as u8, 4) != 7 {
-        give 2;
+        return 2;
     }
     if windows.redzone != 0 or other.redzone != 128 {
-        give 3;
+        return 3;
     }
     if signed_float(-3) != -3.0 {
-        give 4;
+        return 4;
     }
     if shadow(true) != 8 or shadow(false) != 8 {
-        give 5;
+        return 5;
     }
-    give 0;
+    return 0;
 }

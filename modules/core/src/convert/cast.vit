@@ -1,0 +1,884 @@
+// ============================================================================
+// Vitte Standard Library
+// Module: core::convert::cast
+// File: modules/core/src/convert/cast.vit
+//
+// Explicit numeric conversions.
+//
+// Categories:
+//   1. Widening conversions
+//   2. Checked conversions
+//   3. Saturating conversions
+//   4. Boolean conversions
+//
+// Dependencies: none
+// Dynamic allocation: none
+// ============================================================================
+
+space core::convert::cast;
+
+use core::primitive::float::{f64_is_nan, f64_is_infinite};
+
+// ============================================================================
+// 1. CONVERSION RESULT
+// ============================================================================
+
+/// Raisons normalisées d'échec d'une conversion contrôlée.
+export pick CastError {
+    None,
+    Negative,
+    Overflow,
+    Underflow,
+    InvalidValue
+}
+
+/// Toutes les formes `Cast*Result` exposent les mêmes champs et invariants :
+/// succès avec `error == None`, échec avec valeur zéro et erreur non nulle.
+export form CastU8Result {
+    success: bool,
+    value: u8,
+    error: CastError
+}
+
+export form CastU16Result {
+    success: bool,
+    value: u16,
+    error: CastError
+}
+
+export form CastU32Result {
+    success: bool,
+    value: u32,
+    error: CastError
+}
+
+export form CastU64Result {
+    success: bool,
+    value: u64,
+    error: CastError
+}
+
+export form CastI8Result {
+    success: bool,
+    value: i8,
+    error: CastError
+}
+
+export form CastI16Result {
+    success: bool,
+    value: i16,
+    error: CastError
+}
+
+export form CastI32Result {
+    success: bool,
+    value: i32,
+    error: CastError
+}
+
+export form CastI64Result {
+    success: bool,
+    value: i64,
+    error: CastError
+}
+
+// ============================================================================
+// 2. LOSSLESS UNSIGNED INTEGER CONVERSIONS
+// ============================================================================
+
+export proc cast_u8_to_u16(value: u8) -> u16 {
+    return value as u16;
+}
+
+export proc cast_u8_to_u32(value: u8) -> u32 {
+    return value as u32;
+}
+
+export proc cast_u8_to_u64(value: u8) -> u64 {
+    return value as u64;
+}
+
+export proc cast_u16_to_u32(value: u16) -> u32 {
+    return value as u32;
+}
+
+export proc cast_u16_to_u64(value: u16) -> u64 {
+    return value as u64;
+}
+
+export proc cast_u32_to_u64(value: u32) -> u64 {
+    return value as u64;
+}
+
+// ============================================================================
+// 3. LOSSLESS SIGNED INTEGER CONVERSIONS
+// ============================================================================
+
+export proc cast_i8_to_i16(value: i8) -> i16 {
+    return value as i16;
+}
+
+export proc cast_i8_to_i32(value: i8) -> i32 {
+    return value as i32;
+}
+
+export proc cast_i8_to_i64(value: i8) -> i64 {
+    return value as i64;
+}
+
+export proc cast_i16_to_i32(value: i16) -> i32 {
+    return value as i32;
+}
+
+export proc cast_i16_to_i64(value: i16) -> i64 {
+    return value as i64;
+}
+
+export proc cast_i32_to_i64(value: i32) -> i64 {
+    return value as i64;
+}
+
+// ============================================================================
+// 4. LOSSLESS UNSIGNED TO SIGNED CONVERSIONS
+// ============================================================================
+
+export proc cast_u8_to_i16(value: u8) -> i16 {
+    return value as i16;
+}
+
+export proc cast_u8_to_i32(value: u8) -> i32 {
+    return value as i32;
+}
+
+export proc cast_u8_to_i64(value: u8) -> i64 {
+    return value as i64;
+}
+
+export proc cast_u16_to_i32(value: u16) -> i32 {
+    return value as i32;
+}
+
+export proc cast_u16_to_i64(value: u16) -> i64 {
+    return value as i64;
+}
+
+export proc cast_u32_to_i64(value: u32) -> i64 {
+    return value as i64;
+}
+
+// ============================================================================
+// 5. CHECKED UNSIGNED NARROWING
+// ============================================================================
+
+export proc checked_u16_to_u8(value: u16) -> CastU8Result {
+    if value > 255 {
+        return CastU8Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastU8Result {
+        value: value as u8,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_u32_to_u8(value: u32) -> CastU8Result {
+    if value > 255 {
+        return CastU8Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastU8Result {
+        value: value as u8,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_u64_to_u8(value: u64) -> CastU8Result {
+    if value > 255 {
+        return CastU8Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastU8Result {
+        value: value as u8,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_u32_to_u16(value: u32) -> CastU16Result {
+    if value > 65535 {
+        return CastU16Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastU16Result {
+        value: value as u16,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_u64_to_u16(value: u64) -> CastU16Result {
+    if value > 65535 {
+        return CastU16Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastU16Result {
+        value: value as u16,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_u64_to_u32(value: u64) -> CastU32Result {
+    if value > 4294967295 {
+        return CastU32Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastU32Result {
+        value: value as u32,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_u32_to_i8(value: u32) -> CastI8Result {
+    if value > 127 {
+        return CastI8Result { value: 0, error: CastError.Overflow, success: false };
+    }
+    return CastI8Result { value: value as i8, error: CastError.None, success: true };
+}
+
+export proc checked_i32_to_i8(value: i32) -> CastI8Result {
+    if value < -128 {
+        return CastI8Result { value: 0, error: CastError.Underflow, success: false };
+    }
+    if value > 127 {
+        return CastI8Result { value: 0, error: CastError.Overflow, success: false };
+    }
+    return CastI8Result { value: value as i8, error: CastError.None, success: true };
+}
+
+export proc checked_i64_to_i8(value: i64) -> CastI8Result {
+    if value < -128 {
+        return CastI8Result { value: 0, error: CastError.Underflow, success: false };
+    }
+    if value > 127 {
+        return CastI8Result { value: 0, error: CastError.Overflow, success: false };
+    }
+    return CastI8Result { value: value as i8, error: CastError.None, success: true };
+}
+
+export proc checked_i64_to_i16(value: i64) -> CastI16Result {
+    if value < -32768 {
+        return CastI16Result { value: 0, error: CastError.Underflow, success: false };
+    }
+    if value > 32767 {
+        return CastI16Result { value: 0, error: CastError.Overflow, success: false };
+    }
+    return CastI16Result { value: value as i16, error: CastError.None, success: true };
+}
+
+export proc checked_i64_to_u8(value: i64) -> CastU8Result {
+    if value < 0 {
+        return CastU8Result { value: 0, error: CastError.Negative, success: false };
+    }
+    if value > 255 {
+        return CastU8Result { value: 0, error: CastError.Overflow, success: false };
+    }
+    return CastU8Result { value: value as u8, error: CastError.None, success: true };
+}
+
+export proc checked_i64_to_u16(value: i64) -> CastU16Result {
+    if value < 0 {
+        return CastU16Result { value: 0, error: CastError.Negative, success: false };
+    }
+    if value > 65535 {
+        return CastU16Result { value: 0, error: CastError.Overflow, success: false };
+    }
+    return CastU16Result { value: value as u16, error: CastError.None, success: true };
+}
+
+export proc checked_u64_to_i64(value: u64) -> CastI64Result {
+    if value > 9223372036854775807 {
+        return CastI64Result { value: 0, error: CastError.Overflow, success: false };
+    }
+    return CastI64Result { value: value as i64, error: CastError.None, success: true };
+}
+
+export proc checked_u16_to_i8(value: u16) -> CastI8Result {
+    if value > 127 { return CastI8Result { value: 0, error: CastError.Overflow, success: false }; }
+    return CastI8Result { value: value as i8, error: CastError.None, success: true };
+}
+
+export proc checked_u8_to_i8(value: u8) -> CastI8Result {
+    if value > 127 { return CastI8Result { value: 0, error: CastError.Overflow, success: false }; }
+    return CastI8Result { value: value as i8, error: CastError.None, success: true };
+}
+
+export proc checked_u16_to_i16(value: u16) -> CastI16Result {
+    if value > 32767 { return CastI16Result { value: 0, error: CastError.Overflow, success: false }; }
+    return CastI16Result { value: value as i16, error: CastError.None, success: true };
+}
+
+export proc checked_u32_to_i16(value: u32) -> CastI16Result {
+    if value > 32767 { return CastI16Result { value: 0, error: CastError.Overflow, success: false }; }
+    return CastI16Result { value: value as i16, error: CastError.None, success: true };
+}
+
+export proc checked_u32_to_i32(value: u32) -> CastI32Result {
+    if value > 2147483647 { return CastI32Result { value: 0, error: CastError.Overflow, success: false }; }
+    return CastI32Result { value: value as i32, error: CastError.None, success: true };
+}
+
+export proc checked_u64_to_i8(value: u64) -> CastI8Result {
+    if value > 127 { return CastI8Result { value: 0, error: CastError.Overflow, success: false }; }
+    return CastI8Result { value: value as i8, error: CastError.None, success: true };
+}
+
+export proc checked_u64_to_i16(value: u64) -> CastI16Result {
+    if value > 32767 { return CastI16Result { value: 0, error: CastError.Overflow, success: false }; }
+    return CastI16Result { value: value as i16, error: CastError.None, success: true };
+}
+
+export proc checked_u64_to_i32(value: u64) -> CastI32Result {
+    if value > 2147483647 { return CastI32Result { value: 0, error: CastError.Overflow, success: false }; }
+    return CastI32Result { value: value as i32, error: CastError.None, success: true };
+}
+
+export proc checked_i64_to_u64(value: i64) -> CastU64Result {
+    if value < 0 {
+        return CastU64Result { value: 0, error: CastError.Negative, success: false };
+    }
+    return CastU64Result { value: value as u64, error: CastError.None, success: true };
+}
+
+export proc checked_i8_to_u8(value: i8) -> CastU8Result {
+    if value < 0 { return CastU8Result { value: 0, error: CastError.Negative, success: false }; }
+    return CastU8Result { value: value as u8, error: CastError.None, success: true };
+}
+
+export proc checked_i8_to_u16(value: i8) -> CastU16Result {
+    if value < 0 { return CastU16Result { value: 0, error: CastError.Negative, success: false }; }
+    return CastU16Result { value: value as u16, error: CastError.None, success: true };
+}
+
+export proc checked_i8_to_u32(value: i8) -> CastU32Result {
+    if value < 0 { return CastU32Result { value: 0, error: CastError.Negative, success: false }; }
+    return CastU32Result { value: value as u32, error: CastError.None, success: true };
+}
+
+export proc checked_i8_to_u64(value: i8) -> CastU64Result {
+    if value < 0 { return CastU64Result { value: 0, error: CastError.Negative, success: false }; }
+    return CastU64Result { value: value as u64, error: CastError.None, success: true };
+}
+
+export proc checked_i16_to_u8(value: i16) -> CastU8Result {
+    if value < 0 { return CastU8Result { value: 0, error: CastError.Negative, success: false }; }
+    if value > 255 { return CastU8Result { value: 0, error: CastError.Overflow, success: false }; }
+    return CastU8Result { value: value as u8, error: CastError.None, success: true };
+}
+
+export proc checked_i16_to_u16(value: i16) -> CastU16Result {
+    if value < 0 { return CastU16Result { value: 0, error: CastError.Negative, success: false }; }
+    return CastU16Result { value: value as u16, error: CastError.None, success: true };
+}
+
+export proc checked_i16_to_u32(value: i16) -> CastU32Result {
+    if value < 0 { return CastU32Result { value: 0, error: CastError.Negative, success: false }; }
+    return CastU32Result { value: value as u32, error: CastError.None, success: true };
+}
+
+export proc checked_i16_to_u64(value: i16) -> CastU64Result {
+    if value < 0 { return CastU64Result { value: 0, error: CastError.Negative, success: false }; }
+    return CastU64Result { value: value as u64, error: CastError.None, success: true };
+}
+
+export proc checked_i32_to_u32(value: i32) -> CastU32Result {
+    if value < 0 { return CastU32Result { value: 0, error: CastError.Negative, success: false }; }
+    return CastU32Result { value: value as u32, error: CastError.None, success: true };
+}
+
+export proc checked_i32_to_u64(value: i32) -> CastU64Result {
+    if value < 0 { return CastU64Result { value: 0, error: CastError.Negative, success: false }; }
+    return CastU64Result { value: value as u64, error: CastError.None, success: true };
+}
+
+/// Conversion tronquée vers zéro, refusant NaN, les infinis et les valeurs hors plage.
+export proc checked_f64_to_i64(value: f64) -> CastI64Result {
+    if f64_is_nan(value) || f64_is_infinite(value) {
+        return CastI64Result { value: 0, error: CastError.InvalidValue, success: false };
+    }
+    if value < -9223372036854775808.0 {
+        return CastI64Result { value: 0, error: CastError.Underflow, success: false };
+    }
+    if value >= 9223372036854775808.0 {
+        return CastI64Result { value: 0, error: CastError.Overflow, success: false };
+    }
+    return CastI64Result { value: value as i64, error: CastError.None, success: true };
+}
+
+export proc checked_f64_to_u64(value: f64) -> CastU64Result {
+    if f64_is_nan(value) || f64_is_infinite(value) {
+        return CastU64Result { value: 0, error: CastError.InvalidValue, success: false };
+    }
+    if value < 0.0 {
+        return CastU64Result { value: 0, error: CastError.Negative, success: false };
+    }
+    if value >= 18446744073709551616.0 {
+        return CastU64Result { value: 0, error: CastError.Overflow, success: false };
+    }
+    return CastU64Result { value: value as u64, error: CastError.None, success: true };
+}
+
+export proc checked_f32_to_i64(value: f32) -> CastI64Result {
+    return checked_f64_to_i64(value as f64);
+}
+
+export proc checked_f32_to_u64(value: f32) -> CastU64Result {
+    return checked_f64_to_u64(value as f64);
+}
+
+// ============================================================================
+// 6. CHECKED SIGNED NARROWING
+// ============================================================================
+
+export proc checked_i16_to_i8(value: i16) -> CastI8Result {
+    if value < -128 {
+        return CastI8Result {
+            value: 0,
+            error: CastError.Underflow,
+            success: false
+        };
+    }
+
+    if value > 127 {
+        return CastI8Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastI8Result {
+        value: value as i8,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_i32_to_i16(value: i32) -> CastI16Result {
+    if value < -32768 {
+        return CastI16Result {
+            value: 0,
+            error: CastError.Underflow,
+            success: false
+        };
+    }
+
+    if value > 32767 {
+        return CastI16Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastI16Result {
+        value: value as i16,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_i64_to_i32(value: i64) -> CastI32Result {
+    if value < -2147483648 {
+        return CastI32Result {
+            value: 0,
+            error: CastError.Underflow,
+            success: false
+        };
+    }
+
+    if value > 2147483647 {
+        return CastI32Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastI32Result {
+        value: value as i32,
+        error: CastError.None,
+        success: true
+    };
+}
+
+// ============================================================================
+// 7. CHECKED SIGNED TO UNSIGNED
+// ============================================================================
+
+export proc checked_i32_to_u8(value: i32) -> CastU8Result {
+    if value < 0 {
+        return CastU8Result {
+            value: 0,
+            error: CastError.Negative,
+            success: false
+        };
+    }
+
+    if value > 255 {
+        return CastU8Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastU8Result {
+        value: value as u8,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_i32_to_u16(value: i32) -> CastU16Result {
+    if value < 0 {
+        return CastU16Result {
+            value: 0,
+            error: CastError.Negative,
+            success: false
+        };
+    }
+
+    if value > 65535 {
+        return CastU16Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastU16Result {
+        value: value as u16,
+        error: CastError.None,
+        success: true
+    };
+}
+
+export proc checked_i64_to_u32(value: i64) -> CastU32Result {
+    if value < 0 {
+        return CastU32Result {
+            value: 0,
+            error: CastError.Negative,
+            success: false
+        };
+    }
+
+    if value > 4294967295 {
+        return CastU32Result {
+            value: 0,
+            error: CastError.Overflow,
+            success: false
+        };
+    }
+
+    return CastU32Result {
+        value: value as u32,
+        error: CastError.None,
+        success: true
+    };
+}
+
+// ============================================================================
+// 8. SATURATING UNSIGNED CONVERSIONS
+// ============================================================================
+
+export proc saturating_u16_to_u8(value: u16) -> u8 {
+    if value > 255 {
+        return 255;
+    }
+
+    return value as u8;
+}
+
+export proc saturating_u32_to_u8(value: u32) -> u8 {
+    if value > 255 {
+        return 255;
+    }
+
+    return value as u8;
+}
+
+export proc saturating_u64_to_u8(value: u64) -> u8 {
+    if value > 255 {
+        return 255;
+    }
+
+    return value as u8;
+}
+
+export proc saturating_u32_to_u16(value: u32) -> u16 {
+    if value > 65535 {
+        return 65535;
+    }
+
+    return value as u16;
+}
+
+export proc saturating_u64_to_u16(value: u64) -> u16 {
+    if value > 65535 {
+        return 65535;
+    }
+
+    return value as u16;
+}
+
+export proc saturating_u64_to_u32(value: u64) -> u32 {
+    if value > 4294967295 {
+        return 4294967295;
+    }
+
+    return value as u32;
+}
+
+export proc saturating_u32_to_i8(value: u32) -> i8 {
+    if value > 127 { return 127; }
+    return value as i8;
+}
+
+export proc saturating_i32_to_i8(value: i32) -> i8 {
+    if value < -128 { return -128; }
+    if value > 127 { return 127; }
+    return value as i8;
+}
+
+export proc saturating_i64_to_i8(value: i64) -> i8 {
+    if value < -128 { return -128; }
+    if value > 127 { return 127; }
+    return value as i8;
+}
+
+export proc saturating_i64_to_i16(value: i64) -> i16 {
+    if value < -32768 { return -32768; }
+    if value > 32767 { return 32767; }
+    return value as i16;
+}
+
+export proc saturating_i64_to_u8(value: i64) -> u8 {
+    if value <= 0 { return 0; }
+    if value >= 255 { return 255; }
+    return value as u8;
+}
+
+export proc saturating_i64_to_u16(value: i64) -> u16 {
+    if value <= 0 { return 0; }
+    if value >= 65535 { return 65535; }
+    return value as u16;
+}
+
+export proc saturating_i64_to_u64(value: i64) -> u64 {
+    if value < 0 { return 0; }
+    return value as u64;
+}
+
+// ============================================================================
+// 9. SATURATING SIGNED CONVERSIONS
+// ============================================================================
+
+export proc saturating_i16_to_i8(value: i16) -> i8 {
+    if value < -128 {
+        return -128;
+    }
+
+    if value > 127 {
+        return 127;
+    }
+
+    return value as i8;
+}
+
+export proc saturating_i32_to_i16(value: i32) -> i16 {
+    if value < -32768 {
+        return -32768;
+    }
+
+    if value > 32767 {
+        return 32767;
+    }
+
+    return value as i16;
+}
+
+export proc saturating_i64_to_i32(value: i64) -> i32 {
+    if value < -2147483648 {
+        return -2147483648;
+    }
+
+    if value > 2147483647 {
+        return 2147483647;
+    }
+
+    return value as i32;
+}
+
+// ============================================================================
+// 10. SATURATING SIGNED TO UNSIGNED
+// ============================================================================
+
+export proc saturating_i32_to_u8(value: i32) -> u8 {
+    if value <= 0 {
+        return 0;
+    }
+
+    if value >= 255 {
+        return 255;
+    }
+
+    return value as u8;
+}
+
+export proc saturating_i32_to_u16(value: i32) -> u16 {
+    if value <= 0 {
+        return 0;
+    }
+
+    if value >= 65535 {
+        return 65535;
+    }
+
+    return value as u16;
+}
+
+export proc saturating_i64_to_u32(value: i64) -> u32 {
+    if value <= 0 {
+        return 0;
+    }
+
+    if value >= 4294967295 {
+        return 4294967295;
+    }
+
+    return value as u32;
+}
+
+// ============================================================================
+// 11. BOOLEAN CONVERSIONS
+// ============================================================================
+
+export proc cast_bool_to_u8(value: bool) -> u8 {
+    if value {
+        return 1;
+    }
+
+    return 0;
+}
+
+export proc cast_bool_to_i32(value: bool) -> i32 {
+    if value {
+        return 1;
+    }
+
+    return 0;
+}
+
+export proc cast_bool_to_u64(value: bool) -> u64 {
+    if value {
+        return 1;
+    }
+
+    return 0;
+}
+
+export proc cast_i32_to_bool(value: i32) -> bool {
+    return value != 0;
+}
+
+export proc cast_i64_to_bool(value: i64) -> bool {
+    return value != 0;
+}
+
+export proc cast_u32_to_bool(value: u32) -> bool {
+    return value != 0;
+}
+
+export proc cast_u64_to_bool(value: u64) -> bool {
+    return value != 0;
+}
+
+// ============================================================================
+// 12. FLOATING-POINT WIDENING
+// ============================================================================
+
+export proc cast_f32_to_f64(value: f32) -> f64 {
+    return value as f64;
+}
+
+// ============================================================================
+// 13. FLOATING-POINT NARROWING
+//
+// Potential precision loss.
+// ============================================================================
+
+export proc cast_f64_to_f32(value: f64) -> f32 {
+    return value as f32;
+}
+
+// ============================================================================
+// 14. INTEGER TO FLOATING-POINT
+//
+// Conversions may lose precision for large integers.
+// ============================================================================
+
+export proc cast_i32_to_f64(value: i32) -> f64 {
+    return value as f64;
+}
+
+export proc cast_u32_to_f64(value: u32) -> f64 {
+    return value as f64;
+}
+
+export proc cast_i64_to_f64(value: i64) -> f64 {
+    return value as f64;
+}
+
+export proc cast_u64_to_f64(value: u64) -> f64 {
+    return value as f64;
+}
+
+export proc cast_i32_to_f32(value: i32) -> f32 {
+    return value as f32;
+}
+
+export proc cast_u32_to_f32(value: u32) -> f32 {
+    return value as f32;
+}
+
+// ============================================================================
+// END OF MODULE
+// ============================================================================

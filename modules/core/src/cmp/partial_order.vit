@@ -1,0 +1,532 @@
+// ============================================================================
+// Vitte Standard Library
+// Module: core::cmp::partial_order
+// File: modules/core/src/cmp/partial_order.vit
+//
+// Partial ordering primitives.
+//
+// Dependencies:
+//   core::cmp::ordering
+//
+// Dynamic allocation: none
+//
+// Semantics:
+//   Less      : a < b
+//   Equal     : a == b
+//   Greater   : a > b
+//   Unordered : a and b cannot be ordered
+//
+// IEEE 754:
+//   NaN is unordered with every value, including itself.
+//   +0.0 and -0.0 compare equal.
+//   -infinity is less than every finite number.
+//   +infinity is greater than every finite number.
+// ============================================================================
+
+space core::cmp::partial_order;
+
+use core::cmp::ordering::{
+    Ordering,
+    PartialOrdering
+};
+
+// ============================================================================
+// 1. FLOATING-POINT PARTIAL COMPARISON
+// ============================================================================
+
+export proc partial_cmp_f32(a: f32, b: f32) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    if a == b {
+        return PartialOrdering.Equal;
+    }
+
+    return PartialOrdering.Unordered;
+}
+
+export proc partial_cmp_f64(a: f64, b: f64) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    if a == b {
+        return PartialOrdering.Equal;
+    }
+
+    return PartialOrdering.Unordered;
+}
+
+// ============================================================================
+// 2. INTEGER PARTIAL COMPARISON
+//
+// Integer types are totally ordered.
+// Consequently, Unordered is never returned.
+// ============================================================================
+
+export proc partial_cmp_i8(a: i8, b: i8) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+export proc partial_cmp_i16(a: i16, b: i16) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+export proc partial_cmp_i32(a: i32, b: i32) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+export proc partial_cmp_i64(a: i64, b: i64) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+export proc partial_cmp_u8(a: u8, b: u8) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+export proc partial_cmp_u16(a: u16, b: u16) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+export proc partial_cmp_u32(a: u32, b: u32) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+export proc partial_cmp_u64(a: u64, b: u64) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+// ============================================================================
+// 3. BOOLEAN PARTIAL COMPARISON
+//
+// false < true
+// ============================================================================
+
+export proc partial_cmp_bool(a: bool, b: bool) -> PartialOrdering {
+    if a == b {
+        return PartialOrdering.Equal;
+    }
+
+    if not a {
+        return PartialOrdering.Less;
+    }
+
+    return PartialOrdering.Greater;
+}
+
+// ============================================================================
+// 4. FLOATING-POINT ORDERABILITY
+// ============================================================================
+
+export proc is_ordered_f32(a: f32, b: f32) -> bool {
+    return partial_cmp_f32(a, b) != PartialOrdering.Unordered;
+}
+
+export proc is_ordered_f64(a: f64, b: f64) -> bool {
+    return partial_cmp_f64(a, b) != PartialOrdering.Unordered;
+}
+
+export proc is_unordered_f32(a: f32, b: f32) -> bool {
+    return partial_cmp_f32(a, b) == PartialOrdering.Unordered;
+}
+
+export proc is_unordered_f64(a: f64, b: f64) -> bool {
+    return partial_cmp_f64(a, b) == PartialOrdering.Unordered;
+}
+
+// ============================================================================
+// 5. NaN DETECTION
+//
+// IEEE 754 NaN is the only floating-point value for which x != x.
+// ============================================================================
+
+export proc is_nan_f32(value: f32) -> bool {
+    return value != value;
+}
+
+export proc is_nan_f64(value: f64) -> bool {
+    return value != value;
+}
+
+// ============================================================================
+// 6. PARTIAL ORDERING PREDICATES
+// ============================================================================
+
+export proc partial_order_is_less(
+    order: PartialOrdering
+) -> bool {
+    return order == PartialOrdering.Less;
+}
+
+export proc partial_order_is_equal(
+    order: PartialOrdering
+) -> bool {
+    return order == PartialOrdering.Equal;
+}
+
+export proc partial_order_is_greater(
+    order: PartialOrdering
+) -> bool {
+    return order == PartialOrdering.Greater;
+}
+
+export proc partial_order_is_unordered(
+    order: PartialOrdering
+) -> bool {
+    return order == PartialOrdering.Unordered;
+}
+
+export proc partial_order_is_ordered(
+    order: PartialOrdering
+) -> bool {
+    return order != PartialOrdering.Unordered;
+}
+
+export proc partial_order_is_less_or_equal(
+    order: PartialOrdering
+) -> bool {
+    return order == PartialOrdering.Less
+        or order == PartialOrdering.Equal;
+}
+
+export proc partial_order_is_greater_or_equal(
+    order: PartialOrdering
+) -> bool {
+    return order == PartialOrdering.Greater
+        or order == PartialOrdering.Equal;
+}
+
+// ============================================================================
+// 7. REVERSE PARTIAL ORDERING
+// ============================================================================
+
+export proc partial_order_reverse(
+    order: PartialOrdering
+) -> PartialOrdering {
+    if order == PartialOrdering.Less {
+        return PartialOrdering.Greater;
+    }
+
+    if order == PartialOrdering.Greater {
+        return PartialOrdering.Less;
+    }
+
+    if order == PartialOrdering.Equal {
+        return PartialOrdering.Equal;
+    }
+
+    return PartialOrdering.Unordered;
+}
+
+// ============================================================================
+// 8. CONVERSION FROM TOTAL ORDERING
+// ============================================================================
+
+export proc partial_order_from_ordering(
+    order: Ordering
+) -> PartialOrdering {
+    if order == Ordering.Less {
+        return PartialOrdering.Less;
+    }
+
+    if order == Ordering.Greater {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+// ============================================================================
+// 9. PARTIAL ORDERING TO INTEGER
+//
+// Returns:
+//   -1 for Less
+//    0 for Equal
+//    1 for Greater
+//    2 for Unordered
+//
+// The value 2 is a sentinel, not a mathematical comparison result.
+// ============================================================================
+
+export proc partial_order_to_i32(
+    order: PartialOrdering
+) -> i32 {
+    if order == PartialOrdering.Less {
+        return -1;
+    }
+
+    if order == PartialOrdering.Equal {
+        return 0;
+    }
+
+    if order == PartialOrdering.Greater {
+        return 1;
+    }
+
+    return 2;
+}
+
+// ============================================================================
+// 10. PARTIAL ORDERING FROM INTEGER
+// ============================================================================
+
+export proc partial_order_from_i32(value: i32) -> PartialOrdering {
+    if value == 2 {
+        return PartialOrdering.Unordered;
+    }
+
+    if value < 0 {
+        return PartialOrdering.Less;
+    }
+
+    if value > 0 {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+// ============================================================================
+// 11. LEXICOGRAPHIC PARTIAL ORDERING
+//
+// The first non-equal result determines the final ordering.
+// Unordered propagates.
+// ============================================================================
+
+export proc partial_order_then(
+    first: PartialOrdering,
+    second: PartialOrdering
+) -> PartialOrdering {
+    if first != PartialOrdering.Equal {
+        return first;
+    }
+
+    return second;
+}
+
+// ============================================================================
+// 12. FLOATING-POINT PAIR COMPARISON
+// ============================================================================
+
+export proc partial_cmp_pair_f32(
+    a0: f32,
+    a1: f32,
+    b0: f32,
+    b1: f32
+) -> PartialOrdering {
+    let first: PartialOrdering = partial_cmp_f32(a0, b0);
+
+    if first != PartialOrdering.Equal {
+        return first;
+    }
+
+    return partial_cmp_f32(a1, b1);
+}
+
+export proc partial_cmp_pair_f64(
+    a0: f64,
+    a1: f64,
+    b0: f64,
+    b1: f64
+) -> PartialOrdering {
+    let first: PartialOrdering = partial_cmp_f64(a0, b0);
+
+    if first != PartialOrdering.Equal {
+        return first;
+    }
+
+    return partial_cmp_f64(a1, b1);
+}
+
+// ============================================================================
+// 13. FLOATING-POINT TRIPLE COMPARISON
+// ============================================================================
+
+export proc partial_cmp_triple_f32(
+    a0: f32,
+    a1: f32,
+    a2: f32,
+    b0: f32,
+    b1: f32,
+    b2: f32
+) -> PartialOrdering {
+    let first: PartialOrdering = partial_cmp_f32(a0, b0);
+
+    if first != PartialOrdering.Equal {
+        return first;
+    }
+
+    let second: PartialOrdering = partial_cmp_f32(a1, b1);
+
+    if second != PartialOrdering.Equal {
+        return second;
+    }
+
+    return partial_cmp_f32(a2, b2);
+}
+
+export proc partial_cmp_triple_f64(
+    a0: f64,
+    a1: f64,
+    a2: f64,
+    b0: f64,
+    b1: f64,
+    b2: f64
+) -> PartialOrdering {
+    let first: PartialOrdering = partial_cmp_f64(a0, b0);
+
+    if first != PartialOrdering.Equal {
+        return first;
+    }
+
+    let second: PartialOrdering = partial_cmp_f64(a1, b1);
+
+    if second != PartialOrdering.Equal {
+        return second;
+    }
+
+    return partial_cmp_f64(a2, b2);
+}
+
+// ============================================================================
+// 14. PARTIAL ORDERING RELATIONS
+// ============================================================================
+
+export proc partial_order_same(
+    a: PartialOrdering,
+    b: PartialOrdering
+) -> bool {
+    return a == b;
+}
+
+export proc partial_order_opposite(
+    a: PartialOrdering,
+    b: PartialOrdering
+) -> bool {
+    if a == PartialOrdering.Less {
+        return b == PartialOrdering.Greater;
+    }
+
+    if a == PartialOrdering.Greater {
+        return b == PartialOrdering.Less;
+    }
+
+    return false;
+}
+
+// ============================================================================
+// 15. FLOATING-POINT COMPARISON HELPERS
+// ============================================================================
+
+export proc partial_less_f32(a: f32, b: f32) -> bool {
+    return partial_cmp_f32(a, b) == PartialOrdering.Less;
+}
+
+export proc partial_less_f64(a: f64, b: f64) -> bool {
+    return partial_cmp_f64(a, b) == PartialOrdering.Less;
+}
+
+export proc partial_less_equal_f32(a: f32, b: f32) -> bool {
+    let order: PartialOrdering = partial_cmp_f32(a, b);
+    return partial_order_is_less_or_equal(order);
+}
+
+export proc partial_less_equal_f64(a: f64, b: f64) -> bool {
+    let order: PartialOrdering = partial_cmp_f64(a, b);
+    return partial_order_is_less_or_equal(order);
+}
+
+export proc partial_greater_f32(a: f32, b: f32) -> bool {
+    return partial_cmp_f32(a, b) == PartialOrdering.Greater;
+}
+
+export proc partial_greater_f64(a: f64, b: f64) -> bool {
+    return partial_cmp_f64(a, b) == PartialOrdering.Greater;
+}
+
+export proc partial_greater_equal_f32(a: f32, b: f32) -> bool {
+    let order: PartialOrdering = partial_cmp_f32(a, b);
+    return partial_order_is_greater_or_equal(order);
+}
+
+export proc partial_greater_equal_f64(a: f64, b: f64) -> bool {
+    let order: PartialOrdering = partial_cmp_f64(a, b);
+    return partial_order_is_greater_or_equal(order);
+}
+
+// ============================================================================
+// END OF MODULE
+// ============================================================================

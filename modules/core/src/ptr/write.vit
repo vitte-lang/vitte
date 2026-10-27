@@ -1,0 +1,16 @@
+/// Écriture alignée après vérification du pointeur nul.
+/// Le pointeur doit encore viser une zone vivante et modifiable de type `T`.
+space core::ptr::write;
+
+use core::ptr::arithmetic::{ptr_is_aligned};
+
+export proc ptr_write<T>(destination: *mut T, value: T) -> bool {
+    if destination == null || not ptr_is_aligned(destination as *const T) { return false; }
+    set *destination = value;
+    return true;
+}
+
+/// Écriture brute sans vérification; l'appelant garantit validité et alignement.
+export proc ptr_write_unchecked<T>(destination: *mut T, value: T) {
+    set *destination = value;
+}

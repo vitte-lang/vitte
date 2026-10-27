@@ -20,7 +20,7 @@ form ModuleDecl {
 }
 
 proc make_function(id: i64, blocks: i64, exported: bool) -> FunctionDecl {
-    give FunctionDecl {
+    return FunctionDecl {
         id: id,
         blocks: blocks,
         exported: exported,
@@ -32,7 +32,7 @@ proc make_module(
     function: FunctionDecl,
     dependency_count: i64
 ) -> ModuleDecl {
-    give ModuleDecl {
+    return ModuleDecl {
         id: id,
         function: function,
         dependency_count: dependency_count,
@@ -41,23 +41,23 @@ proc make_module(
 }
 
 proc verify_module(module: ModuleDecl) -> bool {
-    give module.valid &&
-         module.id > 0 &&
-         module.function.id > 0 &&
-         module.function.blocks > 0 &&
-         module.function.exported &&
+    return module.valid and
+         module.id > 0 and
+         module.function.id > 0 and
+         module.function.blocks > 0 and
+         module.function.exported and
          module.dependency_count == 1;
 }
 
 proc main() -> int {
-    let entry: FunctionDecl = make_function(1, 1, true);
-    let module: ModuleDecl = make_module(1, entry, 1);
+    let function_entry: FunctionDecl = make_function(1, 1, true);
+    let module: ModuleDecl = make_module(1, function_entry, 1);
 
     if not verify_module(module) {
-        give 1;
+        return 1;
     }
     if module.function.id != 1 or module.function.blocks != 1 {
-        give 2;
+        return 2;
     }
-    give 0;
+    return 0;
 }

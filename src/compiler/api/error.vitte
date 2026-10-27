@@ -1,0 +1,1299 @@
+///
+/// Vitte Compiler
+/// src/compiler/api/error.vitte
+///
+/// Canonical infrastructure error implementation.
+///
+/// This module provides Vitte's compact infrastructure error object.
+/// It is intentionally separate from the structured compiler diagnostic
+/// subsystem.
+///
+/// Infrastructure failures:
+///
+///     Status + Error
+///
+/// Source-facing compiler failures:
+///
+///     Diagnostic
+///
+/// Native Vitte uses owned value strings for contextual details. Therefore
+/// the C implementation's inline char buffer, pointer rebinding, NUL
+/// termination and alias-repair machinery are represented by value ownership
+/// rather than reproduced as C pointer mechanics.
+///
+
+space compiler::api::error;
+
+
+/// =========================================================================
+/// Configuration
+/// =========================================================================
+
+// Keep the bootstrap error ABI's documented 1024-byte details limit.
+const ERROR_DETAILS_CAPACITY: usize = 1024;
+
+const ERROR_CODE_OK: str =
+    "VITTE_OK";
+
+const ERROR_MESSAGE_OK: str =
+    "ok";
+
+const ERROR_CODE_UNKNOWN: str =
+    "VITTE_ERROR_UNKNOWN";
+
+const ERROR_MESSAGE_UNKNOWN: str =
+    "unknown error";
+
+
+/// =========================================================================
+/// Status
+/// =========================================================================
+
+export pick Status {
+    Ok,
+
+    ErrorInvalidArgument,
+    ErrorInvalidState,
+    ErrorOutOfMemory,
+    ErrorIo,
+    ErrorParse,
+    ErrorUnsupported,
+    ErrorBackend,
+    ErrorInternal,
+}
+
+
+/// =========================================================================
+/// Error object
+/// =========================================================================
+
+export form Error {
+    status: Status,
+
+    code: string,
+    message: string,
+
+    details: ?string,
+}
+
+
+/// =========================================================================
+/// Thread-local last error
+/// =========================================================================
+
+///
+/// Native Vitte runtime storage.
+///
+/// The implementation/runtime guarantees one instance per thread.
+///
+
+#[thread_local]
+static mut last_error_initialized: bool = false;
+
+#[thread_local]
+static mut last_error_value: Error = Error {
+    status: Status.Ok,
+    code: "VITTE_OK",
+    message: "ok",
+    details: null,
+};
+
+
+/// =========================================================================
+/// Internal string helpers
+/// =========================================================================
+
+proc string_is_empty(
+    text: ?str
+) -> bool {
+    if text == null {
+        return true;
+    }
+
+    return text.length == 0;
+}
+
+proc bounded_length(
+    text: ?str,
+    maximum: usize
+) -> usize {
+    if text == null {
+        return 0;
+    }
+
+    if text.length > maximum {
+        return maximum;
+    }
+
+    return text.length;
+}
+
+proc bounded_string(
+    text: str,
+    maximum: usize
+) -> string {
+    if text.length <= maximum {
+        return string.from(text);
+    }
+
+    return string.from_slice(
+        text,
+        0,
+        maximum
+    );
+}
+
+
+/// =========================================================================
+/// Status validation
+/// =========================================================================
+
+proc status_is_known_internal(
+    status: Status
+) -> bool {
+    match status {
+        case Status.Ok => {
+            return true;
+        }
+
+        case Status.ErrorInvalidArgument => {
+            return true;
+        }
+
+        case Status.ErrorInvalidState => {
+            return true;
+        }
+
+        case Status.ErrorOutOfMemory => {
+            return true;
+        }
+
+        case Status.ErrorIo => {
+            return true;
+        }
+
+        case Status.ErrorParse => {
+            return true;
+        }
+
+        case Status.ErrorUnsupported => {
+            return true;
+        }
+
+        case Status.ErrorBackend => {
+            return true;
+        }
+
+        case Status.ErrorInternal => {
+            return true;
+        }
+
+        else => {
+            return false;
+        }
+    }
+}
+
+
+/// =========================================================================
+/// Status metadata
+/// =========================================================================
+
+export proc status_name(
+    status: Status
+) -> str {
+    match status {
+        case Status.Ok => {
+            return ERROR_CODE_OK;
+        }
+
+        case Status.ErrorInvalidArgument => {
+            return "VITTE_ERROR_INVALID_ARGUMENT";
+        }
+
+        case Status.ErrorInvalidState => {
+            return "VITTE_ERROR_INVALID_STATE";
+        }
+
+        case Status.ErrorOutOfMemory => {
+            return "VITTE_ERROR_OUT_OF_MEMORY";
+        }
+
+        case Status.ErrorIo => {
+            return "VITTE_ERROR_IO";
+        }
+
+        case Status.ErrorParse => {
+            return "VITTE_ERROR_PARSE";
+        }
+
+        case Status.ErrorUnsupported => {
+            return "VITTE_ERROR_UNSUPPORTED";
+        }
+
+        case Status.ErrorBackend => {
+            return "VITTE_ERROR_BACKEND";
+        }
+
+        case Status.ErrorInternal => {
+            return "VITTE_ERROR_INTERNAL";
+        }
+
+        else => {
+            return ERROR_CODE_UNKNOWN;
+        }
+    }
+}
+
+export proc status_message(
+    status: Status
+) -> str {
+    match status {
+        case Status.Ok => {
+            return ERROR_MESSAGE_OK;
+        }
+
+        case Status.ErrorInvalidArgument => {
+            return "invalid argument";
+        }
+
+        case Status.ErrorInvalidState => {
+            return "invalid state";
+        }
+
+        case Status.ErrorOutOfMemory => {
+            return "out of memory";
+        }
+
+        case Status.ErrorIo => {
+            return "I/O error";
+        }
+
+        case Status.ErrorParse => {
+            return "parse error";
+        }
+
+        case Status.ErrorUnsupported => {
+            return "unsupported operation";
+        }
+
+        case Status.ErrorBackend => {
+            return "backend error";
+        }
+
+        case Status.ErrorInternal => {
+            return "internal compiler error";
+        }
+
+        else => {
+            return ERROR_MESSAGE_UNKNOWN;
+        }
+    }
+}
+
+
+/// =========================================================================
+/// Metadata normalization
+/// =========================================================================
+
+proc normalize_code(
+    status: Status,
+    code: ?str
+) -> string {
+    if not string_is_empty(code) {
+        return string.from(code);
+    }
+
+    return string.from(
+        status_name(status)
+    );
+}
+
+proc normalize_message(
+    status: Status,
+    message: ?str
+) -> string {
+    if not string_is_empty(message) {
+        return string.from(message);
+    }
+
+    return string.from(
+        status_message(status)
+    );
+}
+
+
+/// =========================================================================
+/// Details normalization
+/// =========================================================================
+
+proc normalize_details(
+    details: ?str
+) -> ?string {
+    if string_is_empty(details) {
+        return null;
+    }
+
+    let details_text = details?;
+    return bounded_string(
+        details_text,
+        ERROR_DETAILS_CAPACITY - 1
+    );
+}
+
+
+/// =========================================================================
+/// Canonical initialization
+/// =========================================================================
+
+export proc error_ok() -> Error {
+    return Error {
+        status: Status.Ok,
+
+        code:
+            string.from(
+                ERROR_CODE_OK
+            ),
+
+        message:
+            string.from(
+                ERROR_MESSAGE_OK
+            ),
+
+        details: null,
+    };
+}
+
+proc initialize_ok_raw(
+    error: &mut Error
+) {
+    set error.status =
+        Status.Ok;
+
+    set error.code =
+        string.from(
+            ERROR_CODE_OK
+        );
+
+    set error.message =
+        string.from(
+            ERROR_MESSAGE_OK
+        );
+
+    set error.details =
+        null;
+}
+
+
+/// =========================================================================
+/// Internal validation
+/// =========================================================================
+
+proc object_is_canonical_internal(
+    error: ?&Error
+) -> bool {
+    if error == null {
+        return false;
+    }
+    if not status_is_known_internal(
+        error.status
+    ) {
+        return false;
+    }
+
+    if error.code.length == 0 {
+        return false;
+    }
+
+    if error.message.length == 0 {
+        return false;
+    }
+
+    if error.details != null {
+        if error.details.length == 0 {
+            return false;
+        }
+
+        if error.details.length >=
+           ERROR_DETAILS_CAPACITY {
+            return false;
+        }
+    }
+
+    if error.status == Status.Ok  and 
+       error.details != null {
+        return false;
+    }
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Raw copy
+/// =========================================================================
+
+///
+/// Copy without modifying thread-local last-error state.
+///
+/// copy != report
+///
+
+proc error_copy_raw(
+    destination: &mut Error,
+    source: ?&Error
+) {
+    if source == null {
+        initialize_ok_raw(
+            destination
+        );
+
+        return;
+    }
+
+    if destination == source {
+        return;
+    }
+
+    let status: Status =
+        source.status;
+
+    let code: string =
+        normalize_code(
+            status,
+            source.code
+        );
+
+    let message: string =
+        normalize_message(
+            status,
+            source.message
+        );
+
+    let details: ?string =
+        normalize_details(
+            source.details
+        );
+
+    set destination.status =
+        status;
+
+    set destination.code =
+        code;
+
+    set destination.message =
+        message;
+
+    if status == Status.Ok {
+        set destination.details =
+            null;
+    } else {
+        set destination.details =
+            details;
+    }
+}
+
+
+/// =========================================================================
+/// TLS initialization
+/// =========================================================================
+
+proc initialize_tls() {
+    if last_error_initialized {
+        return;
+    }
+
+    initialize_ok_raw(
+        &mut last_error_value
+    );
+
+    set last_error_initialized =
+        true;
+}
+
+
+/// =========================================================================
+/// Public lifetime API
+/// =========================================================================
+
+export proc error_init(
+    error: &mut Error
+) {
+    initialize_ok_raw(
+        error
+    );
+}
+
+export proc error_reset(
+    error: &mut Error
+) {
+    initialize_ok_raw(
+        error
+    );
+}
+
+
+/// =========================================================================
+/// Public state queries
+/// =========================================================================
+
+export proc error_is_set(
+    error: ?&Error
+) -> bool {
+    return error != null  and 
+           error.status != Status.Ok;
+}
+
+export proc error_is_ok(
+    error: ?&Error
+) -> bool {
+    return error != null  and 
+           error.status == Status.Ok;
+}
+
+
+/// =========================================================================
+/// Public setters
+/// =========================================================================
+
+export proc error_set(
+    error: &mut Error,
+    status: Status,
+    code: ?str,
+    message: ?str
+) {
+    error_set_details(
+        error,
+        status,
+        code,
+        message,
+        null
+    );
+}
+
+export proc error_set_details(
+    error: &mut Error,
+    status: Status,
+    code: ?str,
+    message: ?str,
+    details: ?str
+) {
+    let normalized_code: string =
+        normalize_code(
+            status,
+            code
+        );
+
+    let normalized_message: string =
+        normalize_message(
+            status,
+            message
+        );
+
+    let normalized_details: ?string =
+        normalize_details(
+            details
+        );
+
+    set error.status =
+        status;
+
+    set error.code =
+        normalized_code;
+
+    set error.message =
+        normalized_message;
+
+    if status == Status.Ok {
+        set error.details =
+            null;
+    } else {
+        set error.details =
+            normalized_details;
+    }
+
+    error_set_last(
+        error
+    );
+}
+
+
+/// =========================================================================
+/// Public copy
+/// =========================================================================
+
+export proc error_copy(
+    destination: &mut Error,
+    source: ?&Error
+) {
+    error_copy_raw(
+        destination,
+        source
+    );
+}
+
+
+/// =========================================================================
+/// Thread-local last-error API
+/// =========================================================================
+
+export proc error_set_last(
+    error: ?&Error
+) {
+    initialize_tls();
+
+    if error == null {
+        initialize_ok_raw(
+            &mut last_error_value
+        );
+
+        return;
+    }
+
+    if error == &last_error_value {
+        return;
+    }
+
+    error_copy_raw(
+        &mut last_error_value,
+        error
+    );
+}
+
+export proc error_last() -> &Error {
+    initialize_tls();
+
+    return &last_error_value;
+}
+
+export proc error_clear_last() {
+    initialize_tls();
+
+    initialize_ok_raw(
+        &mut last_error_value
+    );
+}
+
+
+/// =========================================================================
+/// Public metadata helpers
+/// =========================================================================
+
+export proc status_is_ok(
+    status: Status
+) -> bool {
+    return status == Status.Ok;
+}
+
+export proc status_is_error(
+    status: Status
+) -> bool {
+    return status != Status.Ok;
+}
+
+export proc status_is_known(
+    status: Status
+) -> bool {
+    return status_is_known_internal(
+        status
+    );
+}
+
+
+/// =========================================================================
+/// Public error validation
+/// =========================================================================
+
+export proc error_validate(
+    error: ?&Error
+) -> bool {
+    if error == null {
+        return false;
+    }
+
+    return object_is_canonical_internal(
+        error
+    );
+}
+
+
+/// =========================================================================
+/// Public details helpers
+/// =========================================================================
+
+export proc error_has_details(
+    error: ?&Error
+) -> bool {
+    return error != null  and 
+           error.details != null  and 
+           error.details.length != 0;
+}
+
+export proc error_details_length(
+    error: ?&Error
+) -> usize {
+    if not error_has_details(error) {
+        return 0;
+    }
+
+    return bounded_length(
+        error.details,
+        ERROR_DETAILS_CAPACITY - 1
+    );
+}
+
+
+/// =========================================================================
+/// Public normalization
+/// =========================================================================
+
+///
+/// Repair an error object into the canonical representation expected by
+/// this module.
+///
+/// Useful after:
+///
+/// - deserialization
+/// - foreign API population
+/// - partially initialized external objects
+/// - ABI boundary reconstruction
+///
+/// Normalization deliberately does not modify thread-local last-error state.
+///
+
+export proc error_normalize(
+    error: &mut Error
+) {
+    let status: Status =
+        error.status;
+
+    let code: string =
+        normalize_code(
+            status,
+            error.code
+        );
+
+    let message: string =
+        normalize_message(
+            status,
+            error.message
+        );
+
+    let details: ?string =
+        normalize_details(
+            error.details
+        );
+
+    set error.status =
+        status;
+
+    set error.code =
+        code;
+
+    set error.message =
+        message;
+
+    if status == Status.Ok {
+        set error.details =
+            null;
+
+        return;
+    }
+
+    set error.details =
+        details;
+}
+
+
+/// =========================================================================
+/// Status-specific constructors
+/// =========================================================================
+
+export proc error_from_status(
+    status: Status
+) -> Error {
+    if status == Status.Ok {
+        return error_ok();
+    }
+
+    return Error {
+        status: status,
+
+        code:
+            normalize_code(
+                status,
+                null
+            ),
+
+        message:
+            normalize_message(
+                status,
+                null
+            ),
+
+        details: null,
+    };
+}
+
+export proc error_invalid_argument(
+    message: ?str
+) -> Error {
+    return Error {
+        status:
+            Status.ErrorInvalidArgument,
+
+        code:
+            "VITTE_ERROR_INVALID_ARGUMENT",
+
+        message:
+            normalize_message(
+                Status.ErrorInvalidArgument,
+                message
+            ),
+
+        details: null,
+    };
+}
+
+export proc error_invalid_state(
+    message: ?str
+) -> Error {
+    return Error {
+        status:
+            Status.ErrorInvalidState,
+
+        code:
+            "VITTE_ERROR_INVALID_STATE",
+
+        message:
+            normalize_message(
+                Status.ErrorInvalidState,
+                message
+            ),
+
+        details: null,
+    };
+}
+
+export proc error_out_of_memory() -> Error {
+    return Error {
+        status:
+            Status.ErrorOutOfMemory,
+
+        code:
+            "VITTE_ERROR_OUT_OF_MEMORY",
+
+        message:
+            "out of memory",
+
+        details: null,
+    };
+}
+
+export proc error_io(
+    message: ?str,
+    details: ?str
+) -> Error {
+    return Error {
+        status:
+            Status.ErrorIo,
+
+        code:
+            "VITTE_ERROR_IO",
+
+        message:
+            normalize_message(
+                Status.ErrorIo,
+                message
+            ),
+
+        details:
+            normalize_details(
+                details
+            ),
+    };
+}
+
+export proc error_parse(
+    message: ?str
+) -> Error {
+    return Error {
+        status:
+            Status.ErrorParse,
+
+        code:
+            "VITTE_ERROR_PARSE",
+
+        message:
+            normalize_message(
+                Status.ErrorParse,
+                message
+            ),
+
+        details: null,
+    };
+}
+
+export proc error_unsupported(
+    message: ?str
+) -> Error {
+    return Error {
+        status:
+            Status.ErrorUnsupported,
+
+        code:
+            "VITTE_ERROR_UNSUPPORTED",
+
+        message:
+            normalize_message(
+                Status.ErrorUnsupported,
+                message
+            ),
+
+        details: null,
+    };
+}
+
+export proc error_backend(
+    message: ?str
+) -> Error {
+    return Error {
+        status:
+            Status.ErrorBackend,
+
+        code:
+            "VITTE_ERROR_BACKEND",
+
+        message:
+            normalize_message(
+                Status.ErrorBackend,
+                message
+            ),
+
+        details: null,
+    };
+}
+
+export proc error_internal(
+    message: ?str
+) -> Error {
+    return Error {
+        status:
+            Status.ErrorInternal,
+
+        code:
+            "VITTE_ERROR_INTERNAL",
+
+        message:
+            normalize_message(
+                Status.ErrorInternal,
+                message
+            ),
+
+        details: null,
+    };
+}
+
+
+/// =========================================================================
+/// Convenience accessors
+/// =========================================================================
+
+export proc error_status(
+    error: ?&Error
+) -> Status {
+    if error == null {
+        return Status.ErrorInvalidArgument;
+    }
+
+    return error.status;
+}
+
+export proc error_code(
+    error: ?&Error
+) -> ?str {
+    if error == null {
+        return null;
+    }
+
+    return error.code;
+}
+
+export proc error_message(
+    error: ?&Error
+) -> ?str {
+    if error == null {
+        return null;
+    }
+
+    return error.message;
+}
+
+export proc error_details(
+    error: ?&Error
+) -> ?str {
+    if error == null {
+        return null;
+    }
+
+    return error.details;
+}
+
+export proc error_has_status(
+    error: ?&Error,
+    status: Status
+) -> bool {
+    return error != null  and
+           error.status == status;
+}
+
+export proc error_last_is_set() -> bool {
+    return error_is_set(
+        error_last()
+    );
+}
+
+export proc error_last_status() -> Status {
+    return error_last().status;
+}
+
+
+/// =========================================================================
+/// Architecture guarantees
+/// =========================================================================
+
+///
+/// ERROR OBJECT INVARIANTS
+///
+/// I1 — Canonical OK state
+///
+///     status  == Status.Ok
+///     code    == "VITTE_OK"
+///     message == "ok"
+///     details == null
+///
+///
+/// I2 — Owned details
+///
+/// Contextual details are value-owned by Error.
+///
+/// Native Vitte therefore does not require the C representation's
+/// self-referential details pointer.
+///
+///
+/// I3 — Bounded details
+///
+/// At most:
+///
+///     ERROR_DETAILS_CAPACITY - 1
+///
+/// detail bytes are retained.
+///
+///
+/// I4 — Copy/report separation
+///
+/// error_copy() does not modify TLS last-error state.
+///
+///
+/// I5 — Setter reporting
+///
+/// error_set() and error_set_details() publish the resulting error as the
+/// current thread's last infrastructure error.
+///
+///
+/// I6 — Non-recursive TLS publication
+///
+/// error_set_last() uses error_copy_raw() and therefore cannot recursively
+/// invoke itself.
+///
+///
+/// I7 — Thread isolation
+///
+/// Each runtime thread owns an independent last_error_value.
+///
+///
+/// I8 — Unknown status safety
+///
+/// Metadata helpers provide stable fallback metadata.
+///
+///
+/// I9 — Self-copy safety
+///
+///     error_copy(&error, &error)
+///
+/// is legal.
+///
+///
+/// I10 — Value movement safety
+///
+/// Error owns its contextual details. Moving or copying an Error therefore
+/// cannot leave a pointer referring to another Error object's inline storage.
+///
+
+
+/// =========================================================================
+/// Diagnostic architecture
+/// =========================================================================
+
+///
+/// Error remains an infrastructure abstraction.
+///
+/// It must not contain:
+///
+/// - source spans
+/// - labels
+/// - fix-its
+/// - expected/found types
+/// - source excerpts
+/// - declaration locations
+/// - causal chains
+/// - diagnostic severity
+/// - parser recovery information
+/// - SARIF metadata
+/// - LSP metadata
+///
+/// Those belong to the diagnostic subsystem.
+///
+/// Intended layering:
+///
+/// allocator / filesystem / API / driver
+///                 |
+///                 v
+///              Status
+///              Error
+///
+///
+/// source
+///   |
+/// lexer
+///   |
+/// parser
+///   |
+/// AST
+///   |
+/// import / name resolution
+///   |
+/// semantic / type analysis
+///   |
+/// contracts / constant evaluation
+///   |
+/// HIR
+///   |
+/// IR
+///   |
+/// backend
+///   |
+/// external compiler / linker
+///   |
+/// Diagnostic
+///
+/// A compiler phase may return a compact infrastructure status while
+/// simultaneously emitting one or more structured diagnostics.
+///
+
+
+/// =========================================================================
+/// Status policy
+/// =========================================================================
+
+///
+/// Status is intentionally coarse-grained.
+///
+/// Infrastructure status families:
+///
+///     Status.Ok
+///
+///     Status.ErrorInvalidArgument
+///     Status.ErrorInvalidState
+///     Status.ErrorOutOfMemory
+///     Status.ErrorIo
+///     Status.ErrorParse
+///     Status.ErrorUnsupported
+///     Status.ErrorBackend
+///     Status.ErrorInternal
+///
+/// Source-level failures such as unknown identifiers, unknown types, type
+/// mismatches, wrong arity, invalid contracts or failed constant evaluation
+/// belong to stable diagnostic codes rather than new infrastructure status
+/// variants.
+///
+
+
+/// =========================================================================
+/// Ownership model
+/// =========================================================================
+
+///
+/// status
+///     value
+///
+/// code
+///     owned immutable string value
+///
+/// message
+///     owned immutable string value
+///
+/// details
+///     optional owned bounded string
+///
+/// Dynamic contextual information belongs in details.
+///
+/// Example:
+///
+///     error_set_details(
+///         &error,
+///         Status.ErrorIo,
+///         "VITTE_IO_E_READ",
+///         "unable to read source file",
+///         path
+///     );
+///
+/// The contextual path is copied into the Error value.
+///
+
+
+/// =========================================================================
+/// Thread-safety model
+/// =========================================================================
+
+///
+/// Independent Error values require no synchronization.
+///
+/// The last-error facility is thread-local:
+///
+///     thread A -> independent last error
+///     thread B -> independent last error
+///     thread C -> independent last error
+///
+/// Sharing the same mutable Error object between threads still requires
+/// synchronization at the caller level.
+///
+
+
+/// =========================================================================
+/// Failure semantics
+/// =========================================================================
+
+///
+/// Typical infrastructure operation:
+///
+///     proc operation(
+///         context: &mut Context
+///     ) -> Status {
+///         if invalid_condition {
+///             error_set(
+///                 &context.last_error,
+///                 Status.ErrorInvalidArgument,
+///                 "VITTE_API_E_INVALID_ARGUMENT",
+///                 "invalid argument"
+///             );
+///
+///             return Status.ErrorInvalidArgument;
+///         }
+///
+///         return Status.Ok;
+///     }
+///
+/// Source-facing compiler phases additionally emit structured diagnostics
+/// through the diagnostic engine.
+///

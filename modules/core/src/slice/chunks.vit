@@ -1,0 +1,23 @@
+/// Calcul d'intervalles de morceaux sans créer de sous-tranches.
+space core::slice::chunks;
+
+export form SliceChunk {
+    valid: bool,
+    start: usize,
+    length: usize,
+}
+
+export proc slice_chunk_count(length: usize, chunk_size: usize) -> usize {
+    if chunk_size == 0 || length == 0 { return 0; }
+    return (length - 1) / chunk_size + 1;
+}
+
+export proc slice_chunk_at(length: usize, chunk_size: usize, chunk_index: usize) -> SliceChunk {
+    if chunk_size == 0 { return SliceChunk { valid: false, start: 0, length: 0 }; }
+    if chunk_index > usize.MAX / chunk_size { return SliceChunk { valid: false, start: 0, length: 0 }; }
+    let start: usize = chunk_index * chunk_size;
+    if start >= length { return SliceChunk { valid: false, start: start, length: 0 }; }
+    let mut size: usize = chunk_size;
+    if size > length - start { set size = length - start; }
+    return SliceChunk { valid: true, start: start, length: size };
+}

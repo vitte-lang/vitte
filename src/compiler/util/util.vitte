@@ -1,0 +1,340 @@
+/// Utilities implemented in Vitte for the self-hosted compiler.
+/// Checked results replace C out-pointers. Strings are indexed as UTF-8 bytes.
+space compiler::util::util;
+
+const UTIL_SIZE_MAX: u64 = 18446744073709551615;
+const UTIL_I64_MAX: u64 = 9223372036854775807;
+const UTIL_I64_MIN_MAGNITUDE: u64 = 9223372036854775808;
+const UTIL_FNV_OFFSET: u64 = 14695981039346656037;
+const UTIL_FNV_PRIME: u64 = 1099511628211;
+
+export pick UtilError {
+    None,
+    InvalidArgument,
+    InvalidState,
+    Overflow,
+    OutOfMemory,
+    OutOfRange,
+    BufferTooSmall,
+    InvalidFormat,
+    Internal,
+    Count
+}
+
+export form UtilSizeResult {
+    valid: bool,
+    value: u64
+}
+
+export form UtilI64Result {
+    valid: bool,
+    value: i64
+}
+
+export form UtilIndexResult {
+    found: bool,
+    index: u64
+}
+
+export proc vitte_util_error_name(error: UtilError) -> string {
+    if error == UtilError.None { return "none"; }
+    if error == UtilError.InvalidArgument { return "invalid_argument"; }
+    if error == UtilError.InvalidState { return "invalid_state"; }
+    if error == UtilError.Overflow { return "overflow"; }
+    if error == UtilError.OutOfMemory { return "out_of_memory"; }
+    if error == UtilError.OutOfRange { return "out_of_range"; }
+    if error == UtilError.BufferTooSmall { return "buffer_too_small"; }
+    if error == UtilError.InvalidFormat { return "invalid_format"; }
+    if error == UtilError.Internal { return "internal"; }
+    if error == UtilError.Count { return "count"; }
+    return "unknown";
+}
+
+export proc vitte_util_add_size(left: u64, right: u64) -> UtilSizeResult {
+    if left > UTIL_SIZE_MAX - right {
+        return UtilSizeResult { valid: false, value: 0 };
+    }
+    return UtilSizeResult { valid: true, value: left + right };
+}
+
+export proc vitte_util_sub_size(left: u64, right: u64) -> UtilSizeResult {
+    if right > left { return UtilSizeResult { valid: false, value: 0 }; }
+    return UtilSizeResult { valid: true, value: left - right };
+}
+
+export proc vitte_util_mul_size(left: u64, right: u64) -> UtilSizeResult {
+    if left != 0  and  right > UTIL_SIZE_MAX / left {
+        return UtilSizeResult { valid: false, value: 0 };
+    }
+    return UtilSizeResult { valid: true, value: left * right };
+}
+
+export proc vitte_util_add_u64(left: u64, right: u64) -> UtilSizeResult {
+    return vitte_util_add_size(left, right);
+}
+
+export proc vitte_util_mul_u64(left: u64, right: u64) -> UtilSizeResult {
+    return vitte_util_mul_size(left, right);
+}
+
+export proc vitte_util_is_power_of_two_size(value: u64) -> bool {
+    return value != 0  and  (value & (value - 1)) == 0;
+}
+
+export proc vitte_util_align_up_size(value: u64, alignment: u64) -> UtilSizeResult {
+    if not vitte_util_is_power_of_two_size(alignment) {
+        return UtilSizeResult { valid: false, value: 0 };
+    }
+    let mask: u64 = alignment - 1;
+    if value > UTIL_SIZE_MAX - mask {
+        return UtilSizeResult { valid: false, value: 0 };
+    }
+    return UtilSizeResult { valid: true, value: (value + mask) & ~mask };
+}
+
+export proc vitte_util_align_down_size(value: u64, alignment: u64) -> UtilSizeResult {
+    if not vitte_util_is_power_of_two_size(alignment) {
+        return UtilSizeResult { valid: false, value: 0 };
+    }
+    return UtilSizeResult { valid: true, value: value & ~(alignment - 1) };
+}
+
+export proc vitte_util_next_capacity(current: u64, required: u64, element_size: u64) -> UtilSizeResult {
+    if element_size == 0  or  required > UTIL_SIZE_MAX / element_size {
+        return UtilSizeResult { valid: false, value: 0 };
+    }
+    if current >= required {
+        return UtilSizeResult { valid: true, value: current };
+    }
+    let mut capacity: u64 = current;
+    if capacity == 0 { set capacity = 16; }
+    while capacity < required {
+        if capacity > UTIL_SIZE_MAX / 2 {
+            set capacity = required;
+            break;
+        }
+        set capacity *= 2;
+    }
+    if capacity > UTIL_SIZE_MAX / element_size {
+        set capacity = required;
+    }
+    return UtilSizeResult { valid: true, value: capacity };
+}
+
+export proc vitte_util_ascii_is_space(character: u8) -> bool {
+    return character == 32  or  character == 9  or  character == 10  or 
+           character == 11  or  character == 12  or  character == 13;
+}
+
+export proc vitte_util_ascii_is_digit(character: u8) -> bool {
+    return character >= 48  and  character <= 57;
+}
+
+export proc vitte_util_ascii_is_hex_digit(character: u8) -> bool {
+    return vitte_util_ascii_is_digit(character)  or 
+           (character >= 65  and  character <= 70)  or 
+           (character >= 97  and  character <= 102);
+}
+
+export proc vitte_util_ascii_is_alpha(character: u8) -> bool {
+    return (character >= 65  and  character <= 90)  or 
+           (character >= 97  and  character <= 122);
+}
+
+export proc vitte_util_ascii_is_alnum(character: u8) -> bool {
+    return vitte_util_ascii_is_alpha(character)  or  vitte_util_ascii_is_digit(character);
+}
+
+export proc vitte_util_ascii_lower(character: u8) -> u8 {
+    if character >= 65  and  character <= 90 { return (character + 32) as u8; }
+    return character;
+}
+
+export proc vitte_util_ascii_upper(character: u8) -> u8 {
+    if character >= 97  and  character <= 122 { return (character - 32) as u8; }
+    return character;
+}
+
+export proc vitte_util_ascii_hex_value(character: u8) -> i64 {
+    if character >= 48  and  character <= 57 { return (character - 48) as i64; }
+    if character >= 65  and  character <= 70 { return (character - 65) as i64 + 10; }
+    if character >= 97  and  character <= 102 { return (character - 97) as i64 + 10; }
+    return -1;
+}
+
+proc util_hash_byte(hash: u64, byte: u8) -> u64 {
+    return (hash ^ (byte as u64)) * UTIL_FNV_PRIME;
+}
+
+export proc vitte_util_hash_string(data: string) -> u64 {
+    let mut hash: u64 = UTIL_FNV_OFFSET;
+    let mut index: u64 = 0;
+    while index < len(data) {
+        set hash = util_hash_byte(hash, data[index] as u8);
+        set index += 1;
+    }
+    return hash;
+}
+
+export proc vitte_util_hash_u64(value: u64) -> u64 {
+    let mut hash: u64 = UTIL_FNV_OFFSET;
+    let mut shift: u64 = 0;
+    while shift < 64 {
+        set hash = util_hash_byte(hash, ((value >> shift) & 255) as u8);
+        set shift += 8;
+    }
+    return hash;
+}
+
+export proc vitte_util_hash_combine(hash: u64, value: u64) -> u64 {
+    let mut result: u64 = hash;
+    let mut shift: u64 = 0;
+    while shift < 64 {
+        set result = util_hash_byte(result, ((value >> shift) & 255) as u8);
+        set shift += 8;
+    }
+    return result;
+}
+
+proc util_digit_value(character: u8) -> i64 {
+    if character >= 48  and  character <= 57 { return (character - 48) as i64; }
+    if character >= 65  and  character <= 90 { return (character - 65) as i64 + 10; }
+    if character >= 97  and  character <= 122 { return (character - 97) as i64 + 10; }
+    return -1;
+}
+
+proc util_parse_unsigned_from(text: string, start: u64, base: u64) -> UtilSizeResult {
+    if base < 2  or  base > 36  or  start >= len(text) {
+        return UtilSizeResult { valid: false, value: 0 };
+    }
+    let mut value: u64 = 0;
+    let mut index: u64 = start;
+    while index < len(text) {
+        let digit: i64 = util_digit_value(text[index] as u8);
+        if digit < 0  or  (digit as u64) >= base {
+            return UtilSizeResult { valid: false, value: 0 };
+        }
+        let unsigned_digit: u64 = digit as u64;
+        if value > (UTIL_SIZE_MAX - unsigned_digit) / base {
+            return UtilSizeResult { valid: false, value: 0 };
+        }
+        set value = value * base + unsigned_digit;
+        set index += 1;
+    }
+    return UtilSizeResult { valid: true, value: value };
+}
+
+export proc vitte_util_parse_u64(text: string, base: u64) -> UtilSizeResult {
+    return util_parse_unsigned_from(text, 0, base);
+}
+
+export proc vitte_util_parse_i64(text: string, base: u64) -> UtilI64Result {
+    if len(text) == 0 { return UtilI64Result { valid: false, value: 0 }; }
+    let mut start: u64 = 0;
+    let mut negative: bool = false;
+    if text[0] == 45 {
+        set negative = true;
+        set start = 1;
+    } else if text[0] == 43 {
+        set start = 1;
+    }
+    let parsed: UtilSizeResult = util_parse_unsigned_from(text, start, base);
+    if not parsed.valid { return UtilI64Result { valid: false, value: 0 }; }
+    if negative {
+        if parsed.value > UTIL_I64_MIN_MAGNITUDE {
+            return UtilI64Result { valid: false, value: 0 };
+        }
+        if parsed.value == UTIL_I64_MIN_MAGNITUDE {
+            return UtilI64Result { valid: true, value: -9223372036854775807 - 1 };
+        }
+        return UtilI64Result { valid: true, value: -(parsed.value as i64) };
+    }
+    if parsed.value > UTIL_I64_MAX {
+        return UtilI64Result { valid: false, value: 0 };
+    }
+    return UtilI64Result { valid: true, value: parsed.value as i64 };
+}
+
+export proc vitte_util_string_equal(left: string, right: string) -> bool {
+    if len(left) != len(right) { return false; }
+    let mut index: u64 = 0;
+    while index < len(left) {
+        if left[index] != right[index] { return false; }
+        set index += 1;
+    }
+    return true;
+}
+
+export proc vitte_util_string_compare(left: string, right: string) -> i64 {
+    let mut index: u64 = 0;
+    while index < len(left)  and  index < len(right) {
+        if left[index] < right[index] { return -1; }
+        if left[index] > right[index] { return 1; }
+        set index += 1;
+    }
+    if len(left) < len(right) { return -1; }
+    if len(left) > len(right) { return 1; }
+    return 0;
+}
+
+export proc vitte_util_string_starts_with(text: string, prefix: string) -> bool {
+    if len(prefix) > len(text) { return false; }
+    let mut index: u64 = 0;
+    while index < len(prefix) {
+        if text[index] != prefix[index] { return false; }
+        set index += 1;
+    }
+    return true;
+}
+
+export proc vitte_util_string_ends_with(text: string, suffix: string) -> bool {
+    if len(suffix) > len(text) { return false; }
+    let start: u64 = (len(text) - len(suffix)) as u64;
+    let mut index: u64 = 0;
+    while index < len(suffix) {
+        if text[start + index] != suffix[index] { return false; }
+        set index += 1;
+    }
+    return true;
+}
+
+export proc vitte_util_string_find(text: string, needle: string) -> UtilIndexResult {
+    if len(needle) == 0 { return UtilIndexResult { found: true, index: 0 }; }
+    if len(needle) > len(text) { return UtilIndexResult { found: false, index: 0 }; }
+    let mut start: u64 = 0;
+    while start <= len(text) - len(needle) {
+        let mut offset: u64 = 0;
+        while offset < len(needle) {
+            let position: u64 = start + offset;
+            if text[position] != needle[offset] { break; }
+            set offset = offset + (1 as u64);
+        }
+        if offset == len(needle) as u64 { return UtilIndexResult { found: true, index: start }; }
+        set start = start + 1 as u64;
+    }
+    return UtilIndexResult { found: false, index: 0 };
+}
+
+export proc vitte_util_string_rfind(text: string, needle: string) -> UtilIndexResult {
+    if len(needle) == 0 { return UtilIndexResult { found: true, index: len(text) as u64 }; }
+    if len(needle) > len(text) { return UtilIndexResult { found: false, index: 0 }; }
+    let mut start: u64 = (len(text) - len(needle)) as u64;
+    while true {
+        let mut offset: u64 = 0;
+        while offset < len(needle) {
+            let position: u64 = start + offset;
+            if text[position] != needle[offset] { break; }
+            set offset = offset + (1 as u64);
+        }
+        if offset == len(needle) as u64 { return UtilIndexResult { found: true, index: start }; }
+        if start == 0 { break; }
+        set start = start - 1 as u64;
+    }
+    return UtilIndexResult { found: false, index: 0 };
+}
+
+export proc vitte_util_string_contains(text: string, needle: string) -> bool {
+    return vitte_util_string_find(text, needle).found;
+}
+
+export proc vitte_util_translation_unit_anchor() {}

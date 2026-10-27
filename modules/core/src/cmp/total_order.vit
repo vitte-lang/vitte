@@ -1,0 +1,51 @@
+/// Ordre total pratique des flottants pour le tri et les conteneurs ordonnés.
+///
+/// Les nombres suivent l'ordre numérique. Les zéros signés sont équivalents.
+/// Les NaN sont placés après les nombres et tous les NaN sont équivalents.
+/// Cette politique est totale, mais ne distingue pas les signes ni les charges
+/// utiles des NaN comme le ferait l'ordre total IEEE 754 par représentation.
+space core::cmp::total_order;
+
+use core::types::ordering::{Ordering};
+
+/// Compare deux `f32` selon la politique totale documentée ci-dessus.
+export proc total_cmp_f32(left: f32, right: f32) -> Ordering {
+    let left_is_nan: bool = left != left;
+    let right_is_nan: bool = right != right;
+
+    if left_is_nan {
+        if right_is_nan { return Ordering.Equal; }
+        return Ordering.Greater;
+    }
+
+    if right_is_nan { return Ordering.Less; }
+    if left < right { return Ordering.Less; }
+    if left > right { return Ordering.Greater; }
+    return Ordering.Equal;
+}
+
+/// Compare deux `f64` selon la politique totale documentée ci-dessus.
+export proc total_cmp_f64(left: f64, right: f64) -> Ordering {
+    let left_is_nan: bool = left != left;
+    let right_is_nan: bool = right != right;
+
+    if left_is_nan {
+        if right_is_nan { return Ordering.Equal; }
+        return Ordering.Greater;
+    }
+
+    if right_is_nan { return Ordering.Less; }
+    if left < right { return Ordering.Less; }
+    if left > right { return Ordering.Greater; }
+    return Ordering.Equal;
+}
+
+/// Indique si les deux valeurs sont équivalentes dans cet ordre total.
+export proc total_eq_f32(left: f32, right: f32) -> bool {
+    return total_cmp_f32(left, right) == Ordering.Equal;
+}
+
+/// Indique si les deux valeurs sont équivalentes dans cet ordre total.
+export proc total_eq_f64(left: f64, right: f64) -> bool {
+    return total_cmp_f64(left, right) == Ordering.Equal;
+}

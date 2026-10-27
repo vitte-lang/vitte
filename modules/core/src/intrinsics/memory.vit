@@ -1,0 +1,51 @@
+/// Primitives mémoire exprimées sans appel à une fonction C.
+space core::intrinsics::memory;
+
+/// Allocation brute fournie par le runtime natif, alignée au moins comme un pointeur.
+export intrinsic native_allocate(size: usize) -> *mut u8;
+
+/// Libération d'un bloc retourné par `native_allocate`.
+export intrinsic native_deallocate(pointer: *mut u8);
+
+/// Effectue exactement une lecture volatile. L'adresse doit être valide et alignée.
+export intrinsic volatile_load<T>(source: *const T) -> T;
+
+/// Effectue exactement une écriture volatile. L'adresse doit être valide et alignée.
+export intrinsic volatile_store<T>(destination: *mut T, value: T);
+
+export proc intrinsic_fill(destination: *mut u8, byte: u8, length: usize) -> bool {
+    if length == 0 { return true; }
+    if destination == null { return false; }
+    let mut index: usize = 0;
+    while index < length {
+        set destination[index] = byte;
+        set index = index + 1;
+    }
+    return true;
+}
+
+export proc intrinsic_copy(destination: *mut u8, source: *const u8, length: usize) -> bool {
+    if length == 0 { return true; }
+    if destination == null || source == null { return false; }
+    let destination_address: usize = destination as usize;
+    let source_address: usize = source as usize;
+    if destination_address > source_address &&
+       destination_address - source_address < length {
+        let mut index: usize = length;
+        while index > 0 {
+            set index = index - 1;
+            set destination[index] = source[index];
+        }
+    } else {
+        let mut index: usize = 0;
+        while index < length {
+            set destination[index] = source[index];
+            set index = index + 1;
+        }
+    }
+    return true;
+}
+
+export proc intrinsic_move(destination: *mut u8, source: *const u8, length: usize) -> bool {
+    return intrinsic_copy(destination, source, length);
+}
