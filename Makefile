@@ -404,7 +404,7 @@ endif
 test-cli-driver: $(TARGET_BIN)
 	@mkdir -p $(BUILD)
 	@set -e; \
-	fixture="$(TEST_DIR)/grammar_alignment/let_mut_ok.vit"; \
+	fixture="$(TEST_DIR)/native_selfhost_smoke.vit"; \
 	printf '[CLI] check and early-stop stages\n'; \
 	if $(TARGET_BIN) check "$$fixture" \
 		>/dev/null \
