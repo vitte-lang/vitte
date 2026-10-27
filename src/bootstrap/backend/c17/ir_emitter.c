@@ -8,6 +8,10 @@
  * its IR id, so equal source names from different modules remain distinct.
  */
 
+#if !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "ir_emitter.h"
 
 #include <inttypes.h>
