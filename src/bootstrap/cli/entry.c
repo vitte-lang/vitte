@@ -1166,7 +1166,7 @@ vitte_main_module_store_canonical_path(
     }
 
     path = candidate;
-    if (candidate[0] != '/') {
+    if (!vitte_filesystem_path_is_absolute(candidate)) {
         char working_directory[VITTE_MAIN_MODULE_PATH_MAX];
 
         if (!vitte_platform_getcwd(
@@ -1515,7 +1515,7 @@ vitte_main_set_executable_path(
     }
 
     if (strchr(argument_zero, '/') != NULL) {
-        if (argument_zero[0] == '/') {
+        if (vitte_filesystem_path_is_absolute(argument_zero)) {
             written = snprintf(
                 vitte_main_executable_path,
                 sizeof(vitte_main_executable_path),
@@ -2112,7 +2112,7 @@ vitte_main_report_missing_module(
             : 3u;
     scan.entries_left = VITTE_MAIN_MODULE_SCAN_ENTRY_LIMIT;
 
-    if (importer_path[0] == '/') {
+    if (vitte_filesystem_path_is_absolute(importer_path)) {
         written = snprintf(
             absolute_importer,
             sizeof(absolute_importer),
