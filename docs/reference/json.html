@@ -1,0 +1,106 @@
+---
+layout: reference
+title: Module JSON
+permalink: /reference/json/
+section: Bibliothèques
+lead: Lire, créer, valider et encoder des valeurs JSON avec le module Vitte fourni dans le dépôt.
+description: "Guide du module JSON Vitte : parser, modèle de valeurs, encodage, Unicode, nombres et diagnostics."
+source: modules/json/DOCUMENTATION.md · README.md · package.toml · sources Vitte
+support: "Le paquet et ses tests sont dans le dépôt ; la compilation d’une application dépend du frontend et du backend utilisés."
+---
+<div class="reference-callout">
+  <strong>Le code de cette révision est la référence de l’API.</strong>
+  <p>L’issue <a href="https://github.com/vitte-lang/vitte/issues/17">#17</a> joint plusieurs éditions PDF. Le PDF français se présente comme une édition de travail et précise que ses signatures et commandes n’ont pas été vérifiées sur une copie du dépôt. Cette page s’appuie sur <a href="https://github.com/vitte-lang/vitte/blob/main/modules/json/DOCUMENTATION.md"><code>modules/json/DOCUMENTATION.md</code></a> et les sources du module.</p>
+</div>
+
+<h2>La chaîne de traitement</h2>
+<p>Le paquet <code>json</code> est écrit en Vitte et ne déclare pas de dépendance native dans <code>package.toml</code>. Le chemin ordinaire transforme un texte en tokens, construit une valeur Vitte, puis peut réencoder cette valeur :</p>
+<pre><code>texte JSON → lexer → tokens → parser → JsonValue → encodeur → texte JSON</code></pre>
+
+<table><thead><tr><th>Espace</th><th>Rôle</th><th>Point d’entrée utile</th></tr></thead><tbody>
+<tr><td><code>json::core::value</code></td><td>Valeurs, membres, constructeurs, accès, égalité et validation.</td><td><code>JsonValue</code>, <code>JsonValueKind</code></td></tr>
+<tr><td><code>json::parser::parser</code></td><td>Lexer puis lecture d’un document complet et production de diagnostics.</td><td><code>parse</code>, <code>parse_strict</code></td></tr>
+<tr><td><code>json::encode::encoder</code></td><td>Sérialisation compacte ou mise en forme lisible.</td><td><code>encode</code>, <code>encode_pretty</code></td></tr>
+<tr><td><code>json::lexer</code></td><td>Tokens et séquences d’échappement JSON.</td><td><code>lex</code>, <code>decode_escape</code></td></tr>
+<tr><td><code>json::error</code></td><td>Positions, plages source et modèles de diagnostic.</td><td><code>JsonSpan</code>, <code>human_line</code></td></tr>
+<tr><td><code>json::runtime::numeric</code></td><td>Validation, conversion et formatage des nombres JSON.</td><td><code>parse_i64</code>, <code>parse_f64</code></td></tr>
+</tbody></table>
+
+<h2>Installer et importer</h2>
+<p>Depuis la racine du dépôt, les sources du module sont sous <code>modules/json</code>. Pour les compiler avec le compilateur du dépôt, indique le répertoire qui contient le namespace <code>json</code> :</p>
+<pre><code>VITTE_MODULE_PATH="$PWD/modules" build/bin/vitte compile application.vit -o application</code></pre>
+<p>Une installation du paquet depuis la racine du dépôt se fait avec :</p>
+<pre><code>make -C modules/json install PREFIX="$HOME/.local"</code></pre>
+<p>Le manifeste <code>modules/json/package.toml</code> nomme le paquet <code>json</code>, indique <code>json.vit</code> comme entrée et définit la syntaxe de chemin de module avec <code>::</code>. Le manifeste décrit le paquet ; il ne constitue pas un gestionnaire de dépendances Vitte.</p>
+
+<h2>Lire, puis vérifier le résultat</h2>
+<p>Les opérations renvoient des formes de résultat avec un champ <code>ok</code>. Vérifie-le avant de lire <code>value</code>, <code>text</code> ou un autre contenu de sortie. Voici le flux d’usage présenté dans le guide du module :</p>
+<pre><code>use json::parser::parser::{JsonParseResult, parse_strict};
+use json::encode::encoder::{JsonEncodeResult, encode_pretty};
+
+proc reformater(source: string) {
+    let parsed: JsonParseResult = parse_strict(source);
+    if !parsed.ok {
+        // parsed.diagnostic donne le détail de l’échec.
+        give;
+    }
+
+    let encoded: JsonEncodeResult = encode_pretty(&amp;parsed.value);
+    if !encoded.ok {
+        // Ne pas utiliser encoded.text en cas d’échec.
+        give;
+    }
+
+    // encoded.text contient le JSON mis en forme.
+    give;
+}</code></pre>
+
+<h2>Les valeurs JSON</h2>
+<p><code>JsonValue</code> représente <code>null</code>, les booléens, les nombres, les chaînes, les tableaux et les objets. Le module distingue les nombres entiers et flottants avec <code>JsonValueKind.Integer</code> et <code>JsonValueKind.Float</code>. Cette distinction aide à choisir les conversions sans transformer systématiquement tous les nombres en flottants.</p>
+<pre><code>let absent: JsonValue = null();
+let actif: JsonValue = boolean(true);
+let nombre: JsonValue = integer(42);
+let mesure: JsonValue = floating(21.5);
+let texte: JsonValue = string("Vitte");
+let vide: JsonValue = empty_array();
+
+let version: JsonMember = member("version", integer(1));
+let paquet: JsonValue = object([version]);</code></pre>
+<p>Pour inspecter une valeur, teste son genre avec <code>is_null</code>, <code>is_bool</code>, <code>is_integer</code>, <code>is_float</code>, <code>is_string</code>, <code>is_array</code> ou <code>is_object</code>. Les fonctions <code>array_len</code>, <code>array_get_ref</code>, <code>object_len</code> et <code>object_get_ref</code> donnent accès aux contenus. Vérifie le type et la présence des champs avant de les utiliser dans les règles métier de ton application.</p>
+<p>Le modèle conserve l’ordre de lecture des membres d’un objet pour l’encodage, mais l’égalité structurelle des objets ne dépend pas de cet ordre. L’ordre des éléments d’un tableau reste significatif.</p>
+
+<h2>Parser et clés dupliquées</h2>
+<p><code>parse(source)</code> effectue le lexing et lit un document JSON complet. Il exige une valeur racine et rejette les tokens qui la suivent. <code>parse_strict(source)</code> applique la même grammaire, mais refuse les clés d’objet répétées. Les variantes <code>parse_tokens</code> et <code>parse_tokens_strict</code> prennent une suite de tokens déjà produite par le lexer.</p>
+<p>Pour les entrées de configuration ou de réseau, préfère <code>parse_strict</code> : si deux clés portent le même nom, différents consommateurs peuvent sinon retenir des valeurs différentes. JSON ne permet pas les commentaires, les clés non citées, les guillemets simples ou les virgules finales.</p>
+
+<h2>Diagnostics et positions</h2>
+<p>En cas d’échec, <code>JsonParseResult.diagnostic</code> contient entre autres le code, le message, le détail, une suggestion éventuelle, la valeur attendue et trouvée, la clé et un <code>JsonSpan</code>. Les suggestions sont informatives ; elles ne modifient pas automatiquement le document.</p>
+<p>Les coordonnées de <code>JsonPosition</code> sont comptées à partir de zéro. Pour afficher une ligne ou une colonne à une personne, utilise <code>human_line</code> et <code>human_column</code>, qui produisent des numéros commençant à un. Les plages source servent à pointer l’erreur ou les occurrences liées dans un éditeur.</p>
+
+<h2>Encoder du JSON</h2>
+<p><code>encode</code> et <code>encode_compact</code> produisent une sortie compacte ; <code>encode_pretty</code> utilise une indentation de deux espaces. <code>encode_pretty_with_indent(value, indent)</code> choisit l’indentation. Le résultat <code>JsonEncodeResult</code> fournit <code>ok</code>, <code>text</code> et <code>error</code> : n’utilise <code>text</code> qu’après avoir vérifié <code>ok</code>.</p>
+<p>L’encodeur vérifie les valeurs, les nombres et les chaînes, refuse les clés dupliquées et impose une profondeur maximale. L’espace <code>json::encode::escape</code> fournit aussi des fonctions pour échapper ou citer une chaîne indépendamment d’un arbre JSON ; ne le confonds pas avec l’encodeur complet.</p>
+
+<h2>Unicode, nombres et limites</h2>
+<p>Le lexer reconnaît les échappements JSON, dont <code>\uXXXX</code>. Les paires de surrogates UTF-16 sont composées en scalaire Unicode ; les surrogates isolés sont refusés. Le runtime numérique expose notamment <code>scan</code>, <code>valid</code>, <code>parse_i64</code>, <code>parse_u64</code>, <code>parse_f64</code> et les fonctions de formatage correspondantes. Les conversions refusent les dépassements et les résultats flottants non finis.</p>
+<p>Les valeurs par défaut inscrites dans <code>parser/parser.vit</code> sont une profondeur maximale de <code>512</code>, <code>1&nbsp;048&nbsp;576</code> valeurs, éléments de tableau ou membres d’objet, et une longueur maximale de clé de <code>16&nbsp;777&nbsp;216</code>. Le type <code>JsonParserLimits</code> est exposé, mais les quatre fonctions de parsing exportées utilisent les limites par défaut : le code actuel ne fournit pas d’entrée publique de parsing avec limites personnalisées.</p>
+<div class="reference-callout warning">
+  <strong>Une syntaxe valide n’est pas une validation métier.</strong>
+  <p>Pour une donnée non fiable, borne la taille du texte à l’entrée, vérifie <code>ok</code>, contrôle le type et les plages de chaque champ attendu, puis traite l’échec d’encodage. Les limites du parser ne remplacent pas les limites de taille de requête ou les règles de sécurité de ton application.</p>
+</div>
+
+<h2>Vérifier le module dans son dépôt</h2>
+<p>Le Makefile du module propose des cibles pour vérifier les sources, les suites d’encodage, le parser, Unicode, les nombres et l’installation :</p>
+<pre><code>make -C modules/json check
+make -C modules/json test-encode test-runtime test-invalid test-parse \
+    test-roundtrip test-string-concat test-unicode</code></pre>
+<p>Cette page documente les cibles déclarées dans <code>modules/json/Makefile</code> ; elle ne signifie pas que ces suites ont été exécutées pour chaque version du compilateur. La matrice <a href="{{ '/reference/support/' | relative_url }}">d’état du compilateur</a> et les sources du dépôt permettent de vérifier la compatibilité de ta cible.</p>
+
+<h2>Documentation complète et éditions PDF</h2>
+<ul>
+  <li><a href="https://github.com/vitte-lang/vitte/blob/main/modules/json/DOCUMENTATION.md">Guide détaillé dans le dépôt</a> : API, diagnostics, cas d’usage, sécurité et référence rapide.</li>
+  <li><a href="https://github.com/vitte-lang/vitte/blob/main/modules/json/README.md">README du paquet</a> : imports, installation et compatibilité.</li>
+  <li><a href="https://github.com/user-attachments/files/33754656/Vitte_JSON_Documentation_FR_100_pages.pdf">PDF français joint à l’issue #17</a> · <a href="https://github.com/user-attachments/files/33754653/Vitte_JSON_Documentation_EN_100_pages.pdf">PDF anglais</a>.</li>
+  <li><a href="https://github.com/vitte-lang/vitte/issues/17">Issue #17</a> : autres fichiers PDF et suivi de la documentation.</li>
+</ul>
+<p>Le PDF français porte lui-même la mention « édition de travail » et demande de vérifier ses signatures et commandes dans le dépôt. Utilise-le comme document pédagogique complémentaire, pas comme spécification des fonctions exportées.</p>

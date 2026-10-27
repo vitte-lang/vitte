@@ -4,6 +4,14 @@ Cette documentation explique le module `json` de Vitte de manière progressive
 et détaillée. Elle commence par l’utilisation courante, puis descend jusqu’au
 lexer, aux tokens, aux limites de sécurité et aux fonctions numériques.
 
+Le [guide de consultation en ligne](https://vitte-lang.org/reference/json/)
+résume les entrées principales. L’issue
+[#17](https://github.com/vitte-lang/vitte/issues/17) rassemble des éditions
+PDF multilingues complémentaires. Le PDF français y est explicitement marqué
+comme une édition de travail dont les signatures et commandes restent à
+vérifier sur le dépôt ; le code ci-dessous et les sources de la révision
+courante font foi pour l’API.
+
 Le module est écrit en Vitte. Il n’utilise pas de bibliothèque C externe ni de
 dépendance native. Le répertoire `modules/json` contient les sources de la
 bibliothèque, ses tests et son manifeste de paquet.
@@ -895,9 +903,13 @@ Les limites par défaut du parser sont :
 | membres d’objets | `1 048 576` |
 | longueur d’une clé | `16 777 216` |
 
-Le lexer ajoute ses limites de source, tokens, chaînes et nombres. Toutes ces
-valeurs peuvent être réduites pour une API exposée sur Internet ou un fichier
-de configuration local.
+Le lexer ajoute ses limites de source, tokens, chaînes et nombres. Le type
+`JsonParserLimits` est exposé, mais les points d’entrée publics actuels
+(`parse`, `parse_strict`, `parse_tokens` et `parse_tokens_strict`) utilisent
+les limites par défaut ; le constructeur de limites et le parsing avec limites
+personnalisées ne sont pas exportés. Pour une entrée non fiable, borner aussi
+la taille des données à la frontière de l’application. Une API publique de
+configuration des limites demanderait un point d’entrée supplémentaire.
 
 Recommandations pour des données non fiables :
 

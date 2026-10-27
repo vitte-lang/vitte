@@ -5,6 +5,13 @@ Pour la documentation complète et humanisée, consulter
 le modèle `JsonValue`, le lexer, le parser, l’encodeur, les diagnostics,
 l’Unicode, les nombres, la sécurité et les tests.
 
+Le guide de consultation est aussi disponible sur le site :
+[Documentation du module JSON](https://vitte-lang.org/reference/json/).
+Les éditions PDF multilingues jointes à l’issue
+[#17](https://github.com/vitte-lang/vitte/issues/17) sont des ressources
+complémentaires ; vérifier leurs signatures et commandes contre le code de
+cette révision avant de les utiliser comme référence d’API.
+
 `json` is a Vitte source package laid out under the `json` namespace. Module
 paths use `::`, as required by the Vitte grammar. For example:
 
