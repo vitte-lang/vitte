@@ -8,11 +8,11 @@ description: "Page officielle du module JSON Vitte : versions, installation, API
 summary: "Module JSON Vitte : dépôt, releases, parsing strict, valeurs, encodage et limites."
 keywords: json module Vitte parse parse_strict JsonValue encode limites diagnostic package
 ---
-<div class="reference-callout warning">
-  <strong>Les deux dépôts n’affichent pas encore le même numéro.</strong>
-  <p>Au 28 octobre 2026, la release publique du <a href="https://github.com/Vitte-Foundation/json">dépôt JSON autonome</a> consultée est <code>0.1.0</code>. La copie intégrée au dépôt du compilateur Vitte indique <code>0.1.1</code> dans <code>modules/json/package.toml</code>. Pour installer un projet, choisissez une seule provenance et relevez sa version réelle.</p>
+<div class="reference-callout">
+  <strong>La release officielle JSON 0.1.1 est publiée.</strong>
+  <p>Le tag immuable <a href="https://github.com/Vitte-Foundation/json/releases/tag/v0.1.1"><code>v0.1.1</code></a> pointe vers le commit <code>b47148353206b78e9ea1cb18f78ac01ed15d4c7e</code>. L’archive autonome est accompagnée de son fichier SHA-256 : <code>5c74597a9787455396e7e30d70bbbff4eb123817ef0e199e5229cd2e2bfff7c0</code>. Le paquet extrait a passé <code>make verify</code> avec le bootstrap Vitte 0.1.1.</p>
 </div>
-<p><a class="button" href="https://github.com/Vitte-Foundation/json">Dépôt officiel sur GitHub <span aria-hidden="true">↗</span></a> <a class="button button-secondary" href="https://github.com/Vitte-Foundation/json/releases">Releases du module</a> <a class="button button-secondary" href="{{ '/reference/json/' | relative_url }}">Référence API détaillée</a></p>
+<p><a class="button" href="https://github.com/Vitte-Foundation/json/releases/tag/v0.1.1">Release JSON 0.1.1 <span aria-hidden="true">↗</span></a> <a class="button button-secondary" href="https://github.com/Vitte-Foundation/json/releases/download/v0.1.1/vitte-json-0.1.1.tar.gz">Télécharger l’archive source</a> <a class="button button-secondary" href="{{ '/reference/json/' | relative_url }}">Référence API détaillée</a></p>
 
 <h2 id="presentation">Ce que fournit le paquet</h2>
 <p>Le module prend une chaîne Vitte contenant du JSON, la transforme en tokens, construit une valeur Vitte, permet d’inspecter et de valider cette valeur, puis peut la réencoder. Le paquet est écrit en Vitte et le manifeste ne déclare aucune dépendance native. Le parsing travaille sur une chaîne déjà fournie par l’application : l’ouverture d’un fichier ou la lecture de stdin relève de la couche d’entrée du programme, pas du parser JSON.</p>
@@ -64,23 +64,26 @@ proc reformater(source: string) -> int {
 </ul>
 
 <h2 id="installer">Installation et import</h2>
-<p>Dans une copie du dépôt Vitte, les commandes suivantes vérifient et installent le paquet intégré :</p>
-<pre><code>make -C modules/json verify
-make install PREFIX="$HOME/.local"
-export PATH="$HOME/.local/bin:$PATH"
-export VITTE_MODULE_PATH="$HOME/.local/share/vitte/modules"</code></pre>
-<p>Le répertoire donné à <code>VITTE_MODULE_PATH</code> est le parent de <code>json/</code>, pas le dossier <code>json</code> lui-même. Le séparateur de plusieurs chemins est <code>:</code> sur les systèmes Unix et <code>;</code> sous Windows. Pour les artefacts du dépôt autonome et leurs sommes, partez de la <a href="https://github.com/Vitte-Foundation/json/releases">page Releases JSON</a> ; ne déduisez pas leur contenu du numéro de la copie intégrée.</p>
+<p>Pour installer la release autonome 0.1.1 depuis son archive versionnée, téléchargez les deux fichiers joints à la release, vérifiez leur somme, puis lancez le Makefile avec le compilateur installé :</p>
+<pre><code>curl -LO https://github.com/Vitte-Foundation/json/releases/download/v0.1.1/vitte-json-0.1.1.tar.gz
+curl -LO https://github.com/Vitte-Foundation/json/releases/download/v0.1.1/vitte-json-0.1.1.tar.gz.sha256
+shasum -a 256 --check vitte-json-0.1.1.tar.gz.sha256
+tar -xzf vitte-json-0.1.1.tar.gz
+cd vitte-json-0.1.1
+make VITTE=/chemin/vers/vitte verify
+make install PREFIX="$HOME/.local"</code></pre>
+<p>La somme publiée est <code>5c74597a9787455396e7e30d70bbbff4eb123817ef0e199e5229cd2e2bfff7c0</code>. La release et son archive sont rattachées au tag immuable <code>v0.1.1</code>, pas à la branche de développement <code>main</code>. Le répertoire donné à <code>VITTE_MODULE_PATH</code> est le parent de <code>json/</code>, pas le dossier <code>json</code> lui-même. Le séparateur de plusieurs chemins est <code>:</code> sur Unix et <code>;</code> sous Windows.</p>
 
 <h2 id="preuves">Vérifications disponibles</h2>
-<p>Pour la copie JSON <code>0.1.1</code> du dépôt Vitte, les commandes ci-dessous constituent les points de départ reproductibles :</p>
+<p>La release autonome <code>v0.1.1</code> et la copie JSON <code>0.1.1</code> du dépôt Vitte ont toutes deux passé les parcours ci-dessous avec le bootstrap courant :</p>
 <pre><code>make -C modules/json check-library test-parse
 make -C modules/json verify</code></pre>
-<p><code>verify</code> contrôle la disposition du paquet, compile et exécute un consommateur qui importe le parser et l’encodeur installés, puis lance le test de concaténation dynamique. Les tests ciblés couvrent également les erreurs de parsing, les limites, Unicode et les nombres. La réussite de ces cibles ne prouve pas séparément chaque fonction exportée ni chaque taille de document réelle en production.</p>
+<p><code>verify</code> contrôle la disposition du paquet, compile et exécute un consommateur qui importe le parser et l’encodeur installés, puis lance le test de concaténation dynamique. Cette vérification a aussi été exécutée après extraction de l’archive attachée à <a href="https://github.com/Vitte-Foundation/json/releases/tag/v0.1.1"><code>v0.1.1</code></a>. Les tests ciblés couvrent également les erreurs de parsing, les limites, Unicode et les nombres. La réussite de ces cibles ne prouve pas séparément chaque fonction exportée ni chaque taille de document réelle en production.</p>
 
 <h2 id="sources">Documentation et sources</h2>
 <div class="guide-grid">
-  <a class="guide-card" href="https://github.com/Vitte-Foundation/json"><span>DÉPÔT AUTONOME</span><strong>Code et discussions JSON</strong><p>Parcourez les sources, les tests, les issues et les changements du module.</p><b>Ouvrir Vitte-Foundation/json ↗</b></a>
-  <a class="guide-card" href="https://github.com/Vitte-Foundation/json/releases"><span>VERSIONS PUBLIÉES</span><strong>Archives et notes JSON</strong><p>Vérifiez la version publiée et les éléments téléchargeables avant installation.</p><b>Consulter les releases ↗</b></a>
-  <a class="guide-card" href="https://github.com/vitte-lang/vitte/tree/main/modules/json"><span>COPIE INTÉGRÉE</span><strong>Sources dans Vitte</strong><p>Consultez la copie testée avec le bootstrap et le compilateur de ce dépôt.</p><b>Parcourir modules/json ↗</b></a>
+  <a class="guide-card" href="https://github.com/Vitte-Foundation/json/tree/v0.1.1"><span>SOURCE VERSIONNÉE</span><strong>Code JSON 0.1.1</strong><p>Parcourez les sources et tests du tag immuable correspondant à l’archive.</p><b>Ouvrir le tag v0.1.1 ↗</b></a>
+  <a class="guide-card" href="https://github.com/Vitte-Foundation/json/releases/tag/v0.1.1"><span>RELEASE PUBLIÉE</span><strong>Archive et somme SHA-256</strong><p>Téléchargez les fichiers attachés et consultez les notes de la version publiée.</p><b>Consulter la release ↗</b></a>
+  <a class="guide-card" href="https://github.com/vitte-lang/vitte/tree/50f8697875e05754b3d5e7c3e342b02ee700c54f/modules/json"><span>COPIE INTÉGRÉE</span><strong>Sources Vitte vérifiées</strong><p>Consultez le commit du dépôt compilateur qui a synchronisé et vérifié le paquet 0.1.1.</p><b>Parcourir les sources figées ↗</b></a>
   <a class="guide-card" href="{{ '/projets/configuration-json/' | relative_url }}"><span>PROJET PAS À PAS</span><strong>Valider une configuration</strong><p>Suivez un petit programme Vitte qui parse, contrôle et réencode une configuration.</p><b>Lire le projet complet →</b></a>
 </div>
