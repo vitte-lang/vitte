@@ -7,7 +7,7 @@ documentation, snapshots, and code actions.
 
 - Use `procedure` for the user-facing callable concept.
 - Use `proc` only for the Vitte keyword.
-- Use `give` for producing a value from a procedure.
+- Use `return` for producing a value from a procedure.
 - Use `form` for record-like declarations.
 - Use `pick` for variant declarations.
 - Use `binding` for a `let` name and its value.

@@ -213,7 +213,7 @@ export class LocalInlineEngine {
     const p1 = tokens[tokens.length - 1] ?? "";
     const p2 = tokens[tokens.length - 2] ?? "";
     const next = this.predictTokens(docContrib, p2, p1, 8);
-    const wordPrefix = /[A-Za-z_][A-Za-z0-9_]*$/.exec(left)?.[0] ?? "";
+    const wordPrefix = /[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*$/u.exec(left)?.[0] ?? "";
     for (const tok of next) {
       if (wordPrefix && tok.startsWith(wordPrefix)) {
         addWeighted(weighted, tok.slice(wordPrefix.length), 16);
@@ -530,7 +530,7 @@ function digest(text: string): string {
 }
 
 function tokenize(text: string): string[] {
-  return text.match(/[A-Za-z_][A-Za-z0-9_]*|\d+|==|!=|<=|>=|=>|->|&&|\|\||[{}()[\].,;:+\-*/%<>:=]/g) ?? [];
+  return text.match(/[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*|\d+|==|!=|<=|>=|=>|->|::|\.\.=|\.\.|[{}()[\].,;:+\-*/%<>:=|&?]/gu) ?? [];
 }
 
 function buildContribution(text: string, hash: string): FileContribution {
@@ -555,10 +555,10 @@ function buildContribution(text: string, hash: string): FileContribution {
     if (p1 && p2) incPair(trigram, `${p2}\u0000${p1}`, t, 1);
   }
 
-  for (const m of text.matchAll(/\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
+  for (const m of text.matchAll(/\.([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)/gu)) {
     if (m[1]) inc(members, m[1], 1);
   }
-  for (const m of text.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+  for (const m of text.matchAll(/\b([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\s*\(/gu)) {
     const fn = m[1];
     if (!fn || KEYWORDS.has(fn)) continue;
     inc(calls, fn, 1);
@@ -567,12 +567,12 @@ function buildContribution(text: string, hash: string): FileContribution {
   for (const line of text.split(/\r?\n/)) {
     const trim = line.trim();
     if (/^(if|for|while|match)\b/.test(trim)) inc(patterns, "control_block", 1);
-    if (/^(proc|fn)\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*$/.test(trim)) inc(patterns, "fn_block", 1);
+    if (/^proc\s+[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*\s*\([^)]*\)\s*$/u.test(trim)) inc(patterns, "proc_block", 1);
     if (/^test\s+"[^"]*"\s*$/.test(trim)) inc(patterns, "test_block", 1);
-    if (/^let\s+[A-Za-z_][A-Za-z0-9_]*\s*=/.test(trim)) inc(patterns, "let_assign", 1);
+    if (/^let\s+[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*\s*=/u.test(trim)) inc(patterns, "let_assign", 1);
   }
   harvestBlockSnippets(text, blockSnippets);
-  for (const m of text.matchAll(/\b([A-Z][A-Za-z0-9_]*)::([A-Z][A-Za-z0-9_]*)\b/g)) {
+  for (const m of text.matchAll(/\b(\p{Lu}[\p{L}\p{Nl}\p{Nd}_]*)::(\p{Lu}[\p{L}\p{Nl}\p{Nd}_]*)\b/gu)) {
     const variant = `${m[1]}::${m[2]}`;
     inc(enumVariants, variant, 1);
   }
@@ -586,7 +586,7 @@ function patternSuggestion(left: string, patterns: CounterMap): string | undefin
       return left.trimStart().startsWith("match") ? " {\n\t_ => \n}" : " {\n\t\n}";
     }
   }
-  if (/^(proc|fn)\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^)]*\)\s*$/.test(left.trim())) {
+  if (/^proc\s+[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*\s*\([^)]*\)\s*$/u.test(left.trim())) {
     return " {\n\t\n}";
   }
   if (/^test\s+"[^"]*"\s*$/.test(left.trim())) {
@@ -596,7 +596,7 @@ function patternSuggestion(left: string, patterns: CounterMap): string | undefin
 }
 
 function tokenToInline(tok: string): string {
-  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(tok)) return tok;
+  if (/^[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*$/u.test(tok)) return tok;
   if (/^[,.;:)}\]]$/.test(tok)) return tok;
   if (/^(?:\(|\{|\[)$/.test(tok)) return `${tok}`;
   return ` ${tok}`;
@@ -624,19 +624,19 @@ function extractLocalScopeContext(document: vscode.TextDocument, position: vscod
   let nonNullLikelyVar: string | undefined;
   for (let line = position.line; line >= from; line -= 1) {
     const text = document.lineAt(line).text;
-    for (const m of text.matchAll(/\blet\s+([A-Za-z_][A-Za-z0-9_]*)\b/g)) {
+    for (const m of text.matchAll(/\blet\s+(?:mut\s+)?([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\b/gu)) {
       const id = m[1];
       if (id) locals.set(id, (locals.get(id) ?? 0) + 1 + ((position.line - line) < 10 ? 3 : 0));
     }
-    for (const m of text.matchAll(/\b(?:proc|fn)\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)/g)) {
+    for (const m of text.matchAll(/\bproc\s+[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*\s*\(([^)]*)\)/gu)) {
       const params = m[1] ?? "";
       for (const p of params.split(",")) {
-        const id = /\b([A-Za-z_][A-Za-z0-9_]*)\b/.exec(p)?.[1];
+        const id = /\b([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\b/u.exec(p)?.[1];
         if (id) locals.set(id, (locals.get(id) ?? 0) + 2);
       }
     }
-    const guard = /\bif\s+([A-Za-z_][A-Za-z0-9_]*)\s*!=\s*null\b/.exec(text)
-      ?? /\bif\s+([A-Za-z_][A-Za-z0-9_]*)\s*is\s+not\s+null\b/.exec(text);
+    const guard = /\bif\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\s*!=\s*null\b/u.exec(text)
+      ?? /\bif\s+([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)\s*is\s+not\s+null\b/u.exec(text);
     if (!nonNullLikelyVar && guard?.[1]) nonNullLikelyVar = guard[1];
   }
   const ordered = Array.from(locals.entries()).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, 16);
@@ -649,7 +649,7 @@ function blockSnippetPrefix(left: string): string {
   if (t.startsWith("for ")) return "for:";
   if (t.startsWith("while ")) return "while:";
   if (t.startsWith("match ")) return "match:";
-  if (t.startsWith("fn ") || t.startsWith("proc ")) return "fn:";
+  if (t.startsWith("proc ")) return "proc:";
   return "any:";
 }
 
@@ -661,7 +661,7 @@ function harvestBlockSnippets(text: string, out: CounterMap): void {
       : cur.startsWith("for ") ? "for:"
       : cur.startsWith("while ") ? "while:"
       : cur.startsWith("match ") ? "match:"
-      : (cur.startsWith("fn ") || cur.startsWith("proc ")) ? "fn:"
+      : cur.startsWith("proc ") ? "proc:"
       : "";
     if (!key) continue;
     const a = lines[i + 1]?.trimEnd() ?? "";
@@ -673,7 +673,7 @@ function harvestBlockSnippets(text: string, out: CounterMap): void {
   }
 }
 
-type ExpectedValueContext = "bool" | "string" | "number" | "enum_like" | "none";
+type ExpectedValueContext = "bool" | "string" | "number" | "pick_like" | "none";
 
 function detectExpectedValueContext(document: vscode.TextDocument, position: vscode.Position): ExpectedValueContext {
   const line = document.lineAt(position.line).text.slice(0, position.character);
@@ -683,10 +683,10 @@ function detectExpectedValueContext(document: vscode.TextDocument, position: vsc
     if (nearby.has("bool")) return "bool";
     if (nearby.has("string")) return "string";
     if (nearby.has("number")) return "number";
-    if (nearby.has("enum")) return "enum_like";
+    if (nearby.has("pick")) return "pick_like";
   }
   if (/(==|!=)\s*$/.test(trimmed)) return "bool";
-  if (/:\s*$/.test(trimmed)) return "enum_like";
+  if (/:\s*$/.test(trimmed)) return "pick_like";
   return "none";
 }
 
@@ -698,7 +698,7 @@ function collectNearbyTypeHints(document: vscode.TextDocument, position: vscode.
     if (/\bbool\b/.test(line)) out.add("bool");
     if (/\bstring\b/.test(line)) out.add("string");
     if (/\b(?:i32|i64|u32|u64|int|float|f32|f64)\b/.test(line)) out.add("number");
-    if (/\b[A-Z][A-Za-z0-9_]*::[A-Z][A-Za-z0-9_]*\b/.test(line)) out.add("enum");
+    if (/\b\p{Lu}[\p{L}\p{Nl}\p{Nd}_]*::\p{Lu}[\p{L}\p{Nl}\p{Nd}_]*\b/u.test(line)) out.add("pick");
   }
   return out;
 }
@@ -723,7 +723,7 @@ function addExpectedValueSuggestions(
     addWeighted(weighted, "1", 22);
     return;
   }
-  if (expected === "enum_like") {
+  if (expected === "pick_like") {
     const top = topStartingWith(enumVariants, "", 6);
     for (const variant of top) addWeighted(weighted, variant, 30);
   }
@@ -772,12 +772,12 @@ type InlineContextClass = "declaration" | "callsite" | "member" | "guard" | "ret
 
 function classifyInlineContext(left: string): InlineContextClass {
   const t = left.trimStart();
-  if (/^(?:let|const)\s+[A-Za-z_][A-Za-z0-9_]*\s*=?\s*$/.test(t)) return "declaration";
+  if (/^(?:let|const|static|global)\s+[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*\s*=?\s*$/u.test(t)) return "declaration";
   if (/^return\b/.test(t)) return "return";
   if (/^if\b/.test(t) || /^while\b/.test(t)) return "guard";
   if (/^test\b/.test(t)) return "test";
-  if (/\.[A-Za-z_][A-Za-z0-9_]*$/.test(t) || t.endsWith(".")) return "member";
-  if (/[A-Za-z_][A-Za-z0-9_]*\($/.test(t) || /,\s*$/.test(t)) return "callsite";
+  if (/\.[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*$/u.test(t) || t.endsWith(".")) return "member";
+  if (/[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*\($/u.test(t) || /,\s*$/.test(t)) return "callsite";
   return "generic";
 }
 
@@ -830,7 +830,7 @@ function tokensToInlineText(tokens: string[]): string {
 }
 
 function isIdent(tok: string): boolean {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(tok);
+  return /^[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*$/u.test(tok);
 }
 
 function percentile(values: number[], q: number): number {
@@ -906,5 +906,5 @@ function isIndexableDocument(document: vscode.TextDocument, maxFileSizeKB: numbe
 }
 
 const KEYWORDS = new Set([
-  "if", "else", "for", "while", "match", "let", "const", "return", "break", "continue", "fn", "proc", "test", "import", "export",
+  "if", "else", "for", "while", "loop", "match", "let", "const", "static", "global", "return", "break", "continue", "proc", "test", "use", "export",
 ]);

@@ -19,69 +19,69 @@
 
 space tests::import_visibility::contract_lib;
 
-const MIN_IDENTIFIER: u64 = 1;
-const MAX_IDENTIFIER: u64 = 1000000;
-const DEFAULT_LIMIT: u64 = 128;
+export const MIN_IDENTIFIER: u64 = 1;
+export const MAX_IDENTIFIER: u64 = 1000000;
+export const DEFAULT_LIMIT: u64 = 128;
 
-form ContractRecord {
+export form ContractRecord {
     id: u64,
     value: i64,
     enabled: bool,
 }
 
-form ContractRange {
+export form ContractRange {
     minimum: i64,
     maximum: i64,
 }
 
-form ContractResult {
+export form ContractResult {
     value: i64,
     valid: bool,
 }
 
-proc valid_identifier(id: u64) -> bool {
-    give id >= MIN_IDENTIFIER && id <= MAX_IDENTIFIER;
+export proc valid_identifier(id: u64) -> bool {
+    return id >= MIN_IDENTIFIER and id <= MAX_IDENTIFIER;
 }
 
-proc valid_limit(limit: u64) -> bool {
-    give limit > 0 && limit <= DEFAULT_LIMIT;
+export proc valid_limit(limit: u64) -> bool {
+    return limit > 0 and limit <= DEFAULT_LIMIT;
 }
 
-proc valid_range(range: &ContractRange) -> bool {
-    give range.minimum <= range.maximum;
+export proc valid_range(range: &ContractRange) -> bool {
+    return range.minimum <= range.maximum;
 }
 
-proc value_in_range(
+export proc value_in_range(
     value: i64,
     range: &ContractRange
 ) -> bool {
-    give value >= range.minimum &&
+    return value >= range.minimum and
          value <= range.maximum;
 }
 
-proc positive(value: i64) -> bool {
-    give value > 0;
+export proc positive(value: i64) -> bool {
+    return value > 0;
 }
 
-proc non_negative(value: i64) -> bool {
-    give value >= 0;
+export proc non_negative(value: i64) -> bool {
+    return value >= 0;
 }
 
-proc checked_identity(value: i64) -> i64
+export proc checked_identity(value: i64) -> i64
     requires non_negative(value);
     ensures result == value;
 {
-    give value;
+    return value;
 }
 
-proc checked_increment(value: i64) -> i64
+export proc checked_increment(value: i64) -> i64
     requires value >= 0;
     ensures result > value;
 {
-    give value + 1;
+    return value + 1;
 }
 
-proc checked_add(
+export proc checked_add(
     left: i64,
     right: i64
 ) -> i64
@@ -90,20 +90,20 @@ proc checked_add(
     ensures result >= left;
     ensures result >= right;
 {
-    give left + right;
+    return left + right;
 }
 
-proc checked_subtract(
+export proc checked_subtract(
     left: i64,
     right: i64
 ) -> i64
     requires left >= right;
     ensures result >= 0;
 {
-    give left - right;
+    return left - right;
 }
 
-proc checked_multiply(
+export proc checked_multiply(
     left: i64,
     right: i64
 ) -> i64
@@ -111,10 +111,10 @@ proc checked_multiply(
     requires right >= 0;
     ensures result >= 0;
 {
-    give left * right;
+    return left * right;
 }
 
-proc checked_clamp(
+export proc checked_clamp(
     value: i64,
     range: &ContractRange
 ) -> i64
@@ -123,17 +123,17 @@ proc checked_clamp(
     ensures result <= range.maximum;
 {
     if value < range.minimum {
-        give range.minimum;
+        return range.minimum;
     }
 
     if value > range.maximum {
-        give range.maximum;
+        return range.maximum;
     }
 
-    give value;
+    return value;
 }
 
-proc checked_record(
+export proc checked_record(
     id: u64,
     value: i64
 ) -> ContractRecord
@@ -143,37 +143,37 @@ proc checked_record(
     ensures result.value == value;
     ensures result.enabled;
 {
-    give ContractRecord {
+    return ContractRecord {
         id: id,
         value: value,
         enabled: true,
     };
 }
 
-proc checked_record_value(
+export proc checked_record_value(
     record: &ContractRecord
 ) -> i64
     requires valid_identifier(record.id);
     requires record.enabled;
     ensures result == record.value;
 {
-    give record.value;
+    return record.value;
 }
 
-proc checked_result(
+export proc checked_result(
     value: i64
 ) -> ContractResult
     requires non_negative(value);
     ensures result.value == value;
     ensures result.valid;
 {
-    give ContractResult {
+    return ContractResult {
         value: value,
         valid: true,
     };
 }
 
-proc checked_chain(
+export proc checked_chain(
     value: i64
 ) -> i64
     requires non_negative(value);
@@ -182,10 +182,10 @@ proc checked_chain(
     let first: i64 = checked_identity(value);
     let second: i64 = checked_increment(first);
 
-    give checked_add(second, 1);
+    return checked_add(second, 1);
 }
 
-proc checked_bounded_add(
+export proc checked_bounded_add(
     left: i64,
     right: i64,
     range: &ContractRange
@@ -198,26 +198,26 @@ proc checked_bounded_add(
 {
     let value: i64 = checked_add(left, right);
 
-    give checked_clamp(value, range);
+    return checked_clamp(value, range);
 }
 
-proc checked_select(
+export proc checked_select(
     condition: bool,
     first: i64,
     second: i64
 ) -> i64
     requires non_negative(first);
     requires non_negative(second);
-    ensures result == first || result == second;
+    ensures result == first or result == second;
 {
     if condition {
-        give first;
+        return first;
     }
 
-    give second;
+    return second;
 }
 
-proc checked_limit(
+export proc checked_limit(
     value: u64,
     limit: u64
 ) -> u64
@@ -225,13 +225,13 @@ proc checked_limit(
     ensures result <= limit;
 {
     if value > limit {
-        give limit;
+        return limit;
     }
 
-    give value;
+    return value;
 }
 
-proc contract_library_self_test() -> bool {
+export proc contract_library_self_test() -> bool {
     let range: ContractRange = ContractRange {
         minimum: 0,
         maximum: 100,
@@ -246,8 +246,24 @@ proc contract_library_self_test() -> bool {
             20,
             &range);
 
-    give valid_identifier(record.id) &&
-         valid_range(&range) &&
-         value_in_range(value, &range) &&
+    return valid_identifier(record.id) and
+         valid_range(&range) and
+         value_in_range(value, &range) and
          value == 30;
+}
+/// Private declarations retained for negative visibility checks.
+const PRIVATE_IDENTIFIER: u64 = 1;
+const PRIVATE_LIMIT: u64 = 128;
+
+form PrivateContractRange {
+    minimum: i64,
+    maximum: i64,
+}
+
+proc private_valid_identifier(id: u64) -> bool {
+    return id >= PRIVATE_IDENTIFIER;
+}
+
+proc private_checked_add(left: i64, right: i64) -> i64 {
+    return left + right;
 }

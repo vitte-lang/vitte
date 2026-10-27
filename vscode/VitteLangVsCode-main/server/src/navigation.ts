@@ -25,6 +25,7 @@ import type {
   TypeHierarchySupertypesParams,
   WorkspaceSymbol,
 } from "vscode-languageserver/node";
+import { getIndex } from "./indexer.js";
 
 /* --------------------------------- Types ---------------------------------- */
 
@@ -198,18 +199,18 @@ function isValidIdent(s: string): boolean { return /^[A-Za-z_]\w*$/.test(s); }
 const RULES: { rx: RegExp; kind: SymbolKind; nameGroup: number; containerHint?: (m: RegExpExecArray) => string | undefined }[] = [
   { rx: /\bspace\s+([A-Za-z_][\w./:]*)/g,                               kind: SymbolKind.Namespace, nameGroup: 1 },
   { rx: /\buse\s+([A-Za-z_][\w./:]*)/g,                                 kind: SymbolKind.Namespace, nameGroup: 1 },
-  { rx: /\bpull\s+([A-Za-z_][\w./:]*)/g,                                kind: SymbolKind.Namespace, nameGroup: 1 },
-  { rx: /\bentry\s+([A-Za-z_]\w*)\s+at\s+[A-Za-z_][\w./:]*/g,           kind: SymbolKind.Function, nameGroup: 1 },
-  { rx: /\bentry\s+[A-Za-z_]\w*\s+at\s+([A-Za-z_][\w./:]*)/g,           kind: SymbolKind.Namespace, nameGroup: 1 },
+  { rx: /\bentry\s+([A-Za-z_]\w*)/g,                                    kind: SymbolKind.Function, nameGroup: 1 },
   { rx: /\bshare\s+([A-Za-z_]\w*)/g,                                     kind: SymbolKind.Variable, nameGroup: 1 },
   { rx: /\bproc\s+([A-Za-z_]\w*)\s*\(/g,                                kind: SymbolKind.Function, nameGroup: 1 },
   { rx: /\bform\s+([A-Za-z_]\w*)/g,                                     kind: SymbolKind.Struct, nameGroup: 1 },
   { rx: /\bpick\s+([A-Za-z_]\w*)/g,                                     kind: SymbolKind.Enum, nameGroup: 1 },
   { rx: /\btrait\s+([A-Za-z_]\w*)/g,                                    kind: SymbolKind.Interface, nameGroup: 1 },
+  { rx: /\bimpl\s+([A-Za-z_]\w*)/g,                                     kind: SymbolKind.Interface, nameGroup: 1 },
   { rx: /\btype\s+([A-Za-z_]\w*)/g,                                     kind: SymbolKind.TypeParameter, nameGroup: 1 },
+  { rx: /\bopaque\s+type\s+([A-Za-z_]\w*)/g,                           kind: SymbolKind.TypeParameter, nameGroup: 1 },
   { rx: /\bconst\s+([A-Za-z_]\w*)/g,                                    kind: SymbolKind.Constant, nameGroup: 1 },
-  { rx: /\b(?:let|make)\s+([A-Za-z_]\w*)/g,                             kind: SymbolKind.Variable, nameGroup: 1 },
-  { rx: /\b(?:field|case)\s+([A-Za-z_]\w*)/g,                           kind: SymbolKind.Field, nameGroup: 1 },
+  { rx: /\b(?:static|global|let)\s+(?:mut\s+)?([A-Za-z_]\w*)/g,          kind: SymbolKind.Variable, nameGroup: 1 },
+  { rx: /^\s*(?:pub(?:\s*\([^)]*\))?|priv)?\s*([A-Za-z_]\w*)\s*:/gm, kind: SymbolKind.Field, nameGroup: 1 },
 ];
 
 function* iterMaskedMatches(rx: RegExp, text: string, mask: Uint8Array): Generator<RegExpExecArray> {
@@ -377,12 +378,285 @@ export function definitionAtPosition(doc: TextDocument, pos: Position, uri: stri
   // Tri par priorité de kind puis proximité
   const baseOff = doc.offsetAt(pos);
   defs.sort((a, b) => kindPriority(a.kind) - kindPriority(b.kind) || Math.abs(doc.offsetAt(a.selectionRange.start) - baseOff) - Math.abs(doc.offsetAt(b.selectionRange.start) - baseOff));
-  return defs.map(d => Location.create(uri, d.selectionRange));
+  const local = defs.map((definition) => Location.create(uri, definition.selectionRange));
+  const indexed = symbolLocations(
+    tok,
+    [{ uri, doc }],
+    pathLike ? new Set<SymbolKind>([SymbolKind.Namespace]) : undefined,
+  );
+  return dedupeBy(
+    [...local, ...indexed],
+    (location) => `${location.uri}:${posKey(location.range.start)}:${posKey(location.range.end)}`,
+  );
 }
 
-export function referencesAtPosition(doc: TextDocument, pos: Position, uri: string): Location[] {
+export interface NavigationDocument {
+  uri: string;
+  doc: TextDocument;
+}
+
+function navigationDocuments(
+  doc: TextDocument,
+  uri: string,
+  openDocs: NavigationDocument[] = [],
+): NavigationDocument[] {
+  return dedupeBy(
+    [{ uri, doc }, ...openDocs],
+    (entry) => entry.uri,
+  );
+}
+
+function symbolLocations(
+  name: string,
+  docs: NavigationDocument[],
+  kinds?: ReadonlySet<SymbolKind>,
+  excludeImplBlocks = false,
+): Location[] {
+  const locations: Location[] = [];
+  for (const { uri, doc } of docs) {
+    for (const symbol of indexDocument(doc).byName.get(name) ?? []) {
+      if (kinds && !kinds.has(symbol.kind)) continue;
+      if (excludeImplBlocks) {
+        const line = doc.getText(Range.create(Position.create(symbol.selectionRange.start.line, 0), Position.create(symbol.selectionRange.start.line, Number.MAX_SAFE_INTEGER)));
+        if (/\bimpl\b/.test(line)) continue;
+      }
+      locations.push(Location.create(uri, symbol.selectionRange));
+    }
+  }
+  for (const [uri, symbols] of getIndex()) {
+    for (const symbol of symbols) {
+      if (symbol.name !== name) continue;
+      if (kinds && !kinds.has(symbol.kind as unknown as SymbolKind)) continue;
+      if (excludeImplBlocks && symbol.declarationKeyword === "impl") continue;
+      const start = Position.create(symbol.line, symbol.nameCharacter ?? symbol.character);
+      locations.push(Location.create(uri, Range.create(start, Position.create(start.line, start.character + name.length))));
+    }
+  }
+  return dedupeBy(locations, (location) =>
+    `${location.uri}:${posKey(location.range.start)}:${posKey(location.range.end)}`,
+  );
+}
+
+/** Locate declarations of a symbol in the active document and workspace index. */
+export function declarationAtPosition(
+  doc: TextDocument,
+  pos: Position,
+  uri: string,
+  openDocs: NavigationDocument[] = [],
+): Location[] {
+  const name = tokenAt(doc, pos) ?? wordAt(doc, pos);
+  if (!name) return [];
+  const docs = navigationDocuments(doc, uri, openDocs);
+  const pathLike = /[./:-]/.test(name);
+  if (!pathLike) return symbolLocations(name, docs);
+  const locations: Location[] = [];
+  for (const entry of docs) {
+    for (const symbol of indexDocument(entry.doc).flat) {
+      if (symbol.kind !== SymbolKind.Namespace) continue;
+      if (symbol.name === name || symbol.name.endsWith(`/${name}`) || symbol.name.endsWith(`.${name}`)) {
+        locations.push(Location.create(entry.uri, symbol.selectionRange));
+      }
+    }
+  }
+  for (const [entryUri, symbols] of getIndex()) {
+    for (const symbol of symbols) {
+      if (symbol.kind !== SymbolKind.Namespace) continue;
+      if (symbol.name === name || symbol.name.endsWith(`/${name}`) || symbol.name.endsWith(`.${name}`)) {
+        const start = Position.create(symbol.line, symbol.nameCharacter ?? symbol.character);
+        locations.push(Location.create(entryUri, Range.create(start, Position.create(start.line, start.character + symbol.name.length))));
+      }
+    }
+  }
+  return dedupeBy(locations, (location) =>
+    `${location.uri}:${posKey(location.range.start)}:${posKey(location.range.end)}`,
+  );
+}
+
+function maskedCode(text: string): string {
+  const mask = buildCodeMask(text);
+  const result = text.split("");
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i] ?? " ";
+    if (!mask[i] && char !== "\n" && char !== "\r") result[i] = " ";
+  }
+  return result.join("");
+}
+
+function matchingBrace(text: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}" && --depth === 0) return i;
+  }
+  return text.length;
+}
+
+interface ImplBlock {
+  start: number;
+  bodyStart: number;
+  bodyEnd: number;
+  header: string;
+}
+
+function implementationBlocks(doc: TextDocument): ImplBlock[] {
+  const text = maskedCode(doc.getText());
+  const blocks: ImplBlock[] = [];
+  const rx = /\bimpl\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = rx.exec(text))) {
+    const start = match.index;
+    const open = text.indexOf("{", rx.lastIndex);
+    const semicolon = text.indexOf(";", rx.lastIndex);
+    if (open < 0 || (semicolon >= 0 && semicolon < open)) continue;
+    const end = matchingBrace(text, open);
+    blocks.push({ start, bodyStart: open + 1, bodyEnd: end, header: text.slice(rx.lastIndex, open) });
+    rx.lastIndex = Math.max(end + 1, rx.lastIndex);
+  }
+  return blocks;
+}
+
+function procedureImplementations(doc: TextDocument, name: string, uri: string): Location[] {
+  const text = doc.getText();
+  const code = maskedCode(text);
+  const impls = implementationBlocks(doc);
+  const rx = new RegExp(`\\bproc\\s+${escapeRx(name)}\\b`, "g");
+  const locations: Location[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = rx.exec(code))) {
+    const nameOffset = match.index + match[0].lastIndexOf(name);
+    let cursor = rx.lastIndex;
+    let parens = 0;
+    let brackets = 0;
+    let terminator = "";
+    for (; cursor < code.length; cursor++) {
+      const char = code[cursor];
+      if (char === "(") parens++;
+      else if (char === ")") parens = Math.max(0, parens - 1);
+      else if (char === "[") brackets++;
+      else if (char === "]") brackets = Math.max(0, brackets - 1);
+      else if (parens === 0 && brackets === 0 && (char === "{" || char === ";")) {
+        terminator = char;
+        break;
+      }
+    }
+    if (terminator !== "{") continue;
+    const inImpl = impls.some((block) => nameOffset >= block.bodyStart && nameOffset < block.bodyEnd);
+    if (!inImpl) continue;
+    const start = doc.positionAt(nameOffset);
+    locations.push(Location.create(uri, Range.create(start, doc.positionAt(nameOffset + name.length))));
+  }
+  return locations;
+}
+
+/** Resolve trait methods and implementation types from indexed and open files. */
+export function implementationAtPosition(
+  doc: TextDocument,
+  pos: Position,
+  uri: string,
+  openDocs: NavigationDocument[] = [],
+): Location[] {
+  const name = wordAt(doc, pos);
+  if (!name) return [];
+  const docs = navigationDocuments(doc, uri, openDocs);
+  const locations: Location[] = [];
+  for (const [indexedUri, symbols] of getIndex()) {
+    for (const symbol of symbols) {
+      if (symbol.name === name && symbol.declarationKeyword === "proc"
+        && symbol.containerKeyword === "impl" && symbol.hasBody === true) {
+        const start = Position.create(symbol.line, symbol.nameCharacter ?? symbol.character);
+        locations.push(Location.create(indexedUri, Range.create(start, Position.create(start.line, start.character + name.length))));
+      }
+      if (symbol.declarationKeyword === "impl" && (symbol.name === name || symbol.implementationType === name)) {
+        const start = Position.create(symbol.line, symbol.character);
+        locations.push(Location.create(indexedUri, Range.create(start, Position.create(start.line, start.character + "impl".length))));
+      }
+    }
+  }
+  for (const entry of docs) {
+    locations.push(...procedureImplementations(entry.doc, name, entry.uri));
+    for (const block of implementationBlocks(entry.doc)) {
+      const traitSide = block.header.split(/\bfor\b/, 1)[0] ?? "";
+      const implementingSide = block.header.split(/\bfor\b/).slice(1).join(" for ");
+      if (!new RegExp(`(?<![A-Za-z0-9_])${escapeRx(name)}(?![A-Za-z0-9_])`).test(traitSide + " " + implementingSide)) continue;
+      const start = entry.doc.positionAt(block.start);
+      locations.push(Location.create(entry.uri, Range.create(start, entry.doc.positionAt(block.start + 4))));
+    }
+  }
+  return dedupeBy(locations, (location) =>
+    `${location.uri}:${posKey(location.range.start)}:${posKey(location.range.end)}`,
+  );
+}
+
+const TYPE_SYMBOL_KINDS = new Set<SymbolKind>([
+  SymbolKind.Struct,
+  SymbolKind.Enum,
+  SymbolKind.Interface,
+  SymbolKind.TypeParameter,
+]);
+
+function typeNameForPosition(doc: TextDocument, pos: Position): string | null {
+  const line = doc.getText(Range.create(Position.create(pos.line, 0), Position.create(pos.line, Number.MAX_SAFE_INTEGER)));
+  const selected = wordAt(doc, pos);
+  if (!selected) return null;
+  const patterns = [
+    /\b(?:let|const|static|global)\s+(?:mut\s+)?([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*(?:[.:/][A-Za-z_]\w*)*)/g,
+    /\b([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*(?:[.:/][A-Za-z_]\w*)*)/g,
+  ];
+  for (const pattern of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(line))) {
+      const name = match[1];
+      const type = match[2];
+      if (!name || !type) continue;
+      const nameStart = match.index + match[0].indexOf(name);
+      const typeStart = match.index + match[0].lastIndexOf(type);
+      const cursor = doc.offsetAt(pos) - doc.offsetAt(Position.create(pos.line, 0));
+      if ((selected === name && cursor >= nameStart && cursor <= nameStart + name.length)
+        || (selected === type && cursor >= typeStart && cursor <= typeStart + type.length)) return type.split(/[.:/]/).pop() ?? type;
+    }
+  }
+  const returnType = /\bproc\s+[A-Za-z_]\w*[^\n]*?->\s*([A-Za-z_]\w*(?:[.:/][A-Za-z_]\w*)*)/.exec(line);
+  if (returnType?.[1] && (selected === returnType[1] || /\bproc\s+[A-Za-z_]\w*/.test(line))) {
+    return returnType[1].split(/[.:/]/).pop() ?? returnType[1];
+  }
+  const alias = new RegExp(`\\btype\\s+${escapeRx(selected)}\\s*=\\s*([A-Za-z_]\\w*(?:[.:/]\\w+)*)`).exec(line);
+  if (alias?.[1]) return alias[1].split(/[.:/]/).pop() ?? alias[1];
+  return selected;
+}
+
+/** Resolve the declared type associated with a variable, field, parameter or return. */
+export function typeDefinitionAtPosition(
+  doc: TextDocument,
+  pos: Position,
+  uri: string,
+  openDocs: NavigationDocument[] = [],
+): Location[] {
+  const typeName = typeNameForPosition(doc, pos);
+  if (!typeName) return [];
+  return symbolLocations(typeName, navigationDocuments(doc, uri, openDocs), TYPE_SYMBOL_KINDS, true);
+}
+
+export const MAX_REFERENCE_RESULTS = 20_000;
+
+export function referencesAtPosition(
+  doc: TextDocument,
+  pos: Position,
+  uri: string,
+  maxResults = MAX_REFERENCE_RESULTS,
+): Location[] {
   const tok = tokenAt(doc, pos) ?? wordAt(doc, pos);
   if (!tok) return [];
+  return referencesForToken(doc, tok, uri, maxResults);
+}
+
+/** Find code occurrences of an identifier or path-like token, up to the requested result cap. */
+export function referencesForToken(
+  doc: TextDocument,
+  tok: string,
+  uri: string,
+  maxResults = MAX_REFERENCE_RESULTS,
+): Location[] {
+  if (!tok || maxResults <= 0) return [];
   const pathLike = /[./:-]/.test(tok);
   const text = doc.getText();
   const mask = buildCodeMask(text);
@@ -393,7 +667,7 @@ export function referencesAtPosition(doc: TextDocument, pos: Position, uri: stri
     : new RegExp(`(?<![A-Za-z0-9_])${escapeRx(tok)}(?![A-Za-z0-9_])`, "g");
   re.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
+  while (out.length < maxResults && (m = re.exec(text))) {
     const idx = m.index ?? 0;
     if (!mask[idx]) { if (m[0].length === 0) re.lastIndex++; continue; }
     const start = doc.positionAt(idx);
@@ -650,8 +924,35 @@ export function workspaceSymbols(
       if (result.length >= limit * 4) break; // cap intermédiaire avant tri
     }
   }
+  const openUris = new Set(openDocs.map((entry) => entry.uri));
+  for (const [uri, symbols] of getIndex()) {
+    if (openUris.has(uri)) continue;
+    for (const symbol of symbols) {
+      const score = q ? fuzzyScore(symbol.name, q) : 1;
+      if (q && score <= 0) continue;
+      const start = Position.create(symbol.line, symbol.nameCharacter ?? symbol.character);
+      result.push({
+        ws: {
+          name: symbol.name,
+          kind: symbol.kind as unknown as SymbolKind,
+          location: Location.create(uri, Range.create(start, Position.create(start.line, start.character + symbol.name.length))),
+          ...(symbol.containerName ? { containerName: symbol.containerName } : {}),
+        },
+        score,
+        idx: seq++,
+      });
+      if (result.length >= limit * 8) break;
+    }
+    if (result.length >= limit * 8) break;
+  }
   result.sort((a, b) => b.score - a.score || a.idx - b.idx);
-  return result.slice(0, limit).map(r => r.ws);
+  return dedupeBy(result.map((entry) => entry.ws), (symbol) => {
+    const location = symbol.location;
+    if ("range" in location) {
+      return `${location.uri}:${location.range.start.line}:${location.range.start.character}:${symbol.name}`;
+    }
+    return `${location.uri}:${symbol.name}:${symbol.kind}`;
+  }).slice(0, limit);
 }
 
 /* --------------------------------- Helpers -------------------------------- */

@@ -13,10 +13,226 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docs-site-audits:
+    name: Documentation site audits
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Verify generated reports and source provenance
+        run: make docs-site-check
+
+  unicode-portability:
+    name: Unicode portability
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Verify deterministic Unicode generation
+        run: python scripts/test-unicode-generation.py
+
+      - name: Compile Unicode with the Windows toolchain
+        run: python scripts/check-portability.py --strict
+
+      - name: Compile and run filesystem/platform portability test
+        shell: pwsh
+        run: |
+          cl /nologo /std:c17 /W4 /WX /TC `
+            /I src /I src/bootstrap /I include `
+            src/bootstrap/filesystem/filesystem.c `
+            src/bootstrap/platform/platform.c `
+            src/tests/filesystem_portability_test.c `
+            /Fe:filesystem_portability_test.exe
+          .\filesystem_portability_test.exe
+
+  installer-native-linux:
+    name: Native Linux package build and install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install package inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential \
+            libarchive-tools
+
+      - name: Confirm native runner architecture
+        run: test "$(uname -m)" = x86_64
+
+      - name: Build the native compiler
+        run: make -j2 MODE=release all
+
+      - name: Build the amd64 Debian package
+        env:
+          OUT_DIR: ${{ runner.temp }}/vitte-packages
+          ARCH: amd64
+        run: scripts/build-linux-debs.sh
+
+      - name: Verify package contents, checksum and artifact manifest
+        env:
+          OUT_DIR: ${{ runner.temp }}/vitte-packages
+          REQUIRE_ARTIFACT_MANIFESTS: '1'
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          test -s "$OUT_DIR/vitte_${version}_amd64.deb.MANIFEST.json"
+          scripts/verify-installers.sh
+
+      - name: Install the Debian package and run the installed compiler
+        env:
+          OUT_DIR: ${{ runner.temp }}/vitte-packages
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          sudo dpkg -i "$OUT_DIR/vitte_${version}_amd64.deb"
+          VITTE_BIN=/usr/local/bin/vitte scripts/ci/real-install-smoke.sh
+
+  installer-native-macos:
+    name: Native macOS package build and install
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install package inspection tools
+        run: |
+          brew install libarchive
+          echo "$(brew --prefix libarchive)/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm native runner architecture
+        run: test "$(uname -m)" = arm64
+
+      - name: Build the arm64 package and DMG
+        env:
+          OUT_DIR: ${{ runner.temp }}/vitte-packages
+          ARCH: arm64
+          DMG_PRESENTATION: '0'
+          STRICT_DMG: '1'
+        run: scripts/build-macos-installers.sh
+
+      - name: Verify package contents, checksums and artifact manifests
+        env:
+          OUT_DIR: ${{ runner.temp }}/vitte-packages
+          REQUIRE_ARTIFACT_MANIFESTS: '1'
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          test -s "$OUT_DIR/vitte-${version}-macos-arm64.pkg.MANIFEST.json"
+          test -s "$OUT_DIR/vitte-${version}-macos-arm64.dmg.MANIFEST.json"
+          scripts/verify-installers.sh
+
+      - name: Install the package and run the installed compiler
+        env:
+          OUT_DIR: ${{ runner.temp }}/vitte-packages
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          sudo installer -pkg "$OUT_DIR/vitte-${version}-macos-arm64.pkg" -target /
+          VITTE_BIN=/usr/local/bin/vitte scripts/ci/real-install-smoke.sh
+
+  installer-native-windows:
+    name: Native Windows installer build and install
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Preserve Unix line endings for MSYS2 scripts
+        run: git config --global core.autocrlf input
+
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up native Windows build tools
+        uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            perl
+            python
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-libarchive
+            mingw-w64-ucrt-x86_64-nsis
+
+      - name: Expose the native compiler for installed smoke tests
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:MSYS2_LOCATION 'ucrt64\bin')
+
+      - name: Build the native compiler and amd64 NSIS installer
+        shell: msys2 {0}
+        run: |
+          test "$(uname -m)" = x86_64
+          make -j2 MODE=release CC=gcc LDFLAGS='-static -static-libgcc' LDLIBS=-lm all
+          out_dir="$(cygpath -u "$RUNNER_TEMP")/vitte-packages"
+          mkdir -p "$out_dir"
+          ARCH=amd64 \
+          STRICT_NATIVE=1 \
+          VITTE_BIN="$(pwd)/build/bin/vitte.exe" \
+          WINDOWS_VITTE_EXE="$(pwd)/build/bin/vitte.exe" \
+          OUT_DIR="$out_dir" \
+            scripts/build-windows-installer.sh
+          version="$(tr -d '[:space:]' < VERSION)"
+          test -s "$out_dir/vitte-${version}-windows-amd64-nsis.tar.gz.MANIFEST.json"
+          test -s "$out_dir/vitte-${version}-windows-amd64-installer.exe.MANIFEST.json"
+          OUT_DIR="$out_dir" REQUIRE_ARTIFACT_MANIFESTS=1 scripts/verify-installers.sh
+
+      - name: Install the Windows package and run the installed compiler
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $outDir = Join-Path $env:RUNNER_TEMP 'vitte-packages'
+          $installer = Join-Path $outDir "vitte-$version-windows-amd64-installer.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP 'vitte-installed'
+          $process = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installDir") -PassThru -Wait
+          if ($process.ExitCode -ne 0) {
+            throw "Vitte installer failed with exit code $($process.ExitCode)"
+          }
+          $env:VITTE_ROOT = Join-Path $installDir 'share\vitte'
+          $vitteBin = Join-Path $installDir 'bin\vitte.exe'
+          & .\scripts\ci\real-install-smoke.ps1 -VitteBin $vitteBin
+
   compiler-runtime:
     name: Compiler and runtime
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Check out repository
@@ -33,14 +249,53 @@ jobs:
           sudo apt-get install --no-install-recommends -y \
             build-essential
 
-      - name: Build compiler
-        run: make -j2
-
-      - name: Run compiler test suite
-        run: make test
+      - name: Run focused compiler power gate
+        run: make compiler-power-gate
 
       - name: Run runtime tests
         run: make test-runtime
+
+      - name: Run full debug and release verification
+        run: make verify
+
+  compiler-selfhost:
+    name: Native compiler self-host
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install compiler dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential
+
+      - name: Rebuild the compiler through two native stages
+        run: make MODE=release compiler-selfhost-gate
+
+  sanitizer-fuzz:
+    name: ASan/UBSan and continuous fuzzing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install sanitizer and fuzzing dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential
+
+      - name: Run ASan and UBSan regression suite
+        run: make test-sanitizers
+
+      - name: Run lexer/parser/import/config fuzzing loop
+        run: make fuzz-continuous FUZZ_SECONDS=60
 
   extension-dap:
     name: Extension and native DAP

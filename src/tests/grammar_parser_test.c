@@ -104,6 +104,70 @@ find_operator(
     return NULL;
 }
 
+static const vitte_ast_node_t *
+find_named_child(
+    const vitte_parser_t *parser,
+    const vitte_ast_node_t *parent,
+    vitte_ast_node_kind_t kind,
+    const char *name)
+{
+    size_t i;
+    size_t name_length = strlen(name);
+
+    if (parent == NULL) {
+        return NULL;
+    }
+    for (i = 0u; i < parent->child_count; ++i) {
+        const vitte_ast_node_t *child =
+            vitte_parser_get_node(parser, parent->children[i]);
+        const vitte_ast_node_t *name_node;
+        const vitte_token_t *token;
+
+        if (child == NULL || child->kind != kind ||
+            child->child_count == 0u) {
+            continue;
+        }
+        name_node = vitte_parser_get_node(parser, child->children[0]);
+        if (name_node == NULL ||
+            name_node->token_index >= parser->token_count) {
+            continue;
+        }
+        token = &parser->tokens[name_node->token_index];
+        if (token->lexeme != NULL && token->length == name_length &&
+            memcmp(token->lexeme, name, name_length) == 0) {
+            return child;
+        }
+    }
+    return NULL;
+}
+
+static const vitte_ast_node_t *
+find_pattern_flag(
+    const vitte_parser_t *parser,
+    vitte_ast_node_id_t id,
+    vitte_ast_flags_t flag)
+{
+    const vitte_ast_node_t *node;
+    size_t index;
+
+    node = vitte_parser_get_node(parser, id);
+    if (node == NULL) {
+        return NULL;
+    }
+    if (node->kind == VITTE_AST_NODE_PATTERN &&
+        (node->flags & flag) != 0u) {
+        return node;
+    }
+    for (index = 0u; index < node->child_count; ++index) {
+        const vitte_ast_node_t *found = find_pattern_flag(
+            parser, node->children[index], flag);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
 static int
 check_precedence(void)
 {
@@ -228,7 +292,7 @@ check_syntax_surface(void)
         "  ensures value > 0;\n"
         "{\n"
         "  set result = add(value);\n"
-        "  give result;\n"
+        "  return result;\n"
         "}\n";
     vitte_lexer_t lexer;
     vitte_parser_t parser;
@@ -271,7 +335,7 @@ check_slice_and_cast_syntax(void)
     static const char source[] =
         "form Buffer { values: [i64] }\n"
         "proc convert(value: f64) -> i64 {\n"
-        "  give value as i64;\n"
+        "  return value as i64;\n"
         "}\n";
     vitte_lexer_t lexer;
     vitte_parser_t parser;
@@ -329,9 +393,9 @@ static int
 check_keyword_named_procedure(void)
 {
     static const char source[] =
-        "proc null() -> int { give 0; }\n"
+        "proc null() -> int { return 0; }\n"
         "proc declared() -> int;\n"
-        "proc use_null() -> int { give null(); }\n"
+        "proc use_null() -> int { return null(); }\n"
         "proc use_null_literal() { set value = null; }\n";
     vitte_lexer_t lexer;
     vitte_parser_t parser;
@@ -419,6 +483,423 @@ check_invalid_syntax(void)
         destroy_frontend(&lexer, &parser);
     }
 
+    return ok;
+}
+
+static int
+check_recovery(void)
+{
+    static const char list_source[] =
+        "form Packet { first: i64, broken: , last: i64 }\n"
+        "proc calls(a: i64, bad: , z: i64) {\n"
+        "  consume(\"ok\", , \"still\");\n"
+        "  [1, , 3];\n"
+        "  asm(\"nop\", , \"clobber\");\n"
+        "}\n"
+        "proc tail() {}\n";
+    static const char nested_source[] =
+        "trait Service {\n"
+        "  proc prototype();\n"
+        "  ,\n"
+        "  proc broken() -> { let x: i64 = 1; }\n"
+        "  proc inside() {}\n"
+        "}\n"
+        "proc later_broken() { return 1 + ; }\n"
+        "proc outside() {}\n";
+    const char *sources[] = { list_source, nested_source };
+    size_t case_index;
+    int ok = 1;
+
+    for (case_index = 0u; case_index < 2u; ++case_index) {
+        vitte_lexer_t lexer;
+        vitte_parser_t parser;
+        const vitte_ast_node_t *root;
+        const vitte_ast_node_t *owner;
+        const vitte_ast_node_t *tail;
+        size_t minimum_diagnostics = case_index == 0u ? 5u : 3u;
+        size_t expected_declarations = 3u;
+
+        if (!parse_source(sources[case_index], &lexer, &parser)) {
+            (void)fprintf(stderr, "[GRAMMAR] recovery setup failed\n");
+            ok = 0;
+            continue;
+        }
+        if (vitte_parser_run(&parser)) {
+            (void)fprintf(stderr, "[GRAMMAR] malformed recovery source accepted\n");
+            ok = 0;
+        }
+        root = vitte_parser_get_node(&parser, vitte_parser_root(&parser));
+        owner = find_named_child(
+            &parser, root,
+            case_index == 0u ? VITTE_AST_NODE_FORM_DECL
+                             : VITTE_AST_NODE_TRAIT_DECL,
+            case_index == 0u ? "Packet" : "Service");
+        tail = find_named_child(
+            &parser, root, VITTE_AST_NODE_PROC_DECL,
+            case_index == 0u ? "tail" : "outside");
+        if (root == NULL || root->child_count != expected_declarations ||
+            owner == NULL || tail == NULL ||
+            vitte_parser_diagnostic_count(&parser) < minimum_diagnostics ||
+            !vitte_parser_validate(&parser)) {
+            (void)fprintf(
+                stderr,
+                "[GRAMMAR] recovery stopped before later declarations "
+                "(case=%zu, root children=%zu, diagnostics=%zu)\n",
+                case_index + 1u,
+                root != NULL ? root->child_count : 0u,
+                vitte_parser_diagnostic_count(&parser));
+            ok = 0;
+        } else if (case_index == 0u) {
+            const vitte_ast_node_t *calls = find_named_child(
+                &parser, root, VITTE_AST_NODE_PROC_DECL, "calls");
+            const vitte_ast_node_t *call = find_kind(
+                &parser, calls != NULL ? calls->id : VITTE_AST_INVALID_ID,
+                VITTE_AST_NODE_CALL_EXPR);
+            const vitte_ast_node_t *array = find_kind(
+                &parser, calls != NULL ? calls->id : VITTE_AST_INVALID_ID,
+                VITTE_AST_NODE_ARRAY_EXPR);
+            const vitte_ast_node_t *asm_statement = find_kind(
+                &parser, calls != NULL ? calls->id : VITTE_AST_INVALID_ID,
+                VITTE_AST_NODE_ASM_STMT);
+
+            if (owner->child_count != 3u || calls == NULL ||
+                call == NULL || call->child_count != 3u ||
+                array == NULL || array->child_count != 2u ||
+                asm_statement == NULL || asm_statement->child_count != 2u) {
+                (void)fprintf(stderr, "[GRAMMAR] list recovery lost valid items\n");
+                ok = 0;
+            }
+        } else {
+            size_t diagnostic_index;
+            int first_error = 0;
+            int later_error = 0;
+
+            for (diagnostic_index = 0u;
+                 diagnostic_index < vitte_parser_diagnostic_count(&parser);
+                 ++diagnostic_index) {
+                const vitte_parser_diagnostic_t *diagnostic =
+                    vitte_parser_diagnostic_at(&parser, diagnostic_index);
+
+                if (diagnostic != NULL && diagnostic->span.line == 4u) {
+                    first_error = 1;
+                }
+                if (diagnostic != NULL && diagnostic->span.line == 7u) {
+                    later_error = 1;
+                }
+            }
+            if (find_named_child(
+                    &parser, owner, VITTE_AST_NODE_PROC_DECL,
+                    "inside") == NULL ||
+                !first_error || !later_error) {
+                (void)fprintf(
+                    stderr,
+                    "[GRAMMAR] nested recovery missed a later error\n");
+                ok = 0;
+            }
+        }
+        destroy_frontend(&lexer, &parser);
+    }
+
+    return ok;
+}
+
+static int
+check_nested_list_recovery(void)
+{
+    static const char generic_source[] =
+        "form Box<T, , U> where T: Trait, U: { value: T }\n"
+        "pick Choice<T> { None, Some(T, , i64), After }\n"
+        "proc generic(value: Box<i64, , u64>) {}\n"
+        "proc tail() {}\n";
+    static const char match_source[] =
+        "proc choose() {\n"
+        "  match value { 0 => 0, 1 => , 2 => 2, }\n"
+        "  return 3;\n"
+        "}\n"
+        "proc tail() {}\n";
+    const char *sources[] = { generic_source, match_source };
+    size_t case_index;
+    int ok = 1;
+
+    for (case_index = 0u; case_index < 2u; ++case_index) {
+        vitte_lexer_t lexer;
+        vitte_parser_t parser;
+        const vitte_ast_node_t *root;
+        const vitte_ast_node_t *tail;
+        int case_ok;
+
+        if (!parse_source(sources[case_index], &lexer, &parser)) {
+            (void)fprintf(stderr, "[GRAMMAR] nested-list setup failed\n");
+            ok = 0;
+            continue;
+        }
+        case_ok = !vitte_parser_run(&parser);
+        root = vitte_parser_get_node(&parser, vitte_parser_root(&parser));
+        tail = find_named_child(
+            &parser, root, VITTE_AST_NODE_PROC_DECL, "tail");
+        if (root == NULL || tail == NULL ||
+            root->child_count != (case_index == 0u ? 4u : 2u) ||
+            vitte_parser_diagnostic_count(&parser) <
+                (case_index == 0u ? 4u : 1u) ||
+            !vitte_parser_validate(&parser)) {
+            case_ok = 0;
+        }
+        if (case_index == 0u) {
+            const vitte_ast_node_t *form = find_named_child(
+                &parser, root, VITTE_AST_NODE_FORM_DECL, "Box");
+            const vitte_ast_node_t *pick = find_named_child(
+                &parser, root, VITTE_AST_NODE_PICK_DECL, "Choice");
+            const vitte_ast_node_t *procedure = find_named_child(
+                &parser, root, VITTE_AST_NODE_PROC_DECL, "generic");
+            const vitte_ast_node_t *type = find_kind(
+                &parser,
+                procedure != NULL ? procedure->id : VITTE_AST_INVALID_ID,
+                VITTE_AST_NODE_TYPE_EXPR);
+
+            if (form == NULL || pick == NULL || procedure == NULL ||
+                type == NULL || type->child_count != 3u ||
+                find_named_child(
+                    &parser, pick, VITTE_AST_NODE_VARIANT_DECL,
+                    "After") == NULL) {
+                case_ok = 0;
+            }
+        } else {
+            const vitte_ast_node_t *procedure = find_named_child(
+                &parser, root, VITTE_AST_NODE_PROC_DECL, "choose");
+            const vitte_ast_node_t *match = find_kind(
+                &parser,
+                procedure != NULL ? procedure->id : VITTE_AST_INVALID_ID,
+                VITTE_AST_NODE_MATCH_STMT);
+
+            if (match == NULL || match->child_count != 3u ||
+                find_kind(
+                    &parser,
+                    procedure != NULL ? procedure->id : VITTE_AST_INVALID_ID,
+                    VITTE_AST_NODE_RETURN_STMT) == NULL) {
+                case_ok = 0;
+            }
+        }
+        if (!case_ok) {
+            (void)fprintf(
+                stderr,
+                "[GRAMMAR] nested-list recovery lost later syntax "
+                "(case=%zu, root children=%zu, diagnostics=%zu)\n",
+                case_index + 1u,
+                root != NULL ? root->child_count : 0u,
+                vitte_parser_diagnostic_count(&parser));
+            ok = 0;
+        }
+        destroy_frontend(&lexer, &parser);
+    }
+
+    return ok;
+}
+
+static int
+check_delimiter_recovery(void)
+{
+    static const char source[] =
+        "proc broken() {\n"
+        "  consume((1 + , 2), 3);\n"
+        "  return 4;\n"
+        "}\n"
+        "proc tail() {}\n";
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *broken;
+    const vitte_ast_node_t *call;
+    int ok;
+
+    if (!parse_source(source, &lexer, &parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] delimiter recovery setup failed\n");
+        return 0;
+    }
+    ok = !vitte_parser_run(&parser);
+    root = vitte_parser_get_node(&parser, vitte_parser_root(&parser));
+    broken = find_named_child(
+        &parser, root, VITTE_AST_NODE_PROC_DECL, "broken");
+    call = find_kind(
+        &parser,
+        broken != NULL ? broken->id : VITTE_AST_INVALID_ID,
+        VITTE_AST_NODE_CALL_EXPR);
+    if (root == NULL || root->child_count != 2u ||
+        find_named_child(
+            &parser, root, VITTE_AST_NODE_PROC_DECL, "tail") == NULL ||
+        call == NULL || call->child_count != 2u ||
+        find_kind(
+            &parser,
+            broken != NULL ? broken->id : VITTE_AST_INVALID_ID,
+            VITTE_AST_NODE_RETURN_STMT) == NULL ||
+        vitte_parser_diagnostic_count(&parser) == 0u ||
+        !vitte_parser_validate(&parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] nested delimiter consumed later code\n");
+        ok = 0;
+    }
+    destroy_frontend(&lexer, &parser);
+    return ok;
+}
+
+static int
+check_import_list_recovery(void)
+{
+    static const char source[] =
+        "use core::{first, , third};\n"
+        "export {alpha, , beta};\n"
+        "proc tail() {}\n";
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *use_node;
+    const vitte_ast_node_t *export_node;
+    int ok;
+
+    if (!parse_source(source, &lexer, &parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] import recovery setup failed\n");
+        return 0;
+    }
+    ok = !vitte_parser_run(&parser);
+    root = vitte_parser_get_node(&parser, vitte_parser_root(&parser));
+    use_node = root != NULL && root->child_count > 0u
+        ? vitte_parser_get_node(&parser, root->children[0]) : NULL;
+    export_node = root != NULL && root->child_count > 1u
+        ? vitte_parser_get_node(&parser, root->children[1]) : NULL;
+    if (root == NULL || root->child_count != 3u ||
+        use_node == NULL || use_node->kind != VITTE_AST_NODE_USE_DECL ||
+        use_node->child_count != 3u ||
+        export_node == NULL || export_node->kind != VITTE_AST_NODE_USE_DECL ||
+        export_node->child_count != 2u ||
+        find_named_child(
+            &parser, root, VITTE_AST_NODE_PROC_DECL, "tail") == NULL ||
+        vitte_parser_diagnostic_count(&parser) < 2u ||
+        !vitte_parser_validate(&parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] import list recovery lost items\n");
+        ok = 0;
+    }
+    destroy_frontend(&lexer, &parser);
+    return ok;
+}
+
+static int
+check_attributes_and_patterns(void)
+{
+    static const char source[] =
+        "#![module(test)]\n"
+        "#[repr(C)] form Pair<T> where T: Trait { left: T, right: T }\n"
+        "impl<T> Pair<T> where T: Trait {\n"
+        "  proc get(value: T) -> T { return value; }\n"
+        "}\n"
+        "#[inline] proc unpack(value: i64) {\n"
+        "  let [first, second] = [value, value];\n"
+        "  for item in [first, second] { return; }\n"
+        "  match value { case 0 => { return; }, case _ => { return; } }\n"
+        "}\n";
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *pair;
+    const vitte_ast_node_t *implementation;
+    const vitte_ast_node_t *unpack;
+    const vitte_ast_node_t *pattern;
+    int ok;
+
+    if (!parse_source(source, &lexer, &parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] attribute setup failed\n");
+        return 0;
+    }
+    ok = vitte_parser_run(&parser);
+    root = vitte_parser_get_node(&parser, vitte_parser_root(&parser));
+    pair = find_named_child(&parser, root, VITTE_AST_NODE_FORM_DECL, "Pair");
+    implementation = find_kind(
+        &parser,
+        vitte_parser_root(&parser),
+        VITTE_AST_NODE_IMPL_DECL);
+    unpack = find_named_child(&parser, root, VITTE_AST_NODE_PROC_DECL, "unpack");
+    pattern = find_kind(&parser, unpack != NULL ? unpack->id : VITTE_AST_INVALID_ID,
+                        VITTE_AST_NODE_PATTERN);
+    if (!ok || root == NULL || root->child_count != 3u || pair == NULL ||
+        implementation == NULL ||
+        unpack == NULL || pattern == NULL ||
+        (pair->flags & VITTE_AST_FLAG_HAS_ATTRIBUTES) == 0u ||
+        (unpack->flags & VITTE_AST_FLAG_HAS_ATTRIBUTES) == 0u ||
+        vitte_parser_diagnostic_count(&parser) != 0u ||
+        !vitte_parser_validate(&parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] attributes or patterns were not preserved\n");
+        ok = 0;
+    }
+    destroy_frontend(&lexer, &parser);
+    return ok;
+}
+
+static int
+check_advanced_grammar_surface(void)
+{
+    static const char source[] =
+        "#[repr(C)]\n"
+        "trait Printable<T: Display + Debug> where T: Display + Debug {\n"
+        "  type Item: Display;\n"
+        "  const FLAG: bool = true;\n"
+        "  proc format<U>(value: U) -> string where U: Display;\n"
+        "}\n"
+        "impl<T> Printable<T> for Box<T> where T: Display + Debug {\n"
+        "  type Item = T;\n"
+        "  proc format<U>(value: U) -> string where U: Display { return value; }\n"
+        "}\n"
+        "#[inline] proc inspect<T>(value: T) where T < 4 {\n"
+        "  let Point { x, y: mut z, .. } = value;\n"
+        "  let 1..=3 = value;\n"
+        "  match value {\n"
+        "    case Some(a, b) | None if ready => b,\n"
+        "    case Point { x, y } => x,\n"
+        "    case _ => value,\n"
+        "  }\n"
+        "}\n";
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *trait_node;
+    const vitte_ast_node_t *impl_node;
+    const vitte_ast_node_t *procedure;
+    const vitte_ast_node_t *generic;
+    const vitte_ast_node_t *where_node;
+    int ok;
+
+    if (!parse_source(source, &lexer, &parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] advanced surface setup failed\n");
+        return 0;
+    }
+    ok = vitte_parser_run(&parser);
+    root = vitte_parser_get_node(&parser, vitte_parser_root(&parser));
+    trait_node = find_kind(&parser, vitte_parser_root(&parser),
+                           VITTE_AST_NODE_TRAIT_DECL);
+    impl_node = find_kind(&parser, vitte_parser_root(&parser),
+                          VITTE_AST_NODE_IMPL_DECL);
+    procedure = find_named_child(&parser, root, VITTE_AST_NODE_PROC_DECL,
+                                 "inspect");
+    generic = find_kind(&parser, procedure != NULL ? procedure->id
+                                                    : VITTE_AST_INVALID_ID,
+                        VITTE_AST_NODE_GENERIC_PARAM);
+    where_node = find_kind(&parser, procedure != NULL ? procedure->id
+                                                       : VITTE_AST_INVALID_ID,
+                           VITTE_AST_NODE_WHERE_CLAUSE);
+    if (!ok || root == NULL || root->child_count != 3u ||
+        trait_node == NULL || trait_node->child_count < 4u ||
+        impl_node == NULL || impl_node->child_count < 3u ||
+        procedure == NULL || generic == NULL || where_node == NULL ||
+        find_pattern_flag(&parser, procedure->id,
+                          VITTE_AST_FLAG_PATTERN_HEAD) == NULL ||
+        find_pattern_flag(&parser, procedure->id,
+                          VITTE_AST_FLAG_PATTERN_RANGE) == NULL ||
+        find_pattern_flag(&parser, procedure->id,
+                          VITTE_AST_FLAG_PATTERN_OR) == NULL ||
+        (procedure->flags & VITTE_AST_FLAG_HAS_ATTRIBUTES) == 0u ||
+        vitte_parser_diagnostic_count(&parser) != 0u ||
+        !vitte_parser_validate(&parser)) {
+        (void)fprintf(stderr,
+                      "[GRAMMAR] generic/trait/impl/where/pattern surface mismatch\n");
+        ok = 0;
+    }
+    destroy_frontend(&lexer, &parser);
     return ok;
 }
 
@@ -574,6 +1055,24 @@ main(int argc, char **argv)
         ok = 0;
     }
     if (!check_invalid_syntax()) {
+        ok = 0;
+    }
+    if (!check_recovery()) {
+        ok = 0;
+    }
+    if (!check_nested_list_recovery()) {
+        ok = 0;
+    }
+    if (!check_delimiter_recovery()) {
+        ok = 0;
+    }
+    if (!check_import_list_recovery()) {
+        ok = 0;
+    }
+    if (!check_attributes_and_patterns()) {
+        ok = 0;
+    }
+    if (!check_advanced_grammar_surface()) {
         ok = 0;
     }
 

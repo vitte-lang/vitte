@@ -42,16 +42,17 @@ Open a .vit file  →  Detect the toolchain  →  Edit with live feedback
 - `.vitl` — library and standard-library source
 - `.vitte` — legacy compatibility
 - Grammar-aligned highlighting, snippets, completion, signature help, hover, diagnostics, semantic tokens, and formatting
-- Go to definition, find references, document/workspace symbols, and rename
+- Go to declaration, definition, implementation, and type definition across indexed workspace files; find references and highlights in open files, plus references in indexed workspace files; document/workspace symbols; call/type hierarchies; and rename
 - Native DAP launch for `.vit` sources, with external DAP stdio and TCP attach retained for advanced/native targets
 
 ### IntelliSense parity
 
 Vitte follows the same editor-facing IntelliSense surface as the Microsoft
 C/C++ extension where the LSP model applies: completion, signature help,
-hover, diagnostics, symbols, navigation, references, rename, code actions,
-formatting, semantic tokens, inlay hints, and call/type hierarchies are
-exposed by the bundled language server and covered by the extension tests.
+hover, diagnostics, symbols, declaration/definition/implementation/type
+navigation, references and highlights, rename, code actions, formatting,
+semantic tokens, inlay hints, and call/type hierarchies are
+exposed by the bundled language server.
 
 The native debug path compiles with DWARF symbols and `#line` source mappings,
 then exposes the debuggee lifecycle through a persistent LLDB-backed DAP
@@ -67,7 +68,7 @@ The 2.2 release aligns highlighting, snippets, operators, literals, and primitiv
 space hello
 
 proc main() -> int {
-    give 0;
+    return 0;
 }
 ```
 

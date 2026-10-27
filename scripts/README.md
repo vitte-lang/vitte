@@ -45,6 +45,12 @@ Raspberry Pi 1 source installation:
 - Run `scripts/install-raspberry-pi1.sh` from the source checkout. It builds natively with one job by default, installs the compiler and JSON source module via `make install`, then compiles and runs a smoke program. The default prefix is `/usr/local`; the script asks for `sudo` only for the installation step when required.
 - For a user-writable installation: `scripts/install-raspberry-pi1.sh --prefix "$HOME/.local"`. Add `$HOME/.local/bin` to `PATH` if needed.
 - Inspect without changing the system: `scripts/install-raspberry-pi1.sh --dry-run`. Use `--destdir /absolute/stage` to stage an installation; `--allow-non-pi` requires `--destdir`, is only for staged host testing, and does not cross-compile for ARMv6.
+Complete Raspberry Pi OS installation:
+
+- Run `scripts/raspberry.sh` on a Raspberry Pi to install prerequisites, build Vitte natively, install the compiler, JSON module, and `editors/` integrations, then run the real compile/run smoke test.
+- Use `scripts/raspberry.sh --prefix "$HOME/.local" --skip-deps` for a user-local installation, or `--destdir /absolute/stage --allow-non-pi` for a staged host test.
+- Generate a self-contained installer on the target Pi with `ARCH=armv6 scripts/build-raspberry-installer.sh` (use `armv7` or `arm64` as appropriate). It writes a `.tar.gz` installer and `.sha256` checksum to `pkgout/`; the archive includes `install.sh`, `uninstall.sh`, the compiler, modules, `editors/`, completions, documentation and diagnostics.
+- The same builder is available through the common release entry point: `FAMILY=raspberry RASPBERRY_ARCH=armv6 scripts/build-all-installers.sh`.
 - A Pi 1 has little memory; keep the default single build job unless the device has enough free memory or swap. Build failures are reported, not replaced by a possibly incompatible prebuilt binary.
 
 Runtime contract checks:
@@ -62,3 +68,10 @@ Exit codes:
 - `2`: invalid command-line usage in target listing helpers.
 
 Release macOS builds should run with `STRICT_DMG=1` so a missing DMG is not silently accepted.
+
+`make test-packaging-matrix` checks the release target list against platform
+builder listings, verifies architecture and OS aliases, and confirms that the
+aggregate dry-run does not create an output directory. It validates declared
+coverage. The CI workflow builds and installs representative native Linux
+amd64, macOS arm64, and Windows amd64 packages; other matrix rows still need
+build and install smoke evidence from their target platforms.

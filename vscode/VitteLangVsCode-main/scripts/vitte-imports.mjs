@@ -17,11 +17,13 @@ function isSourceFile(filePath) {
 
 function shouldKeepModuleName(name) {
   const excludedSegments = new Set(['private', 'stdlib_checked', 'kernel_name']);
-  return !name.split(/[/.]/).some((segment) => {
+  return !name.split(/(?:::|[/.])+/).some((segment) => {
     const normalized = segment.toLowerCase();
     return excludedSegments.has(normalized)
       || normalized === 'test'
       || normalized === 'tests'
+      || normalized === 'bench'
+      || normalized === 'benchmarks'
       || normalized.startsWith('test_');
   });
 }
@@ -71,7 +73,7 @@ export async function readVitteImportNames(repoRoot) {
     const text = await fs.readFile(file, 'utf8');
     const match = /^\s*space\s+([^\s;]+)/m.exec(text);
     if (!match) continue;
-    const moduleName = match[1].trim();
+    const moduleName = match[1].trim().replace(/[/.]+/g, '::').replace(/:{3,}/g, '::');
     if (shouldKeepModuleName(moduleName)) moduleNames.add(moduleName);
   }
 

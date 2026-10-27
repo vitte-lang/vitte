@@ -1,20 +1,20 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(vitte_compiler C)
+# Keep the CMake entry point on the same staged native/default executable as
+# the repository Makefile. The Makefile owns the stage0 bootstrap build,
+# generated native pipeline, and final link order.
+find_program(VITTE_MAKE_EXECUTABLE NAMES gmake make)
+if(NOT VITTE_MAKE_EXECUTABLE)
+    message(FATAL_ERROR "Vitte requires make or gmake to build its compiler")
+endif()
 
-set(CMAKE_C_STANDARD 17)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
-
-file(GLOB_RECURSE VITTE_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
-)
-
-add_executable(vitte ${VITTE_SOURCES})
-
-target_compile_options(vitte PRIVATE
-    -Wall
-    -Wextra
-    -Werror
-    -pedantic
+add_custom_target(vitte ALL
+    COMMAND "${VITTE_MAKE_EXECUTABLE}"
+        -C "${CMAKE_SOURCE_DIR}"
+        "BUILD=${CMAKE_BINARY_DIR}"
+        "CC=${CMAKE_C_COMPILER}"
+        all
+    BYPRODUCTS "${CMAKE_BINARY_DIR}/bin/vitte"
+    COMMENT "Building the Vitte compiler with the native frontend pipeline"
+    VERBATIM
 )

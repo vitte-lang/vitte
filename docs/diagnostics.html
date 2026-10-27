@@ -86,45 +86,29 @@
 <header class="site-header"><a class="site-brand" href="index.html"><img class="site-brand-mark" src="svg/logo.svg" alt="" width="32" height="32"><span>Vitte</span></a><nav class="site-nav" aria-label="Primary"><ul class="nav-band"><li><a class="nav-chip" href="index.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-home"></use></svg><span>Welcome</span></a></li><li><a class="nav-chip" href="doc.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Documentation</span></a></li><li><a class="nav-chip" href="social-preview.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-home"></use></svg><span>Visual Preview</span></a></li><li><a class="nav-chip" href="download.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Download</span></a></li><li><a class="nav-chip" href="source.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Source</span></a></li><li><a class="nav-chip" href="community.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Community</span></a></li><li><a class="nav-chip" href="news.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-news"></use></svg><span>News</span></a></li><li><a class="nav-chip" href="diagnostics.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Diagnostics</span></a></li><li><a class="nav-chip" href="suggestions.html"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="svg/sprite.svg#i-docs"></use></svg><span>Suggestions</span></a></li></ul></nav><form class="doc-search" role="search" action="search.html" method="get"><input class="doc-search-input" type="search" name="q" placeholder="Search docs, book, grammar" aria-label="Search documentation" autocomplete="off"><div class="doc-search-controls" aria-label="Search filters"><select class="doc-search-filter doc-search-section" name="section" aria-label="Filter by section"><option value="all">All sections</option><option value="docs">Docs</option><option value="book">Book</option><option value="grammar">Grammar</option></select><select class="doc-search-filter doc-search-lang" name="lang" aria-label="Filter by language"><option value="all">All languages</option><option value="en">EN</option><option value="fr">FR</option></select></div><div class="doc-search-results" hidden></div><div class="doc-search-footer" hidden></div></form></header>
 <main id="main-content" class="site-main">
 <article class="doc-content">
-<center>
+<div class="text-center">
 <h1>Vitte Diagnostics</h1>
 <p>Quick consultation of diagnostics: a code, a layer, a correction.</p>
-</center>
-<hr>
-<div class="page-band">
-<a href="index.html"><img src="svg/home.svg" alt="" width="14" height="14">Welcome</a>
-<a href="doc.html"><img src="svg/docs.svg" alt="" width="14" height="14">Documentation</a>
-<a href="social-preview.html"><img src="svg/home.svg" alt="" width="14" height="14">Visual Preview</a>
-<a href="sitemap.html"><img src="svg/summary.svg" alt="" width="14" height="14">Sitemap</a>
-<a href="download.html"><img src="svg/download.svg" alt="" width="14" height="14">Download</a>
-<a href="source.html"><img src="svg/source.svg" alt="" width="14" height="14">Source</a>
-<a href="community.html"><img src="svg/community.svg" alt="" width="14" height="14">Community</a>
-<a href="news.html"><img src="svg/news.svg" alt="" width="14" height="14">News</a>
-<a href="diagnostics.html"><img src="svg/diagnostics.svg" alt="" width="14" height="14">Diagnostics</a>
-<a href="suggestions.html"><img src="svg/suggestions.svg" alt="" width="14" height="14">Suggestions</a>
 </div>
+<hr>
 <h2>Source of truth</h2>
-<p>The active diagnostics surface is the Vitte compiler itself. For implementation details, start from <code>src/vitte/compiler/diagnostics/diagnostic.vit</code> and the technical note <code>docs/compiler/diagnostics.md</code>. The bootstrap seed diagnostics described in <code>docs/seed_diagnostics.md</code> are a narrower stage0 contract, not the full compiler surface.</p>
+<p>The default CLI uses the C17 implementation in <code>src/bootstrap/diagnostic/</code>. The staged Vitte implementation lives in <code>src/compiler/diagnostic/</code>, with its diagnostic model in <code>src/compiler/diagnostic/diagnostic.vitte</code>. The shared reference is <a href="compiler/diagnostics.html">Compiler Diagnostics</a> (source: <code>docs/compiler/diagnostics.md</code>); the retired diagnostics migration is documented in <a href="ressources-secondaires.html">secondary project resources</a>.</p>
 <h2>Official sequence</h2>
 <ul>
-<li><code>vitte check &lt;file&gt;</code></li>
-<li><code>vitte check &lt;file&gt; --diagnostics-json</code></li>
-<li><code>vitte run &lt;file&gt;</code></li>
-<li><code>vitte parse &lt;file&gt;</code></li>
-<li><code>vitte explain &lt;code&gt;</code></li>
-<li><code>vitte dump-ast &lt;file&gt;</code></li>
-<li><code>vitte dump-hir &lt;file&gt;</code></li>
-<li><code>vitte dump-mir &lt;file&gt;</code></li>
+<li><code>vitte check &lt;file&gt;</code> validates a file without code generation.</li>
+<li><code>vitte check &lt;file&gt; --diagnostic=json</code> emits diagnostics as JSON. The alias is <code>--diagnostic-format=json</code>.</li>
+<li><code>vitte explain E0501 --diagnostic=json</code> explains one public diagnostic code as JSON.</li>
+<li><code>vitte parse &lt;file&gt; --emit-ast</code> parses a file and prints an AST summary.</li>
+<li><code>vitte compile &lt;file&gt; --emit-hir</code> and <code>vitte compile &lt;file&gt; --emit-ir</code> expose intermediate output.</li>
+<li><code>vitte run &lt;file&gt;</code> compiles and runs a program.</li>
 </ul>
-<p>Use <code>tests/strict_ok.vit</code> as the tracked smoke fixture when a docs page needs a small known-good source file.</p>
+<p>These command and option spellings are defined in <code>src/bootstrap/cli/command_spec.def</code>. Use <code>src/tests/diagnostic_sema_multiple_invalid.vit</code> from the repository root to reproduce semantic type errors.</p>
 <h2>Stable JSON surface</h2>
 <ul>
-<li><code>schema = "vitte.compiler.surface"</code></li>
-<li><code>surface = "diagnostics"</code></li>
-<li><code>valid</code> tells whether the request succeeded</li>
-<li><code>pipeline_failed_at</code> identifies the first failing stage</li>
-<li><code>primary_report.diagnostics[]</code> contains the flattened report</li>
-<li><code>phase_reports.*</code> keeps per-phase diagnostics</li>
+<li><code>schema</code> is <code>"vitte-diagnostics"</code>.</li>
+<li><code>version</code> is the JSON schema version (currently <code>1</code>).</li>
+<li><code>counts</code> summarizes severities; <code>stored</code> gives the number of stored entries.</li>
+<li><code>diagnostics[]</code> contains the structured diagnostic records.</li>
 </ul>
 <h2>Phase map</h2>
 <ul>
@@ -146,8 +130,8 @@
 <ul>
 <li>Read the first failing phase and code, not the whole waterfall.</li>
 <li>Reduce the repro to the smallest file that still fails.</li>
-<li>Re-run with <code>--diagnostics-json</code> when you need machine-readable detail.</li>
-<li>Use AST/HIR/MIR JSON dumps only after the frontend phase is clean enough to progress.</li>
+<li>Re-run with <code>--diagnostic=json</code> when you need machine-readable detail.</li>
+<li>Use <code>--emit-ast</code>, <code>--emit-hir</code>, or <code>--emit-ir</code> only when the earlier phase has progressed far enough to produce that representation.</li>
 </ul>
 <h2>Quick index</h2>
 <ul>
@@ -158,23 +142,17 @@
 <li><b>driver</b> : invalid CLI input, path/policy issues, hardening limits.</li>
 </ul>
 <h2>Example</h2>
-<pre><code class="language-vit">space sample
-
-proc main() -> void {
-  let x = 1
-  give x + "bad"
-}
-</code></pre>
-<p>This minimal example is useful for understanding diagnostics: the compiler can parse the code, but it will fail later with a type mismatch because <code>int + string</code> is invalid. Reduce the repro to this smallest form when you triage a failure.</p>
+<pre><code class="language-sh">vitte check src/tests/diagnostic_sema_multiple_invalid.vit --diagnostic=json</code></pre>
+<p>This command uses a tracked fixture with two semantic type errors. Run it from the repository root, then reduce your own repro to the smallest source file that still fails.</p>
 <h2>Practical reading</h2>
 <p>Diagnostics should be read as a contract, not as a wall of text. The phase tells you where the pipeline stopped, the code names the stable failure class, and the JSON envelope lets you inspect the same event without scraping text output.</p>
 <p>For a fast triage, use this order:</p>
 <ol>
-<li>Identify <code>pipeline_failed_at</code> or the first human-visible phase.</li>
+<li>Read the first diagnostic's <code>phase</code> and <code>code</code> fields.</li>
 <li>Read the primary code, message, label, note, and help.</li>
 <li>Reduce the repro to the smallest snippet that still fails.</li>
-<li>Re-run with <code>--diagnostics-json</code> if you need exact fields or per-phase separation.</li>
-<li>Only then move to AST/HIR/MIR dumps if the failing phase is past parsing.</li>
+<li>Re-run with <code>--diagnostic=json</code> if you need structured fields.</li>
+<li>Only then request AST/HIR/IR output if the failing phase is past parsing.</li>
 </ol>
 <p>That sequence keeps bug reports useful: the report should name the phase, the code, the smallest repro, and the expected behavior instead of only describing the symptom.</p>
 <p>If you need a broader starting point, read <a href="doc.html">Documentation</a> for the compiler surface and <a href="source.html">Source</a> for the implementation path.</p>

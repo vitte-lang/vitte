@@ -3,11 +3,11 @@ import * as vscode from "vscode";
 type FixCategory = "imports" | "style" | "naming" | "contracts";
 const SYNTAX_CODES = new Set(["E0001", "E0002", "E0003", "E0004", "E0005", "E0006", "E0007"]);
 const TOP_LEVEL_KEYWORDS = [
-  "space", "pull", "use", "share", "const", "let", "make",
-  "type", "macro", "form", "trait", "pick", "proc", "entry",
+  "space", "use", "export", "share", "const", "static", "global", "let",
+  "type", "opaque", "extern", "macro", "form", "trait", "impl", "pick", "proc", "entry",
 ];
 const TOP_LEVEL_STATEMENT_KEYWORDS = new Set([
-  "if", "loop", "for", "set", "give", "emit", "select",
+  "if", "loop", "for", "set", "return", "emit", "select",
   "match", "when", "return", "break", "continue", "unsafe", "asm",
 ]);
 const syntaxAutoFixInFlight = new Set<string>();
@@ -121,14 +121,6 @@ function buildSyntaxQuickFixes(document: vscode.TextDocument, d: vscode.Diagnost
   if (/expected\s*['"]\}['"]/i.test(message) || /attendu.*\}/i.test(message)) {
     insertExpectedToken("}", "Vitte: Insert missing `}`");
   }
-  if (code === "E0005") {
-    const a = new vscode.CodeAction("Vitte: Insert missing `.end`", vscode.CodeActionKind.QuickFix);
-    a.diagnostics = [d];
-    a.edit = new vscode.WorkspaceEdit();
-    a.edit.insert(document.uri, new vscode.Position(lineNo, line.text.length), "\n.end");
-    actions.push(a);
-  }
-
   // Safe-ish fix: keyword typo correction for top-level declaration.
   if (code === "E0007") {
     const m = /^\s*([A-Za-z_]\w*)/.exec(text);
@@ -153,25 +145,12 @@ function buildSyntaxQuickFixes(document: vscode.TextDocument, d: vscode.Diagnost
         a.diagnostics = [d];
         a.edit = new vscode.WorkspaceEdit();
         const wrapped = [
-          "entry main at app/main {",
+          "entry main {",
           `  ${trimmed}`,
           "}",
         ].join("\n");
         a.edit.replace(document.uri, line.range, wrapped);
         actions.push(a);
-        if (word.toLowerCase() === "return") {
-          const b = new vscode.CodeAction("Vitte: Replace top-level `return` by `give` in `entry main`", vscode.CodeActionKind.QuickFix);
-          b.diagnostics = [d];
-          b.edit = new vscode.WorkspaceEdit();
-          const replaced = trimmed.replace(/^return\b/i, "give");
-          const wrappedReturn = [
-            "entry main at app/main {",
-            `  ${replaced}`,
-            "}",
-          ].join("\n");
-          b.edit.replace(document.uri, line.range, wrappedReturn);
-          actions.push(b);
-        }
       }
     }
   }
@@ -329,7 +308,7 @@ function transformImports(text: string): string {
   const importRows: string[] = [];
   const kept: string[] = [];
   for (const line of lines) {
-    if (/^\s*(import|use|pull)\b/.test(line)) importRows.push(line.trim());
+    if (/^\s*use\b/.test(line)) importRows.push(line.trim());
     else kept.push(line);
   }
   if (importRows.length === 0) return text;
@@ -348,7 +327,7 @@ function transformStyle(text: string): string {
 
 function transformNaming(text: string): string {
   const renames = new Map<string, string>();
-  const declRx = /\b(?:proc|fn|let|const|static)\s+(?:mut\s+)?([A-Za-z_]\w*)/g;
+  const declRx = /\b(?:proc|let|const|static|global)\s+(?:mut\s+)?([A-Za-z_]\w*)/g;
   let m: RegExpExecArray | null;
   while ((m = declRx.exec(text))) {
     const oldName = m[1];
@@ -368,7 +347,7 @@ function transformNaming(text: string): string {
 
 function transformContracts(text: string): string {
   if (/^\s*<<<\s+ROLE-CONTRACT\b/m.test(text)) return text;
-  const pkg = /^\s*(?:space|module)\s+([A-Za-z_][\w./:-]*)/m.exec(text)?.[1] ?? "my/package";
+  const pkg = /^\s*space\s+([A-Za-z_][\w./:-]*)/m.exec(text)?.[1] ?? "my::package";
   const block = [
     "",
     "<<< ROLE-CONTRACT",

@@ -44,16 +44,16 @@ export const KEYWORDS = [
   "noexcept",
   "as",
   "for",
-  "at",
   "let",
   "set",
-  "give",
+  "return",
   "try",
   "defer",
   "asm",
   "emit",
   "assert",
   "panic",
+  "print",
   "unreachable",
   "if",
   "elif",
@@ -134,7 +134,6 @@ export const CONTEXTUAL_KEYWORDS = [
   "sysv64",
   "win64",
   "package",
-  "module",
   "super",
   "stack",
   "heap",
@@ -186,7 +185,7 @@ export const BUILTIN_FUNCTIONS = [
 ] as const;
 
 export const OPERATORS = [
-  "<<=", ">>=", "..=", "...", "??", "&&", "||", "==", "!=", "<=", ">=", "<<", ">>",
+  "<<=", ">>=", "..=", "...", "??", "==", "!=", "<=", ">=", "<<", ">>",
   "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "->", "=>", "::", "..",
   "=", "+", "-", "*", "/", "%", "<", ">", "&", "|", "^", "~", "?", ".", ",", ":", ";",
 ] as const;
@@ -203,6 +202,9 @@ export const BUILTIN_FUNCTION_SET: ReadonlySet<string> = new Set(BUILTIN_FUNCTIO
 export const OPERATOR_SET: ReadonlySet<string> = new Set(OPERATORS);
 export const BRACKET_SET: ReadonlySet<string> = new Set(BRACKETS);
 
+const IDENTIFIER_START_RE = /^[\p{L}\p{Nl}_]$/u;
+const IDENTIFIER_PART_RE = /^[\p{L}\p{Nl}\p{Nd}_]$/u;
+
 export const RESERVED_WORDS: ReadonlySet<string> = new Set([
   ...KEYWORDS,
   ...DEPRECATED_KEYWORDS,
@@ -212,11 +214,11 @@ export const RESERVED_WORDS: ReadonlySet<string> = new Set([
 ]);
 
 export function isIdentifierStart(ch: string): boolean {
-  return /[A-Za-z_]/.test(ch);
+  return IDENTIFIER_START_RE.test(ch);
 }
 
 export function isIdentifierPart(ch: string): boolean {
-  return /[A-Za-z0-9_]/.test(ch);
+  return IDENTIFIER_PART_RE.test(ch);
 }
 
 export function isKeyword(value: string): boolean {

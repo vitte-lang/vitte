@@ -15,29 +15,28 @@
 space tests::import_visibility::glob_private;
 
 use tests::import_visibility::contract_lib::*;
-
 proc access_private_constant() -> u64 {
-    give MIN_IDENTIFIER;
+    return PRIVATE_IDENTIFIER;
 }
 
 proc access_another_private_constant() -> u64 {
-    give DEFAULT_LIMIT;
+    return PRIVATE_LIMIT;
 }
 
 proc accept_private_form(
-    value: &ContractRange
+    value: &PrivateContractRange
 ) -> bool {
-    give value.minimum <= value.maximum;
+    return value.minimum <= value.maximum;
 }
 
 proc construct_private_range() -> i64 {
-    let range: ContractRange =
-        ContractRange {
+    let range: PrivateContractRange =
+        PrivateContractRange {
             minimum: 0,
             maximum: 100,
         };
 
-    give range.maximum;
+    return range.maximum;
 }
 
 proc construct_private_record() -> u64 {
@@ -48,7 +47,7 @@ proc construct_private_record() -> u64 {
             enabled: true,
         };
 
-    give record.id;
+    return record.id;
 }
 
 proc construct_private_result() -> i64 {
@@ -58,76 +57,76 @@ proc construct_private_result() -> i64 {
             valid: true,
         };
 
-    give result.value;
+    return result.value;
 }
 
 proc call_private_predicate() -> bool {
-    give valid_identifier(42);
+    return private_valid_identifier(42);
 }
 
 proc call_private_range_predicates() -> bool {
-    let range: ContractRange =
-        ContractRange {
+    let range: PrivateContractRange =
+        PrivateContractRange {
             minimum: 0,
             maximum: 100,
         };
 
-    give valid_range(&range) &&
+    return valid_range(&range) and
          value_in_range(42, &range);
 }
 
 proc call_private_contract_proc() -> i64 {
-    give checked_add(20, 22);
+    return private_checked_add(20, 22);
 }
 
 proc call_private_chain() -> i64 {
-    give checked_chain(40);
+    return checked_chain(40);
 }
 
 proc obtain_private_record() -> i64 {
     let record: ContractRecord =
         checked_record(42, 100);
 
-    give record.value;
+    return record.value;
 }
 
 proc reference_private_form() -> i64 {
-    let range: ContractRange =
-        ContractRange {
+    let range: PrivateContractRange =
+        PrivateContractRange {
             minimum: 10,
             maximum: 50,
         };
 
-    let reference: &ContractRange =
+    let reference: &PrivateContractRange =
         &range;
 
-    give reference.maximum;
+    return reference.maximum;
 }
 
 proc repeated_private_symbol() -> u64 {
-    let first: u64 = DEFAULT_LIMIT;
-    let second: u64 = DEFAULT_LIMIT;
-    let third: u64 = DEFAULT_LIMIT;
+    let first: u64 = PRIVATE_LIMIT;
+    let second: u64 = PRIVATE_LIMIT;
+    let third: u64 = PRIVATE_LIMIT;
 
-    give first + second + third;
+    return first + second + third;
 }
 
 proc mixed_private_access() -> bool {
-    let range: ContractRange =
-        ContractRange {
+    let range: PrivateContractRange =
+        PrivateContractRange {
             minimum: 0,
             maximum: 100,
         };
 
     let record: ContractRecord =
         ContractRecord {
-            id: MIN_IDENTIFIER,
+            id: PRIVATE_IDENTIFIER,
             value: 42,
             enabled: true,
         };
 
-    give valid_identifier(record.id) &&
-         valid_range(&range) &&
+    return private_valid_identifier(record.id) and
+         valid_range(&range) and
          value_in_range(record.value, &range);
 }
 
@@ -146,21 +145,21 @@ proc main() -> int {
     let repeated: u64 = repeated_private_symbol();
     let mixed: bool = mixed_private_access();
 
-    if predicate &&
-       predicates &&
-       mixed &&
-       minimum > 0 &&
-       limit > 0 &&
-       maximum == 100 &&
-       identifier == 42 &&
-       result_value == 42 &&
-       arithmetic == 42 &&
-       chained == 42 &&
-       record_value == 100 &&
-       referenced == 50 &&
+    if predicate and
+       predicates and
+       mixed and
+       minimum > 0 and
+       limit > 0 and
+       maximum == 100 and
+       identifier == 42 and
+       result_value == 42 and
+       arithmetic == 42 and
+       chained == 42 and
+       record_value == 100 and
+       referenced == 50 and
        repeated > 0 {
-        give 0;
+        return 0;
     }
 
-    give 1;
+    return 1;
 }

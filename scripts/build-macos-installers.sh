@@ -25,7 +25,15 @@ MACOS2006_DEPLOYMENT_TARGET=${MACOS2006_DEPLOYMENT_TARGET:-10.4}
 MACOS2006_SDK=${MACOS2006_SDK:-MacOSX10.4u.sdk}
 MACOS2006_CC=${MACOS2006_CC:-gcc-4.0}
 
-scripts_build_maybe_help "usage: build-macos-installers.sh [--dry-run]"
+scripts_build_maybe_help "usage: build-macos-installers.sh [--dry-run] [--list-targets]"
+if [ "$LIST_TARGETS" -eq 1 ]; then
+  for arch in arm64 amd64 universal universal2; do
+    printf 'macos %s pkg\nmacos %s dmg\n' "$arch" "$arch"
+  done
+  printf '%s\n' 'macos macos2006 pkg' 'macos macos2006 config'
+  exit 0
+fi
+
 scripts_build_maybe_dry_run "would build macOS pkg artifacts version=$VERSION arch=$ARCH strict_dmg=$STRICT_DMG out=$OUT_DIR"
 
 die() {
@@ -1035,8 +1043,10 @@ build_one() {
   rm -f \
     "$package_file" \
     "$package_file.sha256" \
+    "$package_file.MANIFEST.json" \
     "$dmg_file" \
-    "$dmg_file.sha256"
+    "$dmg_file.sha256" \
+    "$dmg_file.MANIFEST.json"
 
   mkdir -p \
     "$resources" \
@@ -1112,8 +1122,18 @@ build_one() {
     "final macOS product package"
 
   write_checksum "$package_file"
+  scripts_build_write_artifact_manifest \
+    "$package_file" \
+    macos \
+    "$label" \
+    "$VERSION"
   if [ -s "$dmg_file" ]; then
     write_checksum "$dmg_file"
+    scripts_build_write_artifact_manifest \
+      "$dmg_file" \
+      macos \
+      "$label" \
+      "$VERSION"
   fi
 
   package_size=$(wc -c < "$package_file" | tr -d ' ')

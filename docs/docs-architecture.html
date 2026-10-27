@@ -76,70 +76,37 @@
     <main class="site-main" id="main-content">
       <article class="doc-content">
         <h1>Docs Architecture</h1>
-        <p>Single source pipeline for static docs, grammar artefacts, and SEO/security outputs.</p>
+        <p>The Vitte website is a static site served from <code>docs/</code>. HTML pages, stylesheets, scripts, and site data are checked into the repository.</p>
 
-        <h2>Pipeline (exact)</h2>
+        <h2>Site sources</h2>
+        <ul>
+          <li>HTML pages live in <code>docs/</code> and its subdirectories.</li>
+          <li>Site styles and browser scripts live in <code>docs/css/</code> and <code>docs/js/</code>.</li>
+          <li>The canonical compiler grammar is <code>grammar/vitte.ebnf</code>.</li>
+        </ul>
+
+        <h2>Updating a page</h2>
         <ol>
-          <li><code>tools/build_docs_site.py</code></li>
-          <li><code>tools/build_grammar_extras.py</code></li>
-          <li><code>tools/sync_ebnf_memory_pages.py</code></li>
-          <li><code>tools/build_static_extras.py</code></li>
+          <li>Edit the relevant HTML page in <code>docs/</code>.</li>
+          <li>Keep its title, viewport, canonical URL, and other page metadata accurate.</li>
+          <li>Update the matching search-index entry when page content changes.</li>
+          <li>Update the sitemap when pages are added, removed, or renamed.</li>
+          <li>Refresh reports and build metadata after the site data changes.</li>
         </ol>
 
-        <h2>Sources</h2>
+        <h2>Checked-in site data</h2>
         <ul>
-          <li><code>docs/*.html</code> (EN root editable pages)</li>
-          <li><code>src/vitte/grammar/vitte.ebnf</code> (source of truth)</li>
-          <li><code>docs/css/*</code>, <code>docs/js/*</code></li>
+          <li><code>docs/search-index*.json</code> contains the search indexes.</li>
+          <li><code>docs/sitemap.xml</code> and <code>docs/robots.txt</code> describe crawling.</li>
+          <li><code>docs/build-manifest.json</code> and <code>docs/status.json</code> record build metadata.</li>
+          <li><code>docs/grammar/rules*.json</code> and <code>docs/grammar/grammar.sha256</code> contain grammar reference data.</li>
         </ul>
 
-        <h2>Example</h2>
-        <p>Edit the HTML page directly in <code>docs/</code> to update the site. The build pipeline then injects canonical metadata, refreshes the SEO metadata, and updates the search index automatically.</p>
+        <h2>Current workflow limitation</h2>
+        <p>This repository checkout does not contain the site-generation scripts previously listed on this page. Editing an HTML page does not automatically refresh the search index, sitemap, SEO reports, or build manifest. Update those checked-in files explicitly, or add and document a generator before relying on automatic refresh.</p>
 
-        <h2>Generated outputs</h2>
-        <ul>
-          
-          <li><code>docs/search-index*.json</code></li>
-          <li><code>docs/sitemap.xml</code>, <code>docs/robots.txt</code></li>
-          <li><code>docs/build-manifest.json</code>, <code>docs/status.json</code></li>
-          <li><code>docs/grammar/rules*.json</code>, <code>docs/grammar/grammar.sha256</code></li>
-        </ul>
-
-        <h2>Assets policy</h2>
-        <ul>
-          <li>Local docs assets (<code>docs/css/*</code>, <code>docs/js/*</code>) must not carry <code>integrity=</code> or <code>crossorigin=</code> attributes.</li>
-          <li>Enforced by <code>tools/docs/check_assets_policy.py</code> and CI <code>docs-quality</code>.</li>
-          <li>Automatic cleanup tool: <code>tools/docs/refresh_assets_policy.py</code>.</li>
-        </ul>
-
-        <h2>Refresh and cache policy</h2>
-        <ul>
-          <li>Development auto-refresh is built into <code>docs/js/main.js</code>.</li>
-          <li>Enable it by opening any page with <code>?dev-refresh=1&amp;refresh=5</code> to reload every 5 seconds.</li>
-          <li>While dev auto-refresh is enabled, the docs service worker is unregistered to avoid stale local cache during editing.</li>
-          <li>Production cache headers for static hosting live in <code>docs/_headers</code>: HTML, CSS, JS, search indexes, and SVGs are all forced to revalidate so the site does not stay pinned to stale browser cache.</li>
-          <li><code>docs/_headers</code> is honored by hosts such as Netlify, Cloudflare Pages, and many custom static servers; GitHub Pages may ignore it, so query-versioned assets still matter there.</li>
-        </ul>
-
-        <h2>Editable vs generated</h2>
-        <table>
-          <tr><th>Editable</th><th>Generated</th></tr>
-          <tr>
-            <td><code>docs/*.html</code>, <code>docs/css/*</code>, <code>docs/js/*</code>, <code>src/vitte/grammar/vitte.ebnf</code></td>
-            <td><code>search-index*.json</code>, <code>sitemap.xml</code>, <code>build-manifest.json</code>, <code>checksums.txt</code>, <code>*.sha256</code></td>
-          </tr>
-        </table>
-
-        <h2>Ownership map</h2>
-        <table>
-          <tr><th>Artifact</th><th>Updater</th></tr>
-          <tr><td>Header/footer/nav + core search index</td><td><code>tools/build_docs_site.py</code></td></tr>
-          <tr><td>Grammar toolbox/diff/status/rules API</td><td><code>tools/build_grammar_extras.py</code></td></tr>
-          <tr><td>EBNF memory pages + checksum</td><td><code>tools/sync_ebnf_memory_pages.py</code></td></tr>
-          <tr><td>SEO/CSP/checksums/health/static extras + asset policy cleanup</td><td><code>tools/build_static_extras.py</code></td></tr>
-          <tr><td>Doctor checks and fix suggestions</td><td><code>tools/docs_doctor.py</code></td></tr>
-          <tr><td>No-SRI policy gate for local assets</td><td><code>tools/docs/check_assets_policy.py</code></td></tr>
-        </table>
+        <h2>Freshness note</h2>
+        <p>The file inventory and asset manifest were refreshed on October 21, 2026. No site generator is checked into this repository, so refresh these snapshots manually after changing pages or assets.</p>
       <nav class="doc-pagination"><a href="doc.html">← Previous</a><a href="download.html">Next →</a></nav></article>
     </main>
   </div>

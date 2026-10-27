@@ -291,7 +291,7 @@ function registerCommands(context: vscode.ExtensionContext) {
       const ws = workspaceFolderFor();
       if (!ws) { vscode.window.showWarningMessage("Ouvrez un dossier."); return; }
       const p = path.join(ws.uri.fsPath, "hello.vit");
-      if (!(await fileExists(p))) await fs.promises.writeFile(p, "proc main() -> int {\n  give 0;\n}\n");
+    if (!(await fileExists(p))) await fs.promises.writeFile(p, "proc main() -> int {\n  return 0;\n}\n");
       const doc = await vscode.workspace.openTextDocument(p);
       await vscode.window.showTextDocument(doc);
     }),

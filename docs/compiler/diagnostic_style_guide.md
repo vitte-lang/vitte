@@ -23,7 +23,7 @@ Official terms:
 
 - `procedure` for the user-facing concept, never function or routine.
 - `proc` only when referring to the literal Vitte keyword in source.
-- `give`, never return.
+- `return` for returning a value from a procedure.
 - `form`, `pick`, `let`, `set`, `space`, and `use` for language syntax.
 - `identifier` for a source name token.
 - `symbol` for the compiler entity created after name resolution.

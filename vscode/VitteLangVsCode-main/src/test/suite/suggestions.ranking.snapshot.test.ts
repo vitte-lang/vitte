@@ -42,9 +42,9 @@ suite("Suggestions ranking snapshots", () => {
     const doc = await openDoc(
       "vitte",
       [
-        "module demo/app",
-        "use math/vector",
-        "fn greet_user(name: Text) gives Text {",
+        "space demo::app",
+        "use std::math::vector",
+        "proc greet_user(name: string) -> string {",
         "  let helperScope = 1",
         "  let localCache = 2",
         "  gre",
@@ -82,8 +82,8 @@ suite("Suggestions ranking snapshots", () => {
     const doc = await openDoc(
       "vitte",
       [
-        "module demo/tests",
-        "fn suite() gives Bool {",
+        "space demo::tests",
+        "proc suite() -> bool {",
         "  ",
         "}",
       ].join("\n"),
@@ -127,7 +127,7 @@ suite("Suggestions ranking snapshots", () => {
     const doc = await openDoc(
       "vitte",
       [
-        "fn compute() gives Text {",
+        "proc compute() -> string {",
         "  let helperScope = 1",
         "  he",
         "}",

@@ -24,14 +24,13 @@
 space tests::import_visibility::module_ok;
 
 use tests::import_visibility::lib as lib;
-
 /// Verify qualified access to exported constants.
 proc test_constants() -> bool {
     let minimum: u64 = lib::PUBLIC_MIN_ID;
     let maximum: u64 = lib::PUBLIC_MAX_ID;
     let default_value: u64 = lib::PUBLIC_LIMIT;
 
-    give minimum <= default_value &&
+    return minimum <= default_value and
          default_value <= maximum;
 }
 
@@ -45,8 +44,8 @@ proc test_record_construction() -> bool {
             enabled: true,
         };
 
-    give record.id == 42 &&
-         record.value == 100 &&
+    return record.id == 42 and
+         record.value == 100 and
          record.enabled;
 }
 
@@ -54,7 +53,7 @@ proc test_record_construction() -> bool {
 proc inspect_record(
     record: &lib::PublicRecord
 ) -> bool {
-    give record.enabled &&
+    return record.enabled and
          record.id > 0;
 }
 
@@ -67,7 +66,7 @@ proc test_record_reference() -> bool {
             enabled: true,
         };
 
-    give inspect_record(&record);
+    return inspect_record(&record);
 }
 
 /// Verify construction of another imported aggregate.
@@ -78,14 +77,14 @@ proc test_range() -> bool {
             maximum: 100,
         };
 
-    give range.minimum == 10 &&
+    return range.minimum == 10 and
          range.maximum == 100;
 }
 
 /// Verify ordinary qualified procedure calls.
 proc test_predicates() -> bool {
-    give lib::public_valid_identifier(0) &&
-         lib::public_valid_identifier(42) &&
+    return lib::public_valid_identifier(0) and
+         lib::public_valid_identifier(42) and
          lib::public_valid_identifier(100);
 }
 
@@ -94,7 +93,7 @@ proc test_identity() -> bool {
     let value: i64 =
         lib::public_identity(42);
 
-    give value == 42;
+    return value == 42;
 }
 
 /// Verify several calls to the same imported procedure.
@@ -108,7 +107,7 @@ proc test_repeated_call() -> bool {
     let third: i64 =
         lib::public_identity(12);
 
-    give first + second + third == 42;
+    return first + second + third == 42;
 }
 
 /// Verify qualified arithmetic helpers.
@@ -122,8 +121,8 @@ proc test_arithmetic() -> bool {
     let product: i64 =
         lib::public_multiply(6, 7);
 
-    give sum == 42 &&
-         difference == 42 &&
+    return sum == 42 and
+         difference == 42 and
          product == 42;
 }
 
@@ -135,8 +134,8 @@ proc test_factory() -> bool {
             100,
             true);
 
-    give record.id == 42 &&
-         record.value == 100 &&
+    return record.id == 42 and
+         record.value == 100 and
          record.enabled;
 }
 
@@ -151,7 +150,7 @@ proc test_record_consumer() -> bool {
     let value: i64 =
         lib::public_record_value(&record);
 
-    give value == 42;
+    return value == 42;
 }
 
 /// Verify qualified range helpers.
@@ -162,9 +161,9 @@ proc test_range_helpers() -> bool {
             maximum: 100,
         };
 
-    give lib::public_valid_range(&range) &&
-         lib::public_value_in_range(0, &range) &&
-         lib::public_value_in_range(42, &range) &&
+    return lib::public_valid_range(&range) and
+         lib::public_value_in_range(0, &range) and
+         lib::public_value_in_range(42, &range) and
          lib::public_value_in_range(100, &range);
 }
 
@@ -182,9 +181,9 @@ proc test_composition() -> bool {
             lib::public_add(20, 22),
             true);
 
-    give lib::public_value_in_range(
+    return lib::public_value_in_range(
              record.value,
-             &range) &&
+             &range) and
          lib::public_record_value(&record) == 42;
 }
 
@@ -198,7 +197,7 @@ proc test_local_shadowing() -> bool {
         lib::public_identity(
             lib::public_add(identity, PublicRecord));
 
-    give add == 20 &&
+    return add == 20 and
          imported == 22;
 }
 
@@ -207,10 +206,10 @@ proc test_local_shadowing() -> bool {
 /// Each expression forces another qualified lookup and should resolve to the
 /// same imported module and declaration set.
 proc test_repeated_module_resolution() -> bool {
-    give lib::public_identity(1) == 1 &&
-         lib::public_identity(2) == 2 &&
-         lib::public_identity(3) == 3 &&
-         lib::public_identity(4) == 4 &&
+    return lib::public_identity(1) == 1 and
+         lib::public_identity(2) == 2 and
+         lib::public_identity(3) == 3 and
+         lib::public_identity(4) == 4 and
          lib::public_identity(5) == 5;
 }
 
@@ -232,8 +231,8 @@ proc test_round_trip() -> bool {
             value,
             source.enabled);
 
-    give destination.id == source.id &&
-         destination.value == source.value &&
+    return destination.id == source.id and
+         destination.value == source.value and
          destination.enabled == source.enabled;
 }
 
@@ -243,15 +242,15 @@ proc test_control_flow() -> bool {
         lib::public_identity(42);
 
     if lib::public_valid_identifier(42) {
-        give lib::public_add(value, 0) == 42;
+        return lib::public_add(value, 0) == 42;
     }
 
-    give false;
+    return false;
 }
 
 /// Verify several qualified declarations in one expression tree.
 proc test_expression_resolution() -> bool {
-    give lib::public_add(
+    return lib::public_add(
                lib::public_identity(10),
                lib::public_add(
                    lib::public_identity(20),
@@ -277,21 +276,21 @@ proc test_integrated_path() -> bool {
             computed,
             true);
 
-    if !lib::public_valid_range(&range) {
-        give false;
+    if not lib::public_valid_range(&range) {
+        return false;
     }
 
-    if !lib::public_value_in_range(
+    if not lib::public_value_in_range(
         record.value,
         &range) {
-        give false;
+        return false;
     }
 
     if lib::public_record_value(&record) != 42 {
-        give false;
+        return false;
     }
 
-    give record.id == 42 &&
+    return record.id == 42 and
          record.enabled;
 }
 
@@ -300,77 +299,77 @@ proc test_integrated_path() -> bool {
 /// Every non-zero result identifies the first module-import behavior that
 /// failed at runtime.
 proc main() -> int {
-    if !test_constants() {
-        give 1;
+    if not test_constants() {
+        return 1;
     }
 
-    if !test_record_construction() {
-        give 2;
+    if not test_record_construction() {
+        return 2;
     }
 
-    if !test_record_reference() {
-        give 3;
+    if not test_record_reference() {
+        return 3;
     }
 
-    if !test_range() {
-        give 4;
+    if not test_range() {
+        return 4;
     }
 
-    if !test_predicates() {
-        give 5;
+    if not test_predicates() {
+        return 5;
     }
 
-    if !test_identity() {
-        give 6;
+    if not test_identity() {
+        return 6;
     }
 
-    if !test_repeated_call() {
-        give 7;
+    if not test_repeated_call() {
+        return 7;
     }
 
-    if !test_arithmetic() {
-        give 8;
+    if not test_arithmetic() {
+        return 8;
     }
 
-    if !test_factory() {
-        give 9;
+    if not test_factory() {
+        return 9;
     }
 
-    if !test_record_consumer() {
-        give 10;
+    if not test_record_consumer() {
+        return 10;
     }
 
-    if !test_range_helpers() {
-        give 11;
+    if not test_range_helpers() {
+        return 11;
     }
 
-    if !test_composition() {
-        give 12;
+    if not test_composition() {
+        return 12;
     }
 
-    if !test_local_shadowing() {
-        give 13;
+    if not test_local_shadowing() {
+        return 13;
     }
 
-    if !test_repeated_module_resolution() {
-        give 14;
+    if not test_repeated_module_resolution() {
+        return 14;
     }
 
-    if !test_round_trip() {
-        give 15;
+    if not test_round_trip() {
+        return 15;
     }
 
-    if !test_control_flow() {
-        give 16;
+    if not test_control_flow() {
+        return 16;
     }
 
-    if !test_expression_resolution() {
-        give 17;
+    if not test_expression_resolution() {
+        return 17;
     }
 
-    if !test_integrated_path() {
-        give 18;
+    if not test_integrated_path() {
+        return 18;
     }
 
-    give 0;
+    return 0;
 }

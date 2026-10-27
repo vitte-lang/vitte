@@ -34,7 +34,7 @@ code --install-extension vitte-studio-<version>.vsix
    - `$(check)` confirms an active connection.
    - `$(pass-filled)` denotes a clean diagnostics pass, while `$(warning)` or `$(error)` signal outstanding issues.
    - `$(debug-stop)` appears if the client stops unexpectedly; review the output channel for details.
-4. Browse the **Vitte ▸ Structure** view to inspect modules, structs, and functions annotated with diagnostics badges.
+4. Browse the **Vitte ▸ Structure** view to inspect spaces, forms, picks, and procedures annotated with diagnostics badges.
 5. Use command palette shortcuts (`⇧⌘P`) such as `Vitte: Restart Server`, `Vitte: Show Info`, or `Vitte: Show Server Log` for routine maintenance.
 
 ## Kickstart with the Run Setup action

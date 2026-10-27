@@ -18,7 +18,12 @@ COMPLETIONS_DIR=$ROOT_DIR/completions
 LICENSE_FILE=$ROOT_DIR/LICENSE
 LOGO_FILE=$ROOT_DIR/assets/logo.png
 PAYLOAD_SCRIPT=$ROOT_DIR/scripts/stage-installer-payload.sh
-scripts_build_maybe_help "usage: build-solaris-package.sh [--dry-run]"
+scripts_build_maybe_help "usage: build-solaris-package.sh [--dry-run] [--list-targets]"
+if [ "$LIST_TARGETS" -eq 1 ]; then
+  printf '%s\n' 'solaris amd64 pkg' 'solaris i386 pkg'
+  exit 0
+fi
+
 scripts_build_maybe_dry_run "would build Solaris SVR4 packages version=$VERSION arch=$ARCH out=$OUT_DIR"
 
 die() {

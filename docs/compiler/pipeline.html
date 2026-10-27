@@ -3,19 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pipeline</title>
+<title>Pipeline de compilation actif</title>
 <link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../css/site.css">
 <link rel="stylesheet" href="../css/print.css" media="print">
-<link rel="alternate" hreflang="en" href="https://vitte-lang.org/pipeline.html">
-<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/pipeline.html">
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/compiler/pipeline.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/compiler/pipeline.html">
 
 
 
 
 
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
-</head>
+
+<link rel="canonical" href="https://vitte-lang.org/compiler/pipeline.html"></head>
 <body class="classic-doc">
 <a class="skip-link" href="#main-content">Skip to content</a>
 <div class="site-shell">
@@ -28,114 +29,19 @@
 </header>
 <main id="main-content" class="site-main">
 <article class="doc-content">
-<h1>Pipeline</h1>
-<h2>Overview</h2>
-<p>This page captures the observed compiler pipeline order and the specific foundation stages that already influence frontend and lowering behavior. It is meant to be read alongside the architecture page, but at a narrower operational level.</p>
-<table border="1" cellpadding="6" cellspacing="0">
-<tr><th>Layer</th><th>Checked responsibilities</th></tr>
-<tr><td>Frontend</td><td>source normalization, lexer, parser, AST validation</td></tr>
-<tr><td>Mid-pipeline</td><td>symbols, visibility, type DB, HIR validate, sema, typeck</td></tr>
-<tr><td>Control</td><td>control-flow checks, borrow checks</td></tr>
-<tr><td>Lowering</td><td>HIR -> MIR, MIR verify, const-eval</td></tr>
-<tr><td>Backend</td><td>backend lowering, object generation, linking</td></tr>
-</table>
-<p>Observed order:</p>
-<ol>
-<li>Package/stdlib registry checks</li>
-<li>Module resolution + cycle detection + duplicate module names</li>
-<li>Symbol table checks + shadowing/unknowns</li>
-<li>Visibility enforcement (exports/private)</li>
-<li>Type database build</li>
-<li>HIR validation</li>
-<li>Semantic checks</li>
-<li>Type checks</li>
-<li>Control-flow checks</li>
-<li>Borrow checks</li>
-<li>HIR -> MIR</li>
-<li>MIR verification</li>
-<li>Const eval</li>
-<li>Backend lowering + object + link</li>
-</ol>
-<h2>Responsibilities</h2>
+<h1>Pipeline de compilation actif</h1>
+<p>Le bootstrap C fournit encore l’exécutable de stage0 et la frontière avec le système hôte. Le build standard compile aussi le pipeline natif Vitte depuis <code>src/compiler/</code> et le lie à <code>vitte</code> ; le compilateur n’est pas encore auto-hébergé.</p>
+<h2>Parcours ordinaire</h2>
+<p>Pour <code>compile</code>, <code>run</code>, <code>check</code>, <code>--emit-c</code> et <code>--emit-ir</code>, le CLI transmet l’entrée au pipeline natif écrit en Vitte. Après le lexer, le parser et l’analyse sémantique, le pipeline abaisse et valide le HIR puis l’IR. Pour les constructions couvertes par l’IR, le backend C17 natif émet le programme depuis l’IR scellé. Les formes, les boucles <code>for</code>, les expressions <code>if</code> à valeur et <code>match</code> gardent le backend AST pendant que leur lowering IR est incomplet. Le driver C reçoit le code généré et appelle le compilateur C hôte pour produire un objet, lier l’exécutable ou lancer le programme.</p>
+<h2>Parcours encore sur le bootstrap</h2>
 <ul>
-<li>Preserve the real execution order used by the current compiler.</li>
-<li>Mark which new foundation work already participates in the flow.</li>
-<li>Provide a compact reference for debugging stage-specific failures.</li>
+<li>Les commandes d’inspection gardent des étapes C du bootstrap. <code>check</code> et <code>--emit-ir</code> utilisent le pipeline natif, avec la couverture du lowering HIR/IR actuel.</li>
+<li>Les diagnostics natifs sont autoritaires pour <code>compile</code>, <code>run</code>, <code>check</code> et les sorties IR ; le CLI ne relance pas l’analyse bootstrap en cas d’échec.</li>
+<li>Le compilateur C et l’éditeur de liens restent des outils hôtes appelés depuis le driver C. Le build utilise toujours stage0 pour traduire les modules Vitte en C ; aucune reconstruction complète du compilateur par une génération issue de ce cycle n’est établie.</li>
 </ul>
-<h2>Invariants</h2>
-<ul>
-<li>Stage ordering must remain explicit and reviewable.</li>
-<li>Macro, async, coroutine, and concurrency foundations must be documented where</li>
-</ul>
-<p>they actually attach to the flow.</p>
-<ul>
-<li>Later roadmap ambitions must not be described as already active pipeline</li>
-</ul>
-<p>behavior.</p>
-<h2>Data Flow</h2>
-<ol>
-<li>Input sources are normalized and tokenized.</li>
-<li>Parsing and AST validation create the first structured representation.</li>
-<li>Semantic layers gradually refine meaning and reject invalid contracts.</li>
-<li>MIR lowering and verification prepare backend-safe intermediate state.</li>
-<li>Backend lowering and link produce executable artifacts.</li>
-</ol>
-<h2>Bootstrap</h2>
-<p>Bootstrap uses the same pipeline ideas under a narrower accepted subset, so pipeline regressions often surface first in seed or stage rebuild checks.</p>
-<h2>Driver</h2>
-<p>Driver mode selection decides which part of the pipeline becomes observable to the user, whether through <code>check</code>, <code>build</code>, <code>dump-hir</code>, or <code>dump-mir</code>.</p>
-<h2>Frontend Macro Stage (170)</h2>
-<p>Frontend language pipeline foundation:</p>
-<ol>
-<li>Source normalization</li>
-<li>Lexer pass (pre-expansion token baseline)</li>
-<li>Macro expansion + hygiene pass</li>
-<li>Lexer pass (post-expansion token stream)</li>
-<li>Parse</li>
-<li>AST validation</li>
-</ol>
-<p>Current compiler surfaces:</p>
-<ul>
-<li>macro expansion trace string in frontend output</li>
-<li>macro diagnostics mapped to source spans (<code>line</code>, <code>column</code>, <code>width</code>)</li>
-<li>recursion limit protection to keep expansion safe</li>
-</ul>
-<h2>Example compilation flow</h2>
-<p>For a simple source file, the pipeline follows these steps:</p>
-<pre><code class="language-vit">space app
-
-proc main() -&gt; void {
-  let x = 1
-  if x == 1 {
-    give &quot;ok&quot;
-  }
-}</code></pre>
-<ol>
-<li>Resolution of modules and verification of imports.</li>
-<li>Symbol checking and shadowing.</li>
-<li>Construction of the database type.</li>
-<li>HIR validation and semantic checks.</li>
-<li>Flow control, borrow checks, then MIR generation.</li>
-<li>MIR verification, constants evaluation, and finally backend lowering.</li>
-</ol>
-<h2>Async/Coroutine Stages (171-172)</h2>
-<ul>
-<li>HIR lowering records async/await usage markers.</li>
-<li>HIR emits baseline misuse diagnostics for <code>await</code> outside async procedures.</li>
-<li>HIR->MIR lowering introduces coroutine skeleton control-flow with suspend/resume blocks for await-like statements.</li>
-<li>This is a foundation step; full generator frame layout and drop-order verification are tracked as follow-up work.</li>
-</ul>
-<h2>Concurrency Memory Model Link (173)</h2>
-<p>Formal foundation document:</p>
-<ul>
-<li><a href="concurrency_memory_model.html">concurrency_memory_model.md</a></li>
-</ul>
-<h2>Examples</h2>
-<p>The following commands are a practical way to observe the pipeline from the outside:</p>
-<pre><code class="language-sh">./bin/vitte check src/app.vit
-./bin/vitte dump-hir src/app.vit
-./bin/vitte dump-mir src/app.vit</code></pre>
-<p>These are useful when a contributor needs to determine whether a regression was introduced during parsing, semantic checks, MIR lowering, or backend emission.</p>
+<h2>Grammaire et surface prise en charge</h2>
+<p>La <a href="../../grammar/vitte.ebnf">grammaire normative</a> décrit la surface du langage. Sa présence ne garantit pas l’acceptation ou la génération de code par chaque route. Voir la <a href="../bootstrap/frontend_native_port.md">couverture du parser natif</a> et le <a href="selfhost_core_subset.html">contrat réduit du seed</a>.</p>
+<p>Voir aussi la <a href="../MODULE_REFERENCE.html">carte des sources du compilateur</a>.</p>
 </article>
 </main>
 <footer class="site-footer">

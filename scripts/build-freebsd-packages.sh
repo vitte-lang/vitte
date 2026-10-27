@@ -19,6 +19,14 @@ LOGO_FILE=$ROOT_DIR/assets/logo.png
 
 PAYLOAD_SCRIPT=$ROOT_DIR/scripts/stage-installer-payload.sh
 scripts_build_maybe_help "usage: build-freebsd-packages.sh [--dry-run]"
+
+if [ "$LIST_TARGETS" -eq 1 ]; then
+  for arch in amd64 i386 arm64 armv7 armv6 riscv64 powerpc powerpc64 powerpc64le; do
+    printf 'freebsd %s\n' "$arch"
+  done
+  exit 0
+fi
+
 scripts_build_maybe_dry_run "would build FreeBSD pkg artifacts version=$VERSION arch=$ARCH out=$OUT_DIR"
 
 die() {

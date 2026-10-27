@@ -74,7 +74,7 @@ interface VitteTaskDefinition extends vscode.TaskDefinition {
   command: SubCmd;
 }
 
-async function readProjectConfig(): Promise<VitteBuildConfig | undefined> {
+async function _readProjectConfig(): Promise<VitteBuildConfig | undefined> {
   try {
     const files = await vscode.workspace.findFiles('vitte.config.json', '**/node_modules/**', 1);
     const first = Array.isArray(files) ? files[0] : undefined;

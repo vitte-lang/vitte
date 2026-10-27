@@ -7,22 +7,22 @@ ROLE-CONTRACT: advanced
 VITTE-H0007
 >>>
 
-space demo/advanced
-pull std/io as io_pkg
-pull std/math as math_pkg
-use std/core/types
+space demo::advanced
+use std::io as io_pkg
+use std::math as math_pkg
+use std::core::types
 share diagnostics_health, quickfix_pass, doctor_run
 
 const MAX_ITERS = 0xFF
 const BIN_FLAG = 0b1011_0010
-make retries = 3
+let retries = 3
 
 type Coord = i64
 type Ratio = f64
 
 form Vec2 {
-  field x: Coord
-  field y: Coord
+  x: Coord,
+  y: Coord,
 }
 
 trait Summarizable {
@@ -37,9 +37,9 @@ pick Payload {
 
 proc diagnostics_health(code: string, alias_pkg: string) -> string {
   if code is "VITTE-H0007" and alias_pkg as string != "" {
-    give "healthy"
+    return "healthy"
   } else {
-    give "degraded"
+    return "degraded"
   }
 }
 
@@ -63,43 +63,42 @@ proc quickfix_pass(limit: int) -> bool {
   let note: string = "quickfix"
   let absent = null
 
-  loop for i in limit {
+  for i in limit {
     if i > MAX_ITERS {
       break
     } else {
       continue
     }
   }
-  give ok
+  return ok
 }
 
 macro doctor_run(tag: string) -> string {
   emit "doctor:" + tag
-  asm "nop"
-  give "done"
+  asm("nop");
+  return "done"
 }
 
 proc vector_norm(v: Vec2) -> Ratio {
   let xx = v.x * v.x
   let yy = v.y * v.y
-  give math_pkg.sqrt(xx + yy) as f64
+  return math_pkg.sqrt(xx + yy) as f64
 }
 
-entry main at demo/advanced {
+entry main {
   let alias_pkg = "core_pkg"
   let diagnostics_api = diagnostics_health("VITTE-H0007", alias_pkg)
   let quickfix_api = quickfix_pass(20)
   let doctor_api = doctor_run("check")
 
-  select diagnostics_api
+  select diagnostics_api {
     when "healthy" {
       io_pkg.println("health ok")
     }
-    otherwise {
+    else {
       io_pkg.println("health degraded")
     }
-  .end
-
+  }
   match quickfix_api {
     case true {
       io_pkg.println(doctor_api as string)

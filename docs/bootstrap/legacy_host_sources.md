@@ -23,8 +23,9 @@ their use remains limited to the explicit `bootstrap-c17` targets.
 
 Any C, C++, or header file outside the declared roots, the runtime bridge, and
 the excluded editor fixtures is an unclassified host source and remains an
-audit failure. The Vitte self-host chain is defined by
-`src/vitte/compiler/main.vit` and `src/vitte/compiler/driver/compiler.vit`.
+audit failure. The default executable is implemented under `src/bootstrap/`. Native Vitte
+compiler components are being ported under `src/compiler/`; there is not yet a
+complete Vitte compiler entry point.
 
 ## Migration Rule
 

@@ -120,7 +120,7 @@ form JsonNumberScan {
 proc integer(
     value: i64
 ) -> JsonNumber {
-    give JsonNumber {
+    return JsonNumber {
         kind: JsonNumberKind.Integer,
         integer_value: value,
         float_value: ZERO_F64,
@@ -130,7 +130,7 @@ proc integer(
 proc float(
     value: f64
 ) -> JsonNumber {
-    give JsonNumber {
+    return JsonNumber {
         kind: JsonNumberKind.Float,
         integer_value: ZERO_I64,
         float_value: value,
@@ -138,44 +138,44 @@ proc float(
 }
 
 proc zero() -> JsonNumber {
-    give integer(0);
+    return integer(0);
 }
 
 proc one() -> JsonNumber {
-    give integer(1);
+    return integer(1);
 }
 
 proc minus_one() -> JsonNumber {
-    give integer(-1);
+    return integer(-1);
 }
 
 proc integer_zero() -> JsonNumber {
-    give integer(0);
+    return integer(0);
 }
 
 proc float_zero() -> JsonNumber {
-    give float(0.0);
+    return float(0.0);
 }
 
 proc integer_one() -> JsonNumber {
-    give integer(1);
+    return integer(1);
 }
 
 proc float_one() -> JsonNumber {
-    give float(1.0);
+    return float(1.0);
 }
 
 proc is_integer(
     number: &JsonNumber
 ) -> bool {
-    give number.kind ==
+    return number.kind ==
          JsonNumberKind.Integer;
 }
 
 proc is_float(
     number: &JsonNumber
 ) -> bool {
-    give number.kind ==
+    return number.kind ==
          JsonNumberKind.Float;
 }
 
@@ -183,26 +183,26 @@ proc as_integer(
     number: &JsonNumber
 ) -> i64 {
     if is_integer(number) {
-        give number.integer_value;
+        return number.integer_value;
     }
 
-    give number.float_value as i64;
+    return number.float_value as i64;
 }
 
 proc as_float(
     number: &JsonNumber
 ) -> f64 {
     if is_float(number) {
-        give number.float_value;
+        return number.float_value;
     }
 
-    give number.integer_value as f64;
+    return number.integer_value as f64;
 }
 
 proc copy(
     number: &JsonNumber
 ) -> JsonNumber {
-    give JsonNumber {
+    return JsonNumber {
         kind: number.kind,
         integer_value:
             number.integer_value,
@@ -215,77 +215,77 @@ proc is_zero(
     number: &JsonNumber
 ) -> bool {
     if is_integer(number) {
-        give number.integer_value == 0;
+        return number.integer_value == 0;
     }
 
-    give number.float_value == 0.0;
+    return number.float_value == 0.0;
 }
 
 proc is_one(
     number: &JsonNumber
 ) -> bool {
     if is_integer(number) {
-        give number.integer_value == 1;
+        return number.integer_value == 1;
     }
 
-    give number.float_value == 1.0;
+    return number.float_value == 1.0;
 }
 
 proc is_positive(
     number: &JsonNumber
 ) -> bool {
     if is_integer(number) {
-        give number.integer_value > 0;
+        return number.integer_value > 0;
     }
 
-    give number.float_value > 0.0;
+    return number.float_value > 0.0;
 }
 
 proc is_negative(
     number: &JsonNumber
 ) -> bool {
     if is_integer(number) {
-        give number.integer_value < 0;
+        return number.integer_value < 0;
     }
 
-    give number.float_value < 0.0;
+    return number.float_value < 0.0;
 }
 
 proc is_non_negative(
     number: &JsonNumber
 ) -> bool {
-    give !is_negative(number);
+    return not is_negative(number);
 }
 
 proc is_non_positive(
     number: &JsonNumber
 ) -> bool {
-    give !is_positive(number);
+    return not is_positive(number);
 }
 
 proc sign(
     number: &JsonNumber
 ) -> i64 {
     if is_negative(number) {
-        give -1;
+        return -1;
     }
 
     if is_positive(number) {
-        give 1;
+        return 1;
     }
 
-    give 0;
+    return 0;
 }
 
 proc negate(
     number: &JsonNumber
 ) -> JsonNumber {
     if is_integer(number) {
-        give integer(
+        return integer(
             -number.integer_value);
     }
 
-    give float(
+    return float(
         -number.float_value);
 }
 
@@ -293,17 +293,17 @@ proc absolute(
     number: &JsonNumber
 ) -> JsonNumber {
     if is_negative(number) {
-        give negate(number);
+        return negate(number);
     }
 
-    give copy(number);
+    return copy(number);
 }
 
 proc normalize(
     number: &JsonNumber
 ) -> JsonNumber {
     if is_integer(number) {
-        give integer(
+        return integer(
             number.integer_value);
     }
 
@@ -315,10 +315,10 @@ proc normalize(
 
     if round_trip ==
        number.float_value {
-        give integer(candidate);
+        return integer(candidate);
     }
 
-    give float(
+    return float(
         number.float_value);
 }
 
@@ -326,13 +326,13 @@ proc equals(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> bool {
-    if is_integer(left) &&
+    if is_integer(left)  and 
        is_integer(right) {
-        give left.integer_value ==
+        return left.integer_value ==
              right.integer_value;
     }
 
-    give as_float(left) ==
+    return as_float(left) ==
          as_float(right);
 }
 
@@ -340,7 +340,7 @@ proc not_equals(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> bool {
-    give !equals(
+    return not equals(
         left,
         right);
 }
@@ -349,13 +349,13 @@ proc less_than(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> bool {
-    if is_integer(left) &&
+    if is_integer(left)  and 
        is_integer(right) {
-        give left.integer_value <
+        return left.integer_value <
              right.integer_value;
     }
 
-    give as_float(left) <
+    return as_float(left) <
          as_float(right);
 }
 
@@ -363,9 +363,9 @@ proc less_than_or_equal(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> bool {
-    give less_than(
+    return less_than(
                left,
-               right) ||
+               right)  or 
          equals(
                left,
                right);
@@ -375,13 +375,13 @@ proc greater_than(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> bool {
-    if is_integer(left) &&
+    if is_integer(left)  and 
        is_integer(right) {
-        give left.integer_value >
+        return left.integer_value >
              right.integer_value;
     }
 
-    give as_float(left) >
+    return as_float(left) >
          as_float(right);
 }
 
@@ -389,9 +389,9 @@ proc greater_than_or_equal(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> bool {
-    give greater_than(
+    return greater_than(
                left,
-               right) ||
+               right)  or 
          equals(
                left,
                right);
@@ -404,16 +404,16 @@ proc compare(
     if less_than(
         left,
         right) {
-        give -1;
+        return -1;
     }
 
     if greater_than(
         left,
         right) {
-        give 1;
+        return 1;
     }
 
-    give 0;
+    return 0;
 }
 
 proc minimum(
@@ -423,10 +423,10 @@ proc minimum(
     if less_than_or_equal(
         left,
         right) {
-        give copy(left);
+        return copy(left);
     }
 
-    give copy(right);
+    return copy(right);
 }
 
 proc maximum(
@@ -436,10 +436,10 @@ proc maximum(
     if greater_than_or_equal(
         left,
         right) {
-        give copy(left);
+        return copy(left);
     }
 
-    give copy(right);
+    return copy(right);
 }
 
 proc clamp(
@@ -450,18 +450,18 @@ proc clamp(
     if less_than(
         number,
         minimum_value) {
-        give copy(
+        return copy(
             minimum_value);
     }
 
     if greater_than(
         number,
         maximum_value) {
-        give copy(
+        return copy(
             maximum_value);
     }
 
-    give copy(number);
+    return copy(number);
 }
 
 proc between(
@@ -469,9 +469,9 @@ proc between(
     minimum_value: &JsonNumber,
     maximum_value: &JsonNumber
 ) -> bool {
-    give greater_than_or_equal(
+    return greater_than_or_equal(
                number,
-               minimum_value) &&
+               minimum_value)  and 
          less_than_or_equal(
                number,
                maximum_value);
@@ -481,14 +481,14 @@ proc add(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> JsonNumber {
-    if is_integer(left) &&
+    if is_integer(left)  and 
        is_integer(right) {
-        give integer(
+        return integer(
             left.integer_value +
             right.integer_value);
     }
 
-    give float(
+    return float(
         as_float(left) +
         as_float(right));
 }
@@ -497,14 +497,14 @@ proc subtract(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> JsonNumber {
-    if is_integer(left) &&
+    if is_integer(left)  and 
        is_integer(right) {
-        give integer(
+        return integer(
             left.integer_value -
             right.integer_value);
     }
 
-    give float(
+    return float(
         as_float(left) -
         as_float(right));
 }
@@ -513,14 +513,14 @@ proc multiply(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> JsonNumber {
-    if is_integer(left) &&
+    if is_integer(left)  and 
        is_integer(right) {
-        give integer(
+        return integer(
             left.integer_value *
             right.integer_value);
     }
 
-    give float(
+    return float(
         as_float(left) *
         as_float(right));
 }
@@ -530,10 +530,10 @@ proc divide(
     right: &JsonNumber
 ) -> JsonNumber {
     if is_zero(right) {
-        give zero();
+        return zero();
     }
 
-    give float(
+    return float(
         as_float(left) /
         as_float(right));
 }
@@ -542,16 +542,16 @@ proc remainder(
     left: &JsonNumber,
     right: &JsonNumber
 ) -> JsonNumber {
-    if !is_integer(left) ||
-       !is_integer(right) {
-        give zero();
+    if not is_integer(left)  or 
+       not is_integer(right) {
+        return zero();
     }
 
     if right.integer_value == 0 {
-        give zero();
+        return zero();
     }
 
-    give integer(
+    return integer(
         left.integer_value %
         right.integer_value);
 }
@@ -562,7 +562,7 @@ proc increment(
     let amount: JsonNumber =
         one();
 
-    give add(
+    return add(
         number,
         &amount);
 }
@@ -573,7 +573,7 @@ proc decrement(
     let amount: JsonNumber =
         one();
 
-    give subtract(
+    return subtract(
         number,
         &amount);
 }
@@ -581,7 +581,7 @@ proc decrement(
 proc square(
     number: &JsonNumber
 ) -> JsonNumber {
-    give multiply(
+    return multiply(
         number,
         number);
 }
@@ -592,7 +592,7 @@ proc cube(
     let squared: JsonNumber =
         square(number);
 
-    give multiply(
+    return multiply(
         &squared,
         number);
 }
@@ -602,7 +602,7 @@ proc power_integer(
     exponent: usize
 ) -> JsonNumber {
     if exponent == 0 {
-        give one();
+        return one();
     }
 
     let mut result: JsonNumber =
@@ -619,41 +619,41 @@ proc power_integer(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc valid_digit(
     character: char
 ) -> bool {
-    give character >= '0' &&
+    return character >= '0'  and 
          character <= '9';
 }
 
 proc valid_nonzero_digit(
     character: char
 ) -> bool {
-    give character >= '1' &&
+    return character >= '1'  and 
          character <= '9';
 }
 
 proc valid_exponent_marker(
     character: char
 ) -> bool {
-    give character == 'e' ||
+    return character == 'e'  or 
          character == 'E';
 }
 
 proc valid_exponent_sign(
     character: char
 ) -> bool {
-    give character == '+' ||
+    return character == '+'  or 
          character == '-';
 }
 
 proc valid_number_start(
     character: char
 ) -> bool {
-    give character == '-' ||
+    return character == '-'  or 
          valid_digit(
              character);
 }
@@ -662,46 +662,46 @@ proc digit_value(
     character: char
 ) -> i64 {
     if character == '0' {
-        give 0;
+        return 0;
     }
 
     if character == '1' {
-        give 1;
+        return 1;
     }
 
     if character == '2' {
-        give 2;
+        return 2;
     }
 
     if character == '3' {
-        give 3;
+        return 3;
     }
 
     if character == '4' {
-        give 4;
+        return 4;
     }
 
     if character == '5' {
-        give 5;
+        return 5;
     }
 
     if character == '6' {
-        give 6;
+        return 6;
     }
 
     if character == '7' {
-        give 7;
+        return 7;
     }
 
     if character == '8' {
-        give 8;
+        return 8;
     }
 
     if character == '9' {
-        give 9;
+        return 9;
     }
 
-    give -1;
+    return -1;
 }
 
 proc decimal_digits(
@@ -716,7 +716,7 @@ proc decimal_digits(
     }
 
     if current == 0 {
-        give 1;
+        return 1;
     }
 
     let mut count: usize = 0;
@@ -728,7 +728,7 @@ proc decimal_digits(
         set count += 1;
     }
 
-    give count;
+    return count;
 }
 
 proc power_of_ten_i64(
@@ -746,7 +746,7 @@ proc power_of_ten_i64(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc power_of_ten_f64(
@@ -764,7 +764,7 @@ proc power_of_ten_f64(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc negative_power_of_ten_f64(
@@ -782,7 +782,7 @@ proc negative_power_of_ten_f64(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc apply_decimal_exponent(
@@ -801,7 +801,7 @@ proc apply_decimal_exponent(
             set remaining -= 1;
         }
 
-        give result;
+        return result;
     }
 
     if exponent < 0 {
@@ -814,14 +814,14 @@ proc apply_decimal_exponent(
         }
     }
 
-    give result;
+    return result;
 }
 
 proc parse_error(
     error: JsonNumberParseError,
     offset: usize
 ) -> JsonNumberParseResult {
-    give JsonNumberParseResult {
+    return JsonNumberParseResult {
         ok: false,
         value: zero(),
         error: error,
@@ -833,7 +833,7 @@ proc parse_success(
     value: JsonNumber,
     offset: usize
 ) -> JsonNumberParseResult {
-    give JsonNumberParseResult {
+    return JsonNumberParseResult {
         ok: true,
         value: value,
         error: JsonNumberParseError.None,
@@ -842,7 +842,7 @@ proc parse_success(
 }
 
 proc scan_empty() -> JsonNumberScan {
-    give JsonNumberScan {
+    return JsonNumberScan {
         negative: false,
 
         integer_start: 0,
@@ -865,7 +865,7 @@ proc scan_number(
     text: string
 ) -> JsonNumberParseResult {
     if text.length == 0 {
-        give parse_error(
+        return parse_error(
             JsonNumberParseError.Empty,
             0);
     }
@@ -876,14 +876,14 @@ proc scan_number(
         set index += 1;
 
         if index >= text.length {
-            give parse_error(
+            return parse_error(
                 JsonNumberParseError.MissingInteger,
                 index);
         }
     }
 
     if index >= text.length {
-        give parse_error(
+        return parse_error(
             JsonNumberParseError.MissingInteger,
             index);
     }
@@ -894,73 +894,73 @@ proc scan_number(
         if index < text.length {
             if valid_digit(
                 text[index]) {
-                give parse_error(
+                return parse_error(
                     JsonNumberParseError.InvalidLeadingZero,
                     index);
             }
         }
     } else {
-        if !valid_nonzero_digit(
+        if not valid_nonzero_digit(
             text[index]) {
-            give parse_error(
+            return parse_error(
                 JsonNumberParseError.MissingInteger,
                 index);
         }
 
-        while index < text.length &&
+        while index < text.length  and 
               valid_digit(text[index]) {
             set index += 1;
         }
     }
 
-    if index < text.length &&
+    if index < text.length  and 
        text[index] == '.' {
         set index += 1;
 
-        if index >= text.length ||
-           !valid_digit(text[index]) {
-            give parse_error(
+        if index >= text.length  or 
+           not valid_digit(text[index]) {
+            return parse_error(
                 JsonNumberParseError.MissingFraction,
                 index);
         }
 
-        while index < text.length &&
+        while index < text.length  and 
               valid_digit(text[index]) {
             set index += 1;
         }
     }
 
-    if index < text.length &&
+    if index < text.length  and 
        valid_exponent_marker(
            text[index]) {
         set index += 1;
 
-        if index < text.length &&
+        if index < text.length  and 
            valid_exponent_sign(
                text[index]) {
             set index += 1;
         }
 
-        if index >= text.length ||
-           !valid_digit(text[index]) {
-            give parse_error(
+        if index >= text.length  or 
+           not valid_digit(text[index]) {
+            return parse_error(
                 JsonNumberParseError.MissingExponent,
                 index);
         }
 
-        while index < text.length &&
+        while index < text.length  and 
               valid_digit(text[index]) {
             set index += 1;
         }
     }
 
     if index != text.length {
-        give parse_error(
+        return parse_error(
             JsonNumberParseError.TrailingCharacters,
             index);
     }
 
-    give parse_success(
+    return parse_success(
         zero(),
         index);
 }
@@ -971,7 +971,7 @@ proc is_valid_json_number(
     let result: JsonNumberParseResult =
         scan_number(text);
 
-    give result.ok;
+    return result.ok;
 }
 
 proc has_fraction(
@@ -981,13 +981,13 @@ proc has_fraction(
 
     while index < text.length {
         if text[index] == '.' {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc has_exponent(
@@ -998,24 +998,24 @@ proc has_exponent(
     while index < text.length {
         if valid_exponent_marker(
             text[index]) {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc is_integer_syntax(
     text: string
 ) -> bool {
-    if !is_valid_json_number(text) {
-        give false;
+    if not is_valid_json_number(text) {
+        return false;
     }
 
-    give !has_fraction(text) &&
-         !has_exponent(text);
+    return not has_fraction(text)  and 
+         not has_exponent(text);
 }
 
 proc parse_integer_digits(
@@ -1038,7 +1038,7 @@ proc parse_integer_digits(
         set index += 1;
     }
 
-    give value;
+    return value;
 }
 
 proc parse_integer(
@@ -1047,12 +1047,12 @@ proc parse_integer(
     let syntax: JsonNumberParseResult =
         scan_number(text);
 
-    if !syntax.ok {
-        give syntax;
+    if not syntax.ok {
+        return syntax;
     }
 
-    if !is_integer_syntax(text) {
-        give parse_error(
+    if not is_integer_syntax(text) {
+        return parse_error(
             JsonNumberParseError.InvalidCharacter,
             0);
     }
@@ -1072,12 +1072,12 @@ proc parse_integer(
             text.length);
 
     if negative {
-        give parse_success(
+        return parse_success(
             integer(-value),
             text.length);
     }
 
-    give parse_success(
+    return parse_success(
         integer(value),
         text.length);
 }
@@ -1106,7 +1106,7 @@ proc parse_fraction_value(
         set index += 1;
     }
 
-    give value;
+    return value;
 }
 
 proc parse_exponent_digits(
@@ -1129,7 +1129,7 @@ proc parse_exponent_digits(
         set index += 1;
     }
 
-    give value;
+    return value;
 }
 
 proc parse_float_value(
@@ -1146,7 +1146,7 @@ proc parse_float_value(
     let integer_start: usize =
         index;
 
-    while index < text.length &&
+    while index < text.length  and 
           valid_digit(text[index]) {
         set index += 1;
     }
@@ -1163,14 +1163,14 @@ proc parse_float_value(
     let mut result: f64 =
         integer_component as f64;
 
-    if index < text.length &&
+    if index < text.length  and 
        text[index] == '.' {
         set index += 1;
 
         let fraction_start: usize =
             index;
 
-        while index < text.length &&
+        while index < text.length  and 
               valid_digit(text[index]) {
             set index += 1;
         }
@@ -1185,7 +1185,7 @@ proc parse_float_value(
             fraction_component;
     }
 
-    if index < text.length &&
+    if index < text.length  and 
        valid_exponent_marker(
            text[index]) {
         set index += 1;
@@ -1209,7 +1209,7 @@ proc parse_float_value(
         let exponent_start: usize =
             index;
 
-        while index < text.length &&
+        while index < text.length  and 
               valid_digit(text[index]) {
             set index += 1;
         }
@@ -1236,7 +1236,7 @@ proc parse_float_value(
             -result;
     }
 
-    give result;
+    return result;
 }
 
 proc parse(
@@ -1245,18 +1245,18 @@ proc parse(
     let syntax: JsonNumberParseResult =
         scan_number(text);
 
-    if !syntax.ok {
-        give syntax;
+    if not syntax.ok {
+        return syntax;
     }
 
     if is_integer_syntax(text) {
-        give parse_integer(text);
+        return parse_integer(text);
     }
 
     let value: f64 =
         parse_float_value(text);
 
-    give parse_success(
+    return parse_success(
         float(value),
         text.length);
 }
@@ -1267,11 +1267,11 @@ proc parse_or_zero(
     let result: JsonNumberParseResult =
         parse(text);
 
-    if !result.ok {
-        give zero();
+    if not result.ok {
+        return zero();
     }
 
-    give result.value;
+    return result.value;
 }
 
 proc parse_or(
@@ -1282,10 +1282,10 @@ proc parse_or(
         parse(text);
 
     if result.ok {
-        give result.value;
+        return result.value;
     }
 
-    give fallback;
+    return fallback;
 }
 
 proc parse_error_name(
@@ -1293,55 +1293,55 @@ proc parse_error_name(
 ) -> string {
     if error ==
        JsonNumberParseError.None {
-        give "none";
+        return "none";
     }
 
     if error ==
        JsonNumberParseError.Empty {
-        give "empty";
+        return "empty";
     }
 
     if error ==
        JsonNumberParseError.InvalidCharacter {
-        give "invalid character";
+        return "invalid character";
     }
 
     if error ==
        JsonNumberParseError.InvalidSign {
-        give "invalid sign";
+        return "invalid sign";
     }
 
     if error ==
        JsonNumberParseError.InvalidLeadingZero {
-        give "invalid leading zero";
+        return "invalid leading zero";
     }
 
     if error ==
        JsonNumberParseError.MissingInteger {
-        give "missing integer";
+        return "missing integer";
     }
 
     if error ==
        JsonNumberParseError.MissingFraction {
-        give "missing fraction";
+        return "missing fraction";
     }
 
     if error ==
        JsonNumberParseError.MissingExponent {
-        give "missing exponent";
+        return "missing exponent";
     }
 
     if error ==
        JsonNumberParseError.IntegerOverflow {
-        give "integer overflow";
+        return "integer overflow";
     }
 
     if error ==
        JsonNumberParseError.ExponentOverflow {
-        give "exponent overflow";
+        return "exponent overflow";
     }
 
-    give "trailing characters";
+    return "trailing characters";
 }
 
 proc validate(
@@ -1349,25 +1349,25 @@ proc validate(
 ) -> bool {
     if number.kind ==
        JsonNumberKind.Integer {
-        give true;
+        return true;
     }
 
     if number.kind ==
        JsonNumberKind.Float {
-        give true;
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 proc test_integer_construction() -> bool {
     let value: JsonNumber =
         integer(42);
 
-    give is_integer(&value) &&
-         !is_float(&value) &&
-         value.integer_value == 42 &&
-         as_integer(&value) == 42 &&
+    return is_integer(&value)  and 
+         not is_float(&value)  and 
+         value.integer_value == 42  and 
+         as_integer(&value) == 42  and 
          as_float(&value) == 42.0;
 }
 
@@ -1375,9 +1375,9 @@ proc test_float_construction() -> bool {
     let value: JsonNumber =
         float(42.5);
 
-    give is_float(&value) &&
-         !is_integer(&value) &&
-         value.float_value == 42.5 &&
+    return is_float(&value)  and 
+         not is_integer(&value)  and 
+         value.float_value == 42.5  and 
          as_float(&value) == 42.5;
 }
 
@@ -1385,9 +1385,9 @@ proc test_zero() -> bool {
     let value: JsonNumber =
         zero();
 
-    give is_zero(&value) &&
-         !is_positive(&value) &&
-         !is_negative(&value) &&
+    return is_zero(&value)  and 
+         not is_positive(&value)  and 
+         not is_negative(&value)  and 
          sign(&value) == 0;
 }
 
@@ -1395,9 +1395,9 @@ proc test_positive() -> bool {
     let value: JsonNumber =
         integer(42);
 
-    give is_positive(&value) &&
-         is_non_negative(&value) &&
-         !is_negative(&value) &&
+    return is_positive(&value)  and 
+         is_non_negative(&value)  and 
+         not is_negative(&value)  and 
          sign(&value) == 1;
 }
 
@@ -1405,9 +1405,9 @@ proc test_negative() -> bool {
     let value: JsonNumber =
         integer(-42);
 
-    give is_negative(&value) &&
-         is_non_positive(&value) &&
-         !is_positive(&value) &&
+    return is_negative(&value)  and 
+         is_non_positive(&value)  and 
+         not is_positive(&value)  and 
          sign(&value) == -1;
 }
 
@@ -1418,7 +1418,7 @@ proc test_negate() -> bool {
     let negative: JsonNumber =
         negate(&positive);
 
-    give equals(
+    return equals(
         &negative,
         &JsonNumber {
             kind: JsonNumberKind.Integer,
@@ -1434,7 +1434,7 @@ proc test_absolute() -> bool {
     let result: JsonNumber =
         absolute(&negative);
 
-    give equals(
+    return equals(
         &result,
         &JsonNumber {
             kind: JsonNumberKind.Integer,
@@ -1455,7 +1455,7 @@ proc test_integer_addition() -> bool {
             &left,
             &right);
 
-    give is_integer(&result) &&
+    return is_integer(&result)  and 
          result.integer_value == 42;
 }
 
@@ -1471,7 +1471,7 @@ proc test_mixed_addition() -> bool {
             &left,
             &right);
 
-    give is_float(&result) &&
+    return is_float(&result)  and 
          result.float_value == 42.5;
 }
 
@@ -1487,7 +1487,7 @@ proc test_subtraction() -> bool {
             &left,
             &right);
 
-    give result.integer_value == 42;
+    return result.integer_value == 42;
 }
 
 proc test_multiplication() -> bool {
@@ -1502,7 +1502,7 @@ proc test_multiplication() -> bool {
             &left,
             &right);
 
-    give result.integer_value == 42;
+    return result.integer_value == 42;
 }
 
 proc test_division() -> bool {
@@ -1517,7 +1517,7 @@ proc test_division() -> bool {
             &left,
             &right);
 
-    give as_float(&result) == 42.0;
+    return as_float(&result) == 42.0;
 }
 
 proc test_remainder() -> bool {
@@ -1532,7 +1532,7 @@ proc test_remainder() -> bool {
             &left,
             &right);
 
-    give result.integer_value == 42;
+    return result.integer_value == 42;
 }
 
 proc test_comparison() -> bool {
@@ -1548,18 +1548,18 @@ proc test_comparison() -> bool {
     let forty_two_float: JsonNumber =
         float(42.0);
 
-    give less_than(
+    return less_than(
                &twenty,
-               &twenty_two) &&
+               &twenty_two)  and 
          greater_than(
                &twenty_two,
-               &twenty) &&
+               &twenty)  and 
          equals(
                &forty_two,
-               &forty_two_float) &&
+               &forty_two_float)  and 
          compare(
                &twenty,
-               &twenty_two) == -1 &&
+               &twenty_two) == -1  and 
          compare(
                &forty_two,
                &forty_two_float) == 0;
@@ -1599,72 +1599,72 @@ proc test_clamp() -> bool {
             &minimum_value,
             &maximum_value);
 
-    give as_integer(&inside_result) == 42 &&
-         as_integer(&below_result) == 0 &&
+    return as_integer(&inside_result) == 42  and 
+         as_integer(&below_result) == 0  and 
          as_integer(&above_result) == 100;
 }
 
 proc test_valid_integer_syntax() -> bool {
-    give is_valid_json_number("0") &&
-         is_valid_json_number("-0") &&
-         is_valid_json_number("1") &&
-         is_valid_json_number("42") &&
-         is_valid_json_number("-42") &&
+    return is_valid_json_number("0")  and 
+         is_valid_json_number("-0")  and 
+         is_valid_json_number("1")  and 
+         is_valid_json_number("42")  and 
+         is_valid_json_number("-42")  and 
          is_valid_json_number("1234567890");
 }
 
 proc test_valid_fraction_syntax() -> bool {
-    give is_valid_json_number("0.0") &&
-         is_valid_json_number("-0.0") &&
-         is_valid_json_number("3.14") &&
-         is_valid_json_number("-3.14") &&
-         is_valid_json_number("0.125") &&
+    return is_valid_json_number("0.0")  and 
+         is_valid_json_number("-0.0")  and 
+         is_valid_json_number("3.14")  and 
+         is_valid_json_number("-3.14")  and 
+         is_valid_json_number("0.125")  and 
          is_valid_json_number("42.5");
 }
 
 proc test_valid_exponent_syntax() -> bool {
-    give is_valid_json_number("1e10") &&
-         is_valid_json_number("1E10") &&
-         is_valid_json_number("1e+10") &&
-         is_valid_json_number("1e-10") &&
-         is_valid_json_number("-1e10") &&
+    return is_valid_json_number("1e10")  and 
+         is_valid_json_number("1E10")  and 
+         is_valid_json_number("1e+10")  and 
+         is_valid_json_number("1e-10")  and 
+         is_valid_json_number("-1e10")  and 
          is_valid_json_number("-12.5e+3");
 }
 
 proc test_invalid_empty() -> bool {
-    give !is_valid_json_number("");
+    return not is_valid_json_number("");
 }
 
 proc test_invalid_plus_prefix() -> bool {
-    give !is_valid_json_number("+1");
+    return not is_valid_json_number("+1");
 }
 
 proc test_invalid_leading_zero() -> bool {
-    give !is_valid_json_number("01") &&
-         !is_valid_json_number("-01") &&
-         !is_valid_json_number("00") &&
-         !is_valid_json_number("042");
+    return not is_valid_json_number("01")  and 
+         not is_valid_json_number("-01")  and 
+         not is_valid_json_number("00")  and 
+         not is_valid_json_number("042");
 }
 
 proc test_invalid_fraction() -> bool {
-    give !is_valid_json_number(".5") &&
-         !is_valid_json_number("1.") &&
-         !is_valid_json_number("-.5");
+    return not is_valid_json_number(".5")  and 
+         not is_valid_json_number("1.")  and 
+         not is_valid_json_number("-.5");
 }
 
 proc test_invalid_exponent() -> bool {
-    give !is_valid_json_number("1e") &&
-         !is_valid_json_number("1E") &&
-         !is_valid_json_number("1e+") &&
-         !is_valid_json_number("1e-");
+    return not is_valid_json_number("1e")  and 
+         not is_valid_json_number("1E")  and 
+         not is_valid_json_number("1e+")  and 
+         not is_valid_json_number("1e-");
 }
 
 proc test_invalid_non_json_numbers() -> bool {
-    give !is_valid_json_number("NaN") &&
-         !is_valid_json_number("Infinity") &&
-         !is_valid_json_number("-Infinity") &&
-         !is_valid_json_number("0x2A") &&
-         !is_valid_json_number("1_000");
+    return not is_valid_json_number("NaN")  and 
+         not is_valid_json_number("Infinity")  and 
+         not is_valid_json_number("-Infinity")  and 
+         not is_valid_json_number("0x2A")  and 
+         not is_valid_json_number("1_000");
 }
 
 proc test_parse_integer() -> bool {
@@ -1674,11 +1674,11 @@ proc test_parse_integer() -> bool {
     let negative: JsonNumberParseResult =
         parse("-42");
 
-    give positive.ok &&
-         negative.ok &&
-         is_integer(&positive.value) &&
-         is_integer(&negative.value) &&
-         positive.value.integer_value == 42 &&
+    return positive.ok  and 
+         negative.ok  and 
+         is_integer(&positive.value)  and 
+         is_integer(&negative.value)  and 
+         positive.value.integer_value == 42  and 
          negative.value.integer_value == -42;
 }
 
@@ -1686,8 +1686,8 @@ proc test_parse_fraction() -> bool {
     let result: JsonNumberParseResult =
         parse("42.5");
 
-    give result.ok &&
-         is_float(&result.value) &&
+    return result.ok  and 
+         is_float(&result.value)  and 
          result.value.float_value == 42.5;
 }
 
@@ -1695,8 +1695,8 @@ proc test_parse_negative_fraction() -> bool {
     let result: JsonNumberParseResult =
         parse("-42.5");
 
-    give result.ok &&
-         is_float(&result.value) &&
+    return result.ok  and 
+         is_float(&result.value)  and 
          result.value.float_value == -42.5;
 }
 
@@ -1704,7 +1704,7 @@ proc test_parse_exponent_positive() -> bool {
     let result: JsonNumberParseResult =
         parse("4.2e1");
 
-    give result.ok &&
+    return result.ok  and 
          as_float(&result.value) == 42.0;
 }
 
@@ -1712,7 +1712,7 @@ proc test_parse_exponent_negative() -> bool {
     let result: JsonNumberParseResult =
         parse("420e-1");
 
-    give result.ok &&
+    return result.ok  and 
          as_float(&result.value) == 42.0;
 }
 
@@ -1720,7 +1720,7 @@ proc test_parse_exponent_explicit_plus() -> bool {
     let result: JsonNumberParseResult =
         parse("4.2e+1");
 
-    give result.ok &&
+    return result.ok  and 
          as_float(&result.value) == 42.0;
 }
 
@@ -1737,13 +1737,13 @@ proc test_parse_zero_variants() -> bool {
     let d: JsonNumberParseResult =
         parse("-0.0");
 
-    give a.ok &&
-         b.ok &&
-         c.ok &&
-         d.ok &&
-         is_zero(&a.value) &&
-         is_zero(&b.value) &&
-         is_zero(&c.value) &&
+    return a.ok  and 
+         b.ok  and 
+         c.ok  and 
+         d.ok  and 
+         is_zero(&a.value)  and 
+         is_zero(&b.value)  and 
+         is_zero(&c.value)  and 
          is_zero(&d.value);
 }
 
@@ -1751,7 +1751,7 @@ proc test_parse_error_leading_zero() -> bool {
     let result: JsonNumberParseResult =
         parse("042");
 
-    give !result.ok &&
+    return not result.ok  and 
          result.error ==
              JsonNumberParseError.InvalidLeadingZero;
 }
@@ -1760,7 +1760,7 @@ proc test_parse_error_fraction() -> bool {
     let result: JsonNumberParseResult =
         parse("42.");
 
-    give !result.ok &&
+    return not result.ok  and 
          result.error ==
              JsonNumberParseError.MissingFraction;
 }
@@ -1769,7 +1769,7 @@ proc test_parse_error_exponent() -> bool {
     let result: JsonNumberParseResult =
         parse("42e");
 
-    give !result.ok &&
+    return not result.ok  and 
          result.error ==
              JsonNumberParseError.MissingExponent;
 }
@@ -1783,7 +1783,7 @@ proc test_power() -> bool {
             &value,
             5);
 
-    give is_integer(&result) &&
+    return is_integer(&result)  and 
          result.integer_value == 32;
 }
 
@@ -1794,7 +1794,7 @@ proc test_square() -> bool {
     let result: JsonNumber =
         square(&value);
 
-    give result.integer_value == 49;
+    return result.integer_value == 49;
 }
 
 proc test_cube() -> bool {
@@ -1804,7 +1804,7 @@ proc test_cube() -> bool {
     let result: JsonNumber =
         cube(&value);
 
-    give result.integer_value == 27;
+    return result.integer_value == 27;
 }
 
 proc test_normalize_integral_float() -> bool {
@@ -1814,7 +1814,7 @@ proc test_normalize_integral_float() -> bool {
     let result: JsonNumber =
         normalize(&value);
 
-    give is_integer(&result) &&
+    return is_integer(&result)  and 
          result.integer_value == 42;
 }
 
@@ -1825,48 +1825,48 @@ proc test_normalize_fraction() -> bool {
     let result: JsonNumber =
         normalize(&value);
 
-    give is_float(&result) &&
+    return is_float(&result)  and 
          result.float_value == 42.5;
 }
 
 proc self_test() -> bool {
-    give test_integer_construction() &&
-         test_float_construction() &&
-         test_zero() &&
-         test_positive() &&
-         test_negative() &&
-         test_negate() &&
-         test_absolute() &&
-         test_integer_addition() &&
-         test_mixed_addition() &&
-         test_subtraction() &&
-         test_multiplication() &&
-         test_division() &&
-         test_remainder() &&
-         test_comparison() &&
-         test_clamp() &&
-         test_valid_integer_syntax() &&
-         test_valid_fraction_syntax() &&
-         test_valid_exponent_syntax() &&
-         test_invalid_empty() &&
-         test_invalid_plus_prefix() &&
-         test_invalid_leading_zero() &&
-         test_invalid_fraction() &&
-         test_invalid_exponent() &&
-         test_invalid_non_json_numbers() &&
-         test_parse_integer() &&
-         test_parse_fraction() &&
-         test_parse_negative_fraction() &&
-         test_parse_exponent_positive() &&
-         test_parse_exponent_negative() &&
-         test_parse_exponent_explicit_plus() &&
-         test_parse_zero_variants() &&
-         test_parse_error_leading_zero() &&
-         test_parse_error_fraction() &&
-         test_parse_error_exponent() &&
-         test_power() &&
-         test_square() &&
-         test_cube() &&
-         test_normalize_integral_float() &&
+    return test_integer_construction()  and 
+         test_float_construction()  and 
+         test_zero()  and 
+         test_positive()  and 
+         test_negative()  and 
+         test_negate()  and 
+         test_absolute()  and 
+         test_integer_addition()  and 
+         test_mixed_addition()  and 
+         test_subtraction()  and 
+         test_multiplication()  and 
+         test_division()  and 
+         test_remainder()  and 
+         test_comparison()  and 
+         test_clamp()  and 
+         test_valid_integer_syntax()  and 
+         test_valid_fraction_syntax()  and 
+         test_valid_exponent_syntax()  and 
+         test_invalid_empty()  and 
+         test_invalid_plus_prefix()  and 
+         test_invalid_leading_zero()  and 
+         test_invalid_fraction()  and 
+         test_invalid_exponent()  and 
+         test_invalid_non_json_numbers()  and 
+         test_parse_integer()  and 
+         test_parse_fraction()  and 
+         test_parse_negative_fraction()  and 
+         test_parse_exponent_positive()  and 
+         test_parse_exponent_negative()  and 
+         test_parse_exponent_explicit_plus()  and 
+         test_parse_zero_variants()  and 
+         test_parse_error_leading_zero()  and 
+         test_parse_error_fraction()  and 
+         test_parse_error_exponent()  and 
+         test_power()  and 
+         test_square()  and 
+         test_cube()  and 
+         test_normalize_integral_float()  and 
          test_normalize_fraction();
 }

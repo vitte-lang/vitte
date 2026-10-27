@@ -39,6 +39,11 @@ export interface IndexedSymbol {
   uri: string;
   line: number;
   character: number;
+  nameCharacter?: number;
+  declarationKeyword?: string;
+  containerKeyword?: string;
+  implementationType?: string;
+  hasBody?: boolean;
   endLine?: number;
   endCharacter?: number;
   containerName?: string;
@@ -80,12 +85,18 @@ const DECLARATIONS = new Map<string, DeclarationInfo>([
   ["case", { kind: SK.Field, expectBody: true, allowBodyless: true }],
   ["trait", { kind: SK.Interface, expectBody: true }],
   ["type", { kind: SK.Interface, expectBody: false }],
+  ["opaque", { kind: SK.Interface, expectBody: false }],
+  ["impl", { kind: SK.Interface, expectBody: true }],
   ["proc", { kind: SK.Function, expectBody: true, allowBodyless: true }],
   ["const", { kind: SK.Constant, expectBody: false }],
-  ["field", { kind: SK.Field, expectBody: false }],
+  ["static", { kind: SK.Constant, expectBody: false }],
+  ["global", { kind: SK.Variable, expectBody: false }],
 ]);
 
-const MODIFIERS = new Set<string>();
+const MODIFIERS = new Set<string>([
+  "pub", "priv", "unsafe", "async", "inline", "noinline", "naked", "interrupt",
+  "extern", "intrinsic",
+]);
 
 class SymbolParser {
   private readonly text: string;
@@ -170,23 +181,32 @@ class SymbolParser {
     if (!name) return;
 
     const startPos = this.doc.positionAt(startOffset);
+    const namePos = this.doc.positionAt(Math.max(startOffset, this.pos - name.length));
+    const expectation = info.expectBody ? this.probeBodyOffset(info, this.pos) : undefined;
     const sym: IndexedSymbol = {
       name,
       kind: info.kind,
       uri: this.doc.uri,
       line: startPos.line,
       character: startPos.character,
+      nameCharacter: namePos.character,
+      declarationKeyword: keyword,
     };
+    if (keyword === "impl" && expectation?.kind === "body") {
+      const implementationType = /\bfor\s+([A-Za-z_]\w*)/.exec(this.masked.slice(this.pos, expectation.offset))?.[1];
+      if (implementationType) sym.implementationType = implementationType;
+    }
 
     const container = this.currentContainer();
     if (container) {
       sym.containerName = container.name;
+      sym.containerKeyword = container.declarationKeyword;
     }
 
     const index = this.symbols.push(sym) - 1;
 
-    if (info.expectBody) {
-      const expectation = this.probeBodyOffset(info, this.pos);
+    if (expectation) {
+      sym.hasBody = expectation.kind === "body";
       if (expectation.kind === "body") {
         this.pendingBodies.push({
           symbolIndex: index,
@@ -212,14 +232,23 @@ class SymbolParser {
       case "pick":
       case "case":
       case "type":
+      case "opaque":
       case "trait":
-      case "field":
         this.skipTrivia();
+        return this.readIdentifierToken();
+      case "impl":
+        this.skipTrivia();
+        if (this.masked[this.pos] === "<") {
+          this.pos = this.skipBalancedFrom(this.pos, "<", ">");
+          this.skipTrivia();
+        }
         return this.readIdentifierToken();
       case "proc":
         this.skipTrivia();
         return this.readFunctionName();
       case "const":
+      case "static":
+      case "global":
         return this.readConstName();
       default:
         return undefined;
@@ -495,7 +524,7 @@ export function getDocumentIndex(uri: string): IndexedSymbol[] {
 
 export function exportIndexSnapshot(): IndexSnapshot {
   return {
-    version: 2,
+    version: 3,
     entries: Array.from(INDEX.entries()).map(([uri, symbols]) => ({
       uri,
       hash: DOC_HASH.get(uri) ?? 0,
@@ -505,7 +534,7 @@ export function exportIndexSnapshot(): IndexSnapshot {
 }
 
 export function loadIndexSnapshot(snapshot: IndexSnapshot | null | undefined): number {
-  if (!snapshot?.entries || snapshot.version !== 2 || !Array.isArray(snapshot.entries)) return 0;
+  if (!snapshot?.entries || snapshot.version !== 3 || !Array.isArray(snapshot.entries)) return 0;
   INDEX.clear();
   DOC_HASH.clear();
   let count = 0;
@@ -549,7 +578,12 @@ export function toWorkspaceSymbols(syms: IndexedSymbol[]): LspSymbolInformation[
     kind: toLspKind(s.kind),
     location: {
       uri: s.uri,
-      range: lspRange(s.line, s.character, s.endLine ?? s.line, s.endCharacter ?? s.character),
+      range: lspRange(
+        s.line,
+        s.nameCharacter ?? s.character,
+        s.line,
+        (s.nameCharacter ?? s.character) + s.name.length,
+      ),
     } as LspLocation,
     containerName: s.containerName,
   }));
@@ -567,7 +601,12 @@ export function toDocumentSymbols(doc: TextDocument): LspDocumentSymbol[] {
       name: s.name,
       kind: toLspKind(s.kind),
       range: lspRange(s.line, s.character, s.endLine ?? s.line, s.endCharacter ?? s.character),
-      selectionRange: lspRange(s.line, s.character, s.line, Math.max(s.character, s.character + s.name.length)),
+      selectionRange: lspRange(
+        s.line,
+        s.nameCharacter ?? s.character,
+        s.line,
+        Math.max(s.nameCharacter ?? s.character, (s.nameCharacter ?? s.character) + s.name.length),
+      ),
       children: [],
     };
     if (s.containerName && byName.has(s.containerName)) {

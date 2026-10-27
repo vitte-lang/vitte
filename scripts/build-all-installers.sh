@@ -242,7 +242,17 @@ case "$FAMILY" in
 esac
 
 case "$FAMILY" in
-  all | linux | portable | freebsd | bsd | macos | solaris | windows | metadata)
+  raspberry)
+    run \
+      raspberry \
+      'Raspberry Pi self-contained installer: native armv6, armv7 or arm64 tar.gz' \
+      "${RASPBERRY_ARCH:-${ARCH:-$(uname -m)}}" \
+      "$ROOT_DIR/scripts/build-raspberry-installer.sh"
+    ;;
+esac
+
+case "$FAMILY" in
+  all | linux | portable | freebsd | bsd | macos | solaris | windows | raspberry | metadata)
     ;;
   *)
     scripts_build_die \

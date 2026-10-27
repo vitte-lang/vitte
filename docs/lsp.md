@@ -4,7 +4,9 @@ Status: official Language Server Protocol surface for Vitte 0.1.0.
 
 The LSP release gate covers these capabilities:
 
-- complete references for project symbols
+- references within the current document, other open documents, and indexed workspace files
+- declaration, definition, implementation, and type navigation across indexed workspace files
+- document highlights for symbol occurrences
 - fix-it code actions backed by compiler diagnostics
 - streaming diagnostics batches
 - semantic token text snapshots
@@ -13,6 +15,13 @@ The LSP release gate covers these capabilities:
 - multi-root workspaces
 - large project stress fixtures
 - VSCode and Neovim compatibility evidence
+
+The VS Code workspace index is populated in the background, capped at 5,000
+Vitte source files per scan and 30 seconds, and cached under `.vitte/`. Find
+references searches indexed closed files in parallel with up to eight readers
+and a 2.5-second default request budget. The response is capped at 20,000
+locations; files outside the index, oversized files, and results beyond these
+bounds are omitted to keep the language server responsive.
 
 The protocol contract is generated under `target/lsp/`. Editors must consume stable JSON shapes and tolerate disabled code actions when a diagnostic cannot be fixed automatically.
 

@@ -7,15 +7,16 @@
 <link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../css/site.css">
 <link rel="stylesheet" href="../css/print.css" media="print">
-<link rel="alternate" hreflang="en" href="https://vitte-lang.org/memory_safety.html">
-<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/memory_safety.html">
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/audits/memory_safety.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/audits/memory_safety.html">
 
 
 
 
 
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
-</head>
+
+<link rel="canonical" href="https://vitte-lang.org/audits/memory_safety.html"></head>
 <body class="classic-doc">
 <a class="skip-link" href="#main-content">Skip to content</a>
 <div class="site-shell">
@@ -29,94 +30,95 @@
 <main id="main-content" class="site-main">
 <article class="doc-content">
 <h1>Memory Safety Audit - Vitte Compiler</h1>
-<p>Date: 2026-05-23 Scope: compiler internals, backend/runtime interfaces, runtime C support, ownership and lifetime analysis.</p>
+<p><strong>Historical snapshot: May 23, 2026.</strong> Findings and source references on this page describe an earlier checkout and have not been revalidated against the current repository layout.</p>
+<p>Scope at the time: compiler internals, backend/runtime interfaces, runtime C support, ownership and lifetime analysis.</p>
 <h2>1. Unsafe Inventory</h2>
 <h3>1.1 Language-level <code>unsafe</code> surface</h3>
 <ul>
-<li><code>unsafe</code> is parsed as a block construct in the frontend parser: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/parse/parser.vit:852">parser.vit</a>.</li>
+<li><code>unsafe</code> is parsed as a block construct in the frontend parser: <code>src/vitte/compiler/frontend/parse/parser.vit:852</code>.</li>
 <li>AST carries <code>unsafe</code> flags in items/statements:</li>
-<li>proc signatures default to <code>unsafe: false</code>: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/ast/item.vit:299">item.vit</a></li>
-<li>statements mark <code>AstStmtKind.Unsafe</code>: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/ast/stmt.vit:463">stmt.vit</a></li>
+<li>proc signatures default to <code>unsafe: false</code>: <code>src/vitte/compiler/frontend/ast/item.vit:299</code></li>
+<li>statements mark <code>AstStmtKind.Unsafe</code>: <code>src/vitte/compiler/frontend/ast/stmt.vit:463</code></li>
 <li>Finding: there is parsing/modeling support, but no explicit end-to-end enforcement boundary in this audit scope that would require unsafe ops to be inside unsafe blocks.</li>
 <li>Risk: <strong>Medium</strong> (policy drift risk, not immediate memory corruption by itself).</li>
 </ul>
 <h3>1.2 Raw pointers and deref typing</h3>
 <ul>
-<li>Raw pointer kinds are present in AST type system (<code>RawPointer</code>): <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/frontend/ast/type_expr.vit:38">type_expr.vit</a>.</li>
-<li>Pointer unification exists (<code>*const</code>, <code>*mut</code>) in typeck: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/analysis/typeck/unify.vit:237">unify.vit</a>.</li>
+<li>Raw pointer kinds are present in AST type system (<code>RawPointer</code>): <code>src/vitte/compiler/frontend/ast/type_expr.vit:38</code>.</li>
+<li>Pointer unification exists (<code>*const</code>, <code>*mut</code>) in typeck: <code>src/vitte/compiler/analysis/typeck/unify.vit:237</code>.</li>
 <li>Finding: pointer type compatibility is handled; lifetime/provenance guarantees for raw pointers are not established by type unification alone.</li>
 <li>Risk: <strong>Medium</strong>.</li>
 </ul>
 <h3>1.3 Native/C boundary usage</h3>
 <ul>
-<li>Real heap allocation primitives appear in C runtime (<code>malloc</code>, <code>realloc</code>, <code>calloc</code>): <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.c:80">vitte_runtime.c</a>.</li>
-<li>Backend declares runtime stubs <code>vitte_alloc/vitte_free/vitte_print</code>: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/llvm_emit.vit:109">llvm_emit.vit</a>, <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/c_emit.vit:103">c_emit.vit</a>.</li>
+<li>Real heap allocation primitives appear in C runtime (<code>malloc</code>, <code>realloc</code>, <code>calloc</code>): <code>src/vitte/compiler/backends/runtime_c/vitte_runtime.c:80</code>.</li>
+<li>Backend declares runtime stubs <code>vitte_alloc/vitte_free/vitte_print</code>: <code>src/vitte/compiler/backends/llvm_emit.vit:109</code>, <code>src/vitte/compiler/backends/c_emit.vit:103</code>.</li>
 <li>Finding: declarations exist, but corresponding implementations are not present in <code>runtime_c</code> header/source exported API shown in this audit.</li>
 <li>Risk: <strong>High</strong> (ABI/link mismatch, potential undefined behavior if symbol expectations diverge across paths).</li>
 </ul>
 <h2>2. Ownership Audit</h2>
 <h3>2.1 Strengths</h3>
 <ul>
-<li>Ownership model tracks local states (<code>Available</code>, <code>Moved</code>, borrow counters): <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/analysis/borrowck/ownership.vit:11">ownership.vit</a>.</li>
-<li>Place overlap/prefix checks exist for field/index/deref projections: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/analysis/borrowck/ownership.vit:171">ownership.vit</a>.</li>
-<li>Borrow checker enforces move-while-borrowed and write-while-borrowed diagnostics: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/analysis/borrowck/mod.vit:714">mod.vit</a>, <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/analysis/borrowck/mod.vit:748">mod.vit</a>.</li>
+<li>Ownership model tracks local states (<code>Available</code>, <code>Moved</code>, borrow counters): <code>src/vitte/compiler/analysis/borrowck/ownership.vit:11</code>.</li>
+<li>Place overlap/prefix checks exist for field/index/deref projections: <code>src/vitte/compiler/analysis/borrowck/ownership.vit:171</code>.</li>
+<li>Borrow checker enforces move-while-borrowed and write-while-borrowed diagnostics: <code>src/vitte/compiler/analysis/borrowck/mod.vit:714</code>, <code>src/vitte/compiler/analysis/borrowck/mod.vit:748</code>.</li>
 </ul>
 <h3>2.2 Gaps / risks</h3>
 <ul>
-<li>Borrow metadata scopes are line-based approximations (<code>scope_end_line</code>) and sentinel max values: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/analysis/borrowck/mod.vit:319">mod.vit</a>, <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/analysis/borrowck/mod.vit:322">mod.vit</a>.</li>
+<li>Borrow metadata scopes are line-based approximations (<code>scope_end_line</code>) and sentinel max values: <code>src/vitte/compiler/analysis/borrowck/mod.vit:319</code>, <code>src/vitte/compiler/analysis/borrowck/mod.vit:322</code>.</li>
 <li>This can be conservative or imprecise for complex control-flow/lifetime nesting.</li>
 <li>Risk: <strong>Medium</strong> (false positives/negatives possible at edges).</li>
 </ul>
 <h2>3. Allocator Audit</h2>
 <h3>3.1 Runtime C allocator behavior</h3>
 <ul>
-<li><code>realloc</code>-based push for slices and <code>malloc</code> for strings: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.c:78">vitte_runtime.c</a>, <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.c:102">vitte_runtime.c</a>.</li>
+<li><code>realloc</code>-based push for slices and <code>malloc</code> for strings: <code>src/vitte/compiler/backends/runtime_c/vitte_runtime.c:78</code>, <code>src/vitte/compiler/backends/runtime_c/vitte_runtime.c:102</code>.</li>
 <li>Panic marker set on allocation failure (<code>vitte_note_panic(3)</code>), but no global ownership/free API for all allocations in this unit.</li>
-<li><code>cli_args</code> allocates with <code>calloc</code> and returns owning slice without matching runtime free primitive exposed here: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.c:150">vitte_runtime.c</a>.</li>
+<li><code>cli_args</code> allocates with <code>calloc</code> and returns owning slice without matching runtime free primitive exposed here: <code>src/vitte/compiler/backends/runtime_c/vitte_runtime.c:150</code>.</li>
 <li>Risk: <strong>High</strong> for leak accumulation in long-lived processes.</li>
 </ul>
 <h3>3.2 Core allocator model quality</h3>
 <ul>
-<li><code>stdlib/core/memory.vitl</code> provides a bookkeeping allocator model (good for reasoning/tests): <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/stdlib/core/memory.vitl:73">memory.vitl</a>.</li>
-<li>But arithmetic is unchecked for underflow/overflow during allocate/release accounting (<code>free - size</code>, <code>used - block.size</code>): <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/stdlib/core/memory.vitl:101">memory.vitl</a>, <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/stdlib/core/memory.vitl:137">memory.vitl</a>.</li>
+<li><code>stdlib/core/memory.vitl</code> provides a bookkeeping allocator model (good for reasoning/tests): <code>src/vitte/stdlib/core/memory.vitl:73</code>.</li>
+<li>But arithmetic is unchecked for underflow/overflow during allocate/release accounting (<code>free - size</code>, <code>used - block.size</code>): <code>src/vitte/stdlib/core/memory.vitl:101</code>, <code>src/vitte/stdlib/core/memory.vitl:137</code>.</li>
 <li>Risk: <strong>Medium</strong> (model integrity bug; if reused in production-like contexts this becomes high).</li>
 </ul>
 <h2>4. Pointer Lifetime Audit</h2>
 <h3>4.1 Runtime pointer lifetime issues</h3>
 <ul>
-<li><code>VitteString</code> uses <code>{const char *data, size_t len}</code> and string constructors allocate buffers: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.h:11">vitte_runtime.h</a>, <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.c:102">vitte_runtime.c</a>.</li>
+<li><code>VitteString</code> uses <code>{const char *data, size_t len}</code> and string constructors allocate buffers: <code>src/vitte/compiler/backends/runtime_c/vitte_runtime.h:11</code>, <code>src/vitte/compiler/backends/runtime_c/vitte_runtime.c:102</code>.</li>
 <li>No audited destructor/ownership transfer API for <code>VitteString</code>/<code>VitteSliceString</code> heap buffers.</li>
 <li>Risk: <strong>High</strong> (lifetime leaks and ambiguous ownership).</li>
 </ul>
 <h3>4.2 Compile IR-level lifetime validation</h3>
 <ul>
-<li>MIR validation checks CFG integrity and terminator consistency: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/middle/mir/validate.vit:16">validate.vit</a>.</li>
-<li>IR verification checks structural validity of instructions/blocks/modules: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backend/ir/ir.vit:630">ir.vit</a>, <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backend/ir/ir.vit:731">ir.vit</a>.</li>
+<li>MIR validation checks CFG integrity and terminator consistency: <code>src/vitte/compiler/middle/mir/validate.vit:16</code>.</li>
+<li>IR verification checks structural validity of instructions/blocks/modules: <code>src/vitte/compiler/backend/ir/ir.vit:630</code>, <code>src/vitte/compiler/backend/ir/ir.vit:731</code>.</li>
 <li>Finding: structural checks are strong, but they do not prove pointer provenance/liveness at machine boundary.</li>
 <li>Risk: <strong>Medium</strong>.</li>
 </ul>
 <h2>5. Backend Memory Safety Review</h2>
 <h3>5.1 LLVM backend</h3>
 <ul>
-<li>Emits intrinsic declarations including lifetime intrinsics: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/llvm_emit.vit:103">llvm_emit.vit</a>.</li>
-<li>Current emission body is placeholder-oriented (<code>; statement</code>, simplistic terminator mapping): <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/llvm_emit.vit:157">llvm_emit.vit</a>.</li>
+<li>Emits intrinsic declarations including lifetime intrinsics: <code>src/vitte/compiler/backends/llvm_emit.vit:103</code>.</li>
+<li>Current emission body is placeholder-oriented (<code>; statement</code>, simplistic terminator mapping): <code>src/vitte/compiler/backends/llvm_emit.vit:157</code>.</li>
 <li>Risk: <strong>Medium</strong> now (limited feature implementation), <strong>High</strong> once codegen becomes complete without deeper safety contracts.</li>
 </ul>
 <h3>5.2 C backend</h3>
 <ul>
-<li>Runtime declarations in generated C do not currently align with runtime header signatures (<code>vitte_print</code> type mismatch: declared with <code>vitte_string_t</code> in emitter vs absent in runtime header): <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/c_emit.vit:105">c_emit.vit</a>, <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.h:26">vitte_runtime.h</a>.</li>
+<li>Runtime declarations in generated C do not currently align with runtime header signatures (<code>vitte_print</code> type mismatch: declared with <code>vitte_string_t</code> in emitter vs absent in runtime header): <code>src/vitte/compiler/backends/c_emit.vit:105</code>, <code>src/vitte/compiler/backends/runtime_c/vitte_runtime.h:26</code>.</li>
 <li>Risk: <strong>High</strong> (ABI mismatch and call-site UB risk).</li>
 </ul>
 <h3>5.3 Linker/object pipeline</h3>
 <ul>
-<li>Linker/object code is largely pseudo-model text assembly, reducing direct memory corruption surface in these modules: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backend/link/linker.vit:1">linker.vit</a>, <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backend/codegen/object.vit:1">object.vit</a>.</li>
+<li>Linker/object code is largely pseudo-model text assembly, reducing direct memory corruption surface in these modules: <code>src/vitte/compiler/backend/link/linker.vit:1</code>, <code>src/vitte/compiler/backend/codegen/object.vit:1</code>.</li>
 <li>Risk: <strong>Low</strong> in current form.</li>
 </ul>
 <h2>6. Runtime Memory Review</h2>
 <h3>6.1 Panic boundary semantics</h3>
 <ul>
-<li>Thread-local panic state with boundary depth is clean and bounded in logic: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.c:7">vitte_runtime.c</a>.</li>
-<li><code>vitte_builtin_trap</code> aborts outside boundary, otherwise marks panic state: <a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.c:55">vitte_runtime.c</a>.</li>
+<li>Thread-local panic state with boundary depth is clean and bounded in logic: <code>src/vitte/compiler/backends/runtime_c/vitte_runtime.c:7</code>.</li>
+<li><code>vitte_builtin_trap</code> aborts outside boundary, otherwise marks panic state: <code>src/vitte/compiler/backends/runtime_c/vitte_runtime.c:55</code>.</li>
 <li>Risk: <strong>Low</strong> for memory safety; mostly control-flow behavior.</li>
 </ul>
 <h3>6.2 Memory ownership API incompleteness</h3>
@@ -139,9 +141,9 @@
 <li>Define and implement canonical runtime ABI in one place:</li>
 <li>Add concrete <code>vitte_alloc</code>, <code>vitte_free</code>, <code>vitte_print</code> implementations in <code>runtime_c</code> (or remove declarations from emitters if unused).</li>
 <li>Ensure signatures are identical across:</li>
-<li><a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/llvm_emit.vit:109">llvm_emit.vit</a></li>
-<li><a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/c_emit.vit:103">c_emit.vit</a></li>
-<li><a href="/home/vincentr/Documents/GitHub/vitte/src/vitte/compiler/backends/runtime_c/vitte_runtime.h:26">vitte_runtime.h</a></li>
+<li><code>src/vitte/compiler/backends/llvm_emit.vit:109</code></li>
+<li><code>src/vitte/compiler/backends/c_emit.vit:103</code></li>
+<li><code>src/vitte/compiler/backends/runtime_c/vitte_runtime.h:26</code></li>
 <li>Add destructors:</li>
 <li><code>vitte_string_free(VitteString)</code></li>
 <li><code>vitte_slice_string_free(VitteSliceString, bool free_elements)</code></li>

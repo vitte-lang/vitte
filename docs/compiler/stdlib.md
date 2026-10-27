@@ -4,7 +4,7 @@ The Vitte standard library is a family-based surface, not a flat pile of helpers
 
 ## Source Of Truth
 
-- Tree root: `src/vitte/stdlib`
+- Tree root: `modules`
 - Compiler/runtime contract: `docs/book/compiler-stdlib-contract.html`
 - Book overview: `docs/book/chapters/17-stdlib.html`
 - Catalog page: `docs/book/stdlib.html`
@@ -46,18 +46,18 @@ pick Outcome {
 
 proc normalize_root(root: string) -> string {
   if root == "" { give "." }
-  give root
+  return root
 }
 
 proc validate_report(r: Report) -> Outcome {
   if r.name == "" { give Outcome.Err(11) }
   if r.targets <= 0 { give Outcome.Err(12) }
-  give Outcome.Ok(r.name)
+  return Outcome.Ok(r.name)
 }
 
 proc render_report(r: Report) -> string {
   let root: string = normalize_root(r.root)
-  give "{name=" + r.name + ",root=" + root + ",targets=1}"
+  return "{name=" + r.name + ",root=" + root + ",targets=1}"
 }
 
 proc build_summary(r: Report) -> Outcome {

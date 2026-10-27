@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "source/source.h"
@@ -65,5 +67,104 @@ int main(void) {
         assert(location.line == 2u && location.column == 1u);
         vitte_source_destroy(&context);
     }
+
+    /* A large source exercises line-index allocation, offset arithmetic and
+       cleanup without relying on the compiler driver. */
+    {
+        enum { LARGE_SOURCE_BYTES = 4u * 1024u * 1024u };
+        char *large = (char *)malloc(LARGE_SOURCE_BYTES);
+        vitte_source_stats_t stats;
+        size_t index;
+
+        assert(large != NULL);
+        for (index = 0u; index < LARGE_SOURCE_BYTES; ++index) {
+            large[index] =
+                (index % 4096u) == 4095u ? '\n' : 'x';
+        }
+
+        assert(vitte_source_init(&context));
+        assert(vitte_source_add(
+            &context,
+            "large.vit",
+            "large.vit",
+            large,
+            LARGE_SOURCE_BYTES,
+            &id));
+        assert(vitte_source_validate(&context));
+        assert(vitte_source_fingerprint(&context) != UINT64_C(0));
+        stats = vitte_source_stats(&context);
+        assert(stats.sources_added == 1u);
+        assert(stats.bytes_added == LARGE_SOURCE_BYTES);
+        assert(stats.lines_indexed > 1000u);
+        vitte_source_destroy(&context);
+        free(large);
+    }
+
+    /* Failed registration must release partially built entries and leave a
+       context that can be reset and reused for another compilation. */
+    {
+        static const unsigned char invalid_utf8[] = {0xc0u, 0xafu};
+        static const char small[] = "ok\n";
+
+        assert(vitte_source_init(&context));
+        assert(vitte_source_set_limits(&context, 1u, 1u));
+        assert(!vitte_source_add(
+            &context,
+            "too-large.vit",
+            "too-large.vit",
+            "ab",
+            2u,
+            &id));
+        assert(vitte_source_last_error(&context) ==
+               VITTE_SOURCE_ERROR_SOURCE_TOO_LARGE);
+        assert(vitte_source_reset(&context));
+        assert(vitte_source_set_limits(&context, 1u, 16u));
+        assert(!vitte_source_add(
+            &context,
+            "invalid.vit",
+            "invalid.vit",
+            (const char *)invalid_utf8,
+            sizeof(invalid_utf8),
+            &id));
+        assert(vitte_source_last_error(&context) ==
+               VITTE_SOURCE_ERROR_INVALID_UTF8);
+        assert(vitte_source_reset(&context));
+        assert(context.source_count == 0u);
+        assert(vitte_source_add(
+            &context,
+            "reused.vit",
+            "reused.vit",
+            small,
+            strlen(small),
+            &id));
+        assert(vitte_source_validate(&context));
+        vitte_source_destroy(&context);
+    }
+
+    /* Repeated independent generations catch stale ids, retained buffers and
+       reset leaks that a single lifecycle would not expose. */
+    assert(vitte_source_init(&context));
+    for (size_t round = 0u; round < 256u; ++round) {
+        char name[32];
+        int written = snprintf(
+            name,
+            sizeof(name),
+            "round-%zu.vit",
+            round);
+
+        assert(written > 0 && (size_t)written < sizeof(name));
+        assert(vitte_source_add(
+            &context,
+            name,
+            name,
+            "return 0;\n",
+            strlen("return 0;\n"),
+            &id));
+        assert(vitte_source_validate(&context));
+        assert(vitte_source_reset(&context));
+        assert(context.source_count == 0u);
+    }
+    vitte_source_destroy(&context);
+
     return 0;
 }

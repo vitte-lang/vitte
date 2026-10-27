@@ -1,5 +1,7 @@
 # Vitte Roadmap 161-200 (Professional Edition)
 
+> Archived alternate edition: this concise English overview is superseded by the [maintained detailed roadmap](roadmap_161_200_pro.html). This URL remains available for existing links.
+
 ## Program frame
 
 Scope: complete Vitte's transition from advanced compiler to full language platform without compromising reliability.

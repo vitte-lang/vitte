@@ -159,7 +159,7 @@ class CompilerScaleTests(unittest.TestCase):
             output.write(
                 b"*/\n"
                 b"export proc main() -> int {\n"
-                b"    give 0;\n"
+                b"    return 0;\n"
                 b"}\n"
             )
 
@@ -181,14 +181,14 @@ class CompilerScaleTests(unittest.TestCase):
             for index in range(declaration_count):
                 output.write(
                     f"proc helper_{index}() -> int {{\n"
-                    f"    give {index % 100};\n"
+                    f"    return {index % 100};\n"
                     f"}}\n"
                 )
 
             output.write(
                 "\n"
                 "export proc main() -> int {\n"
-                f"    give helper_{declaration_count - 1}();\n"
+                f"    return helper_{declaration_count - 1}();\n"
                 "}\n"
             )
 
@@ -274,7 +274,7 @@ class CompilerScaleTests(unittest.TestCase):
                     b"*/\n"
                     b"const ANSWER: int = 42;\n"
                     b"export proc main() -> int {\n"
-                    b"    give ANSWER;\n"
+                    b"    return ANSWER;\n"
                     b"}\n"
                 )
 
@@ -308,7 +308,7 @@ class CompilerScaleTests(unittest.TestCase):
                 output.write(
                     b"\n"
                     b"export proc main() -> int {\n"
-                    b"    give 0;\n"
+                    b"    return 0;\n"
                     b"}\n"
                 )
 
@@ -344,7 +344,7 @@ class CompilerScaleTests(unittest.TestCase):
                 output.write(
                     b"\n"
                     b"export proc main() -> int {\n"
-                    b"    give 0;\n"
+                    b"    return 0;\n"
                     b"}\n"
                 )
 
@@ -434,16 +434,16 @@ class CompilerScaleTests(unittest.TestCase):
                 for index in range(declaration_count - 1):
                     output.write(
                         f"proc forward_{index}() -> int {{\n"
-                        f"    give forward_{index + 1}();\n"
+                        f"    return forward_{index + 1}();\n"
                         f"}}\n"
                     )
 
                 output.write(
                     f"proc forward_{declaration_count - 1}() -> int {{\n"
-                    "    give 42;\n"
+                    "    return 42;\n"
                     "}\n\n"
                     "export proc main() -> int {\n"
-                    "    give forward_0();\n"
+                    "    return forward_0();\n"
                     "}\n"
                 )
 
@@ -491,7 +491,7 @@ class CompilerScaleTests(unittest.TestCase):
                 output.write(
                     "\n"
                     "export proc main() -> int {\n"
-                    f"    give VALUE_{constant_count - 1};\n"
+                    f"    return VALUE_{constant_count - 1};\n"
                     "}\n"
                 )
 
@@ -543,7 +543,7 @@ class CompilerScaleTests(unittest.TestCase):
                 output.write(
                     "\n"
                     "export proc main() -> int {\n"
-                    "    give 0;\n"
+                    "    return 0;\n"
                     "}\n"
                 )
 
@@ -596,7 +596,7 @@ class CompilerScaleTests(unittest.TestCase):
                     )
 
                 output.write(
-                    f"    give local_{local_count - 1};\n"
+                    f"    return local_{local_count - 1};\n"
                     "}\n"
                 )
 
@@ -648,7 +648,7 @@ class CompilerScaleTests(unittest.TestCase):
                     )
 
                 output.write(
-                    "    give value;\n"
+                    "    return value;\n"
                     "}\n"
                 )
 
@@ -714,7 +714,7 @@ class CompilerScaleTests(unittest.TestCase):
                     output.write("    }\n")
 
                 output.write(
-                    "    give result;\n"
+                    "    return result;\n"
                     "}\n"
                 )
 
@@ -774,7 +774,7 @@ class CompilerScaleTests(unittest.TestCase):
                 output.write(
                     "\n"
                     "export proc main() -> int {\n"
-                    f"    give {final_name};\n"
+                    f"    return {final_name};\n"
                     "}\n"
                 )
 
@@ -823,11 +823,11 @@ class CompilerScaleTests(unittest.TestCase):
                 "space scale.repeat;\n"
                 "\n"
                 "proc answer() -> int {\n"
-                "    give 42;\n"
+                "    return 42;\n"
                 "}\n"
                 "\n"
                 "export proc main() -> int {\n"
-                "    give answer();\n"
+                "    return answer();\n"
                 "}\n",
                 encoding="utf-8",
                 newline="\n",
@@ -879,14 +879,14 @@ class CompilerScaleTests(unittest.TestCase):
                 for index in range(declaration_count):
                     output.write(
                         f"proc helper_{index}() -> int {{\n"
-                        f"    give {index % 100};\n"
+                        f"    return {index % 100};\n"
                         "}\n"
                     )
 
                 output.write(
                     "\n"
                     "export proc main() -> int {\n"
-                    "    give definitely_missing_symbol;\n"
+                    "    return definitely_missing_symbol;\n"
                     "}\n"
                 )
 
@@ -1005,7 +1005,7 @@ class CompilerScaleTests(unittest.TestCase):
                 output.write(
                     b"*/\n"
                     b"export proc main() -> int {\n"
-                    b"    give 0\n"
+                    b"    return 0\n"
                     b"}\n"
                 )
 

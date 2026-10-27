@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Compiler Architecture (Seed Reality)</title>
+<title>Compiler Architecture (Current Implementation)</title>
 <link rel="icon" href="../svg/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../css/site.css?v=34fa1e8389">
 <link rel="stylesheet" href="../css/print.css" media="print">
 <link rel="canonical" href="https://vitte-lang.org/compiler/architecture.html">
-<meta property="og:title" content="Compiler Architecture (Seed Reality)">
+<meta property="og:title" content="Compiler Architecture (Current Implementation)">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://vitte-lang.org/compiler/architecture.html">
 <meta name="twitter:card" content="summary">
 
-<link rel="alternate" hreflang="en" href="https://vitte-lang.org/architecture.html">
-<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/architecture.html">
+<link rel="alternate" hreflang="en" href="https://vitte-lang.org/compiler/architecture.html">
+<link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/compiler/architecture.html">
 
 
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
@@ -28,147 +28,40 @@
 </header>
 <main id="main-content" class="site-main">
 <article class="doc-content">
-<center>
-<h1>Compiler Architecture (Seed Reality)</h1>
-<p>HTML reading page generated from the source Markdown document.</p>
-</center>
-<div class="page-band">
-<a href="../doc.html"><img src="../svg/docs.svg" alt="" width="14" height="14">Documentation</a>
-<a href="../source.html"><img src="../svg/source.svg" alt="" width="14" height="14">Source</a>
-<a href="../sitemap.html"><img src="../svg/summary.svg" alt="" width="14" height="14">Sitemap</a>
-<a href="architecture.md"><img src="../svg/diagnostics.svg" alt="" width="14" height="14">Source Markdown</a>
-</div>
-<div class="lead-panel">
-<h2>Reading mode</h2>
-<p>This page is the static HTML reader for <code>compiler/architecture.md</code>. Internal Markdown links are rewritten to HTML when a matching reading page exists.</p>
-</div>
-<h1>Compiler Architecture (Seed Reality)</h1>
-<p>This document describes what the current seed compiler actually does.</p>
-<h2>Overview</h2>
-<p>The current compiler architecture is organized around a deterministic driver, a frontend and analysis pipeline, a checked HIR to MIR lowering path, and one working backend. The goal of this page is not to describe an idealized future compiler, but to document the contract that contributors can rely on in the current repository state.</p>
+<h1>Compiler Architecture (Current Implementation)</h1>
+<p>This page describes the compiler paths that exist in this repository today.</p>
+<h2>Default executable</h2>
+<p>The default Makefile and CMake targets are configured to link the native Vitte pipeline from <code>src/compiler/</code> into the CLI. The pipeline handles <code>compile</code>, <code>run</code>, <code>check</code>, <code>--emit-c</code>, and <code>--emit-ir</code> through native frontend analysis and HIR/IR validation. The native IR C17 backend emits supported programs by default; constructs without IR lowering use the native AST emitter as a compatibility path. Bootstrap C still provides CLI/source-graph setup, inspection, and the host C compiler/linker boundary. This is staged integration, not a full self-hosted compiler. The current <code>make native-frontend</code> source build stops on diagnostics in arena, scanner, HIR, IR, and semantic modules, so a fresh executable has not yet been built from these sources.</p>
+<p>The active path begins at <code>src/bootstrap/main.c</code> and runs through the CLI driver in <code>src/bootstrap/cli/</code>:</p>
+<pre><code>source/module graph → bootstrap CLI → Vitte lexer/parser/sema
+                    → validated HIR → sealed IR → Vitte IR-to-C17
+                    → host C compiler/linker
+                    \→ Vitte AST-to-C17 for IR-incomplete constructs</code></pre>
 <table>
-<tr><th>Area</th><th>Current contract</th></tr>
-<tr><td>Entry point</td><td><code>toolchain/seed/vittec0.seed</code></td></tr>
-<tr><td>Driver</td><td>explicit command surface with stable modes</td></tr>
-<tr><td>Frontend</td><td>registry, module graph, symbols, visibility, type DB</td></tr>
-<tr><td>Analysis</td><td>HIR validate, sema, typeck, control-flow, borrowck</td></tr>
-<tr><td>Lowering</td><td>HIR -&gt; MIR, MIR verify, const-eval</td></tr>
-<tr><td>Backend</td><td>C backend plus host object/link toolchain</td></tr>
-<tr><td>Diagnostics</td><td>cataloged codes, text or JSON output</td></tr>
+<thead><tr><th>Command or stage</th><th>Current behavior</th></tr></thead>
+<tbody>
+<tr><td><code>check</code></td><td>Stops after frontend semantic analysis on the native subset or compatibility path.</td></tr>
+<tr><td><code>compile</code></td><td>Uses native HIR/IR and the IR C17 backend for supported programs; uses native AST emission for IR-incomplete constructs. Sources with unsupported features use the bootstrap compatibility pipeline. Native diagnostics remain authoritative once that frontend is selected.</td></tr>
+<tr><td><code>run</code></td><td>Uses the selected frontend path and then executes the generated program through the host toolchain.</td></tr>
+<tr><td><code>--emit-ir</code></td><td>Prints validated IR from the selected pipeline.</td></tr>
+</tbody>
 </table>
+<h2>Implementation map</h2>
 <ul>
-<li>Front door: <code>toolchain/seed/vittec0.seed</code>.</li>
-<li>Modes: <code>check</code>, <code>build</code>, <code>run</code>, <code>test</code>, <code>dump-*</code>, <code>self-check</code>.</li>
-<li>Core pipeline in <code>check</code>: <code>registry -&amp;gt; module graph -&amp;gt; symbol/visibility -&amp;gt; type-db -&amp;gt; HIR validate -&amp;gt;</code> <code>sema -&amp;gt; typeck -&amp;gt; control-flow -&amp;gt; borrowck -&amp;gt; HIR-&amp;gt;MIR -&amp;gt; MIR verify -&amp;gt;</code> <code>const-eval</code>.</li>
-<li>Backend: one functional backend (<code>C</code>), then object/link using host toolchain.</li>
-<li>Diagnostics: cataloged codes only, JSON or text.</li>
+<li><code>src/bootstrap/main.c</code> — process entry point.</li>
+<li><code>src/bootstrap/cli/command_spec.def</code> — declared CLI commands and options.</li>
+<li><code>src/bootstrap/cli/execution.c</code> and <code>pipeline.c</code> — command routing and phase setup.</li>
+<li><code>src/compiler/driver/pipeline.vitte</code> — native phase and backend dispatch.</li>
+<li><code>src/compiler/ir/ir.vitte</code> — HIR-to-IR lowering and validation.</li>
+<li><code>src/compiler/backend/c17/ir_emitter.vitte</code> — default C17 backend for supported IR.</li>
+<li><code>src/compiler/backend/c17/ast_emitter.vitte</code> — AST compatibility emitter.</li>
 </ul>
-<h2>Responsibilities</h2>
-<p>This page owns the high-level architecture map:</p>
-<ul>
-<li>where the driver begins and ends,</li>
-<li>which phases are part of the enforced seed reality,</li>
-<li>which foundation tracks are already wired into the pipeline,</li>
-<li>which supporting specs should be consulted for narrower subsystems.</li>
-</ul>
-<h2>Invariants</h2>
-<ul>
-<li>The documented entry remains <code>toolchain/seed/vittec0.seed</code>.</li>
-<li>The checked pipeline order must stay deterministic.</li>
-<li>Driver and diagnostics contracts stay explicit rather than hidden behind fallback behavior.</li>
-<li>Narrow subsystem specs may evolve, but they must not silently contradict this architecture page.</li>
-</ul>
-<h2>Data Flow</h2>
-<p>The real compiler flow currently looks like this:</p>
-<ol>
-<li>CLI entry selects a driver mode.</li>
-<li>Registry and module graph determine the project surface.</li>
-<li>Frontend analysis builds symbols, visibility, and type database state.</li>
-<li>HIR validation and semantic checks confirm structural correctness.</li>
-<li>Type checking, control-flow, and borrow checking validate program contracts.</li>
-<li>HIR lowers to MIR, MIR is verified, and constants are evaluated.</li>
-<li>Backend lowering produces object files and then links with the host toolchain.</li>
-</ol>
-<h2>Bootstrap</h2>
-<p>Bootstrap is part of the architecture contract because the compiler is audited through a reproducible seed trust root and explicit compiler generations, not just through source organization.</p>
-<ul>
-<li><a href="../bootstrap/overview.html">Bootstrap overview</a></li>
-<li><a href="../bootstrap/stage0.html">Bootstrap seed</a></li>
-<li><a href="../bootstrap/stages.html">Bootstrap generations</a></li>
-<li><a href="../bootstrap/reproducibility.html">Bootstrap reproducibility</a></li>
-<li><a href="../bootstrap/self_host.html">Bootstrap self-host checks</a></li>
-<li><a href="../bootstrap/troubleshooting.html">Bootstrap troubleshooting</a></li>
-<li><a href="../bootstrap_seed.html">Bootstrap seed contract</a></li>
-<li><a href="../bootstrap_native_ir.html">Bootstrap native IR contract</a></li>
-</ul>
-<h2>Driver</h2>
-<p>The driver is intentionally visible in the architecture because it defines the user-facing command boundary and CI audit surface.</p>
-<ul>
-<li><a href="../COMPILER_DRIVER_MIGRATION.html">Compiler driver alignment</a></li>
-<li><a href="build.html">Build and release surface</a></li>
-<li><a href="release_engineering.html">Release engineering</a></li>
-</ul>
-<h2>Foundation Status (170-173)</h2>
-<ul>
-<li><code>170 MACRO EXPANSION PIPELINE</code></li>
-<li>Frontend pipeline includes macro expansion with trace and diagnostics.</li>
-<li>Macro diagnostics are mapped to frontend spans (<code>line</code>, <code>column</code>, <code>width</code>).</li>
-<li>Recursion safety foundation is enforced via expansion limit diagnostics.</li>
-<li>Detailed spec:</li>
-<li><a href="macro_expansion_pipeline.html">macro_expansion_pipeline.md</a></li>
-<li><code>171 ASYNC FOUNDATION</code></li>
-<li>HIR lowering tags async/await usage at item level.</li>
-<li>Baseline async misuse diagnostic is emitted for <code>await</code> outside async procedures.</li>
-<li>Detailed spec:</li>
-<li><a href="async_foundation.html">async_foundation.md</a></li>
-<li><code>172 COROUTINE LOWERING</code></li>
-<li>MIR lowering introduces suspension/resume control-flow blocks when await-like expressions are present.</li>
-<li>This provides a first state-machine skeleton for future generator lowering.</li>
-<li>Detailed spec:</li>
-<li><a href="coroutine_lowering.html">coroutine_lowering.md</a></li>
-<li><code>173 CONCURRENCY MEMORY MODEL</code></li>
-<li>Foundation spec documented in:</li>
-<li><a href="concurrency_memory_model.html">concurrency_memory_model.md</a></li>
-</ul>
-<p>Roadmap links (161-200):</p>
-<ul>
-<li><a href="../roadmap_161_200_pro.html">FR pro roadmap</a></li>
-<li><a href="../roadmap_161_200_quarterly.html">Quarterly execution plan</a></li>
-<li><a href="../roadmap_161_200_pro_en.html">EN pro roadmap</a></li>
-</ul>
-<h2>Examples</h2>
-<p>Un développeur qui souhaite vérifier un module utilise la commande <code>check</code> du compilateur seed :</p>
-<pre><code class="language-sh">./toolchain/seed/vittec0.seed check src/app.vit</code></pre>
-<p>Ce mode exécute les étapes principales du frontend et du pipeline de validation sans produire d&#x27;objet exécutable.</p>
-<ul>
-<li><code>check</code> lance la résolution de module, la validation HIR, la vérification sémantique et le borrow check.</li>
-<li>L&#x27;étape backend est ignorée sauf pour les diagnostics qui nécessitent l&#x27;abaissement.</li>
-</ul>
-<h2>Reference Map</h2>
-<p>Compiler subsystem references:</p>
-<ul>
-<li><a href="pipeline.html">Pipeline</a></li>
-<li><a href="type-system.html">Type system</a></li>
-<li><a href="borrowck.html">Borrow checking</a></li>
-<li><a href="mir.html">MIR</a></li>
-<li><a href="diagnostics.html">Diagnostics</a></li>
-<li><a href="diagnostics_migration.html">Diagnostics migration</a></li>
-<li><a href="backend.html">Backend</a></li>
-<li><a href="stdlib.html">Standard library contracts</a></li>
-<li><a href="sanitizers.html">Sanitizers</a></li>
-<li><a href="security_limits.html">Security limits</a></li>
-<li><a href="stress_and_stability.html">Stress and stability</a></li>
-<li><a href="advanced_optimization_passes.html">Advanced optimization passes</a></li>
-<li><a href="parallel_borrow_analysis.html">Parallel borrow analysis</a></li>
-<li><a href="llvm_backend_experimental.html">LLVM backend experimental notes</a></li>
-<li><a href="native_asm_backend.html">Native ASM backend</a></li>
-<li><a href="migration_and_editions.html">Migration and editions</a></li>
-<li><a href="COMPILER_POWER_ROADMAP.html">Compiler power roadmap</a></li>
-<li><a href="macro_expansion_pipeline.html">Macro expansion pipeline</a></li>
-<li><a href="async_foundation.html">Async foundation</a></li>
-<li><a href="coroutine_lowering.html">Coroutine lowering</a></li>
-<li><a href="concurrency_memory_model.html">Concurrency memory model</a></li>
-</ul>
+<h2>Staged native Vitte compiler</h2>
+<h2>Native Vitte pipeline</h2>
+<p>The active Vitte frontend includes source management at <code>src/compiler/source/source.vitte</code>, lexing at <code>src/compiler/lexer/lexer.vitte</code>, partial parsing at <code>src/compiler/parser/parser.vitte</code>, semantic analysis at <code>src/compiler/sema/sema.vitte</code>, and HIR/IR lowering and validation at <code>src/compiler/hir/hir.vitte</code> and <code>src/compiler/ir/ir.vitte</code>. Supported programs reach <code>src/compiler/backend/c17/ir_emitter.vitte</code>; the AST emitter handles constructs whose IR lowering is incomplete.</p>
+<h2>Grammar and feature status</h2>
+<p><code>grammar/vitte.ebnf</code> is the canonical grammar. Grammar acceptance does not guarantee semantic or backend support. The single feature-status matrix records the current limits across the grammar, bootstrap stages, default backend, alternate route and native port: <a href="https://github.com/vitte-lang/vitte/blob/main/src/docs/language_coverage.md">Vitte language and toolchain coverage</a>.</p>
+<p>The documentation audiences and language policy are defined in <a href="https://github.com/vitte-lang/vitte/blob/main/src/docs/documentation_policy.md">Documentation Policy</a>. For file-level details, see the <a href="../MODULE_REFERENCE.html">compiler source map</a> and <a href="../bootstrap/frontend_native_port.md">native frontend port notes</a>.</p>
 </article>
 </main>
 <footer class="site-footer">

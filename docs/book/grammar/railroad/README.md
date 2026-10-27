@@ -1,6 +1,6 @@
 # Railroad Diagrams
 
-Generated from `src/vitte/grammar/vitte.ebnf`.
+Generated from `grammar/vitte.ebnf`.
 
 - [program](./program.svg)
 - [toplevel](./toplevel.svg)
@@ -11,8 +11,10 @@ Generated from `src/vitte/grammar/vitte.ebnf`.
 - [import_items](./import_items.svg)
 - [import_item](./import_item.svg)
 - [export_decl](./export_decl.svg)
+- [share_decl](./share_decl.svg)
 - [const_decl](./const_decl.svg)
 - [static_decl](./static_decl.svg)
+- [global_decl](./global_decl.svg)
 - [region_decl](./region_decl.svg)
 - [region_kind](./region_kind.svg)
 - [region_capabilities](./region_capabilities.svg)
@@ -66,6 +68,7 @@ Generated from `src/vitte/grammar/vitte.ebnf`.
 - [test_decl](./test_decl.svg)
 - [bench_decl](./bench_decl.svg)
 - [entry_decl](./entry_decl.svg)
+- [comptime_decl](./comptime_decl.svg)
 - [visibility](./visibility.svg)
 - [visibility_scope](./visibility_scope.svg)
 - [generic_params](./generic_params.svg)
@@ -83,6 +86,7 @@ Generated from `src/vitte/grammar/vitte.ebnf`.
 - [param_mode](./param_mode.svg)
 - [effects_clause](./effects_clause.svg)
 - [requires_clause](./requires_clause.svg)
+- [ensures_clause](./ensures_clause.svg)
 - [capability_list](./capability_list.svg)
 - [capability](./capability.svg)
 - [module_path](./module_path.svg)
@@ -116,7 +120,7 @@ Generated from `src/vitte/grammar/vitte.ebnf`.
 - [let_stmt](./let_stmt.svg)
 - [set_stmt](./set_stmt.svg)
 - [assign_target](./assign_target.svg)
-- [give_stmt](./give_stmt.svg)
+- [return_stmt](./return_stmt.svg)
 - [try_stmt](./try_stmt.svg)
 - [defer_stmt](./defer_stmt.svg)
 - [asm_stmt](./asm_stmt.svg)
@@ -169,6 +173,7 @@ Generated from `src/vitte/grammar/vitte.ebnf`.
 - [slice_expr](./slice_expr.svg)
 - [primary](./primary.svg)
 - [path_expr](./path_expr.svg)
+- [print_call](./print_call.svg)
 - [arg_list](./arg_list.svg)
 - [arg](./arg.svg)
 - [tuple_lit](./tuple_lit.svg)
@@ -182,6 +187,8 @@ Generated from `src/vitte/grammar/vitte.ebnf`.
 - [resource_item](./resource_item.svg)
 - [struct_lit](./struct_lit.svg)
 - [type_path](./type_path.svg)
+- [generic_type_args](./generic_type_args.svg)
+- [type_expr_list](./type_expr_list.svg)
 - [field_init_list](./field_init_list.svg)
 - [field_init](./field_init.svg)
 - [if_expr](./if_expr.svg)
@@ -229,6 +236,7 @@ Generated from `src/vitte/grammar/vitte.ebnf`.
 - [type_primary](./type_primary.svg)
 - [lifetime](./lifetime.svg)
 - [primitive_type](./primitive_type.svg)
+- [reserved_keyword](./reserved_keyword.svg)
 - [literal](./literal.svg)
 - [list_lit](./list_lit.svg)
 - [list_comp](./list_comp.svg)

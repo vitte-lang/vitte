@@ -27,7 +27,7 @@ optional_global_files = [
     root / 'chapters' / 'keywords' / 'packs-apprentissage.html',
     root / 'chapters' / 'keywords' / 'non-utilises.html',
 ]
-ebnf_source = repo / 'src/vitte/grammar/vitte.ebnf'
+ebnf_source = repo / 'grammar/vitte.ebnf'
 ebnf_doc_root = root / 'grammar-surface.ebnf'
 ebnf_doc_surface = root / 'grammar' / 'grammar-surface.ebnf'
 ebnf_doc_legacy = root / 'grammar' / 'vitte.ebnf'
@@ -144,7 +144,7 @@ if not ebnf_source.exists():
     add_issue(f"{ebnf_source}: fichier EBNF source manquant")
 else:
     src_txt = ebnf_source.read_text(encoding='utf-8')
-    expected_marker = 'source: src/vitte/grammar/vitte.ebnf'
+    expected_marker = 'source: grammar/vitte.ebnf'
     for artifact in (ebnf_doc_root, ebnf_doc_surface, ebnf_doc_legacy):
         if not artifact.exists():
             add_issue(f"{artifact}: artefact EBNF généré manquant")

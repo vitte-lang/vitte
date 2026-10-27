@@ -184,7 +184,7 @@ function extractSymbols(doc: TextDocument): ExtractedSym[] {
   const rules: { rx: RegExp; kind: SymbolKind; g: number }[] = [
     { rx: /^\s*space\s+([A-Za-z_][\w./:]*)/gm,                kind: SymbolKind.Namespace, g: 1 },
     { rx: /^\s*proc\s+([A-Za-z_]\w*)/gm,                      kind: SymbolKind.Function,  g: 1 },
-    { rx: /^\s*entry\s+([A-Za-z_]\w*)\s+at\s+[A-Za-z_][\w./:]*/gm, kind: SymbolKind.Function, g: 1 },
+    { rx: /^\s*entry\s+([A-Za-z_]\w*)/gm,                       kind: SymbolKind.Function, g: 1 },
     { rx: /^\s*form\s+([A-Za-z_]\w*)/gm,                      kind: SymbolKind.Struct,    g: 1 },
     { rx: /^\s*pick\s+([A-Za-z_]\w*)/gm,                      kind: SymbolKind.Enum,      g: 1 },
     { rx: /^\s*trait\s+([A-Za-z_]\w*)/gm,                     kind: SymbolKind.Interface, g: 1 },
@@ -246,8 +246,8 @@ function currentToken(doc: TextDocument, pos: Position): { token: string; range:
   const left = line.slice(0, idx);
   const right = line.slice(idx);
 
-  const leftMatch = /[A-Za-z_]\w*$/.exec(left);
-  const rightMatch = /^\w*/.exec(right);
+  const leftMatch = /[\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*$/u.exec(left);
+  const rightMatch = /^[\p{L}\p{Nl}\p{Nd}_]*/u.exec(right);
 
   const start = leftMatch ? idx - leftMatch[0].length : idx;
   const end = rightMatch ? idx + rightMatch[0].length : idx;
@@ -506,7 +506,7 @@ function addFunctionCompletionItems(items: CompletionItem[], funcs: DeclFunction
 function inferLocalTypes(doc: TextDocument, pos: Position): Map<string, InferredType> {
   const text = doc.getText().slice(0, doc.offsetAt(pos));
   const out = new Map<string, InferredType>();
-  const rx = /\b(?:let|const|make)\s+([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_][\w<>[\]|?:./]*))?(?:\s*=\s*([^;\n]+))?/g;
+  const rx = /\b(?:let|const|static|global)\s+(?:mut\s+)?([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_][\w<>[\]|?:./]*)?)?(?:\s*=\s*([^;\n]+))?/g;
   let m: RegExpExecArray | null;
   while ((m = rx.exec(text))) {
     const name = m[1];
@@ -544,7 +544,7 @@ function nonNullVariablesInScope(doc: TextDocument, pos: Position): Set<string> 
 function expectedTypeAtPosition(doc: TextDocument, pos: Position): InferredType {
   const prefix = getLinePrefix(doc, pos);
   if (/=\s*$/.test(prefix)) {
-    const m = /\b(?:let|const|make)\s+[A-Za-z_]\w*\s*:\s*([A-Za-z_][\w<>[\]|?:./]*)\s*=\s*$/.exec(prefix);
+    const m = /\b(?:let|const|static|global)\s+(?:mut\s+)?[A-Za-z_]\w*\s*:\s*([A-Za-z_][\w<>[\]|?:./]*)\s*=\s*$/.exec(prefix);
     if (m?.[1]) return m[1].trim();
   }
   if (/\bif\s+[^\n]*$/.test(prefix)) return "bool";
@@ -633,7 +633,7 @@ function addPostErrorRecoveryCompletions(items: CompletionItem[], doc: TextDocum
     });
   }
   const linePrefix = getLinePrefix(doc, pos);
-  if (/^\s*(if|for|loop|match|when|otherwise|case)\b[^{\n]*$/.test(linePrefix)) {
+  if (/^\s*(if|for|loop|match|when|case|else)\b[^{\n]*$/.test(linePrefix)) {
     items.push({
       label: "{ ... }",
       kind: CompletionItemKind.Snippet,
@@ -670,7 +670,7 @@ function addRepoFrequentApiCompletions(items: CompletionItem[], token: string, r
 
 function hasPathImport(doc: TextDocument, pathValue: string): boolean {
   const text = doc.getText();
-  const lineRx = new RegExp(`^\\s*(?:use|pull)\\s+${escapeRegex(pathValue)}\\b`, "m");
+  const lineRx = new RegExp(`^\\s*use\\s+${escapeRegex(pathValue)}\\b`, "m");
   return lineRx.test(text);
 }
 
@@ -684,7 +684,7 @@ function buildAutoImportEdit(doc: TextDocument, pathValue: string): LspTextEdit[
       insertLine = i + 1;
       continue;
     }
-    if (/^\s*(use|pull)\b/.test(line)) {
+    if (/^\s*use\b/.test(line)) {
       insertLine = i + 1;
       continue;
     }
@@ -715,7 +715,7 @@ function diagnosticsCompletion(linePrefix: string): CompletionItem[] {
       sortText: tier(0)
     });
   }
-  if (/^\s*(?:use|pull)\s+/.test(linePrefix)) {
+  if (/^\s*use\s+/.test(linePrefix)) {
     for (const imp of VITTE_PACKAGE_IMPORTS) {
       items.push({
         label: imp,
@@ -862,7 +862,7 @@ function extractDocumentModulePaths(doc: TextDocument): string[] {
   for (const match of text.matchAll(/^\s*space\s+([A-Za-z_][\w./:-]*)/gm)) {
     add(match[1]);
   }
-  for (const match of text.matchAll(/^\s*(?:pull|use)\s+([A-Za-z_][\w./:-]*)/gm)) {
+  for (const match of text.matchAll(/^\s*use\s+([A-Za-z_][\w./:-]*)/gm)) {
     add(match[1]);
   }
   return [...out].sort((a, b) => a.localeCompare(b));
@@ -1023,7 +1023,7 @@ export function provideCompletions(doc: TextDocument, position: Position): Compl
   }
 
   // Contexte: import et autres heuristiques
-  const isImportContext = /^\s*(?:use|pull)\s+/.test(linePrefix);
+  const isImportContext = /^\s*use\s+/.test(linePrefix);
   if (isImportContext) {
     addLocalImportPathCompletions(items, doc, token, range);
   }

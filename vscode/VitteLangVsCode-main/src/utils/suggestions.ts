@@ -212,7 +212,7 @@ function languageWeight(document: vscode.TextDocument, label: string): number {
   const lang = document.languageId.toLowerCase();
   if (lang === "markdown" || lang === "md") {
     if (/(readme|doc|guide|example|section|title)/.test(label)) return 1.25;
-    if (/(fn|class|struct|impl|interface)/.test(label)) return -0.6;
+    if (/(class|form|pick|union|bits|flags|interface)/.test(label)) return -0.6;
     return 0;
   }
   if (lang === "typescript" || lang === "javascript") {
@@ -220,7 +220,7 @@ function languageWeight(document: vscode.TextDocument, label: string): number {
     return 0;
   }
   if (lang === "vitte" || lang === "vit") {
-    if (/(give|space|use|pub|impl|match|form|proc|let|set)/.test(label)) return 1.25;
+    if (/(return|space|use|pub|impl|match|form|proc|let|set)/.test(label)) return 1.25;
     return 0;
   }
   return 0;

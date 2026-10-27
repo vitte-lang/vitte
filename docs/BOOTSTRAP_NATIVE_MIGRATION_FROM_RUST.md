@@ -1,5 +1,7 @@
 # Vitte Native Bootstrap Migration (Rust-style)
 
+> Archived proposal: these paths predate the current seed-rooted bootstrap. Use [the active bootstrap contracts](bootstrap_contracts.html) and [the current transition checklist](bootstrap_migration_checklist.html) for implementation work.
+
 Reference model: bootstrap builder graph semantics (step contracts, strict stage semantics).
 
 ## Target Architecture

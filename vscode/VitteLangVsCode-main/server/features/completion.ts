@@ -52,7 +52,7 @@ export function registerCompletion(connection: Connection, documents: TextDocume
     if (item.data === 'vitte:snippet:for') {
       item.detail = 'Boucle for (snippet)';
       item.documentation = 'Insère une boucle `for` Vitte avec index et bornes incluses.';
-    } else if (item.data === 'vitte:kw:fn') {
+    } else if (item.data === 'vitte:kw:proc') {
       item.detail = 'Déclaration de fonction';
     }
     return item;
@@ -75,19 +75,42 @@ function completeAt(doc: TextDocument, params: TextDocumentPositionParams): Comp
   const items: CompletionItem[] = [];
   // Keywords (subset placeholder — adapt to Vitte real grammar)
   const keywords: Array<{ label: string; kind: CompletionItemKind; detail?: string; data?: string }> = [
-    { label: 'fn', kind: CompletionItemKind.Keyword, detail: 'Déclare une fonction', data: 'vitte:kw:fn' },
-    { label: 'let', kind: CompletionItemKind.Keyword, detail: 'Bind immuable' },
-    { label: 'mut', kind: CompletionItemKind.Keyword, detail: 'Mutabilité' },
-    { label: 'struct', kind: CompletionItemKind.Keyword },
-    { label: 'enum', kind: CompletionItemKind.Keyword },
+    { label: 'space', kind: CompletionItemKind.Keyword },
     { label: 'use', kind: CompletionItemKind.Keyword },
-    { label: 'mod', kind: CompletionItemKind.Keyword },
+    { label: 'export', kind: CompletionItemKind.Keyword },
+    { label: 'share', kind: CompletionItemKind.Keyword },
+    { label: 'proc', kind: CompletionItemKind.Keyword, detail: 'Déclare une procédure', data: 'vitte:kw:proc' },
+    { label: 'form', kind: CompletionItemKind.Keyword },
+    { label: 'pick', kind: CompletionItemKind.Keyword },
+    { label: 'trait', kind: CompletionItemKind.Keyword },
     { label: 'impl', kind: CompletionItemKind.Keyword },
+    { label: 'type', kind: CompletionItemKind.Keyword },
+    { label: 'opaque', kind: CompletionItemKind.Keyword },
+    { label: 'let', kind: CompletionItemKind.Keyword, detail: 'Liaison locale' },
+    { label: 'const', kind: CompletionItemKind.Keyword },
+    { label: 'static', kind: CompletionItemKind.Keyword },
+    { label: 'global', kind: CompletionItemKind.Keyword },
+    { label: 'mut', kind: CompletionItemKind.Keyword, detail: 'Mutabilité' },
     { label: 'return', kind: CompletionItemKind.Keyword },
     { label: 'if', kind: CompletionItemKind.Keyword },
+    { label: 'elif', kind: CompletionItemKind.Keyword },
     { label: 'else', kind: CompletionItemKind.Keyword },
     { label: 'for', kind: CompletionItemKind.Keyword },
     { label: 'while', kind: CompletionItemKind.Keyword },
+    { label: 'loop', kind: CompletionItemKind.Keyword },
+    { label: 'match', kind: CompletionItemKind.Keyword },
+    { label: 'case', kind: CompletionItemKind.Keyword },
+    { label: 'and', kind: CompletionItemKind.Keyword },
+    { label: 'or', kind: CompletionItemKind.Keyword },
+    { label: 'not', kind: CompletionItemKind.Keyword },
+    { label: 'print', kind: CompletionItemKind.Keyword },
+    { label: 'entry', kind: CompletionItemKind.Keyword },
+    { label: 'test', kind: CompletionItemKind.Keyword },
+    { label: 'bench', kind: CompletionItemKind.Keyword },
+    { label: 'async', kind: CompletionItemKind.Keyword },
+    { label: 'unsafe', kind: CompletionItemKind.Keyword },
+    { label: 'assert', kind: CompletionItemKind.Keyword },
+    { label: 'panic', kind: CompletionItemKind.Keyword },
   ];
 
   for (const k of keywords) {
@@ -119,20 +142,20 @@ function snippetItems(prefix: string): CompletionItem[] {
       kind: CompletionItemKind.Snippet,
       detail: 'Boucle for (0..N)',
       insertTextFormat: InsertTextFormat.Snippet,
-      insertText: 'for (let ${1:i} in 0..${2:N}) {\n    ${3:// ...}\n}',
+      insertText: 'for ${1:i} in 0..${2:N} {\n    ${3:// ...}\n}',
       data: 'vitte:snippet:for',
     });
   }
 
-  // Function template
-  if (startsWithWord(prefix, 'fn')) {
+  // Procedure template
+  if (startsWithWord(prefix, 'proc')) {
     out.push({
-      label: 'fn name(args) -> T {}',
+      label: 'proc name(args) -> T {}',
       kind: CompletionItemKind.Snippet,
-      detail: 'Déclaration de fonction',
+      detail: 'Déclaration de procédure',
       insertTextFormat: InsertTextFormat.Snippet,
-      insertText: 'fn ${1:name}(${2:args}) -> ${3:T} {\n    ${4:// body}\n}',
-      data: 'vitte:snippet:fn',
+      insertText: 'proc ${1:name}(${2:args}) -> ${3:T} {\n    ${4:// body}\n}',
+      data: 'vitte:snippet:proc',
     });
   }
 
@@ -146,7 +169,7 @@ function linePrefix(doc: TextDocument, pos: Position): string {
   const r = Range.create(start, pos);
   const text = doc.getText(r);
   // Keep only the last wordish fragment to compare startsWith
-  const m = /([A-Za-z_][A-Za-z0-9_]*)$/.exec(text);
+  const m = /([\p{L}\p{Nl}_][\p{L}\p{Nl}\p{Nd}_]*)$/u.exec(text);
   return m ? m[1] : '';
 }
 

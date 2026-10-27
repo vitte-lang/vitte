@@ -6,6 +6,26 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+static size_t
+iteration_limit(size_t fallback)
+{
+    const char *text = getenv("VITTE_FUZZ_ITERATIONS");
+    size_t value = 0u;
+
+    if (text == NULL || text[0] == '\0') {
+        return fallback;
+    }
+    while (*text >= '0' && *text <= '9') {
+        size_t digit = (size_t)(*text - '0');
+        if (value > (SIZE_MAX - digit) / 10u) {
+            return fallback;
+        }
+        value = value * 10u + digit;
+        ++text;
+    }
+    return *text == '\0' ? value : fallback;
+}
+
 static uint32_t
 next_random(uint32_t *state)
 {
@@ -21,7 +41,7 @@ main(void)
     uint32_t state = UINT32_C(0x56495454);
     size_t iteration;
 
-    for (iteration = 0u; iteration < 10000u; ++iteration) {
+    for (iteration = 0u; iteration < iteration_limit(10000u); ++iteration) {
         char source[1024];
         size_t length = (size_t)(next_random(&state) % UINT32_C(1024));
         vitte_lexer_t lexer;

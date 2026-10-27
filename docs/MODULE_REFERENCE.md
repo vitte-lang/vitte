@@ -1,53 +1,50 @@
-# Compiler Module Reference
+# Compiler Source Map
 
-The canonical compiler entry is `src/vitte/compiler/main.vit`. It delegates CLI
-execution to `src/vitte/compiler/driver/compiler.vit` and the driver pipeline.
+The executable is still launched and linked by the stage0 C bootstrap under
+`src/bootstrap/`, but ordinary `compile`, `run`, and `--emit-c` inputs now use
+the linked Vitte lexer, parser, semantic analyzer, codegen orchestrator, and
+AST-to-C17 emitter. Bootstrap C still handles CLI/source-graph setup,
+fallbacks, inspection and `--emit-ir` routes, and host C compilation/linking.
+The compiler is not yet fully self-hosted.
 
-## Frontend
+## Default executable
 
-- `src/vitte/compiler/frontend/lexer/`: tokenization.
-- `src/vitte/compiler/frontend/parse/`: parsing and recovery.
-- `src/vitte/compiler/frontend/ast/`: syntax tree definitions and helpers.
-- `src/vitte/compiler/frontend/macros/`: macro-facing frontend support.
+These files provide the executable shell, compatibility routes, and host
+toolchain boundary:
 
-## Analysis And Middle End
+- `src/bootstrap/main.c`: process entry point.
+- `src/bootstrap/cli/`: command setup, module graph assembly, fallback
+  diagnostics, and routing.
+- `src/bootstrap/parser/parser.c` and `src/bootstrap/sema/sema.c`: compatibility
+  frontend used by fallback and `check` paths.
+- `src/bootstrap/hir/`, `src/bootstrap/ir/`, and
+  `src/bootstrap/backend/c17/ir_emitter.c`: bootstrap HIR/IR route, including
+  `--emit-ir`.
+- `src/bootstrap/backend/c17/`: host C17 compilation, object, link, and run
+  integration.
 
-- `src/vitte/compiler/analysis/sema/`: semantic analysis.
-- `src/vitte/compiler/analysis/typeck/`: type checking.
-- `src/vitte/compiler/analysis/borrowck/`: borrow checking.
-- `src/vitte/compiler/analysis/const_eval/`: constant evaluation.
-- `src/vitte/compiler/middle/hir/`: high-level IR.
-- `src/vitte/compiler/middle/mir/`: mid-level IR.
-- `src/vitte/compiler/middle/lower/`: lowering passes.
-- `src/vitte/compiler/middle/passes/`: middle-end pass orchestration.
+## Staged Vitte implementation
 
-## IR And Backends
+These Vitte modules are linked into the ordinary compile/run frontend path:
 
-- `src/vitte/compiler/ir/`: compiler IR contracts and transformations.
-- `src/vitte/compiler/backend/`: target, code generation, linker, and backend
-  interfaces.
-- `src/vitte/compiler/backends/`: concrete runtime C, Vitte emit, WebAssembly,
-  and LLVM binding surfaces.
-- `src/vitte/compiler/optimizations/`: optimization passes.
+- `src/compiler/source/source.vitte`: source management.
+- `src/compiler/lexer/lexer.vitte`: lexer.
+- `src/compiler/parser/parser.vitte`: partial native parser.
+- `src/compiler/sema/sema.vitte`: native semantic analysis, with incomplete
+  language coverage.
+- `src/compiler/driver/pipeline.vitte`: native lexer/parser/sema/codegen
+  orchestration and direct AST-to-C17 output.
+- `src/compiler/backend/c17/ast_emitter.vitte`: active native frontend C17
+  emitter.
+- `src/compiler/driver/native_frontend_bridge.c`: C ABI wrappers for the
+  Vitte-compiled pipeline.
+- `src/compiler/backend/c17/ir_emitter.vitte`: separate IR backend not yet
+  connected to this route.
 
-## Driver And Infrastructure
+## Other source roots
 
-- `src/vitte/compiler/driver/pipeline.vit`: pipeline orchestration.
-- `src/vitte/compiler/driver/pipeline_modular.vit`: modular pipeline support.
-- `src/vitte/compiler/driver/compile.vit`: compile request execution.
-- `src/vitte/compiler/driver/commands.vit`: command handling.
-- `src/vitte/compiler/diagnostics/`: compiler diagnostics.
-- `src/vitte/compiler/infrastructure/`: sessions, incremental state,
-  distribution, and diagnostic infrastructure.
+- `grammar/vitte.ebnf`: canonical EBNF grammar.
+- `docs/grammar/vitte.pest`: Pest grammar source.
+- `modules/`: standard library source tree.
 
-## Validation
-
-```sh
-make compiler-architecture-check
-make compiler-real-pipeline-audit
-make compiler-test-suite-check-gate
-make compiler-no-fallback-gate
-```
-
-Generated architecture reports live under `target/reports/`; they are evidence
-for a specific run, not source-of-truth modules.
+For the current migration status, see [the native frontend port notes](bootstrap/frontend_native_port.md).

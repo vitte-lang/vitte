@@ -19,13 +19,12 @@
 space tests::import_visibility::direct_private;
 
 use tests::import_visibility::contract_lib;
-
 /// Attempts to access a private imported constant.
 ///
 /// The module exists and is directly imported, therefore this must be
 /// diagnosed as a visibility violation rather than an unresolved module.
 proc access_private_constant() -> u64 {
-    give contract_lib::MIN_IDENTIFIER;
+    return contract_lib::PRIVATE_IDENTIFIER;
 }
 
 /// Attempts to use a private imported form in a type position.
@@ -33,55 +32,55 @@ proc access_private_constant() -> u64 {
 /// Name resolution should find ContractRange in contract_lib and then reject
 /// the access because the declaration is not visible from this module.
 proc accept_private_form(
-    value: &contract_lib::ContractRange
+    value: &contract_lib::PrivateContractRange
 ) -> bool {
-    give value.minimum <= value.maximum;
+    return value.minimum <= value.maximum;
 }
 
 /// Attempts to construct a private imported form.
 proc construct_private_form() -> i64 {
-    let range: contract_lib::ContractRange =
-        contract_lib::ContractRange {
+    let range: contract_lib::PrivateContractRange =
+        contract_lib::PrivateContractRange {
             minimum: 0,
             maximum: 100,
         };
 
-    give range.maximum;
+    return range.maximum;
 }
 
 /// Attempts to call a private imported predicate.
 proc call_private_predicate() -> bool {
-    give contract_lib::valid_identifier(42);
+    return contract_lib::private_valid_identifier(42);
 }
 
 /// Contract metadata must not make a private procedure externally visible.
 proc call_private_contract_proc() -> i64 {
-    give contract_lib::checked_add(20, 22);
+    return contract_lib::private_checked_add(20, 22);
 }
 
 /// References and member access must not bypass module visibility.
 proc inspect_private_form() -> i64 {
-    let range: contract_lib::ContractRange =
-        contract_lib::ContractRange {
+    let range: contract_lib::PrivateContractRange =
+        contract_lib::PrivateContractRange {
             minimum: 10,
             maximum: 50,
         };
 
-    let reference: &contract_lib::ContractRange =
+    let reference: &contract_lib::PrivateContractRange =
         &range;
 
-    give reference.maximum;
+    return reference.maximum;
 }
 
 /// Repeated private access also exercises diagnostic handling.
 proc repeated_private_access() -> u64 {
     let first: u64 =
-        contract_lib::DEFAULT_LIMIT;
+        contract_lib::PRIVATE_LIMIT;
 
     let second: u64 =
-        contract_lib::DEFAULT_LIMIT;
+        contract_lib::PRIVATE_LIMIT;
 
-    give first + second;
+    return first + second;
 }
 
 /// Compilation is expected to fail before execution.
@@ -104,14 +103,14 @@ proc main() -> int {
     let repeated: u64 =
         repeated_private_access();
 
-    if predicate &&
-       identifier > 0 &&
-       arithmetic == 42 &&
-       maximum == 100 &&
-       referenced == 50 &&
+    if predicate and
+       identifier > 0 and
+       arithmetic == 42 and
+       maximum == 100 and
+       referenced == 50 and
        repeated > 0 {
-        give 0;
+        return 0;
     }
 
-    give 1;
+    return 1;
 }

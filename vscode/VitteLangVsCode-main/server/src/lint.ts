@@ -306,7 +306,7 @@ function checkSemicolonHeuristics(
     const L = lines[i];
     if (blockEnders.test(L)) continue;
     if (/{\s*$/.test(L)) continue;
-    if (/\b(if|for|loop|match|when|otherwise|case)\b/.test(L)) continue;
+    if (/\b(if|for|loop|match|when|case|else)\b/.test(L)) continue;
 
     if (starters.test(L)) {
       if (!rxLineEndSemicolon.test(L)) {
@@ -420,6 +420,8 @@ function mapRuleAlias(name: string): RuleId {
     case "semicolon": return RULES.Semicolon;
     case "type-name":
     case "typeName": return RULES.StyleTypeName;
+    case "proc-name":
+    case "procName":
     case "fn-name":
     case "fnName": return RULES.StyleFnName;
     case "const-name":
@@ -475,7 +477,7 @@ function checkStyleConventions(
   const rxTypeDecl = /\b(?:form|pick|trait|type)\s+([A-Za-z_]\w*)/g;
   const rxFnDecl = /\bproc\s+([A-Za-z_]\w*)/g;
   const rxConstDecl = /\bconst\s+([A-Za-z_]\w*)/g;
-  const rxVarDecl = /\b(?:let|make)\s+([A-Za-z_]\w*)/g;
+  const rxVarDecl = /\b(?:let|static|global)\s+(?:mut\s+)?([A-Za-z_]\w*)/g;
 
   for (let i = 0; i < lines.length; i++) {
     const L = lines[i];
@@ -540,7 +542,7 @@ function checkModulePaths(
 ): Diagnostic[] {
   const diags: Diagnostic[] = [];
   const lines = text.split(/\r?\n/);
-  const rxSpace = /\bspace\s+([A-Za-z0-9_./-]+)/g;
+  const rxSpace = /\bspace\s+([A-Za-z0-9_:.\/-]+)/g;
 
   for (let i = 0; i < lines.length; i++) {
     const L = lines[i];
@@ -558,7 +560,7 @@ function checkModulePaths(
     }
 
     if (!isDisabled(i, RULES.StyleFieldName, lineDisables, blockDisables)) {
-      const m = /\bfield\s+([A-Za-z_]\w*)\s*:\s*[^;{},\n]+/.exec(L);
+      const m = /^\s*(?:pub(?:\s*\([^)]*\))?|priv)?\s*([A-Za-z_]\w*)\s*:\s*[^;{},\n]+/.exec(L);
       if (m) {
         const name = m[1];
         if (!/^[a-z][a-z0-9_]*$/.test(name)) {
@@ -571,19 +573,19 @@ function checkModulePaths(
     }
 
     if (!isDisabled(i, RULES.StyleUsePath, lineDisables, blockDisables)) {
-      for (const m of L.matchAll(/\buse\s+([A-Za-z0-9_./:]+)/g)) {
+      for (const m of L.matchAll(/\buse\s+([A-Za-z0-9_:.\/-]+)/g)) {
         const name = m[1];
-        if (name.includes("::")) {
+        if (name.includes(".") || name.includes("/")) {
           const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
           diags.push(diag(i, idx, i, idx + name.length,
-            "Chemin use conseillé avec '/' et '.' (éviter '::').",
+            "Chemin use conseillé avec '::' (ex: std::core::types).",
             DiagnosticSeverity.Hint, uri, RULES.StyleUsePath));
           continue;
         }
-        if (!/^[a-z0-9_./]+(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(name)) {
+        if (!/^[a-z0-9_]+(?:::[A-Za-z_][A-Za-z0-9_]*)*(?:::\{[^}\n]+\})?$/.test(name)) {
           const idx = (m.index ?? 0) + m[0].lastIndexOf(name);
           diags.push(diag(i, idx, i, idx + name.length,
-            "Chemin use conseillé en minuscules (ex: std/core/types.i32).",
+            "Chemin use conseillé en minuscules et séparé par '::'.",
             DiagnosticSeverity.Hint, uri, RULES.StyleUsePath));
         }
       }
