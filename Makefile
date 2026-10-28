@@ -276,6 +276,7 @@ SELFHOST_STAGE2_BUILD := $(SELFHOST_DIR)/stage2-build
 SELFHOST_STAGE3_BUILD := $(SELFHOST_DIR)/stage3-build
 SELFHOST_STAGE1_BIN := $(SELFHOST_STAGE1_BUILD)/bin/$(TARGET)$(EXE_SUFFIX)
 SELFHOST_STAGE2_BIN := $(SELFHOST_STAGE2_BUILD)/bin/$(TARGET)$(EXE_SUFFIX)
+SELFHOST_STAGE3_BIN := $(SELFHOST_STAGE3_BUILD)/bin/$(TARGET)$(EXE_SUFFIX)
 SELFHOST_STEP_RUNNER := scripts/run-selfhost-step.sh
 SELFHOST_EVIDENCE_RUN ?= $(abspath $(SELFHOST_DIR))/evidence/$(shell date -u +%Y%m%dT%H%M%SZ)-$(shell git rev-parse --short HEAD 2>/dev/null || printf no-commit)-$(shell printf '%s' $$$$)
 SELFHOST_EVIDENCE_RUN := $(SELFHOST_EVIDENCE_RUN)
