@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <limits.h>
 #include "api/version.h"
 #include "backend/c17/ast_emitter.h"
 #include "backend/c17/ir_emitter.h"
@@ -28,14 +29,18 @@
 #include "internal.h"
 
 #ifdef VITTE_NATIVE_FRONTEND_LINKED
-#if defined(__APPLE__) || defined(__unix__)
+#if defined(_WIN32)
+#include <io.h>
+#include <windows.h>
+#include <wchar.h>
+#elif defined(__APPLE__) || defined(__unix__)
 #include <unistd.h>
 #endif
 
 typedef struct vitte_driver_host_tool_workspace {
-    char source_path[64];
-    char object_path[64];
-    char executable_path[64];
+    char source_path[2048];
+    char object_path[2048];
+    char executable_path[2048];
     const char *compile_output_path;
     const char *link_output_path;
     bool emit_object;
@@ -77,6 +82,136 @@ vitte_driver_host_copy_string(
     return copy;
 }
 
+#if defined(_WIN32)
+static wchar_t *
+vitte_driver_host_utf8_to_wide(
+    const char *text)
+{
+    int required;
+    wchar_t *wide;
+
+    if (text == NULL) {
+        return NULL;
+    }
+    required = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
+    if (required <= 0 ||
+        (size_t)required > SIZE_MAX / sizeof(*wide)) {
+        return NULL;
+    }
+    wide = (wchar_t *)malloc((size_t)required * sizeof(*wide));
+    if (wide == NULL) {
+        return NULL;
+    }
+    if (MultiByteToWideChar(
+            CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide, required) !=
+        required) {
+        free(wide);
+        return NULL;
+    }
+    return wide;
+}
+
+static bool
+vitte_driver_host_temp_file(
+    char *path,
+    size_t path_capacity,
+    bool executable)
+{
+    wchar_t directory[MAX_PATH];
+    wchar_t wide_path[MAX_PATH];
+    DWORD directory_length;
+    int utf8_length;
+
+    if (path == NULL || path_capacity == 0u) {
+        return false;
+    }
+    directory_length = GetTempPathW(MAX_PATH, directory);
+    if (directory_length == 0u || directory_length >= MAX_PATH ||
+        GetTempFileNameW(directory, L"vit", 0u, wide_path) == 0u) {
+        return false;
+    }
+    if (executable) {
+        const size_t wide_length = wcslen(wide_path);
+        const wchar_t *extension = L".tmp";
+        wchar_t renamed_path[MAX_PATH];
+        if (wide_length < 4u ||
+            wcscmp(wide_path + wide_length - 4u, extension) != 0) {
+            (void)DeleteFileW(wide_path);
+            return false;
+        }
+        memcpy(
+            renamed_path,
+            wide_path,
+            (wide_length + 1u) * sizeof(*wide_path));
+        renamed_path[wide_length - 3u] = L'e';
+        renamed_path[wide_length - 2u] = L'x';
+        renamed_path[wide_length - 1u] = L'e';
+        if (!MoveFileW(wide_path, renamed_path)) {
+            (void)DeleteFileW(wide_path);
+            return false;
+        }
+        memcpy(
+            wide_path,
+            renamed_path,
+            (wide_length + 1u) * sizeof(*wide_path));
+    }
+    utf8_length = WideCharToMultiByte(
+        CP_UTF8,
+        WC_ERR_INVALID_CHARS,
+        wide_path,
+        -1,
+        path,
+        path_capacity > (size_t)INT_MAX ? INT_MAX : (int)path_capacity,
+        NULL,
+        NULL);
+    if (utf8_length <= 0) {
+        (void)DeleteFileW(wide_path);
+        return false;
+    }
+    return true;
+}
+
+static FILE *
+vitte_driver_host_open_file(
+    const char *path,
+    const wchar_t *mode)
+{
+    wchar_t *wide_path = vitte_driver_host_utf8_to_wide(path);
+    FILE *file;
+
+    if (wide_path == NULL || mode == NULL) {
+        free(wide_path);
+        return NULL;
+    }
+    file = _wfopen(wide_path, mode);
+    free(wide_path);
+    return file;
+}
+
+static int
+vitte_driver_host_remove_file(
+    const char *path)
+{
+    wchar_t *wide_path = vitte_driver_host_utf8_to_wide(path);
+    int result;
+
+    if (wide_path == NULL) {
+        return -1;
+    }
+    result = _wunlink(wide_path);
+    free(wide_path);
+    return result;
+}
+#elif defined(__APPLE__) || defined(__unix__)
+static int
+vitte_driver_host_remove_file(
+    const char *path)
+{
+    return unlink(path);
+}
+#endif
+
 uint32_t
 vitte_driver_host_toolchain_begin(
     uint8_t *source,
@@ -93,10 +228,12 @@ vitte_driver_host_toolchain_begin(
         return VITTE_DRIVER_HOST_TOOL_INVALID_ARGUMENT;
     }
     *workspace_out = NULL;
-#if defined(__APPLE__) || defined(__unix__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__unix__)
     {
         vitte_driver_host_tool_workspace_t *workspace;
+#if !defined(_WIN32)
         int descriptor;
+#endif
         FILE *source_file;
         const char *resolved_output;
         const char *requested_output = (const char *)output_path;
@@ -112,6 +249,17 @@ vitte_driver_host_toolchain_begin(
         workspace->debug_info = debug_info;
         workspace->debug_runtime = debug_runtime;
 
+#if defined(_WIN32)
+        if (!vitte_driver_host_temp_file(
+                workspace->source_path,
+                sizeof(workspace->source_path),
+                false)) {
+            free(workspace);
+            return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
+        }
+        source_file = vitte_driver_host_open_file(
+            workspace->source_path, L"wb");
+#else
         memcpy(workspace->source_path, "/tmp/vitte-driver-c-XXXXXX", 27u);
         descriptor = mkstemp(workspace->source_path);
         if (descriptor < 0) {
@@ -119,9 +267,13 @@ vitte_driver_host_toolchain_begin(
             return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
         }
         source_file = fdopen(descriptor, "wb");
+#endif
         if (source_file == NULL) {
+#if defined(_WIN32)
+            (void)vitte_driver_host_remove_file(workspace->source_path);
+#else
             (void)close(descriptor);
-            (void)unlink(workspace->source_path);
+#endif
             free(workspace);
             return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
         }
@@ -130,7 +282,7 @@ vitte_driver_host_toolchain_begin(
                 fwrite(source, 1u, source_length, source_file) == source_length;
             bool closed_source = fclose(source_file) == 0;
             if (!wrote_source || !closed_source) {
-                (void)unlink(workspace->source_path);
+                (void)vitte_driver_host_remove_file(workspace->source_path);
                 free(workspace);
                 return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
             }
@@ -138,50 +290,93 @@ vitte_driver_host_toolchain_begin(
 
         if (emit_object) {
             if (requested_output == NULL || requested_output[0] == '\0') {
-                (void)unlink(workspace->source_path);
+                (void)vitte_driver_host_remove_file(workspace->source_path);
                 free(workspace);
                 return VITTE_DRIVER_HOST_TOOL_INVALID_ARGUMENT;
             }
             workspace->link_output_path = vitte_driver_host_copy_string(
                 requested_output);
             if (workspace->link_output_path == NULL) {
-                (void)unlink(workspace->source_path);
+                (void)vitte_driver_host_remove_file(workspace->source_path);
                 free(workspace);
                 return VITTE_DRIVER_HOST_TOOL_OUT_OF_MEMORY;
             }
             workspace->compile_output_path = workspace->link_output_path;
             workspace->owned_object_output = true;
         } else {
+#if defined(_WIN32)
+            if (!vitte_driver_host_temp_file(
+                    workspace->object_path,
+                    sizeof(workspace->object_path),
+                    false)) {
+                (void)vitte_driver_host_remove_file(workspace->source_path);
+                free(workspace);
+                return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
+            }
+#else
             memcpy(workspace->object_path, "/tmp/vitte-driver-o-XXXXXX", 27u);
             descriptor = mkstemp(workspace->object_path);
             if (descriptor < 0 || close(descriptor) != 0) {
                 if (descriptor >= 0) {
-                    (void)unlink(workspace->object_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->object_path);
                 }
-                (void)unlink(workspace->source_path);
+                (void)vitte_driver_host_remove_file(workspace->source_path);
                 free(workspace);
                 return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
             }
+#endif
             workspace->temporary_object = true;
             workspace->compile_output_path = workspace->object_path;
 
             if (run_program) {
+#if defined(_WIN32)
+                if (!vitte_driver_host_temp_file(
+                        workspace->executable_path,
+                        sizeof(workspace->executable_path),
+                        true)) {
+                    (void)vitte_driver_host_remove_file(
+                        workspace->source_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->object_path);
+                    free(workspace);
+                    return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
+                }
+                if (vitte_driver_host_remove_file(
+                        workspace->executable_path) != 0) {
+                    (void)vitte_driver_host_remove_file(
+                        workspace->executable_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->source_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->object_path);
+                    free(workspace);
+                    return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
+                }
+#else
                 memcpy(workspace->executable_path, "/tmp/vitte-driver-x-XXXXXX", 27u);
                 descriptor = mkstemp(workspace->executable_path);
                 if (descriptor < 0) {
-                    (void)unlink(workspace->source_path);
-                    (void)unlink(workspace->object_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->source_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->object_path);
                     free(workspace);
                     return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
                 }
                 if (close(descriptor) != 0 ||
-                    unlink(workspace->executable_path) != 0) {
-                    (void)unlink(workspace->source_path);
-                    (void)unlink(workspace->object_path);
-                    (void)unlink(workspace->executable_path);
+                    vitte_driver_host_remove_file(
+                        workspace->executable_path) != 0) {
+                    (void)vitte_driver_host_remove_file(
+                        workspace->source_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->object_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->executable_path);
                     free(workspace);
                     return VITTE_DRIVER_HOST_TOOL_IO_FAILURE;
                 }
+#endif
                 workspace->link_output_path = workspace->executable_path;
             } else {
                 resolved_output = requested_output;
@@ -189,16 +384,20 @@ vitte_driver_host_toolchain_begin(
                     resolved_output = "a.out";
                 }
                 if (resolved_output[0] == '\0') {
-                    (void)unlink(workspace->source_path);
-                    (void)unlink(workspace->object_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->source_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->object_path);
                     free(workspace);
                     return VITTE_DRIVER_HOST_TOOL_INVALID_ARGUMENT;
                 }
                 workspace->link_output_path = vitte_driver_host_copy_string(
                     resolved_output);
                 if (workspace->link_output_path == NULL) {
-                    (void)unlink(workspace->source_path);
-                    (void)unlink(workspace->object_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->source_path);
+                    (void)vitte_driver_host_remove_file(
+                        workspace->object_path);
                     free(workspace);
                     return VITTE_DRIVER_HOST_TOOL_OUT_OF_MEMORY;
                 }
@@ -222,7 +421,7 @@ uint32_t
 vitte_driver_host_toolchain_compile(
     uint8_t *opaque_workspace)
 {
-#if defined(__APPLE__) || defined(__unix__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__unix__)
     vitte_driver_host_tool_workspace_t *workspace =
         (vitte_driver_host_tool_workspace_t *)(void *)opaque_workspace;
     const char *arguments[16];
@@ -250,7 +449,8 @@ vitte_driver_host_toolchain_compile(
     arguments[count] = NULL;
     if (!vitte_platform_run(arguments, true)) {
         if (workspace->emit_object) {
-            (void)unlink(workspace->compile_output_path);
+            (void)vitte_driver_host_remove_file(
+                workspace->compile_output_path);
         }
         return VITTE_DRIVER_HOST_TOOL_PROCESS_FAILURE;
     }
@@ -265,7 +465,7 @@ uint32_t
 vitte_driver_host_toolchain_link(
     uint8_t *opaque_workspace)
 {
-#if defined(__APPLE__) || defined(__unix__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__unix__)
     vitte_driver_host_tool_workspace_t *workspace =
         (vitte_driver_host_tool_workspace_t *)(void *)opaque_workspace;
     const char *arguments[5];
@@ -293,7 +493,7 @@ vitte_driver_host_toolchain_execute(
     int32_t run_argc,
     uint8_t **run_argv)
 {
-#if defined(__APPLE__) || defined(__unix__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(__unix__)
     vitte_driver_host_tool_workspace_t *workspace =
         (vitte_driver_host_tool_workspace_t *)(void *)opaque_workspace;
     char **arguments;
@@ -337,13 +537,13 @@ vitte_driver_host_toolchain_destroy(
     if (workspace == NULL) {
         return;
     }
-#if defined(__APPLE__) || defined(__unix__)
-    (void)unlink(workspace->source_path);
+#if defined(_WIN32) || defined(__APPLE__) || defined(__unix__)
+    (void)vitte_driver_host_remove_file(workspace->source_path);
     if (workspace->temporary_object) {
-        (void)unlink(workspace->object_path);
+        (void)vitte_driver_host_remove_file(workspace->object_path);
     }
     if (workspace->run_program && workspace->executable_path[0] != '\0') {
-        (void)unlink(workspace->executable_path);
+        (void)vitte_driver_host_remove_file(workspace->executable_path);
     }
 #endif
     if (workspace->link_output_path != NULL &&
