@@ -240,6 +240,11 @@ endif
 .PHONY: all
 all: $(TARGET_BIN)
 
+# Build only the C-compiled seed; `all` also needs it to build the native frontend.
+.PHONY: bootstrap
+bootstrap: $(BOOTSTRAP_TARGET_BIN)
+	@printf '\nBootstrap compiler ready: %s\n' "$(BOOTSTRAP_TARGET_BIN)"
+
 $(BUILD_CONFIG_STAMP):
 	@mkdir -p $(BUILD)
 	@touch "$@"
@@ -271,6 +276,20 @@ SELFHOST_STAGE2_BUILD := $(SELFHOST_DIR)/stage2-build
 SELFHOST_STAGE3_BUILD := $(SELFHOST_DIR)/stage3-build
 SELFHOST_STAGE1_BIN := $(SELFHOST_STAGE1_BUILD)/bin/$(TARGET)$(EXE_SUFFIX)
 SELFHOST_STAGE2_BIN := $(SELFHOST_STAGE2_BUILD)/bin/$(TARGET)$(EXE_SUFFIX)
+SELFHOST_STEP_RUNNER := scripts/run-selfhost-step.sh
+SELFHOST_EVIDENCE_RUN ?= $(abspath $(SELFHOST_DIR))/evidence/$(shell date -u +%Y%m%dT%H%M%SZ)-$(shell git rev-parse --short HEAD 2>/dev/null || printf no-commit)-$(shell printf '%s' $$$$)
+SELFHOST_EVIDENCE_RUN := $(SELFHOST_EVIDENCE_RUN)
+export SELFHOST_EVIDENCE_RUN
+SELFHOST_EVIDENCE_OPTIONS := MODE=$(MODE); CC=$(CC); CPPFLAGS=$(CPPFLAGS); CFLAGS=$(CFLAGS); LDFLAGS=$(LDFLAGS); LDLIBS=$(LDLIBS); VITTE_MODULE_PATH=$(VITTE_MODULE_PATH)
+SELFHOST_STEP_EVIDENCE = --evidence-dir "$(SELFHOST_EVIDENCE_RUN)/stage$(1)" --options "$(SELFHOST_EVIDENCE_OPTIONS)"
+SELFHOST_STAGE0_STAMP := $(SELFHOST_DIR)/stage0-verified.stamp
+SELFHOST_STAGE1_STAMP := $(SELFHOST_DIR)/stage1-verified.stamp
+SELFHOST_STAGE2_STAMP := $(SELFHOST_DIR)/stage2-verified.stamp
+SELFHOST_STAGE3_STAMP := $(SELFHOST_DIR)/stage3-verified.stamp
+SELFHOST_C_INPUTS := $(SOURCES) \
+	$(shell find $(SRC_ROOT) include src/include -type f -name '*.h' 2>/dev/null | LC_ALL=C sort)
+SELFHOST_TEST_INPUTS := $(shell find $(TEST_DIR) -type f 2>/dev/null | LC_ALL=C sort) \
+	grammar/vitte.ebnf scripts/check-ebnf-frontend-sync.py
 NATIVE_LINK_OBJECTS := \
 	$(filter-out $(OBJ_DIR)/cli/pipeline.o $(OBJ_DIR)/pointer/pointer.o $(OBJ_DIR)/api/api.o,$(OBJECTS)) \
 	$(NATIVE_CLI_PIPELINE_OBJECT) \
@@ -605,6 +624,14 @@ test-native-frontend-subset: $(TARGET_BIN)
 test-bootstrap-regressions: $(TARGET_BIN)
 	$(PYTHON) $(TEST_DIR)/bootstrap_regression_test.py $(TARGET_BIN)
 
+# Check the seed directly without first building the native frontend.
+.PHONY: bootstrap-check
+bootstrap-check: $(BOOTSTRAP_TARGET_BIN)
+	$(BOOTSTRAP_TARGET_BIN) --version
+	$(PYTHON) $(TEST_DIR)/bootstrap_regression_test.py $(BOOTSTRAP_TARGET_BIN)
+	$(BOOTSTRAP_TARGET_BIN) run examples/hello.vit --quiet --no-color
+	@printf '\nBootstrap seed checks passed.\n'
+
 # -----------------------------------------------------------------------------
 # Golden diagnostic tests
 # -----------------------------------------------------------------------------
@@ -884,8 +911,10 @@ test-sema: $(TARGET_BIN)
 		--stop-after-sema \
 		--quiet
 
-	@printf '%s\n' \
-		'SKIP import_collision/modules_main.vit: qualified colliding imports are not semantically resolved yet'
+	$(TARGET_BIN) compile \
+		$(TEST_DIR)/import_collision/modules_main.vit \
+		--stop-after-sema \
+		--quiet
 
 	$(TARGET_BIN) compile \
 		$(TEST_DIR)/sema_calls/u64_literal_and_recursion_ok.vit \
@@ -1046,6 +1075,7 @@ RUNTIME_CANDIDATES := \
 	$(TEST_DIR)/llvm_imports_runtime.vit \
 	$(TEST_DIR)/llvm_integer_width_runtime.vit \
 	$(TEST_DIR)/llvm_pick_codegen_runtime.vit \
+	$(TEST_DIR)/import_collision/modules_main.vit \
 	$(TEST_DIR)/mir_loop_targets_runtime.vit \
 	$(TEST_DIR)/streaming_summary_runtime.vit \
 	$(TEST_DIR)/string_intrinsics_runtime.vit
@@ -1073,6 +1103,19 @@ test-runtime: $(TARGET_BIN)
 	for file in $(RUNTIME_TESTS); do \
 		printf '[RUNTIME] %s\n' "$$file"; \
 		$(TARGET_BIN) run "$$file"; \
+	done
+
+# Qualified imports must preserve same-named declarations through semantic
+# analysis, C generation, and execution in both shipped compiler paths.
+.PHONY: test-import-collisions
+test-import-collisions: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+	@set -e; \
+	for compiler in "$(TARGET_BIN)" "$(BOOTSTRAP_TARGET_BIN)"; do \
+		for fixture in modules_main symbol_alias_main; do \
+			printf '[IMPORT-COLLISION] semantic and runtime: %s (%s)\n' "$$compiler" "$$fixture"; \
+			"$$compiler" compile $(TEST_DIR)/import_collision/"$$fixture".vit --stop-after-sema --quiet; \
+			"$$compiler" run $(TEST_DIR)/import_collision/"$$fixture".vit --quiet --no-color; \
+		done; \
 	done
 
 # HIR/IR lowering and C17 backend runtime smoke test. Keep the test on the
@@ -1113,6 +1156,7 @@ compiler-power-gate: \
 	test-bootstrap-regressions \
 	test-grammar \
 	test-sema \
+	test-import-collisions \
 	test-imports \
 	test-native-frontend-subset \
 	test-native-bootstrap-parity \
@@ -1144,57 +1188,180 @@ compiler-gate: compiler-release-criteria
 	$(MAKE) test-sanitizers
 	@printf '\nFull local compiler gate passed.\n'
 
-# Rebuild the native frontend through stage3. Run the parser/AST, semantic,
-# grammar, and end-to-end frontend corpora at every stage, and require stable
-# generated C before advancing to the next compiler.
-.PHONY: compiler-selfhost-gate
-compiler-selfhost-gate: $(TARGET_BIN)
+# Each verified stamp records a completed stage. A failed stage gets no stamp,
+# so rerunning its target resumes there while preserving successful earlier
+# stages. Source, test, and build-profile inputs invalidate affected stamps.
+$(SELFHOST_STAGE0_STAMP): $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN) \
+		$(NATIVE_BOOTSTRAP_PARITY_TEST_BIN) $(NATIVE_FRONTEND_SOURCES) \
+		$(NATIVE_MODULE_SOURCES) $(SELFHOST_TEST_INPUTS) \
+		VERSION $(SELFHOST_STEP_RUNNER) Makefile
 	@mkdir -p "$(SELFHOST_DIR)"
 	@printf '\n[SELFHOST] stage0 frontend corpus and parity\n'
-	$(MAKE) test-grammar test-native-frontend-subset test-native-bootstrap-parity
-	@printf '\n[SELFHOST] stage0 generates the stage1 API\n'
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(TARGET_BIN) \
+	$(SELFHOST_STEP_RUNNER) --stage 0 --step "frontend corpus and parity" $(call SELFHOST_STEP_EVIDENCE,0) \
+		--compiler "$(TARGET_BIN)" --compiler "$(BOOTSTRAP_TARGET_BIN)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage1" -- \
+		$(MAKE) test-grammar test-native-frontend-subset test-native-bootstrap-parity
+	$(SELFHOST_STEP_RUNNER) --stage 0 --step "record stage0 verification" $(call SELFHOST_STEP_EVIDENCE,0) \
+		--compiler "$(TARGET_BIN)" --artifact "$@" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage1" -- touch "$@"
+	@printf '[SELFHOST] stage0 verification passed\n'
+
+$(SELFHOST_STAGE1_C): $(SELFHOST_STAGE0_STAMP) $(TARGET_BIN) \
+		$(NATIVE_FRONTEND_SOURCES) $(NATIVE_MODULE_SOURCES) Makefile
+	@mkdir -p "$(SELFHOST_DIR)"
+	@rm -f "$@.tmp"
+	$(SELFHOST_STEP_RUNNER) --stage 1 --step "generate stage1 API C" $(call SELFHOST_STEP_EVIDENCE,1) \
+		--compiler "$(TARGET_BIN)" --generated "$@.tmp" \
+		--generated "$(SELFHOST_STAGE1_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage1" -- \
+		env "VITTE_MODULE_PATH=$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(TARGET_BIN) \
 		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
-		-o "$(SELFHOST_STAGE1_C)"
+		-o "$@.tmp"
+	$(SELFHOST_STEP_RUNNER) --stage 1 --step "publish stage1 API C" $(call SELFHOST_STEP_EVIDENCE,1) \
+		--compiler "$(TARGET_BIN)" --generated "$@.tmp" \
+		--generated "$(SELFHOST_STAGE1_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage1" -- mv "$@.tmp" "$@"
+
+$(SELFHOST_STAGE1_BIN): $(SELFHOST_STAGE1_C) $(BUILD_CONFIG_STAMP) \
+		$(SELFHOST_C_INPUTS) Makefile
+	$(SELFHOST_STEP_RUNNER) --stage 1 --step "build stage1 compiler" $(call SELFHOST_STEP_EVIDENCE,1) \
+		--compiler "$(CC)" --compiler "$(TARGET_BIN)" \
+		--generated "$(SELFHOST_STAGE1_C)" --artifact "$(SELFHOST_STAGE1_BIN)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage1" -- \
 	$(MAKE) BUILD="$(SELFHOST_STAGE1_BUILD)" \
 		NATIVE_FRONTEND_COMPILER="$(abspath $(TARGET_BIN))" \
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE1_C))" all
+	@touch "$@"
+
+$(SELFHOST_STAGE1_STAMP): $(SELFHOST_STAGE0_STAMP) $(SELFHOST_STAGE1_BIN) \
+		$(SELFHOST_TEST_INPUTS) Makefile
 	@printf '\n[SELFHOST] stage1 frontend corpus and parity\n'
+	$(SELFHOST_STEP_RUNNER) --stage 1 --step "frontend corpus and parity" $(call SELFHOST_STEP_EVIDENCE,1) \
+		--compiler "$(SELFHOST_STAGE1_BIN)" --generated "$(SELFHOST_STAGE1_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage1" -- \
 	$(MAKE) BUILD="$(SELFHOST_STAGE1_BUILD)" \
 		NATIVE_FRONTEND_COMPILER="$(abspath $(TARGET_BIN))" \
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE1_C))" \
 		test-grammar test-native-frontend-subset test-native-bootstrap-parity
-	@printf '\n[SELFHOST] stage1 regenerates the stage2 API\n'
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(SELFHOST_STAGE1_BIN) \
+	$(SELFHOST_STEP_RUNNER) --stage 1 --step "record stage1 verification" $(call SELFHOST_STEP_EVIDENCE,1) \
+		--compiler "$(SELFHOST_STAGE1_BIN)" --generated "$(SELFHOST_STAGE1_C)" \
+		--artifact "$@" --reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage1" -- touch "$@"
+	@printf '[SELFHOST] stage1 verification passed\n'
+
+$(SELFHOST_STAGE2_C): $(SELFHOST_STAGE1_STAMP) $(SELFHOST_STAGE1_BIN) \
+		$(NATIVE_FRONTEND_SOURCES) $(NATIVE_MODULE_SOURCES) Makefile
+	@mkdir -p "$(SELFHOST_DIR)"
+	@rm -f "$@.tmp"
+	$(SELFHOST_STEP_RUNNER) --stage 2 --step "generate stage2 API C" $(call SELFHOST_STEP_EVIDENCE,2) \
+		--compiler "$(SELFHOST_STAGE1_BIN)" --generated "$@.tmp" \
+		--generated "$(SELFHOST_STAGE2_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage2" -- \
+		env "VITTE_MODULE_PATH=$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(SELFHOST_STAGE1_BIN) \
 		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
-		-o "$(SELFHOST_STAGE2_C)"
-	@cmp -s "$(SELFHOST_STAGE1_C)" "$(SELFHOST_STAGE2_C)" || \
-		{ printf 'stage1 API output differs from stage0 output\n'; exit 1; }
-	@printf '[SELFHOST] stage0 and stage1 API output match\n'
+		-o "$@.tmp"
+	$(SELFHOST_STEP_RUNNER) --stage 2 --step "publish stage2 API C" $(call SELFHOST_STEP_EVIDENCE,2) \
+		--compiler "$(SELFHOST_STAGE1_BIN)" --generated "$@.tmp" \
+		--generated "$(SELFHOST_STAGE2_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage2" -- mv "$@.tmp" "$@"
+
+$(SELFHOST_STAGE2_BIN): $(SELFHOST_STAGE2_C) $(BUILD_CONFIG_STAMP) \
+		$(SELFHOST_C_INPUTS) Makefile
+	$(SELFHOST_STEP_RUNNER) --stage 2 --step "build stage2 compiler" $(call SELFHOST_STEP_EVIDENCE,2) \
+		--compiler "$(CC)" --compiler "$(SELFHOST_STAGE1_BIN)" \
+		--generated "$(SELFHOST_STAGE2_C)" --artifact "$(SELFHOST_STAGE2_BIN)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage2" -- \
 	$(MAKE) BUILD="$(SELFHOST_STAGE2_BUILD)" \
 		NATIVE_FRONTEND_COMPILER="$(abspath $(SELFHOST_STAGE1_BIN))" \
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE2_C))" all
-	@printf '\n[SELFHOST] stage2 frontend corpus and parity\n'
+	@touch "$@"
+
+$(SELFHOST_STAGE2_STAMP): $(SELFHOST_STAGE1_STAMP) $(SELFHOST_STAGE2_BIN) \
+		$(SELFHOST_TEST_INPUTS) Makefile
+	$(SELFHOST_STEP_RUNNER) --stage 2 --step "compare generated stage1 and stage2 API C" $(call SELFHOST_STEP_EVIDENCE,2) \
+		--compiler "$(TARGET_BIN)" --compiler "$(SELFHOST_STAGE1_BIN)" \
+		--generated "$(SELFHOST_STAGE1_C)" --generated "$(SELFHOST_STAGE2_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage2" -- \
+	cmp -s "$(SELFHOST_STAGE1_C)" "$(SELFHOST_STAGE2_C)"
+	@printf '\n[SELFHOST] stage0 and stage1 API output match\n'
+	@printf '[SELFHOST] stage2 frontend corpus and parity\n'
+	$(SELFHOST_STEP_RUNNER) --stage 2 --step "frontend corpus and parity" $(call SELFHOST_STEP_EVIDENCE,2) \
+		--compiler "$(SELFHOST_STAGE2_BIN)" --generated "$(SELFHOST_STAGE2_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage2" -- \
 	$(MAKE) BUILD="$(SELFHOST_STAGE2_BUILD)" \
 		NATIVE_FRONTEND_COMPILER="$(abspath $(SELFHOST_STAGE1_BIN))" \
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE2_C))" \
 		test-grammar test-native-frontend-subset test-native-bootstrap-parity
-	@printf '\n[SELFHOST] stage2 regenerates the stage3 API\n'
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(SELFHOST_STAGE2_BIN) \
+	$(SELFHOST_STEP_RUNNER) --stage 2 --step "record stage2 verification" $(call SELFHOST_STEP_EVIDENCE,2) \
+		--compiler "$(SELFHOST_STAGE2_BIN)" --generated "$(SELFHOST_STAGE2_C)" \
+		--artifact "$@" --reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage2" -- touch "$@"
+	@printf '[SELFHOST] stage2 verification passed\n'
+
+$(SELFHOST_STAGE3_C): $(SELFHOST_STAGE2_STAMP) $(SELFHOST_STAGE2_BIN) \
+		$(NATIVE_FRONTEND_SOURCES) $(NATIVE_MODULE_SOURCES) Makefile
+	@mkdir -p "$(SELFHOST_DIR)"
+	@rm -f "$@.tmp"
+	$(SELFHOST_STEP_RUNNER) --stage 3 --step "generate stage3 API C" $(call SELFHOST_STEP_EVIDENCE,3) \
+		--compiler "$(SELFHOST_STAGE2_BIN)" --generated "$@.tmp" \
+		--generated "$(SELFHOST_STAGE3_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage3" -- \
+		env "VITTE_MODULE_PATH=$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(SELFHOST_STAGE2_BIN) \
 		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
-		-o "$(SELFHOST_STAGE3_C)"
-	@cmp -s "$(SELFHOST_STAGE2_C)" "$(SELFHOST_STAGE3_C)" || \
-		{ printf 'stage2 API output differs from stage1 output\n'; exit 1; }
-	@printf '[SELFHOST] stage1 and stage2 API output match\n'
+		-o "$@.tmp"
+	$(SELFHOST_STEP_RUNNER) --stage 3 --step "publish stage3 API C" $(call SELFHOST_STEP_EVIDENCE,3) \
+		--compiler "$(SELFHOST_STAGE2_BIN)" --generated "$@.tmp" \
+		--generated "$(SELFHOST_STAGE3_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage3" -- mv "$@.tmp" "$@"
+
+$(SELFHOST_STAGE3_BIN): $(SELFHOST_STAGE3_C) $(BUILD_CONFIG_STAMP) \
+		$(SELFHOST_C_INPUTS) Makefile
+	$(SELFHOST_STEP_RUNNER) --stage 3 --step "build stage3 compiler" $(call SELFHOST_STEP_EVIDENCE,3) \
+		--compiler "$(CC)" --compiler "$(SELFHOST_STAGE2_BIN)" \
+		--generated "$(SELFHOST_STAGE3_C)" --artifact "$(SELFHOST_STAGE3_BIN)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage3" -- \
 	$(MAKE) BUILD="$(SELFHOST_STAGE3_BUILD)" \
 		NATIVE_FRONTEND_COMPILER="$(abspath $(SELFHOST_STAGE2_BIN))" \
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE3_C))" all
-	@printf '\n[SELFHOST] stage3 frontend corpus and parity\n'
+	@touch "$@"
+
+$(SELFHOST_STAGE3_STAMP): $(SELFHOST_STAGE2_STAMP) $(SELFHOST_STAGE3_BIN) \
+		$(SELFHOST_TEST_INPUTS) Makefile
+	$(SELFHOST_STEP_RUNNER) --stage 3 --step "compare generated stage2 and stage3 API C" $(call SELFHOST_STEP_EVIDENCE,3) \
+		--compiler "$(SELFHOST_STAGE1_BIN)" --compiler "$(SELFHOST_STAGE2_BIN)" \
+		--generated "$(SELFHOST_STAGE2_C)" --generated "$(SELFHOST_STAGE3_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage3" -- \
+	cmp -s "$(SELFHOST_STAGE2_C)" "$(SELFHOST_STAGE3_C)"
+	@printf '\n[SELFHOST] stage1 and stage2 API output match\n'
+	@printf '[SELFHOST] stage3 frontend corpus and parity\n'
+	$(SELFHOST_STEP_RUNNER) --stage 3 --step "frontend corpus and parity" $(call SELFHOST_STEP_EVIDENCE,3) \
+		--compiler "$(SELFHOST_STAGE3_BIN)" --generated "$(SELFHOST_STAGE3_C)" \
+		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage3" -- \
 	$(MAKE) BUILD="$(SELFHOST_STAGE3_BUILD)" \
 		NATIVE_FRONTEND_COMPILER="$(abspath $(SELFHOST_STAGE2_BIN))" \
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE3_C))" \
 		test-grammar test-native-frontend-subset test-native-bootstrap-parity
+	$(SELFHOST_STEP_RUNNER) --stage 3 --step "record stage3 verification" $(call SELFHOST_STEP_EVIDENCE,3) \
+		--compiler "$(SELFHOST_STAGE3_BIN)" --generated "$(SELFHOST_STAGE3_C)" \
+		--artifact "$@" --reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage3" -- touch "$@"
+	@printf '[SELFHOST] stage3 verification passed\n'
+
+.PHONY: bootstrap-stage1 bootstrap-stage2 bootstrap-stage3
+bootstrap-stage1: $(SELFHOST_STAGE1_STAMP)
+	@printf '\nBootstrap stage 1 is built and verified.\n'
+
+bootstrap-stage2: $(SELFHOST_STAGE2_STAMP)
+	@printf '\nBootstrap stage 2 is built and verified.\n'
+
+bootstrap-stage3: $(SELFHOST_STAGE3_STAMP)
+	@printf '\nBootstrap stage 3 is built and verified.\n'
+
+# Rebuild the native frontend through stage3; already verified stages are reused.
+.PHONY: compiler-selfhost-gate
+compiler-selfhost-gate: $(SELFHOST_STAGE3_STAMP)
 	@printf '\nNative compiler self-host gate passed through stage3.\n'
+
+# User-facing name for the complete bootstrap/self-host cycle.
+.PHONY: bootstrap-selfhost
+bootstrap-selfhost: compiler-selfhost-gate
 
 # -----------------------------------------------------------------------------
 # Complete test suite
@@ -1218,6 +1385,7 @@ test: \
 	test-config-fuzz \
 	test-robustness \
 	test-sema \
+	test-import-collisions \
 	test-native-frontend-subset \
 	test-imports \
 	test-import-fuzz \
@@ -1466,6 +1634,7 @@ help:
 		'' \
 		'Build:' \
 		'  make                         Build debug compiler' \
+		'  make bootstrap               Build only the C seed compiler' \
 		'  make debug                   Build debug compiler' \
 		'  make release                 Build optimized compiler' \
 		'  make asan                    Build with ASan + UBSan' \
@@ -1480,7 +1649,13 @@ help:
 		'  make emit-c FILE=x.vit       Generate C17 source' \
 		'  make native-frontend         Compile the native frontend archive' \
 		'                               (also linked by the default build)' \
-		'  make compiler-selfhost-gate  Rebuild and compare native compiler stages' \
+		'  make bootstrap-check         Verify seed startup, imports and diagnostics' \
+		'  make bootstrap-stage1        Build and verify through stage 1' \
+		'  make bootstrap-stage2        Build and verify through stage 2' \
+		'  make bootstrap-stage3        Build and verify through stage 3' \
+		'                               (successful earlier stages are reused)' \
+		'  make MODE=release bootstrap-selfhost' \
+		'                               Verify the complete stages 0 through 3' \
 		'' \
 		'Verification:' \
 		'  make docs-site               Regenerate static site audits and metadata' \

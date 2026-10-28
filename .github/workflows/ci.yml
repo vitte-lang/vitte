@@ -3,6 +3,7 @@ name: Vitte CI
 on:
   push:
   pull_request:
+  merge_group:
   workflow_dispatch:
 
 permissions:
@@ -72,8 +73,15 @@ jobs:
       - name: Check incremental invalidation and package target inventory
         run: make test-build-invalidation test-packaging-matrix
 
+  compiler-selfhost:
+    name: Cross-platform compiler self-host
+    uses: ./.github/workflows/compiler-selfhost.yml
+
   native-package-install:
     name: Native package install (${{ matrix.os }})
+    needs:
+      - compiler-runtime
+      - compiler-selfhost
     strategy:
       fail-fast: false
       matrix:
@@ -193,6 +201,36 @@ jobs:
           $env:VITTE_BIN = Join-Path $installDir 'bin/vitte.exe'
           $env:CC = 'gcc'
           ./scripts/ci/real-install-smoke.ps1 -VitteBin $env:VITTE_BIN -CCompiler $env:CC
+
+  release-readiness:
+    name: Release readiness
+    # This exact job name is required by main's branch protection.
+    if: always()
+    needs:
+      - compiler-runtime
+      - compiler-selfhost
+      - native-package-install
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require all compiler and platform gates
+        env:
+          COMPILER_RUNTIME_RESULT: ${{ needs['compiler-runtime'].result }}
+          COMPILER_SELFHOST_RESULT: ${{ needs['compiler-selfhost'].result }}
+          NATIVE_PACKAGE_RESULT: ${{ needs['native-package-install'].result }}
+        run: |
+          if [[ "$COMPILER_RUNTIME_RESULT" != success ]]; then
+            echo "::error::Compiler/runtime gate result: $COMPILER_RUNTIME_RESULT"
+            exit 1
+          fi
+          if [[ "$COMPILER_SELFHOST_RESULT" != success ]]; then
+            echo "::error::Cross-platform self-host gate result: $COMPILER_SELFHOST_RESULT"
+            exit 1
+          fi
+          if [[ "$NATIVE_PACKAGE_RESULT" != success ]]; then
+            echo "::error::Native package install gate result: $NATIVE_PACKAGE_RESULT"
+            exit 1
+          fi
+          echo "All compiler release gates passed."
 
   extension-dap:
     name: Extension and native DAP

@@ -458,7 +458,7 @@ def test_lossy_implicit_conversions_are_rejected(root: Path) -> None:
     }, document
 
 
-def test_imported_generic_nominal_arguments_are_checked(root: Path) -> None:
+def test_imported_generic_form_runtime_and_argument_validation(root: Path) -> None:
     package = root / "generic"
     package.mkdir()
     (package / "lib.vit").write_text(
@@ -466,6 +466,79 @@ def test_imported_generic_nominal_arguments_are_checked(root: Path) -> None:
         "export form Box<T> { value: T }\n",
         encoding="utf-8",
     )
+
+    valid_main = package / "valid.vit"
+    valid_main.write_text(
+        "space generic::main;\n"
+        "use generic::lib as lib;\n"
+        "proc main() -> i64 {\n"
+        "    let signed_value: lib::Box<i64> = lib::Box<i64> { value: 42 };\n"
+        "    let enabled: lib::Box<bool> = lib::Box<bool> { value: true };\n"
+        "    let count: lib::Box<u64> = lib::Box<u64> { value: 42 };\n"
+        "    let ratio: lib::Box<f64> = lib::Box<f64> { value: 4.5 };\n"
+        '    let label: lib::Box<string> = lib::Box<string> { value: "vitte" };\n'
+        "    let initial: lib::Box<char> = lib::Box<char> { value: 'V' };\n"
+        "    if not enabled.value { return 1; }\n"
+        "    if count.value != 42 { return 2; }\n"
+        "    if ratio.value != 4.5 { return 3; }\n"
+        '    if label.value != "vitte" { return 4; }\n'
+        "    if initial.value != 'V' { return 5; }\n"
+        "    return signed_value.value - 42;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    valid = subprocess.run(
+        [
+            str(BINARY), "check", str(valid_main), "--quiet", "--no-color",
+            "--diagnostic=json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if valid.returncode != 0:
+        raise AssertionError(
+            "valid imported generic form should pass semantic checking; "
+            f"stdout={valid.stdout!r}; stderr={valid.stderr!r}"
+        )
+    executed = subprocess.run(
+        [
+            str(BINARY), "run", str(valid_main), "--quiet", "--no-color",
+            "--diagnostic=json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if executed.returncode != 0 or executed.stdout or executed.stderr:
+        raise AssertionError(
+            "imported generic form should compile and execute successfully; "
+            f"exit={executed.returncode}; stdout={executed.stdout!r}; "
+            f"stderr={executed.stderr!r}"
+        )
+    emitted = subprocess.run(
+        [
+            str(BINARY), "compile", str(valid_main), "--emit-c", "--quiet",
+            "--no-color",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    concrete_specializations = (
+        "Box__i64", "Box__bool", "Box__u64", "Box__f64", "Box__string",
+        "Box__char",
+    )
+    if emitted.returncode != 0 or any(
+        specialization not in emitted.stdout
+        for specialization in concrete_specializations
+    ):
+        raise AssertionError(
+            "imported generic form should emit each concrete C17 specialization; "
+            f"exit={emitted.returncode}; stdout={emitted.stdout!r}; "
+            f"stderr={emitted.stderr!r}"
+        )
+
     main = package / "main.vit"
     main.write_text(
         "space generic::main;\n"
@@ -492,6 +565,6 @@ with TemporaryDirectory(prefix="vitte-bootstrap-regressions-") as directory:
     test_type_diagnostics_all_formats(workspace)
     test_diagnostic_format_parity(workspace)
     test_lossy_implicit_conversions_are_rejected(workspace)
-    test_imported_generic_nominal_arguments_are_checked(workspace)
+    test_imported_generic_form_runtime_and_argument_validation(workspace)
 
 print("Bootstrap targeted import and diagnostic regressions passed.")
