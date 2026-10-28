@@ -5,7 +5,7 @@ section: Utiliser Vitte
 lead: Installer le paquet natif publié, utiliser une archive binaire ou construire Vitte depuis les sources ; configurer les modules et isoler les erreurs.
 description: Installation de Vitte sur macOS, Debian, Ubuntu, FreeBSD, Windows et Solaris expérimental ; paquets natifs, archives portables, installation manuelle et dépannage.
 summary: Choisir et vérifier un paquet, lancer une distribution binaire portable ou construire Vitte depuis les sources.
-keywords: installation compiler compilateur pkg deb exe portable binaire macOS Linux Debian Ubuntu FreeBSD Windows Solaris expérimental make build install PREFIX PATH dépannage erreur lex parse check compile run module VITTE_MODULE_PATH
+keywords: installation compiler compilateur bootstrap seed selfhost stage0 stage1 stage2 stage3 pkg deb exe portable binaire macOS Linux Debian Ubuntu FreeBSD Windows Solaris expérimental make build install PREFIX PATH dépannage erreur lex parse check compile run module VITTE_MODULE_PATH
 ---
 <div class="reference-callout">
   <strong>Ce guide suit le dépôt Vitte {{ site.vitte_version }}.</strong>
@@ -81,13 +81,49 @@ git --version</code></pre>
 cd vitte
 make -j2
 ./build/bin/vitte --version
-./build/bin/vitte check examples/hello.vit</code></pre>
-<p>Le binaire construit par Make se trouve dans <code>build/bin/vitte</code> (ou <code>build/bin/vitte.exe</code> dans les environnements Windows du dépôt). La dernière commande vérifie un exemple du dépôt. Elle ne démontre pas que toutes les formes du langage sont prises en charge ; chaque commande passe par le frontend choisi par le compilateur.</p>
-<p>Pour utiliser immédiatement ce binaire sans l’installer, donnez son chemin explicite :</p>
-<pre><code>./build/bin/vitte lex examples/hello.vit
-./build/bin/vitte parse examples/hello.vit
-./build/bin/vitte check examples/hello.vit
-./build/bin/vitte run examples/hello.vit</code></pre>
+./build/bin/vitte run examples/tutorials/conversions.vit --quiet --no-color</code></pre>
+<p><code>make</code> produit le seed <code>build/bin/vitte-bootstrap</code> et le frontend natif <code>build/bin/vitte</code> (avec le suffixe <code>.exe</code> sous Windows). La version attendue est <code>vitte {{ site.vitte_version }}</code>. L’exemple de conversions s’exécute avec le frontend natif, sans sortie standard et avec le code de sortie <code>0</code>. Le détail de la relation entre les deux exécutables et les stages du bootstrap figure juste après.</p>
+<p>Pour observer la différence de rôle, l’exemple de départ avec <code>print</code> est vérifié avec le seed :</p>
+<pre><code>./build/bin/vitte-bootstrap run examples/hello.vit --quiet --no-color</code></pre>
+<p>Résultat attendu : <code>Hello from Vitte!</code>, puis le code de sortie <code>0</code>. Choisissez le binaire d’après le parcours de vérification de l’exemple ; les deux frontends ne prennent pas encore exactement en charge les mêmes constructions.</p>
+
+<h3 id="bootstrap">Commandes bootstrap</h3>
+<p>Le Makefile propose des cibles pour construire le compilateur seed, le vérifier sans reconstruire le frontend natif, puis construire et vérifier chaque stage self-host séparément ou toute la chaîne jusqu’au stage 3.</p>
+<table><thead><tr><th>Commande</th><th>Ce qu’elle fait</th><th>Sortie attendue</th></tr></thead><tbody>
+<tr><td><code>make bootstrap</code></td><td>Construit seulement <code>build/bin/vitte-bootstrap</code> depuis le C17 de <code>src/bootstrap/</code>. Le build normal le construit aussi comme dépendance.</td><td><code>Bootstrap compiler ready: build/bin/vitte-bootstrap</code>, puis <code>vitte {{ site.vitte_version }}</code> avec <code>--version</code>.</td></tr>
+<tr><td><code>make bootstrap-check</code></td><td>Utilise le seed lui-même pour vérifier sa version, les imports, les diagnostics, puis compiler et exécuter l’exemple Hello.</td><td><code>Bootstrap targeted import and diagnostic regressions passed.</code>, <code>Hello from Vitte!</code>, puis <code>Bootstrap seed checks passed.</code>.</td></tr>
+<tr><td><code>make MODE=release bootstrap-stage1</code></td><td>Construit et vérifie le stage 1 à partir du frontend natif stage 0.</td><td><code>[SELFHOST] stage1 verification passed</code>.</td></tr>
+<tr><td><code>make MODE=release bootstrap-stage2</code></td><td>Construit et vérifie jusqu’au stage 2. Il reprend au dernier stage manquant ou périmé.</td><td><code>[SELFHOST] stage0 and stage1 API output match</code>, puis <code>[SELFHOST] stage2 verification passed</code>.</td></tr>
+<tr><td><code>make MODE=release bootstrap-stage3</code></td><td>Construit et vérifie jusqu’au stage 3. Il reprend au dernier stage manquant ou périmé.</td><td><code>[SELFHOST] stage1 and stage2 API output match</code>, puis <code>[SELFHOST] stage3 verification passed</code>.</td></tr>
+<tr><td><code>make MODE=release bootstrap-selfhost</code></td><td>Lance le gate complet jusqu’au stage 3, en réutilisant les stages déjà vérifiés et à jour. Les sorties C successives sont comparées.</td><td><code>[SELFHOST] stage0 and stage1 API output match</code>, <code>[SELFHOST] stage1 and stage2 API output match</code>, puis <code>Native compiler self-host gate passed through stage3.</code>.</td></tr>
+</tbody></table>
+<p>Depuis la racine du dépôt, les deux premières commandes sont :</p>
+<pre><code>make bootstrap
+./build/bin/vitte-bootstrap --version
+make bootstrap-check</code></pre>
+<p>Le seed est le compilateur C initial ; <code>build/bin/vitte</code> est le frontend natif qu’il aide à construire. Dans les environnements Windows MSYS, Make ajoute <code>.exe</code> au chemin des exécutables.</p>
+
+<h4 id="selfhost-stages">Stages 0, 1, 2 et 3</h4>
+<p>Les cibles stage 1, 2 et 3 utilisent des marques de réussite dans <code>build/selfhost/</code>. Après un échec au stage 2, relancez <code>make MODE=release bootstrap-stage2</code> ; le stage 1 est conservé s’il est toujours à jour. Gardez le même profil <code>MODE</code> entre les reprises. Le gate complet part de <code>build/bin/vitte</code> comme stage 0 :</p>
+<table><thead><tr><th>Stage</th><th>Compilateur qui génère l’API suivante</th><th>Résultat</th></tr></thead><tbody>
+<tr><td>0</td><td><code>build/bin/vitte</code></td><td>Génère <code>stage1-api.c</code>, qui sert à construire le binaire stage 1.</td></tr>
+<tr><td>1</td><td><code>build/selfhost/stage1-build/bin/vitte</code></td><td>Génère <code>stage2-api.c</code>, qui sert à construire le binaire stage 2.</td></tr>
+<tr><td>2</td><td><code>build/selfhost/stage2-build/bin/vitte</code></td><td>Génère <code>stage3-api.c</code>, qui sert à construire le binaire stage 3.</td></tr>
+<tr><td>3</td><td><code>build/selfhost/stage3-build/bin/vitte</code></td><td>Passe les derniers corpus de grammaire, de frontend natif et de parité.</td></tr>
+</tbody></table>
+<p>Chaque génération passe ses corpus avant que le gate continue. Les fichiers C générés par stage 0 et 1 doivent être identiques ; la même comparaison est faite entre les sorties des stages 1 et 2. Si une étape échoue, le diagnostic précise le stage, l’opération, les compilateurs utilisés, les chemins C générés et la cible à relancer. Si les sorties diffèrent, la cible échoue sans enregistrer sa marque de réussite ; relancez cette même cible après correction. Les preuves de chaque opération sont enregistrées sous <code>build/selfhost/evidence/</code> : les fichiers texte indiquent version, commit, options, résultat et commande de reprise ; les journaux gardent la sortie complète des corpus. Le parcours ne lance ni <code>make clean</code> ni <code>make install</code>.</p>
+<h5 id="selfhost-divergence">Diagnostiquer une divergence entre sorties C</h5>
+<p>Repérez l’étape de comparaison nommée dans le diagnostic d’échec, puis comparez la paire correspondante. La première sortie est produite par le stage précédent, la seconde par le suivant :</p>
+<table><thead><tr><th>Étape dans le diagnostic</th><th>Fichier généré par le compilateur précédent</th><th>Fichier généré par le suivant</th><th>Reprise après correction</th></tr></thead><tbody>
+<tr><td><code>compare generated stage1 and stage2 API C</code></td><td><code>build/selfhost/stage1-api.c</code></td><td><code>build/selfhost/stage2-api.c</code></td><td><code>make MODE=release bootstrap-stage2</code></td></tr>
+<tr><td><code>compare generated stage2 and stage3 API C</code></td><td><code>build/selfhost/stage2-api.c</code></td><td><code>build/selfhost/stage3-api.c</code></td><td><code>make MODE=release bootstrap-stage3</code></td></tr>
+</tbody></table>
+<p>Lancez seulement la comparaison concernée avec <code>diff -u</code>. Elle affiche le contexte autour des lignes différentes et renvoie le code 1 si elle en trouve ; c’est normal pendant ce diagnostic. Une sortie vide avec code 0 signifie que les fichiers sont identiques.</p>
+<pre><code>diff -u build/selfhost/stage1-api.c build/selfhost/stage2-api.c
+diff -u build/selfhost/stage2-api.c build/selfhost/stage3-api.c</code></pre>
+<p>Le diagnostic donne le chemin du manifeste et du journal. Pour la première comparaison, cherchez sous <code>build/selfhost/evidence/&lt;exécution&gt;/stage2/</code>, dans <code>compare-generated-stage1-and-stage2-api-c.txt</code> et son fichier <code>.log</code>. Pour la seconde, cherchez sous <code>stage3/</code>, dans <code>compare-generated-stage2-and-stage3-api-c.txt</code> et son <code>.log</code>. Le manifeste contient le commit, le profil et les options de compilation, les deux compilateurs, les chemins C, le statut de <code>cmp -s</code> et la commande de reprise.</p>
+<p>Après correction, relancez la cible de la dernière colonne en conservant le même <code>MODE</code> que lors du cycle initial. L’échec ne rafraîchit pas la marque de réussite ; si une marque antérieure existe, Make la considère périmée. Les artefacts des stages précédents restent en place. Ne supprimez pas <code>build/</code> ou <code>target/</code> et ne lancez ni <code>make clean</code> ni <code>make distclean</code> : cela effacerait les compilateurs, les sources C générées et les preuves d’autres étapes. Pour vérifier toute la chaîne après correction, relancez <code>make MODE=release bootstrap-selfhost</code>.</p>
+<p>Pour comparer séparément les parseurs, les AST et l’analyse sémantique du seed et du frontend natif, la cible existante est <code>make test-native-bootstrap-parity</code>. Elle affiche actuellement <code>Native/bootstrap parser and AST parity passed: 7 cases.</code> et <code>Native/bootstrap semantic parity passed: 4 cases.</code>.</p>
 
 <h3 id="installer-source">Installer le build sous un préfixe local</h3>
 <p>Le Makefile installe le compilateur sous <code>PREFIX/bin</code> et le paquet JSON sous <code>PREFIX/share/vitte/modules/json</code>. Un préfixe dans votre dossier personnel évite de modifier l’installation système :</p>

@@ -1,8 +1,7 @@
 name: Compiler self-host
 
 on:
-  push:
-  pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -14,18 +13,69 @@ concurrency:
 
 jobs:
   compiler-selfhost:
-    name: Native compiler self-host
-    runs-on: ubuntu-24.04
+    name: Native compiler self-host (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-24.04
+          - os: macos
+            runner: macos-15
+          - os: windows
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
+
+    defaults:
+      run:
+        shell: ${{ matrix.os == 'windows' && 'msys2 {0}' || 'bash' }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
 
-      - name: Install compiler dependencies
+      - name: Set up Python
+        if: matrix.os != 'windows'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install Linux compiler dependencies
+        if: matrix.os == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y build-essential
 
-      - name: Rebuild the compiler through two native stages
-        run: make MODE=release compiler-selfhost-gate
+      - name: Select macOS compiler tools
+        if: matrix.os == 'macos'
+        run: xcode-select -p
+
+      - name: Set up Windows build tools
+        if: matrix.os == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            diffutils
+            git
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-python
+            perl
+
+      - name: Build and verify stages 0 through 3
+        shell: bash
+        run: |
+          ulimit -s unlimited || true
+          make MODE=release bootstrap-selfhost
+
+      - name: Preserve self-host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfhost-evidence-${{ matrix.os }}
+          path: build/selfhost/evidence/
+          if-no-files-found: warn
+          retention-days: 30

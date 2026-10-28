@@ -113,6 +113,8 @@ case "$LAYOUT" in
           'case "$bindir" in /*) ;; *) bindir=$(CDPATH= cd -- "$bindir" && pwd) ;; esac'
         printf '%s\n' \
           'prefix=${VITTE_INSTALL_PREFIX:-${bindir%/bin}}'
+        printf '%s\n' \
+          'export VITTE_ROOT=${VITTE_ROOT:-$prefix/share/vitte}'
         printf 'exec "$prefix/libexec/vitte/%s" "$@"\n' "$command"
       } > "$prefix/bin/$command"
 

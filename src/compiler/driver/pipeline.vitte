@@ -1034,9 +1034,10 @@ proc native_pipeline_emit_c17(
     return output;
 }
 
-/// Generic or unsupported form field types, test declarations, and non-range
-/// for loops still use compatibility lowering. Keep these predicates aligned
-/// with the shapes handled by the HIR and IR lowerers.
+/// Generic or unsupported form field types, reference operations, test
+/// declarations, and non-range for loops still use compatibility lowering.
+/// Keep these predicates aligned with the shapes handled by the HIR and IR
+/// lowerers.
 proc native_pipeline_form_supported(parser: &Parser, node: &ASTNode) -> bool {
     if node.child_count == 0 or parser.nodes == null { return false; }
     let form_name_node = vitte_parser_get_node(parser, node.children[0]);
@@ -1143,6 +1144,53 @@ proc native_pipeline_requires_ast_codegen(parser: &Parser) -> bool {
         let node = &parser.nodes[index];
         if node.kind == ASTNodeKind.FormDecl and not native_pipeline_form_supported(parser, node) { return true; }
         if node.kind == ASTNodeKind.TestDecl { return true; }
+        set index += 1;
+    }
+    return false;
+}
+
+proc native_pipeline_has_generic_form_declaration(parser: &Parser) -> bool {
+    if parser.nodes == null { return false; }
+    let mut node_index: usize = 0;
+    while node_index < parser.node_count {
+        let declaration = &parser.nodes[node_index];
+        if declaration.kind == ASTNodeKind.FormDecl {
+            let mut child_index: usize = 1;
+            while child_index < declaration.child_count {
+                let child = vitte_parser_get_node(parser, declaration.children[child_index]);
+                if child != null and child.kind == ASTNodeKind.GenericParam { return true; }
+                set child_index += 1;
+            }
+        }
+        set node_index += 1;
+    }
+    return false;
+}
+
+/// Reference operations currently use C17 AST code generation because native
+/// HIR/IR lowering does not preserve their value-versus-address behavior.
+/// Keep this separate from the legacy semantic fallback so reference programs
+/// retain native type diagnostics.
+proc native_pipeline_requires_reference_codegen(parser: &Parser) -> bool {
+    if parser.nodes == null { return false; }
+    let mut index: usize = 0;
+    while index < parser.node_count {
+        let node = &parser.nodes[index];
+        if node.kind == ASTNodeKind.ReferenceType { return true; }
+        if node.kind == ASTNodeKind.UnaryExpr and node.operator_kind == TokenKind.Amp { return true; }
+        set index += 1;
+    }
+    return false;
+}
+
+/// Procedure attributes are retained by the parser but are not represented in
+/// HIR or IR yet. Route attributed declarations through the AST C17 backend so
+/// supported code-generation attributes cannot disappear during lowering.
+proc native_pipeline_requires_attribute_codegen(parser: &Parser) -> bool {
+    if parser.nodes == null { return false; }
+    let mut index: usize = 0;
+    while index < parser.node_count {
+        if parser.nodes[index].attribute_count != 0 { return true; }
         set index += 1;
     }
     return false;
@@ -1479,7 +1527,10 @@ proc native_pipeline_run_with_config(
         return result;
     }
 
-    let ast_fallback = native_pipeline_requires_ast_codegen(&parser);
+    let semantic_fallback = native_pipeline_requires_ast_codegen(&parser);
+    let ast_fallback = semantic_fallback or
+        native_pipeline_requires_reference_codegen(&parser) or
+        native_pipeline_requires_attribute_codegen(&parser);
 
     let mut sema: Sema = Sema {};
     if not vitte_sema_init(&mut sema, &parser) {
@@ -1504,12 +1555,15 @@ proc native_pipeline_run_with_config(
     let sema_statistics: SemaStats = vitte_sema_stats(&sema);
     let mut sema_errors = sema_statistics.errors as usize;
     let sema_error = vitte_sema_last_error(&sema) as u32;
-    let sema_ast_fallback = action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback and sema_errors != 0;
+    let sema_ast_fallback = action == NATIVE_FRONTEND_ACTION_COMPILE and semantic_fallback and
+        sema_errors != 0 and not native_pipeline_has_generic_form_declaration(&parser);
     if sema_ast_fallback {
         // The AST backend still covers aggregate and pattern programs whose
         // semantic rules are not implemented in the native analyzer yet.
+        // Generic form diagnostics are authoritative and must not be discarded
+        // before the AST backend emits a specialization.
         // Keep native diagnostics authoritative for checks and IR emission;
-        // for compile, let that backend validate the parsed program instead.
+        // for other compatibility-only programs, let the AST backend validate.
         set sema_diagnostics = 0;
         set sema_errors = 0;
     }

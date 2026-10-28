@@ -16,6 +16,7 @@ use compiler::parser::parser::{
     ASTNode,
     ASTNodeId,
     ASTNodeKind,
+    ParserAttribute,
     Parser,
     ParserToken,
     ParserState,
@@ -85,6 +86,20 @@ form C17AstFormSymbol {
     layout_state: u8,
 }
 
+form C17AstGenericFormInstance {
+    form_index: usize,
+    type_node_id: ASTNodeId,
+    namespace: string,
+    c_name: string,
+    layout_state: u8,
+}
+
+form C17AstTypeSubstitution {
+    name: string,
+    type_node_id: ASTNodeId,
+    namespace: string,
+}
+
 form C17AstPickSymbol {
     name: string,
     qualified_name: string,
@@ -114,6 +129,10 @@ form C17AstEmitter {
     alias_count: usize,
     forms: [C17AstFormSymbol; 1024],
     form_count: usize,
+    generic_forms: [C17AstGenericFormInstance; 512],
+    generic_form_count: usize,
+    type_substitutions: [C17AstTypeSubstitution; 32],
+    type_substitution_count: usize,
     picks: [C17AstPickSymbol; 1024],
     pick_count: usize,
     test_count: usize,
@@ -147,6 +166,60 @@ proc ast_reject_unsupported_async(emitter: &mut C17AstEmitter) {
            vitte_parser_node_is_async(node as *const ASTNode) {
             ast_fail(emitter, "async procedures cannot be emitted until task/future and coroutine lowering are implemented");
             return;
+        }
+        set index += 1;
+    }
+}
+
+proc ast_attribute_is_cold(emitter: &C17AstEmitter, attribute: &ParserAttribute) -> bool {
+    if attribute.inner or attribute.name_count != 1 or
+       attribute.name_start >= emitter.parser.token_count or emitter.parser.tokens == null {
+        return false;
+    }
+    let name = &emitter.parser.tokens[attribute.name_start];
+    return name.length == 4 and name.lexeme[0] == 'c' and
+        name.lexeme[1] == 'o' and name.lexeme[2] == 'l' and
+        name.lexeme[3] == 'd';
+}
+
+proc ast_node_has_cold_attribute(emitter: &C17AstEmitter, node: &ASTNode) -> bool {
+    let mut index: usize = 0;
+    while index < node.attribute_count {
+        if node.attribute_start > emitter.parser.attribute_count or
+           index >= emitter.parser.attribute_count - node.attribute_start {
+            return false;
+        }
+        if ast_attribute_is_cold(emitter, &emitter.parser.attributes[node.attribute_start + index]) {
+            return true;
+        }
+        set index += 1;
+    }
+    return false;
+}
+
+proc ast_reject_unsupported_attributes(emitter: &mut C17AstEmitter) {
+    let mut index: usize = 0;
+    while index < emitter.parser.node_count and not emitter.failed {
+        let node = &emitter.parser.nodes[index];
+        if node.attribute_count != 0 {
+            if node.kind != ASTNodeKind.ProcDecl and node.kind != ASTNodeKind.ExternProcDecl {
+                ast_fail(emitter, "attributes are currently supported only on procedures");
+                return;
+            }
+            let mut attribute_index: usize = 0;
+            while attribute_index < node.attribute_count {
+                if node.attribute_start > emitter.parser.attribute_count or
+                   attribute_index >= emitter.parser.attribute_count - node.attribute_start {
+                    ast_fail(emitter, "procedure attribute range is invalid");
+                    return;
+                }
+                let attribute = &emitter.parser.attributes[node.attribute_start + attribute_index];
+                if not ast_attribute_is_cold(emitter, attribute) or attribute.argument_count != 0 {
+                    ast_fail(emitter, "only the argument-free #[cold] procedure attribute is supported by C17 code generation");
+                    return;
+                }
+                set attribute_index += 1;
+            }
         }
         set index += 1;
     }
@@ -569,6 +642,211 @@ proc ast_form_index(emitter: &C17AstEmitter, name: string, namespace: string) ->
     return found;
 }
 
+proc ast_form_generic_parameter_count(emitter: &C17AstEmitter, declaration: &ASTNode) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 1;
+    while index < declaration.child_count {
+        let child = ast_child(emitter, declaration, index);
+        if child != null and child?.kind == ASTNodeKind.GenericParam { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+proc ast_form_generic_parameter(
+    emitter: &C17AstEmitter,
+    declaration: &ASTNode,
+    wanted_index: usize
+) -> ?&ASTNode {
+    let mut count: usize = 0;
+    let mut index: usize = 1;
+    while index < declaration.child_count {
+        let child = ast_child(emitter, declaration, index);
+        if child != null and child?.kind == ASTNodeKind.GenericParam {
+            if count == wanted_index { return child; }
+            set count += 1;
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+proc ast_generic_form_instance_name(
+    emitter: &C17AstEmitter,
+    type_node: ?&ASTNode,
+    namespace: string,
+    depth: usize
+) -> ?string {
+    if type_node == null or type_node?.kind != ASTNodeKind.TypeExpr or
+       type_node?.child_count < 2 or depth > AST_EMIT_MAX_DEPTH {
+        return null;
+    }
+    let path = ast_child(emitter, type_node, 0);
+    if path == null or path?.kind != ASTNodeKind.Path or path?.child_count == 0 { return null; }
+    let form_index = ast_form_index(emitter, ast_path_text(emitter, path), namespace);
+    if form_index == usize.MAX { return null; }
+    let declaration = ast_node(emitter, emitter.forms[form_index].node_id);
+    if declaration == null or declaration?.kind != ASTNodeKind.FormDecl or
+       ast_form_generic_parameter_count(emitter, declaration?) == 0 {
+        return null;
+    }
+    if ast_form_generic_parameter_count(emitter, declaration?) != 1 or type_node?.child_count != 2 {
+        return null;
+    }
+    let argument_type = ast_type_text(emitter, ast_child(emitter, type_node, 1), namespace, depth + 1);
+    if argument_type == null { return null; }
+    return ast_mangle(emitter.forms[form_index].qualified_name + "@" + argument_type?, "vitte_type_");
+}
+
+proc ast_generic_form_instance_index(emitter: &C17AstEmitter, c_name: string) -> usize {
+    let mut index: usize = 0;
+    while index < emitter.generic_form_count {
+        if emitter.generic_forms[index].c_name == c_name { return index; }
+        set index += 1;
+    }
+    return usize.MAX;
+}
+
+proc ast_type_substitution_index(emitter: &C17AstEmitter, name: string) -> usize {
+    let mut index = emitter.type_substitution_count;
+    while index != 0 {
+        set index -= 1;
+        if emitter.type_substitutions[index].name == name { return index; }
+    }
+    return usize.MAX;
+}
+
+proc ast_type_argument_is_generic_parameter(emitter: &C17AstEmitter, type_node: ?&ASTNode) -> bool {
+    if type_node == null or type_node?.kind != ASTNodeKind.TypeExpr or type_node?.child_count != 1 { return false; }
+    let path = ast_child(emitter, type_node, 0);
+    if path == null or path?.kind != ASTNodeKind.Path or path?.child_count != 1 { return false; }
+    let name = ast_path_text(emitter, path);
+    let mut form_index: usize = 0;
+    while form_index < emitter.form_count {
+        let declaration = ast_node(emitter, emitter.forms[form_index].node_id);
+        if declaration != null {
+            let mut parameter_index: usize = 0;
+            while parameter_index < ast_form_generic_parameter_count(emitter, declaration?) {
+                let parameter = ast_form_generic_parameter(emitter, declaration?, parameter_index);
+                if parameter != null and ast_token_text(emitter, ast_child(emitter, parameter, 0)) == name { return true; }
+                set parameter_index += 1;
+            }
+        }
+        set form_index += 1;
+    }
+    return false;
+}
+
+proc ast_register_generic_form_instance(
+    emitter: &mut C17AstEmitter,
+    type_node: &ASTNode,
+    namespace: string,
+    depth: usize
+) {
+    if emitter.failed or depth > AST_EMIT_MAX_DEPTH or type_node.kind != ASTNodeKind.TypeExpr or type_node.child_count < 2 { return; }
+    let path = ast_child(emitter, type_node, 0);
+    if path == null or path?.kind != ASTNodeKind.Path or path?.child_count == 0 { return; }
+    let form_index = ast_form_index(emitter, ast_path_text(emitter, path), namespace);
+    if form_index == usize.MAX { return; }
+    let declaration = ast_node(emitter, emitter.forms[form_index].node_id);
+    if declaration == null or declaration?.kind != ASTNodeKind.FormDecl or
+       ast_form_generic_parameter_count(emitter, declaration?) == 0 { return; }
+    if ast_form_generic_parameter_count(emitter, declaration?) != 1 or type_node.child_count != 2 {
+        ast_fail(emitter, "C17 generic form code generation currently requires exactly one type parameter and one type argument");
+        return;
+    }
+    let argument = ast_child(emitter, type_node, 1);
+    if ast_type_argument_is_generic_parameter(emitter, argument) { return; }
+    let c_name = ast_generic_form_instance_name(emitter, type_node, namespace, 0);
+    if c_name == null {
+        ast_fail(emitter, "generic form argument type cannot be represented by the C17 backend");
+        return;
+    }
+    if ast_generic_form_instance_index(emitter, c_name?) != usize.MAX { return; }
+    if emitter.generic_form_count >= 512 {
+        ast_fail(emitter, "generic form specialization limit exceeded");
+        return;
+    }
+    emitter.generic_forms[emitter.generic_form_count] = C17AstGenericFormInstance {
+        form_index: form_index,
+        type_node_id: type_node.id,
+        namespace: namespace,
+        c_name: c_name?,
+        layout_state: 0,
+    };
+    set emitter.generic_form_count += 1;
+}
+
+proc ast_collect_generic_instances_in_tree(
+    emitter: &mut C17AstEmitter,
+    node: ?&ASTNode,
+    namespace: string,
+    depth: usize
+) {
+    if node == null or emitter.failed or depth > AST_EMIT_MAX_DEPTH { return; }
+    let current = node?;
+    if current.kind == ASTNodeKind.TypeExpr and current.child_count > 1 {
+        ast_register_generic_form_instance(emitter, current, namespace, depth);
+    }
+    let mut index: usize = 0;
+    while index < current.child_count and not emitter.failed {
+        ast_collect_generic_instances_in_tree(emitter, ast_child(emitter, current, index), namespace, depth + 1);
+        set index += 1;
+    }
+}
+
+proc ast_generic_form_field_contains_type_application(
+    emitter: &C17AstEmitter,
+    node: ?&ASTNode,
+    depth: usize
+) -> bool {
+    if node == null or depth > AST_EMIT_MAX_DEPTH { return false; }
+    let current = node?;
+    if current.kind == ASTNodeKind.TypeExpr and current.child_count > 1 { return true; }
+    let mut index: usize = 0;
+    while index < current.child_count {
+        if ast_generic_form_field_contains_type_application(
+            emitter,
+            ast_child(emitter, current, index),
+            depth + 1
+        ) { return true; }
+        set index += 1;
+    }
+    return false;
+}
+
+proc ast_collect_generic_instances_in_scope(
+    emitter: &mut C17AstEmitter,
+    scope: &ASTNode,
+    namespace: string,
+    depth: usize
+) {
+    if emitter.failed or depth > AST_EMIT_MAX_DEPTH { return; }
+    let mut index: usize = 0;
+    let mut active_space: string = namespace;
+    while index < scope.child_count and not emitter.failed {
+        let declaration = ast_child(emitter, scope, index);
+        if declaration == null { ast_fail(emitter, "invalid declaration while collecting generic form uses"); return; }
+        if declaration?.kind == ASTNodeKind.SpaceDecl {
+            let path = ast_child(emitter, declaration, 0);
+            let body = ast_child(emitter, declaration, 1);
+            if path != null and body != null and body?.kind == ASTNodeKind.Block {
+                ast_collect_generic_instances_in_scope(
+                    emitter,
+                    body?,
+                    ast_join_space(active_space, ast_path_text(emitter, path)),
+                    depth + 1
+                );
+            } elif path != null and body == null {
+                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+            }
+        } else {
+            ast_collect_generic_instances_in_tree(emitter, declaration, active_space, depth + 1);
+        }
+        set index += 1;
+    }
+}
+
 proc ast_form_layout_dependency(
     emitter: &C17AstEmitter,
     type_node: ?&ASTNode,
@@ -714,6 +992,27 @@ proc ast_type_text(
         return "VitteArray";
     }
     if node.kind != ASTNodeKind.TypeExpr {
+        return null;
+    }
+    if node.child_count == 1 {
+        let only_path = ast_child(emitter, node, 0);
+        if only_path != null and only_path?.kind == ASTNodeKind.Path and only_path?.child_count == 1 {
+            let parameter_name = ast_path_text(emitter, only_path);
+            let substitution_index = ast_type_substitution_index(emitter, parameter_name);
+            if substitution_index != usize.MAX {
+                let substitution = emitter.type_substitutions[substitution_index];
+                return ast_type_text(
+                    emitter,
+                    ast_node(emitter, substitution.type_node_id),
+                    substitution.namespace,
+                    depth + 1
+                );
+            }
+        }
+    }
+    if node.child_count > 1 {
+        let generic_name = ast_generic_form_instance_name(emitter, node, namespace, depth + 1);
+        if generic_name != null { return generic_name?; }
         return null;
     }
     if node.child_count != 1 {
@@ -1294,9 +1593,12 @@ proc ast_emit_expression(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace
                 ast_fail(emitter, "form literal has no type name");
                 return;
             }
-            let type_name = ast_path_text(emitter, form_path);
-            let qualified: string = if form_path.child_count == 1 { ast_qualified_name(type_name, namespace) } else { type_name };
-            ast_write(emitter, "(" + ast_mangle(qualified, "vitte_type_") + "){ ");
+            let type_name = ast_type_text(emitter, form_path, namespace, depth + 1);
+            if type_name == null {
+                ast_fail(emitter, "form literal has an unsupported or unresolved type");
+                return;
+            }
+            ast_write(emitter, "(" + type_name? + "){ ");
             let mut index: usize = 1;
             while index < node.child_count and not emitter.failed {
                 let field = ast_child(emitter, node, index);
@@ -2014,6 +2316,9 @@ proc ast_emit_function_signature(
         set index += 1;
     }
     let return_type = ast_function_return_type(emitter, function);
+    if ast_node_has_cold_attribute(emitter, function) {
+        ast_write(emitter, "VITTE_C17_AST_COLD ");
+    }
     if return_type == null {
         ast_write(emitter, "void ");
     } else {
@@ -2067,20 +2372,42 @@ proc ast_emit_forward_types(emitter: &mut C17AstEmitter, scope: &ASTNode, namesp
     while index < scope.child_count and not emitter.failed {
         let declaration = ast_child(emitter, scope, index);
         if declaration == null { ast_fail(emitter, "invalid declaration node"); return; }
-        if declaration.kind == ASTNodeKind.FormDecl or declaration.kind == ASTNodeKind.OpaqueDecl {
+        if declaration.kind == ASTNodeKind.FormDecl {
             let name = ast_token_text(emitter, ast_child(emitter, declaration, 0));
             if name.len() == 0 { ast_fail(emitter, "type declaration has no name"); return; }
-            if declaration.kind == ASTNodeKind.OpaqueDecl {
-                let mut child_index: usize = 1;
-                while child_index < declaration.child_count {
-                    let child = ast_child(emitter, declaration, child_index);
-                    if child != null and (child?.kind == ASTNodeKind.GenericParam or
-                        child?.kind == ASTNodeKind.WhereClause) {
-                        ast_fail(emitter, "generic opaque types and where constraints must be monomorphized before C17 emission");
-                        return;
+            let form_index = ast_form_index(emitter, name, active_space);
+            if form_index == usize.MAX {
+                ast_fail(emitter, "form declaration is missing from the type symbol table");
+                return;
+            }
+            if ast_form_generic_parameter_count(emitter, declaration?) == 0 {
+                let symbol = ast_mangle(ast_qualified_name(name, active_space), "vitte_type_");
+                ast_write(emitter, "typedef struct " + symbol + " " + symbol + ";\n");
+            } elif ast_form_generic_parameter_count(emitter, declaration?) == 1 {
+                let mut generic_index: usize = 0;
+                while generic_index < emitter.generic_form_count {
+                    let instance = &emitter.generic_forms[generic_index];
+                    if instance.form_index == form_index {
+                        ast_write(emitter, "typedef struct " + instance.c_name + " " + instance.c_name + ";\n");
                     }
-                    set child_index += 1;
+                    set generic_index += 1;
                 }
+            } else {
+                ast_fail(emitter, "C17 generic form code generation currently requires exactly one type parameter");
+                return;
+            }
+        } elif declaration.kind == ASTNodeKind.OpaqueDecl {
+            let name = ast_token_text(emitter, ast_child(emitter, declaration, 0));
+            if name.len() == 0 { ast_fail(emitter, "opaque type declaration has no name"); return; }
+            let mut child_index: usize = 1;
+            while child_index < declaration.child_count {
+                let child = ast_child(emitter, declaration, child_index);
+                if child != null and (child?.kind == ASTNodeKind.GenericParam or
+                    child?.kind == ASTNodeKind.WhereClause) {
+                    ast_fail(emitter, "generic opaque types and where constraints must be monomorphized before C17 emission");
+                    return;
+                }
+                set child_index += 1;
             }
             let symbol = ast_mangle(ast_qualified_name(name, active_space), "vitte_type_");
             ast_write(emitter, "typedef struct " + symbol + " " + symbol + ";\n");
@@ -2273,14 +2600,18 @@ proc ast_emit_form_layout_ordered(
     while field_index < form_node?.child_count and not emitter.failed {
         let field = ast_child(emitter, form_node, field_index);
         if field != null and field?.kind == ASTNodeKind.FieldDecl and field?.child_count == 2 {
-            let dependency = ast_form_layout_dependency(
-                emitter,
-                ast_child(emitter, field, 1),
-                namespace,
-                0
-            );
-            if dependency != usize.MAX {
-                ast_emit_form_layout_ordered(emitter, dependency, depth + 1);
+            let field_type = ast_child(emitter, field, 1);
+            let generic_name = ast_generic_form_instance_name(emitter, field_type, namespace, 0);
+            if generic_name != null {
+                let generic_index = ast_generic_form_instance_index(emitter, generic_name?);
+                if generic_index == usize.MAX {
+                    ast_fail(emitter, "generic form field use has no collected specialization");
+                    return;
+                }
+                ast_emit_generic_form_layout_ordered(emitter, generic_index, depth + 1);
+            } else {
+                let dependency = ast_form_layout_dependency(emitter, field_type, namespace, 0);
+                if dependency != usize.MAX { ast_emit_form_layout_ordered(emitter, dependency, depth + 1); }
             }
         }
         set field_index += 1;
@@ -2291,6 +2622,104 @@ proc ast_emit_form_layout_ordered(
     }
     if not emitter.failed {
         set emitter.forms[form_index].layout_state = 2;
+    }
+}
+
+proc ast_emit_generic_form_layout_ordered(
+    emitter: &mut C17AstEmitter,
+    instance_index: usize,
+    depth: usize
+) {
+    if emitter.failed or instance_index >= emitter.generic_form_count { return; }
+    if depth > AST_EMIT_MAX_DEPTH {
+        ast_fail(emitter, "generic form layout dependency nesting exceeds the C17 emitter depth limit");
+        return;
+    }
+    if emitter.generic_forms[instance_index].layout_state == 2 { return; }
+    if emitter.generic_forms[instance_index].layout_state == 1 {
+        ast_fail(emitter, "generic forms have a by-value layout cycle");
+        return;
+    }
+    set emitter.generic_forms[instance_index].layout_state = 1;
+    let instance = emitter.generic_forms[instance_index];
+    let form_symbol = &emitter.forms[instance.form_index];
+    let declaration = ast_node(emitter, form_symbol.node_id);
+    let type_node = ast_node(emitter, instance.type_node_id);
+    if declaration == null or type_node == null or declaration?.kind != ASTNodeKind.FormDecl or
+       type_node?.kind != ASTNodeKind.TypeExpr or type_node?.child_count != 2 {
+        ast_fail(emitter, "generic form specialization points to an invalid declaration or type application");
+        return;
+    }
+    if ast_form_generic_parameter_count(emitter, declaration?) != 1 {
+        ast_fail(emitter, "C17 generic form code generation currently requires exactly one type parameter");
+        return;
+    }
+    let parameter = ast_form_generic_parameter(emitter, declaration?, 0);
+    if parameter == null { ast_fail(emitter, "generic form declaration is missing its type parameter"); return; }
+    let parameter_name = ast_token_text(emitter, ast_child(emitter, parameter, 0));
+    if parameter_name.len() == 0 or emitter.type_substitution_count >= 32 {
+        ast_fail(emitter, "generic form type substitution limit exceeded");
+        return;
+    }
+    let saved_substitution_count = emitter.type_substitution_count;
+    emitter.type_substitutions[emitter.type_substitution_count] = C17AstTypeSubstitution {
+        name: parameter_name,
+        type_node_id: type_node?.children[1],
+        namespace: instance.namespace,
+    };
+    set emitter.type_substitution_count += 1;
+
+    let mut field_count: usize = 0;
+    let mut field_index: usize = 1;
+    while field_index < declaration?.child_count {
+        let field = ast_child(emitter, declaration, field_index);
+        if field != null and field?.kind == ASTNodeKind.WhereClause {
+            ast_fail(emitter, "generic form where constraints must be checked and monomorphized before C17 emission");
+            set emitter.type_substitution_count = saved_substitution_count;
+            return;
+        }
+        if field != null and field?.kind == ASTNodeKind.FieldDecl {
+            if field?.child_count != 2 {
+                ast_fail(emitter, "generic form field declaration is malformed");
+                set emitter.type_substitution_count = saved_substitution_count;
+                return;
+            }
+            if ast_generic_form_field_contains_type_application(
+                emitter,
+                ast_child(emitter, field, 1),
+                0
+            ) {
+                ast_fail(emitter, "generic form field compositions are not supported by C17 code generation");
+                set emitter.type_substitution_count = saved_substitution_count;
+                return;
+            }
+            set field_count += 1;
+        }
+        set field_index += 1;
+    }
+
+    ast_write(emitter, "struct " + instance.c_name + " {\n");
+    if field_count == 0 { ast_write(emitter, "    unsigned char vitte_empty_storage;\n"); }
+    set field_index = 1;
+    while field_index < declaration?.child_count and not emitter.failed {
+        let field = ast_child(emitter, declaration, field_index);
+        if field != null and field?.kind == ASTNodeKind.FieldDecl {
+            ast_write(emitter, "    ");
+            ast_emit_type(emitter, ast_child(emitter, field, 1), form_symbol.namespace);
+            ast_write(emitter, " " + ast_mangle(ast_token_text(emitter, ast_child(emitter, field, 0)), "vitte_field_") + ";\n");
+        }
+        set field_index += 1;
+    }
+    ast_write(emitter, "};\n\n");
+    set emitter.type_substitution_count = saved_substitution_count;
+    if not emitter.failed { set emitter.generic_forms[instance_index].layout_state = 2; }
+}
+
+proc ast_emit_generic_form_instances(emitter: &mut C17AstEmitter) {
+    let mut index: usize = 0;
+    while index < emitter.generic_form_count and not emitter.failed {
+        ast_emit_generic_form_layout_ordered(emitter, index, 0);
+        set index += 1;
     }
 }
 
@@ -2311,7 +2740,9 @@ proc ast_emit_types(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace: str
                 ast_fail(emitter, "form declaration is missing from the type symbol table");
                 return;
             }
-            ast_emit_form_layout_ordered(emitter, form_index, 0);
+            if ast_form_generic_parameter_count(emitter, declaration?) == 0 {
+                ast_emit_form_layout_ordered(emitter, form_index, 0);
+            }
         } elif declaration.kind == ASTNodeKind.SpaceDecl {
             let path = ast_child(emitter, declaration, 0);
             let body = ast_child(emitter, declaration, 1);
@@ -2582,8 +3013,10 @@ proc ast_emit_runtime(emitter: &mut C17AstEmitter) {
     ast_write(emitter,
         "#if defined(__GNUC__) || defined(__clang__)\n" +
         "#define VITTE_C17_AST_UNUSED __attribute__((__unused__))\n" +
+        "#define VITTE_C17_AST_COLD __attribute__((__cold__))\n" +
         "#else\n" +
         "#define VITTE_C17_AST_UNUSED\n" +
+        "#define VITTE_C17_AST_COLD\n" +
         "#endif\n" +
         "typedef struct VitteArray { void *data; size_t length; } VitteArray;\n" +
         "static inline VitteArray vitte_array_from(const void *items, size_t count, size_t item_size) {\n" +
@@ -2658,10 +3091,15 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
         return C17AstEmitResult { success: false, source: "", error: "parser root is not a translation unit" };
     }
     ast_reject_unsupported_async(&mut emitter);
+    ast_reject_unsupported_attributes(&mut emitter);
     if emitter.failed {
         return C17AstEmitResult { success: false, source: "", error: emitter.error };
     }
     ast_collect_symbols(&mut emitter, root?, "", 0);
+    if emitter.failed {
+        return C17AstEmitResult { success: false, source: "", error: emitter.error };
+    }
+    ast_collect_generic_instances_in_scope(&mut emitter, root?, "", 0);
     if emitter.failed {
         return C17AstEmitResult { success: false, source: "", error: emitter.error };
     }
@@ -2679,6 +3117,7 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
     ast_emit_picks(&mut emitter, root?, "", 0);
     ast_emit_aliases(&mut emitter, root?, "", 0);
     ast_emit_types(&mut emitter, root?, "", 0);
+    ast_emit_generic_form_instances(&mut emitter);
     ast_emit_globals(&mut emitter, root?, "", 0);
     if not emitter.failed { ast_write(&mut emitter, "\n"); }
     ast_emit_prototypes(&mut emitter, root?, "", 0);

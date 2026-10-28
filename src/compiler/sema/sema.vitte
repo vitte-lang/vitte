@@ -1395,6 +1395,172 @@ proc sema_form_field_declaration(
     return null;
 }
 
+proc sema_form_declaration_for_type(
+    context: *mut Sema,
+    aggregate_type: SemaTypeId
+) -> *const ASTNode {
+    if aggregate_type == 0 or aggregate_type > (*context).type_count as SemaTypeId { return null; }
+    let aggregate = &(*context).types[(aggregate_type - 1) as usize];
+    if (*aggregate).kind != SemaTypeKind.Named or (*aggregate).symbol_id == 0 { return null; }
+    let node_count = vitte_parser_node_count((*context).parser);
+    let mut node_id: ASTNodeId = 1;
+    while node_id <= node_count as ASTNodeId {
+        let declaration = sema_node((*context).parser, node_id);
+        let info = sema_node_info_mut(context, node_id);
+        if declaration != null and (*declaration).kind == ASTNodeKind.FormDecl and
+           info != null and (*info).symbol_id == (*aggregate).symbol_id {
+            return declaration;
+        }
+        set node_id += 1;
+    }
+    return null;
+}
+
+proc sema_form_generic_parameter_count(context: *mut Sema, declaration: *const ASTNode) -> usize {
+    if declaration == null { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 1;
+    while index < (*declaration).child_count {
+        let child = sema_child((*context).parser, declaration, index);
+        if child != null and (*child).kind == ASTNodeKind.GenericParam { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+proc sema_form_generic_parameter_index(
+    context: *mut Sema,
+    declaration: *const ASTNode,
+    type_node: *const ASTNode
+) -> usize {
+    if declaration == null or type_node == null or
+       (*type_node).kind != ASTNodeKind.TypeExpr or (*type_node).child_count != 1 {
+        return usize.MAX;
+    }
+    let path = sema_child((*context).parser, type_node, 0);
+    if path == null or (*path).kind != ASTNodeKind.Path or (*path).child_count != 1 { return usize.MAX; }
+    let type_name = sema_token_name_node((*context).parser, path);
+    if type_name == null { return usize.MAX; }
+    let mut parameter_index: usize = 0;
+    let mut child_index: usize = 1;
+    while child_index < (*declaration).child_count {
+        let generic = sema_child((*context).parser, declaration, child_index);
+        if generic != null and (*generic).kind == ASTNodeKind.GenericParam {
+            let name_node = sema_child((*context).parser, generic, 0);
+            let parameter_name = sema_token_name_node((*context).parser, name_node);
+            if parameter_name != null and (*parameter_name).length == (*type_name).length and
+               (*parameter_name).lexeme == (*type_name).lexeme {
+                return parameter_index;
+            }
+            set parameter_index += 1;
+        }
+        set child_index += 1;
+    }
+    return usize.MAX;
+}
+
+proc sema_generic_form_field_type(
+    context: *mut Sema,
+    aggregate_type: SemaTypeId,
+    declaration: *const ASTNode,
+    concrete_type_node: *const ASTNode,
+    field_name: *const ParserToken,
+    scope_id: ScopeId
+) -> SemaTypeId {
+    let field = sema_form_field_declaration(context, aggregate_type, field_name);
+    if field == null { return 0; }
+    let field_type_node = sema_child((*context).parser, field, 1);
+    if field_type_node == null { return 0; }
+    let parameter_index = sema_form_generic_parameter_index(context, declaration, field_type_node);
+    if parameter_index != usize.MAX {
+        let argument_node = sema_child((*context).parser, concrete_type_node, parameter_index + 1);
+        if argument_node == null { return (*context).type_error; }
+        return sema_type_from_node(context, (*argument_node).id, scope_id);
+    }
+    return sema_type_from_node(context, (*field_type_node).id, scope_id);
+}
+
+proc sema_validate_generic_form_application(
+    context: *mut Sema,
+    declaration: *const ASTNode,
+    concrete_type_node: *const ASTNode,
+    scope_id: ScopeId
+) -> bool {
+    if declaration == null or concrete_type_node == null or
+       (*concrete_type_node).kind != ASTNodeKind.TypeExpr {
+        return false;
+    }
+    let expected_count = sema_form_generic_parameter_count(context, declaration);
+    let actual_count = if (*concrete_type_node).child_count == 0 { 0 as usize } else { (*concrete_type_node).child_count - 1 };
+    if expected_count != actual_count {
+        let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidType, concrete_type_node, 0, 0);
+        return false;
+    }
+    let mut valid = true;
+    let mut index: usize = 0;
+    while index < actual_count {
+        let argument = sema_child((*context).parser, concrete_type_node, index + 1);
+        if argument == null or sema_type_from_node(context, (*argument).id, scope_id) == (*context).type_error {
+            let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.UnknownType, if argument == null { concrete_type_node } else { argument }, 0, 0);
+            set valid = false;
+        }
+        set index += 1;
+    }
+    return valid;
+}
+
+proc sema_form_expression_has_field(
+    context: *mut Sema,
+    form_expression: *const ASTNode,
+    expected_name: *const ParserToken
+) -> bool {
+    if form_expression == null or expected_name == null { return false; }
+    let mut index: usize = 1;
+    while index < (*form_expression).child_count {
+        let field = sema_child((*context).parser, form_expression, index);
+        if field != null and (*field).kind == ASTNodeKind.FieldInit {
+            let name_node = sema_child((*context).parser, field, 0);
+            let actual_name = sema_token_name_node((*context).parser, name_node);
+            if actual_name != null and (*actual_name).length == (*expected_name).length and
+               (*actual_name).lexeme == (*expected_name).lexeme {
+                return true;
+            }
+        }
+        set index += 1;
+    }
+    return false;
+}
+
+proc sema_validate_generic_form_fields(
+    context: *mut Sema,
+    form_expression: *const ASTNode,
+    declaration: *const ASTNode
+) {
+    if form_expression == null or declaration == null { return; }
+    let mut index: usize = 1;
+    while index < (*declaration).child_count {
+        let field = sema_child((*context).parser, declaration, index);
+        if field != null and (*field).kind == ASTNodeKind.FieldDecl {
+            let name_node = sema_child((*context).parser, field, 0);
+            let name = sema_token_name_node((*context).parser, name_node);
+            if name != null and not sema_form_expression_has_field(context, form_expression, name) {
+                let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidType, form_expression, 0, 0);
+                if (*context).diagnostic_count != 0 {
+                    let diag_ptr = (&mut (*context).diagnostics[(*context).diagnostic_count - 1]) as *mut SemaDiagnostic;
+                    set (*diag_ptr).type_context = SemaTypeContextKind.Field;
+                    set (*diag_ptr).context_index = (*field).id as usize;
+                    let field_name = string.from_bytes((*name).lexeme, (*name).length);
+                    let help = "Generic form construction is missing required field `" + field_name + "`.";
+                    let bytes: [u8] = help.bytes();
+                    let limit: usize = if bytes.len() < 511 { bytes.len() } else { 511 as usize };
+                    copy((&mut (*diag_ptr).help[0]) as *mut u8, bytes.as_ptr(), limit);
+                }
+            }
+        }
+        set index += 1;
+    }
+}
+
 proc sema_form_field_type(
     context: *mut Sema,
     aggregate_type: SemaTypeId,
@@ -2014,12 +2180,24 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
         case ASTNodeKind.FormExpr => {
             let type_node = sema_child((*context).parser, node, 0);
             set result = sema_analyze_expression(context, type_node, scope_id);
+            let form_declaration = sema_form_declaration_for_type(context, result);
+            let is_generic_form = form_declaration != null and sema_form_generic_parameter_count(context, form_declaration) != 0;
+            let mut generic_application_valid = true;
+            if is_generic_form {
+                set generic_application_valid = sema_validate_generic_form_application(
+                    context, form_declaration, type_node, scope_id
+                );
+            }
             let mut index: usize = 1;
             while index < (*node).child_count {
                 let field = sema_child((*context).parser, node, index);
                 if field != null and (*field).kind == ASTNodeKind.FieldInit {
                     let field_name = sema_token_name_node((*context).parser, sema_child((*context).parser, field, 0));
-                    let field_type = sema_form_field_type(context, result, field_name, scope_id);
+                    let field_type = if is_generic_form {
+                        sema_generic_form_field_type(context, result, form_declaration, type_node, field_name, scope_id)
+                    } else {
+                        sema_form_field_type(context, result, field_name, scope_id)
+                    };
                     let value_node = sema_child((*context).parser, field, 1);
                     let value_type = sema_analyze_expression(context, value_node, scope_id);
                     if field_type == 0 { let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.UnknownMember, field, 0, result); }
@@ -2032,6 +2210,9 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                     }
                 }
                 set index += 1;
+            }
+            if is_generic_form and generic_application_valid {
+                sema_validate_generic_form_fields(context, node, form_declaration);
             }
         },
         case ASTNodeKind.IfExpr => {
