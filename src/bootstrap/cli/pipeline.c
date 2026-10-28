@@ -431,7 +431,7 @@ vitte_main_driver_load_source(
     }
 
     canonical_input = NULL;
-    if (input->name[0] == '/') {
+    if (vitte_filesystem_path_is_absolute(input->name)) {
         if (snprintf(
                 absolute_input,
                 sizeof(absolute_input),
