@@ -92,27 +92,36 @@ examples.each do |example|
   end
 
   if status.exitstatus != expected_exit
-    errors << "#{title}: expected exit #{expected_exit}, got #{status.exitstatus || "signal #{status.termsig}"}"
+    errors << "#{title}: expected exit #{expected_exit}, got #{status.exitstatus || "signal #{status.termsig}"}; stdout=#{stdout.inspect}; stderr=#{stderr.inspect}"
     next
   end
 
   if expected_exit == 1
-    expected_diagnostic = example["result"].match(/VITTE_[A-Z0-9_]+/)&.to_s
-    begin
-      diagnostic_report = JSON.parse(stderr)
-      actual_diagnostic = diagnostic_report.dig("diagnostics", 0, "internal_code")
-    rescue JSON::ParserError
-      actual_diagnostic = nil
+    expected_diagnostic = example["result"].match(/\b(?:VITTE_[A-Z0-9_]+|E\d{4})\b/)&.to_s
+    actual_diagnostic = nil
+
+    if expected_diagnostic&.start_with?("VITTE_")
+      begin
+        diagnostic_report = JSON.parse(stderr)
+        actual_diagnostic = diagnostic_report.dig("diagnostics", 0, "internal_code")
+      rescue JSON::ParserError
+        actual_diagnostic = nil
+      end
+    elsif expected_diagnostic
+      actual_diagnostic = expected_diagnostic if stderr.match?(/\b#{Regexp.escape(expected_diagnostic)}\b/)
     end
+
     unless expected_diagnostic && actual_diagnostic == expected_diagnostic
-      errors << "#{title}: expected diagnostic #{expected_diagnostic.inspect}, got #{actual_diagnostic.inspect}"
+      errors << "#{title}: expected diagnostic #{expected_diagnostic.inspect}, got #{actual_diagnostic.inspect}; stderr=#{stderr.inspect}"
       next
     end
   end
 
   expected_output = example["result"].match(/«([^»]+)»/)&.captures&.first&.strip
-  if expected_output && !stdout.include?(expected_output)
-    errors << "#{title}: expected stdout to include #{expected_output.inspect}, got #{stdout.inspect}"
+  output_to_check = expected_exit == 1 ? stderr : stdout
+  output_name = expected_exit == 1 ? "stderr" : "stdout"
+  if expected_output && !output_to_check.include?(expected_output)
+    errors << "#{title}: expected #{output_name} to include #{expected_output.inspect}, got #{output_to_check.inspect}"
     next
   end
 

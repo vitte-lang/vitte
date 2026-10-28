@@ -122,6 +122,28 @@ EOF
   done
 }
 
+write_windows_doctor_shim() {
+  payload=$1
+  cat > "$payload/bin/vitte-installer-doctor.cmd" <<'EOF'
+@echo off
+setlocal
+set "VITTE_BIN=%~dp0"
+set "VITTE_ROOT=%~dp0..\share\vitte"
+set "VITTE_STATUS=0"
+echo Vitte installer doctor
+echo prefix: %~dp0..
+echo bin: %VITTE_BIN%
+echo VITTE_ROOT: %VITTE_ROOT%
+if exist "%VITTE_BIN%vitte.exe" (echo OK   compiler exists) else (echo FAIL missing compiler & set "VITTE_STATUS=1")
+if exist "%VITTE_BIN%vittec.exe" (echo OK   vittec exists) else (echo FAIL missing vittec & set "VITTE_STATUS=1")
+if exist "%VITTE_ROOT%\VERSION" (echo OK   version file exists) else (echo FAIL missing version file & set "VITTE_STATUS=1")
+if exist "%VITTE_ROOT%\INSTALLATION.json" (echo OK   installation manifest exists) else (echo FAIL missing installation manifest & set "VITTE_STATUS=1")
+if exist "%VITTE_BIN%vitte.exe" "%VITTE_BIN%vitte.exe" --version
+if errorlevel 1 set "VITTE_STATUS=1"
+exit /b %VITTE_STATUS%
+EOF
+}
+
 write_powershell_installers() {
   stage=$1
   cat > "$stage/install.ps1" <<'EOF'
@@ -331,6 +353,7 @@ build_one() {
   fi
 
   write_cmd_shims "$payload"
+  write_windows_doctor_shim "$payload"
   write_powershell_installers "$stage"
   write_nsi "$stage" "$arch"
 

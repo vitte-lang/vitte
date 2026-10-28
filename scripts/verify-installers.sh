@@ -24,13 +24,13 @@ die() {
 }
 
 require_file() {
-  file=$1
+  required_path=$1
 
-  [ -f "$file" ] ||
-    die "missing artifact: $file"
+  [ -f "$required_path" ] ||
+    die "missing artifact: $required_path"
 
-  [ -s "$file" ] ||
-    die "empty artifact: $file"
+  [ -s "$required_path" ] ||
+    die "empty artifact: $required_path"
 }
 
 verify_sum() {
