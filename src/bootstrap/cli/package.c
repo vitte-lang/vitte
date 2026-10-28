@@ -467,10 +467,10 @@ vitte_package_write_project_records(const char *project_root,
     written = snprintf(dependency_record, sizeof(dependency_record),
                        "%s \"%s\"", dependency_prefix, release->version);
     if (written < 0 || (size_t)written >= sizeof(dependency_record)) return false;
-    written = snprintf(lock_prefix, sizeof(lock_prefix), "package.%s", release->name);
+    written = snprintf(lock_prefix, sizeof(lock_prefix), "package.%s.", release->name);
     if (written < 0 || (size_t)written >= sizeof(lock_prefix)) return false;
     written = snprintf(lock_record, sizeof(lock_record),
-        "%s.version = \"%s\"\n%s.source = \"%s\"\n%s.checksum = \"sha256:%s\"",
+        "%sversion = \"%s\"\n%ssource = \"%s\"\n%schecksum = \"sha256:%s\"",
         lock_prefix, release->version, lock_prefix, release->download_url,
         lock_prefix, release->sha256);
     if (written < 0 || (size_t)written >= sizeof(lock_record)) return false;
