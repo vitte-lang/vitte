@@ -1582,6 +1582,7 @@ vitte_main_module_resolve_path(
     char module_path[VITTE_MAIN_MODULE_PATH_MAX];
     char ancestor[VITTE_MAIN_MODULE_PATH_MAX];
     char absolute_importer[VITTE_MAIN_MODULE_PATH_MAX];
+    char project_modules[VITTE_MAIN_MODULE_PATH_MAX];
     char working_directory[VITTE_MAIN_MODULE_PATH_MAX];
     const char *cursor;
     char *slash;
@@ -1669,6 +1670,20 @@ vitte_main_module_resolve_path(
     for (depth = 0u; depth < 12u; ++depth) {
         if (vitte_main_module_try_candidate(
                 ancestor,
+                module_path,
+                resolved,
+                resolved_capacity)) {
+            return true;
+        }
+        written = snprintf(
+            project_modules,
+            sizeof(project_modules),
+            "%s/.vitte/modules",
+            ancestor);
+        if (written >= 0 &&
+            (size_t)written < sizeof(project_modules) &&
+            vitte_main_module_try_candidate(
+                project_modules,
                 module_path,
                 resolved,
                 resolved_capacity)) {

@@ -21,17 +21,17 @@ keywords: json module Vitte parse parse_strict JsonValue encode limites diagnost
 <p>Cette séparation permet de tester les étapes individuellement : examiner le lexer, parser un flux de tokens déjà disponible, appliquer un schéma métier après parsing ou produire une sortie compacte et indentée.</p>
 
 <h2 id="demarrage">Démarrage rapide</h2>
-<pre><code>use json::parser::parser::{JsonParseResult, parse_strict};
-use json::encode::encoder::{JsonEncodeResult, encode_pretty};
+<pre><code>use json::parser::parser::{JsonParseResult, parse};
+use json::encode::encoder::{encode_compact};
 
 proc reformater(source: string) -> int {
-    let parsed: JsonParseResult = parse_strict(source);
+    let parsed: JsonParseResult = parse(source);
     if not parsed.ok {
         print(parsed.report.message);
         return 1;
     }
 
-    let encoded: JsonEncodeResult = encode_pretty(&amp;parsed.value);
+    let encoded = encode_compact(&amp;parsed.value);
     if not encoded.ok {
         print("L’encodage JSON a échoué.");
         return 2;
@@ -40,7 +40,7 @@ proc reformater(source: string) -> int {
     print(encoded.text);
     return 0;
 }</code></pre>
-<p><code>parse_strict</code> rejette un document mal formé et les clés d’objet répétées. Le résultat doit être vérifié avant d’accéder à <code>value</code>. De même, l’encodeur renvoie une forme de résultat : n’utilisez <code>text</code> qu’après avoir contrôlé <code>ok</code>.</p>
+<p>Ce parcours utilise <code>parse</code> et <code>encode_compact</code>, API du consommateur installé qui a été compilé puis exécuté avec Vitte {{ json_package.compatible_vitte_versions | join: ', ' }}. Contrôlez <code>ok</code> avant d’accéder à la valeur parsée ou au texte encodé. <code>parse_strict</code> est également disponible pour refuser les clés d’objet dupliquées.</p>
 
 <h2 id="api">Organisation de l’API</h2>
 <table><thead><tr><th>Namespace</th><th>Usage</th><th>Entrées principales</th></tr></thead><tbody>
@@ -81,6 +81,66 @@ proc reformater(source: string) -> int {
 <p>Résultat attendu :</p>
 <pre><code>Installed json {{ json_package.version | escape }} in this project</code></pre>
 <p>Les sources sont placées dans <code>.vitte/modules/json</code>. Le manifeste <code>vitte.packages.toml</code> enregistre la dépendance et <code>vitte.lock</code> conserve la version exacte, l’URL et le SHA-256 de l’archive. La commande d’installation pour l’utilisateur est <code>vitte install json --global</code>; elle ne modifie pas les fichiers du projet. Licence : <a href="{{ json_package.license_url | escape }}">{{ json_package.license | escape }}</a>. <a href="https://github.com/Vitte-Foundation/json">Ouvrir le dépôt officiel JSON</a>.</p>
+
+<h3>Parcours complet vérifié dans un projet vide</h3>
+<p>Le parcours ci-dessous a été exécuté depuis un dossier temporaire sans manifeste ni module préinstallé, avec Vitte {{ json_package.compatible_vitte_versions | join: ', ' }} et le registre public. Après <code>vitte install json</code>, le manifeste indique <code>dependency.json = "{{ json_package.version | escape }}"</code> et le verrou TOML contient la version, l’URL de release et son empreinte SHA-256.</p>
+<p>Créez <code>main.vit</code> dans ce dossier :</p>
+<pre><code>space app;
+
+use json::encode::encoder::{
+    encode_compact
+};
+use json::parser::parser::{
+    JsonParseResult,
+    parse
+};
+
+export proc main() -> int {
+    let parsed: JsonParseResult =
+        parse("{\&quot;ready\&quot;:true}");
+
+    if not parsed.ok {
+        return 1;
+    }
+
+    let encoded =
+        encode_compact(&amp;parsed.value);
+
+    if not encoded.ok {
+        return 2;
+    }
+
+    print(encoded.text);
+
+    if encoded.text.length != 14 ||
+       encoded.text[0] != '{' ||
+       encoded.text[1] != '&quot;' ||
+       encoded.text[2] != 'r' ||
+       encoded.text[7] != '&quot;' ||
+       encoded.text[8] != ':' ||
+       encoded.text[9] != 't' ||
+       encoded.text[13] != '}' {
+        return 3;
+    }
+
+    return 0;
+}</code></pre>
+<p>Compilez puis lancez le consommateur :</p>
+<pre><code>vitte compile main.vit -o consumer
+./consumer</code></pre>
+<p>Résultat observé : la compilation réussit, le programme termine avec le code <code>0</code> et affiche :</p>
+<pre><code>{&quot;ready&quot;:true}</code></pre>
+<p>Les contrôles du programme comparent aussi la longueur et plusieurs caractères de la sortie encodée. Sur Windows, exécutez le binaire produit avec le nom et l’extension générés pour votre cible.</p>
+
+<h3>Répéter l’installation</h3>
+<p>Relancez la commande depuis le même projet :</p>
+<pre><code>vitte install json</code></pre>
+<p>La commande confirme encore l’installation de JSON {{ json_package.version | escape }}. Le manifeste et le verrou restent identiques, sans entrée dupliquée.</p>
+
+<h3>Refus d’une version de Vitte incompatible</h3>
+<p>Le registre ne propose actuellement JSON {{ json_package.version | escape }} qu’aux versions compatibles listées plus haut. Le contrôle a aussi été exécuté avec un compilateur de test isolé marqué Vitte <code>0.1.2</code> : <code>vitte install json</code> retourne le code <code>1</code> et affiche :</p>
+<pre><code>vitte install: no stable compatible release found for 'json'</code></pre>
+<p>Le refus intervient avant l’installation : aucun manifeste ni fichier de verrouillage n’est créé. Une future version de JSON pourra être installée dès que le registre l’enregistrera comme compatible avec la version de Vitte concernée.</p>
 
 <h2 id="preuves">Vérifications disponibles</h2>
 <p>La release autonome <code>{{ json_package.release_tag | escape }}</code> et la copie JSON <code>{{ json_package.version | escape }}</code> du dépôt Vitte ont toutes deux passé les parcours ci-dessous avec le bootstrap courant :</p>

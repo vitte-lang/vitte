@@ -452,7 +452,11 @@ test-cli-driver: $(TARGET_BIN)
 		-o "$(BUILD)/cli-game"; \
 	printf '6\n' | $(TARGET_BIN) run "$(TEST_DIR)/game.vit" --quiet \
 		>$(BUILD)/cli-game.stdout; \
-	grep -q "PARTIE TERMINEE" $(BUILD)/cli-game.stdout
+	grep -q "PARTIE TERMINEE" $(BUILD)/cli-game.stdout; \
+	printf '[CLI] resolve a project-local installed module\n'; \
+	$(TARGET_BIN) compile "$(TEST_DIR)/project_local_modules/main.vit" \
+		-o "$(BUILD)/cli-project-local-module"; \
+	"$(BUILD)/cli-project-local-module"
 
 .PHONY: emit-c
 emit-c: $(TARGET_BIN)
