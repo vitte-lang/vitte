@@ -6,10 +6,11 @@ lowering. The C17 driver passes the sealed `IRContext` directly to
 `backend/c17/ir_emitter.vitte` for programs represented by that lowering.
 Nongeneric forms whose fields use scalar or other supported form/pick types now
 lower through HIR and IR, including named initialization, nested field reads,
-and mutable field writes. Generic or otherwise unsupported form layouts,
-non-range `for` iterables, and test declarations still use the AST emitter.
-Integer range loops with a simple name or wildcard binding, value-producing
-`if` expressions, and statement matches also use the native IR path.
+and mutable field writes. Generic or otherwise unsupported form layouts and
+test declarations still use the AST emitter. Fixed-array and integer range
+loops with a simple name or wildcard binding, value-producing `if` expressions,
+and statement matches also use the native IR path. Other `for` iterable types
+remain unsupported by native HIR/IR lowering.
 
 IR is the lower-level compiler intermediate representation used after HIR and
 before optimization/backend-specific lowering.
@@ -112,6 +113,7 @@ vitte_ir_emit_return(&builder, zero, NULL);
 - if as conditional branch with then/else/merge blocks
 - value-producing if as branch-local stores and a merge load
 - exclusive and inclusive integer range loops with break/continue targets
+- fixed-array loops with one-time iterable evaluation and break/continue targets
 - nested value-producing `if` expressions whose merge block continues into
   enclosing expressions and statements
 - integer and string literals

@@ -245,8 +245,10 @@ def check_frontend_paths() -> None:
     fallback_witnesses = {
         "FormDecl": ("unsupported form declaration", "form Box<T>"),
         "TestDecl": ("test declaration", 'test "native fallback test declaration"'),
-        "ForStmt": ("non-range for statement", "for value in values"),
     }
+    for witness in ("array iteration through native IR", "for value in values"):
+        if witness not in frontend_test:
+            fail(f"native array iteration has no checked fixture: {witness}")
     fallback_function = pipeline.split("proc native_pipeline_requires_ast_codegen", 1)
     if len(fallback_function) != 2:
         fail("native AST compatibility fallback selector is missing")
