@@ -19,12 +19,28 @@
 
 #include "../../platform/platform.h"
 
+#define VITTE_C17_AST_GENERIC_FORM_INSTANCE_MAX 256u
+#define VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX 64u
+
+typedef struct vitte_c17_ast_generic_form_instance {
+    const vitte_ast_node_t *declaration;
+    const vitte_ast_node_t *argument;
+    char argument_name[VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+} vitte_c17_ast_generic_form_instance_t;
+
 typedef struct vitte_c17_ast_emitter {
     FILE *output;
     const vitte_parser_t *parser;
     const vitte_ast_node_t *function;
+    const vitte_ast_node_t *generic_parameter_name;
+    const vitte_ast_node_t *generic_argument;
     const vitte_ast_node_t *space_stack[128];
     size_t space_depth;
+    vitte_ast_node_id_t *parent_ids;
+    size_t parent_id_count;
+    vitte_c17_ast_generic_form_instance_t generic_forms[
+        VITTE_C17_AST_GENERIC_FORM_INSTANCE_MAX];
+    size_t generic_form_count;
     const char *source_path;
     bool debug_info;
     bool debug_runtime;
@@ -58,12 +74,88 @@ vitte_c17_ast_child(
     const vitte_ast_node_t *node,
     size_t index);
 
+static bool
+vitte_c17_ast_token_equal(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *left,
+    const vitte_ast_node_t *right);
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_form(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *node,
+    const vitte_ast_node_t *name);
+
+static void
+vitte_c17_ast_emit_generic_form_instance_name(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_c17_ast_generic_form_instance_t *instance);
+
+static const vitte_c17_ast_generic_form_instance_t *
+vitte_c17_ast_generic_form_instance_for_type(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type);
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_path_declaration(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *path,
+    vitte_ast_node_kind_t first_kind,
+    vitte_ast_node_kind_t second_kind);
+
+static void
+vitte_c17_ast_emit_declaration_name(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *declaration,
+    const vitte_ast_node_t *name);
+
 static const vitte_ast_node_t *
 vitte_c17_ast_node(
     const vitte_c17_ast_emitter_t *emitter,
     vitte_ast_node_id_t id)
 {
     return vitte_parser_get_node(emitter->parser, id);
+}
+
+static bool
+vitte_c17_ast_build_parent_index(
+    vitte_c17_ast_emitter_t *emitter)
+{
+    size_t index;
+
+    if (emitter->parser == NULL ||
+        emitter->parser->node_count == SIZE_MAX) {
+        return false;
+    }
+    emitter->parent_id_count = emitter->parser->node_count + 1u;
+    emitter->parent_ids = (vitte_ast_node_id_t *)calloc(
+        emitter->parent_id_count,
+        sizeof(*emitter->parent_ids));
+    if (emitter->parent_ids == NULL) {
+        return false;
+    }
+    for (index = 0u; index < emitter->parser->node_count; ++index) {
+        const vitte_ast_node_t *parent = &emitter->parser->nodes[index];
+        size_t child_index;
+
+        for (child_index = 0u;
+             child_index < parent->child_count;
+             ++child_index) {
+            vitte_ast_node_id_t child_id = parent->children[child_index];
+
+            if (child_id == VITTE_AST_INVALID_ID ||
+                child_id >= emitter->parent_id_count ||
+                emitter->parent_ids[(size_t)child_id] !=
+                    VITTE_AST_INVALID_ID) {
+                free(emitter->parent_ids);
+                emitter->parent_ids = NULL;
+                emitter->parent_id_count = 0u;
+                return false;
+            }
+            emitter->parent_ids[(size_t)child_id] = parent->id;
+        }
+    }
+    return true;
 }
 
 /* Async procedures and await need task/future and coroutine lowering before
@@ -522,6 +614,53 @@ vitte_c17_ast_child(
     return vitte_c17_ast_node(emitter, node->children[index]);
 }
 
+static bool
+vitte_c17_ast_is_visible_local(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *expression,
+    const vitte_ast_node_t *name)
+{
+    const vitte_ast_node_t *current = expression;
+
+    if (current == NULL || name == NULL || emitter->parent_ids == NULL) {
+        return false;
+    }
+    while (current != NULL && current->id < emitter->parent_id_count) {
+        const vitte_ast_node_id_t parent_id =
+            emitter->parent_ids[(size_t)current->id];
+        const vitte_ast_node_t *parent;
+        size_t index;
+
+        if (parent_id == VITTE_AST_INVALID_ID) {
+            break;
+        }
+        parent = vitte_c17_ast_node(emitter, parent_id);
+        if (parent == NULL) {
+            break;
+        }
+        if (parent->kind == VITTE_AST_NODE_BLOCK) {
+            for (index = 0u; index < parent->child_count; ++index) {
+                const vitte_ast_node_t *preceding =
+                    vitte_c17_ast_child(emitter, parent, index);
+                if (preceding == current) {
+                    break;
+                }
+                if (preceding != NULL &&
+                    preceding->kind == VITTE_AST_NODE_LET_STMT &&
+                    preceding->child_count != 0u &&
+                    vitte_c17_ast_token_equal(
+                        emitter,
+                        vitte_c17_ast_child(emitter, preceding, 0u),
+                        name)) {
+                    return true;
+                }
+            }
+        }
+        current = parent;
+    }
+    return false;
+}
+
 static void
 vitte_c17_ast_emit_expression(
     vitte_c17_ast_emitter_t *emitter,
@@ -848,6 +987,353 @@ vitte_c17_ast_emit_function_name(
     vitte_c17_ast_write_token(emitter, name);
 }
 
+static size_t
+vitte_c17_ast_generic_form_parameter_count(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *declaration,
+    bool *has_where)
+{
+    size_t count = 0u;
+    size_t index;
+
+    if (has_where != NULL) {
+        *has_where = false;
+    }
+    if (declaration == NULL ||
+        declaration->kind != VITTE_AST_NODE_FORM_DECL) {
+        return 0u;
+    }
+    for (index = 1u; index < declaration->child_count; ++index) {
+        const vitte_ast_node_t *child =
+            vitte_c17_ast_child(emitter, declaration, index);
+        if (child == NULL) {
+            continue;
+        }
+        if (child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
+            ++count;
+        } else if (child->kind == VITTE_AST_NODE_WHERE_CLAUSE &&
+                   has_where != NULL) {
+            *has_where = true;
+        }
+    }
+    return count;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_generic_form_parameter_name(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *declaration)
+{
+    size_t index;
+
+    if (declaration == NULL) {
+        return NULL;
+    }
+    for (index = 1u; index < declaration->child_count; ++index) {
+        const vitte_ast_node_t *child =
+            vitte_c17_ast_child(emitter, declaration, index);
+        if (child != NULL &&
+            child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
+            return vitte_c17_ast_child(emitter, child, 0u);
+        }
+    }
+    return NULL;
+}
+
+static bool
+vitte_c17_ast_simple_type_name(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    char *name,
+    size_t name_capacity)
+{
+    const vitte_ast_node_t *path;
+    const vitte_ast_node_t *name_node;
+    const vitte_token_t *token;
+
+    if (type == NULL || type->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        type->child_count != 1u || name == NULL || name_capacity == 0u) {
+        return false;
+    }
+    path = vitte_c17_ast_child(emitter, type, 0u);
+    if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
+        path->child_count != 1u) {
+        return false;
+    }
+    name_node = vitte_c17_ast_child(emitter, path, 0u);
+    token = vitte_c17_ast_token(emitter, name_node);
+    if (token == NULL || token->lexeme == NULL ||
+        token->length == 0u || token->length >= name_capacity) {
+        return false;
+    }
+    (void)memcpy(name, token->lexeme, token->length);
+    name[token->length] = '\0';
+    return true;
+}
+
+static bool
+vitte_c17_ast_generic_scalar_argument(const char *name)
+{
+    static const char *const supported[] = {
+        "bool", "char", "f32", "f64", "i8", "i16", "i32", "i64",
+        "int", "isize", "u8", "u16", "u32", "u64", "uintptr", "usize",
+        "str", "string"
+    };
+    size_t index;
+
+    if (name == NULL) {
+        return false;
+    }
+    for (index = 0u; index < sizeof(supported) / sizeof(supported[0]); ++index) {
+        if (strcmp(name, supported[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static const vitte_c17_ast_generic_form_instance_t *
+vitte_c17_ast_generic_form_instance_for_type(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type)
+{
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *path;
+    const vitte_ast_node_t *form_name;
+    const vitte_ast_node_t *form;
+    char argument_name[VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+    size_t index;
+
+    if (type == NULL || type->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        type->child_count != 2u) {
+        return NULL;
+    }
+    path = vitte_c17_ast_child(emitter, type, 0u);
+    if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
+        path->child_count == 0u ||
+        !vitte_c17_ast_simple_type_name(
+            emitter,
+            vitte_c17_ast_child(emitter, type, 1u),
+            argument_name,
+            sizeof(argument_name))) {
+        return NULL;
+    }
+    form_name = vitte_c17_ast_child(
+        emitter, path, path->child_count - 1u);
+    root = vitte_c17_ast_node(
+        emitter,
+        vitte_parser_root(emitter->parser));
+    form = vitte_c17_ast_find_form(emitter, root, form_name);
+    if (form == NULL ||
+        vitte_c17_ast_generic_form_parameter_count(
+            emitter, form, NULL) != 1u) {
+        return NULL;
+    }
+    for (index = 0u; index < emitter->generic_form_count; ++index) {
+        const vitte_c17_ast_generic_form_instance_t *instance =
+            &emitter->generic_forms[index];
+        if (instance->declaration == form &&
+            strcmp(instance->argument_name, argument_name) == 0) {
+            return instance;
+        }
+    }
+    return NULL;
+}
+
+static void
+vitte_c17_ast_emit_generic_form_instance_name(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_c17_ast_generic_form_instance_t *instance)
+{
+    const vitte_ast_node_t *name;
+
+    if (instance == NULL || instance->declaration == NULL) {
+        emitter->failed = true;
+        return;
+    }
+    name = vitte_c17_ast_child(emitter, instance->declaration, 0u);
+    if (name == NULL) {
+        emitter->failed = true;
+        return;
+    }
+    vitte_c17_ast_emit_declaration_name(
+        emitter, instance->declaration, name);
+    vitte_c17_ast_write(emitter, "__");
+    vitte_c17_ast_write(emitter, instance->argument_name);
+}
+
+static void
+vitte_c17_ast_collect_generic_form_instances(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *root,
+    const vitte_ast_node_t *node,
+    size_t depth)
+{
+    size_t index;
+
+    if (node == NULL || emitter->failed) {
+        return;
+    }
+    if (depth > 512u) {
+        emitter->failed = true;
+        return;
+    }
+    if (node->kind == VITTE_AST_NODE_TYPE_EXPR &&
+        node->operator_kind != VITTE_TOKEN_KW_PROC &&
+        node->child_count > 1u) {
+        const vitte_ast_node_t *path =
+            vitte_c17_ast_child(emitter, node, 0u);
+        const vitte_ast_node_t *form_name = path != NULL &&
+                path->kind == VITTE_AST_NODE_PATH && path->child_count != 0u
+            ? vitte_c17_ast_child(emitter, path, path->child_count - 1u)
+            : NULL;
+        const vitte_ast_node_t *form =
+            vitte_c17_ast_find_form(emitter, root, form_name);
+        if (form == NULL ||
+            vitte_c17_ast_generic_form_parameter_count(
+                emitter, form, NULL) == 0u) {
+            emitter->failed = true;
+            return;
+        }
+        {
+            bool has_where = false;
+            size_t parameter_count =
+                vitte_c17_ast_generic_form_parameter_count(
+                    emitter, form, &has_where);
+            char argument_name[
+                VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+            size_t instance_index;
+
+            if (parameter_count != 1u || has_where ||
+                node->child_count != 2u ||
+                !vitte_c17_ast_simple_type_name(
+                    emitter,
+                    vitte_c17_ast_child(emitter, node, 1u),
+                    argument_name,
+                    sizeof(argument_name)) ||
+                !vitte_c17_ast_generic_scalar_argument(argument_name)) {
+                emitter->failed = true;
+                return;
+            }
+            for (instance_index = 0u;
+                 instance_index < emitter->generic_form_count;
+                 ++instance_index) {
+                const vitte_c17_ast_generic_form_instance_t *existing =
+                    &emitter->generic_forms[instance_index];
+                const vitte_ast_node_t *existing_name =
+                    vitte_c17_ast_child(emitter, existing->declaration, 0u);
+                if (existing->declaration == form &&
+                    strcmp(existing->argument_name, argument_name) == 0) {
+                    break;
+                }
+                if (existing_name != NULL &&
+                    vitte_c17_ast_token_equal(
+                        emitter,
+                        existing_name,
+                        vitte_c17_ast_child(emitter, form, 0u)) &&
+                    strcmp(existing->argument_name, argument_name) == 0) {
+                    /* Same generated C identifier from two source forms. */
+                    emitter->failed = true;
+                    return;
+                }
+            }
+            if (instance_index == emitter->generic_form_count) {
+                if (emitter->generic_form_count >=
+                    VITTE_C17_AST_GENERIC_FORM_INSTANCE_MAX) {
+                    emitter->failed = true;
+                    return;
+                }
+                emitter->generic_forms[instance_index].declaration = form;
+                emitter->generic_forms[instance_index].argument =
+                    vitte_c17_ast_child(emitter, node, 1u);
+                (void)memcpy(
+                    emitter->generic_forms[instance_index].argument_name,
+                    argument_name,
+                    strlen(argument_name) + 1u);
+                ++emitter->generic_form_count;
+            }
+        }
+    }
+    for (index = 0u; index < node->child_count && !emitter->failed; ++index) {
+        vitte_c17_ast_collect_generic_form_instances(
+            emitter,
+            root,
+            vitte_c17_ast_child(emitter, node, index),
+            depth + 1u);
+    }
+}
+
+static bool
+vitte_c17_ast_contains_type_application(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *node,
+    size_t depth)
+{
+    size_t index;
+
+    if (node == NULL || depth > 512u) {
+        return false;
+    }
+    if (node->kind == VITTE_AST_NODE_TYPE_EXPR &&
+        node->operator_kind != VITTE_TOKEN_KW_PROC &&
+        node->child_count > 1u) {
+        return true;
+    }
+    for (index = 0u; index < node->child_count; ++index) {
+        if (vitte_c17_ast_contains_type_application(
+                emitter,
+                vitte_c17_ast_child(emitter, node, index),
+                depth + 1u)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+vitte_c17_ast_validate_generic_form_fields(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *node,
+    size_t depth)
+{
+    size_t index;
+
+    if (node == NULL || emitter->failed) {
+        return;
+    }
+    if (depth > 512u) {
+        emitter->failed = true;
+        return;
+    }
+    if (node->kind == VITTE_AST_NODE_FORM_DECL) {
+        size_t field_index;
+        for (field_index = 1u;
+             field_index < node->child_count && !emitter->failed;
+             ++field_index) {
+            const vitte_ast_node_t *field =
+                vitte_c17_ast_child(emitter, node, field_index);
+            if (field == NULL ||
+                field->kind != VITTE_AST_NODE_FIELD_DECL ||
+                field->child_count < 2u) {
+                continue;
+            }
+            if (vitte_c17_ast_contains_type_application(
+                    emitter,
+                    vitte_c17_ast_child(emitter, field, 1u),
+                    0u)) {
+                emitter->failed = true;
+                return;
+            }
+        }
+    }
+    for (index = 0u; index < node->child_count && !emitter->failed; ++index) {
+        vitte_c17_ast_validate_generic_form_fields(
+            emitter,
+            vitte_c17_ast_child(emitter, node, index),
+            depth + 1u);
+    }
+}
+
 static bool
 vitte_c17_ast_space_declares_function(
     const vitte_c17_ast_emitter_t *emitter,
@@ -962,6 +1448,36 @@ vitte_c17_ast_emit_type(
                 emitter->failed = true;
                 return;
             }
+            if (node->operator_kind != VITTE_TOKEN_KW_PROC &&
+                node->child_count > 1u) {
+                const vitte_c17_ast_generic_form_instance_t *instance =
+                    vitte_c17_ast_generic_form_instance_for_type(
+                        emitter,
+                        node);
+                if (instance == NULL) {
+                    emitter->failed = true;
+                    return;
+                }
+                vitte_c17_ast_emit_generic_form_instance_name(
+                    emitter,
+                    instance);
+                return;
+            }
+            if (emitter->generic_parameter_name != NULL &&
+                name->child_count == 1u &&
+                vitte_c17_ast_token_equal(
+                    emitter,
+                    vitte_c17_ast_child(emitter, name, 0u),
+                    emitter->generic_parameter_name)) {
+                if (emitter->generic_argument == NULL) {
+                    emitter->failed = true;
+                    return;
+                }
+                vitte_c17_ast_emit_type(
+                    emitter,
+                    emitter->generic_argument);
+                return;
+            }
             {
                 const vitte_ast_node_t *path;
 
@@ -1026,7 +1542,28 @@ vitte_c17_ast_emit_type(
                            vitte_c17_ast_token_is(emitter, name, "int")) {
                     vitte_c17_ast_write(emitter, "int32_t");
                 } else {
-                    vitte_c17_ast_write_token(emitter, name);
+                    const vitte_ast_node_t *declaration =
+                        vitte_c17_ast_find_path_declaration(
+                            emitter,
+                            path,
+                            VITTE_AST_NODE_FORM_DECL,
+                            VITTE_AST_NODE_PICK_DECL);
+                    if (declaration == NULL) {
+                        declaration = vitte_c17_ast_find_path_declaration(
+                            emitter,
+                            path,
+                            VITTE_AST_NODE_TYPE_DECL,
+                            VITTE_AST_NODE_OPAQUE_DECL);
+                    }
+                    if (declaration != NULL) {
+                        vitte_c17_ast_emit_declaration_name(
+                            emitter,
+                            declaration,
+                            vitte_c17_ast_child(
+                                emitter, declaration, 0u));
+                    } else {
+                        vitte_c17_ast_write_token(emitter, name);
+                    }
                 }
             }
             return;
@@ -1036,12 +1573,34 @@ vitte_c17_ast_emit_type(
                 emitter->failed = true;
                 return;
             }
-            vitte_c17_ast_write_token(
-                emitter,
-                vitte_c17_ast_child(
-                    emitter,
-                    node,
-                    node->child_count - 1u));
+            {
+                const vitte_ast_node_t *declaration =
+                    vitte_c17_ast_find_path_declaration(
+                        emitter,
+                        node,
+                        VITTE_AST_NODE_FORM_DECL,
+                        VITTE_AST_NODE_PICK_DECL);
+                if (declaration == NULL) {
+                    declaration = vitte_c17_ast_find_path_declaration(
+                        emitter,
+                        node,
+                        VITTE_AST_NODE_TYPE_DECL,
+                        VITTE_AST_NODE_OPAQUE_DECL);
+                }
+                if (declaration != NULL) {
+                    vitte_c17_ast_emit_declaration_name(
+                        emitter,
+                        declaration,
+                        vitte_c17_ast_child(emitter, declaration, 0u));
+                } else {
+                    vitte_c17_ast_write_token(
+                        emitter,
+                        vitte_c17_ast_child(
+                            emitter,
+                            node,
+                            node->child_count - 1u));
+                }
+            }
             return;
 
         case VITTE_AST_NODE_IDENTIFIER:
@@ -2098,9 +2657,7 @@ vitte_c17_ast_call_parameter_is_reference(
     const vitte_ast_node_t *callee,
     size_t parameter_index)
 {
-    const vitte_ast_node_t *callee_name;
     const vitte_ast_node_t *procedure;
-    const vitte_ast_node_t *root;
     size_t index;
 
     if (callee == NULL) {
@@ -2108,52 +2665,18 @@ vitte_c17_ast_call_parameter_is_reference(
     }
     if (callee->kind == VITTE_AST_NODE_PATH &&
         callee->child_count != 0u) {
-        callee_name = vitte_c17_ast_child(
+        procedure = vitte_c17_ast_find_path_declaration(
             emitter,
             callee,
-            callee->child_count - 1u);
+            VITTE_AST_NODE_PROC_DECL,
+            VITTE_AST_NODE_EXTERN_PROC_DECL);
     } else if (callee->kind == VITTE_AST_NODE_IDENTIFIER) {
-        callee_name = callee;
+        const vitte_ast_node_t *root = vitte_c17_ast_node(
+            emitter, vitte_parser_root(emitter->parser));
+        procedure = vitte_c17_ast_find_procedure_named(
+            emitter, root, callee);
     } else {
         return false;
-    }
-
-    procedure = NULL;
-    if (emitter->space_depth != 0u) {
-        const vitte_ast_node_t *body;
-
-        body = vitte_c17_ast_child(
-            emitter,
-            emitter->space_stack[emitter->space_depth - 1u],
-            1u);
-        if (body != NULL &&
-            body->kind == VITTE_AST_NODE_BLOCK) {
-            for (index = 0u; index < body->child_count; ++index) {
-                const vitte_ast_node_t *candidate;
-
-                candidate = vitte_c17_ast_child(emitter, body, index);
-                if (candidate != NULL &&
-                    (candidate->kind == VITTE_AST_NODE_PROC_DECL ||
-                     candidate->kind == VITTE_AST_NODE_EXTERN_PROC_DECL) &&
-                    vitte_c17_ast_token_equal(
-                        emitter,
-                        vitte_c17_ast_child(emitter, candidate, 0u),
-                        callee_name)) {
-                    procedure = candidate;
-                    break;
-                }
-            }
-        }
-    }
-
-    root = vitte_c17_ast_node(
-        emitter,
-        vitte_parser_root(emitter->parser));
-    if (procedure == NULL) {
-        procedure = vitte_c17_ast_find_procedure_named(
-            emitter,
-            root,
-            callee_name);
     }
     if (procedure == NULL) {
         return false;
@@ -2446,159 +2969,260 @@ vitte_c17_ast_find_procedure_named(
 }
 
 static bool
-vitte_c17_ast_find_procedure_scope(
+vitte_c17_ast_path_prefix_matches(
     const vitte_c17_ast_emitter_t *emitter,
-    const vitte_ast_node_t *node,
-    const vitte_ast_node_t *procedure,
-    const vitte_ast_node_t **spaces,
-    size_t space_depth,
-    const vitte_ast_node_t **procedure_spaces,
-    size_t *procedure_space_depth)
+    const vitte_ast_node_t *path,
+    size_t path_count,
+    size_t path_index,
+    const vitte_ast_node_t *space_path)
 {
     size_t index;
 
-    if (node == NULL) {
+    if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
+        space_path == NULL || space_path->kind != VITTE_AST_NODE_PATH ||
+        space_path->child_count == 0u ||
+        path_index > path_count ||
+        space_path->child_count > path_count - path_index) {
         return false;
     }
-    if (node == procedure) {
-        if (space_depth >
-            sizeof(emitter->space_stack) /
-                sizeof(emitter->space_stack[0])) {
-            return false;
-        }
-        for (index = 0u; index < space_depth; ++index) {
-            procedure_spaces[index] = spaces[index];
-        }
-        *procedure_space_depth = space_depth;
-        return true;
-    }
-    if (node->kind == VITTE_AST_NODE_SPACE_DECL) {
-        if (space_depth >=
-            sizeof(emitter->space_stack) /
-                sizeof(emitter->space_stack[0])) {
-            return false;
-        }
-        spaces[space_depth++] = node;
-    }
-    for (index = 0u; index < node->child_count; ++index) {
-        if (vitte_c17_ast_find_procedure_scope(
+    for (index = 0u; index < space_path->child_count; ++index) {
+        if (!vitte_c17_ast_token_equal(
                 emitter,
-                vitte_c17_ast_child(emitter, node, index),
-                procedure,
-                spaces,
-                space_depth,
-                procedure_spaces,
-                procedure_space_depth)) {
-            return true;
+                vitte_c17_ast_child(emitter, path, path_index + index),
+                vitte_c17_ast_child(emitter, space_path, index))) {
+            return false;
         }
     }
-    return false;
-}
-
-static bool
-vitte_c17_ast_emit_resolved_procedure_name(
-    vitte_c17_ast_emitter_t *emitter,
-    const vitte_ast_node_t *name)
-{
-    const vitte_ast_node_t *root;
-    const vitte_ast_node_t *procedure;
-    const vitte_ast_node_t *spaces[128];
-    const vitte_ast_node_t *procedure_spaces[128];
-    size_t procedure_space_depth;
-    size_t index;
-
-    root = vitte_c17_ast_node(
-        emitter,
-        vitte_parser_root(emitter->parser));
-    procedure = vitte_c17_ast_find_procedure_named(
-        emitter,
-        root,
-        name);
-    if (procedure == NULL ||
-        !vitte_c17_ast_find_procedure_scope(
-            emitter,
-            root,
-            procedure,
-            spaces,
-            0u,
-            procedure_spaces,
-            &procedure_space_depth)) {
-        return false;
-    }
-    if (procedure->kind == VITTE_AST_NODE_EXTERN_PROC_DECL ||
-        vitte_c17_ast_is_intrinsic(emitter, procedure)) {
-        vitte_c17_ast_write_token(emitter, name);
-        return true;
-    }
-    if (procedure_space_depth == 0u) {
-        vitte_c17_ast_write_token(emitter, name);
-        return true;
-    }
-    for (index = 0u; index < procedure_space_depth; ++index) {
-        const vitte_ast_node_t *space_path;
-
-        space_path = vitte_c17_ast_child(
-            emitter,
-            procedure_spaces[index],
-            0u);
-        if (space_path == NULL ||
-            space_path->kind != VITTE_AST_NODE_PATH) {
-            emitter->failed = true;
-            return true;
-        }
-        if (index != 0u) {
-            vitte_c17_ast_write(emitter, "_");
-        }
-        vitte_c17_ast_emit_path(emitter, space_path);
-    }
-    vitte_c17_ast_write(emitter, "_");
-    vitte_c17_ast_write_token(emitter, name);
     return true;
 }
 
-static bool
-vitte_c17_ast_scope_declares_pick(
+static const vitte_ast_node_t *
+vitte_c17_ast_find_space_for_path(
     const vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *scope,
-    const vitte_ast_node_t *name)
+    const vitte_ast_node_t *path,
+    size_t path_count,
+    size_t path_index,
+    size_t depth)
 {
     size_t index;
 
-    if (scope == NULL) {
-        return false;
+    if (scope == NULL || path == NULL || depth > 128u) {
+        return NULL;
     }
     for (index = 0u; index < scope->child_count; ++index) {
-        const vitte_ast_node_t *declaration;
+        const vitte_ast_node_t *declaration =
+            vitte_c17_ast_child(emitter, scope, index);
+        const vitte_ast_node_t *space_path;
+        const vitte_ast_node_t *body;
+        size_t next_index;
+        const vitte_ast_node_t *found;
 
-        declaration = vitte_c17_ast_child(emitter, scope, index);
-        if (declaration == NULL) {
+        if (declaration == NULL ||
+            declaration->kind != VITTE_AST_NODE_SPACE_DECL ||
+            declaration->child_count < 2u) {
             continue;
         }
-        if (declaration->kind == VITTE_AST_NODE_PICK_DECL &&
-            declaration->child_count != 0u &&
-            vitte_c17_ast_token_equal(
-                emitter,
-                vitte_c17_ast_child(emitter, declaration, 0u),
-                name)) {
-            return true;
+        space_path = vitte_c17_ast_child(emitter, declaration, 0u);
+        if (!vitte_c17_ast_path_prefix_matches(
+                emitter, path, path_count, path_index, space_path)) {
+            continue;
         }
-        if (declaration->kind == VITTE_AST_NODE_SPACE_DECL &&
-            declaration->child_count > 1u &&
-            vitte_c17_ast_scope_declares_pick(
-                emitter,
-                vitte_c17_ast_child(emitter, declaration, 1u),
-                name)) {
-            return true;
+        next_index = path_index + space_path->child_count;
+        if (next_index == path_count) {
+            return declaration;
+        }
+        body = vitte_c17_ast_child(emitter, declaration, 1u);
+        if (body == NULL || body->kind != VITTE_AST_NODE_BLOCK) {
+            continue;
+        }
+        found = vitte_c17_ast_find_space_for_path(
+            emitter,
+            body,
+            path,
+            path_count,
+            next_index,
+            depth + 1u);
+        if (found != NULL) {
+            return found;
         }
     }
-    return false;
+    return NULL;
 }
 
 static const vitte_ast_node_t *
-vitte_c17_ast_find_pick_decl(
+vitte_c17_ast_find_direct_space(
     const vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *scope,
-    const vitte_ast_node_t *name)
+    const vitte_ast_node_t *path,
+    size_t path_index,
+    size_t path_count)
+{
+    size_t index;
+
+    if (scope == NULL || path == NULL || path_index >= path_count) {
+        return NULL;
+    }
+    for (index = 0u; index < scope->child_count; ++index) {
+        const vitte_ast_node_t *declaration =
+            vitte_c17_ast_child(emitter, scope, index);
+        const vitte_ast_node_t *space_path;
+
+        if (declaration == NULL ||
+            declaration->kind != VITTE_AST_NODE_SPACE_DECL ||
+            declaration->child_count < 2u) {
+            continue;
+        }
+        space_path = vitte_c17_ast_child(emitter, declaration, 0u);
+        if (vitte_c17_ast_path_prefix_matches(
+                emitter, path, path_count, path_index, space_path) &&
+            path_index + space_path->child_count <= path_count) {
+            return declaration;
+        }
+    }
+    return NULL;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_use_alias_in_scope(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *scope,
+    const vitte_ast_node_t *alias)
+{
+    size_t index;
+
+    if (scope == NULL || alias == NULL) {
+        return NULL;
+    }
+    for (index = 0u; index < scope->child_count; ++index) {
+        const vitte_ast_node_t *declaration =
+            vitte_c17_ast_child(emitter, scope, index);
+        const vitte_ast_node_t *path;
+        const vitte_ast_node_t *declared_alias;
+
+        if (declaration == NULL ||
+            declaration->kind != VITTE_AST_NODE_USE_DECL ||
+            (declaration->flags & VITTE_AST_FLAG_GLOB_IMPORT) != 0u ||
+            declaration->child_count == 0u) {
+            continue;
+        }
+        path = vitte_c17_ast_child(emitter, declaration, 0u);
+        if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
+            path->child_count == 0u) {
+            continue;
+        }
+        declared_alias = NULL;
+        if (declaration->child_count == 2u) {
+            const vitte_ast_node_t *candidate =
+                vitte_c17_ast_child(emitter, declaration, 1u);
+            if (candidate != NULL &&
+                candidate->kind == VITTE_AST_NODE_IDENTIFIER) {
+                declared_alias = candidate;
+            }
+        }
+        if (declared_alias == NULL) {
+            if (declaration->child_count != 1u) {
+                continue;
+            }
+            declared_alias = vitte_c17_ast_child(
+                emitter, path, path->child_count - 1u);
+        }
+        if (vitte_c17_ast_token_equal(emitter, declared_alias, alias)) {
+            return declaration;
+        }
+    }
+    return NULL;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_current_use_alias(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *alias)
+{
+    size_t index;
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *found;
+
+    for (index = emitter->space_depth; index != 0u; --index) {
+        const vitte_ast_node_t *space = emitter->space_stack[index - 1u];
+        const vitte_ast_node_t *body =
+            vitte_c17_ast_child(emitter, space, 1u);
+        found = vitte_c17_ast_find_use_alias_in_scope(
+            emitter, body, alias);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    root = vitte_c17_ast_node(
+        emitter, vitte_parser_root(emitter->parser));
+    return vitte_c17_ast_find_use_alias_in_scope(emitter, root, alias);
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_module_for_path(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *path,
+    size_t module_path_count)
+{
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *space;
+    const vitte_ast_node_t *use;
+    const vitte_ast_node_t *use_path;
+    size_t index;
+
+    if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
+        module_path_count == 0u || module_path_count > path->child_count) {
+        return NULL;
+    }
+    root = vitte_c17_ast_node(
+        emitter, vitte_parser_root(emitter->parser));
+    space = vitte_c17_ast_find_space_for_path(
+        emitter, root, path, module_path_count, 0u, 0u);
+    if (space != NULL) {
+        return space;
+    }
+
+    use = vitte_c17_ast_find_current_use_alias(
+        emitter,
+        vitte_c17_ast_child(emitter, path, 0u));
+    if (use == NULL) {
+        return NULL;
+    }
+    use_path = vitte_c17_ast_child(emitter, use, 0u);
+    if (use_path == NULL || use_path->kind != VITTE_AST_NODE_PATH) {
+        return NULL;
+    }
+    space = vitte_c17_ast_find_space_for_path(
+        emitter,
+        root,
+        use_path,
+        use_path->child_count,
+        0u,
+        0u);
+    if (space == NULL) {
+        return NULL;
+    }
+
+    for (index = 1u; index < module_path_count; ++index) {
+        const vitte_ast_node_t *body =
+            vitte_c17_ast_child(emitter, space, 1u);
+        const vitte_ast_node_t *nested = vitte_c17_ast_find_direct_space(
+            emitter, body, path, index, index + 1u);
+        if (nested == NULL) {
+            return NULL;
+        }
+        space = nested;
+    }
+    return space;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_named_declaration_in_scope(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *scope,
+    const vitte_ast_node_t *name,
+    vitte_ast_node_kind_t first_kind,
+    vitte_ast_node_kind_t second_kind)
 {
     size_t index;
 
@@ -2608,11 +3232,9 @@ vitte_c17_ast_find_pick_decl(
     for (index = 0u; index < scope->child_count; ++index) {
         const vitte_ast_node_t *declaration =
             vitte_c17_ast_child(emitter, scope, index);
-
-        if (declaration == NULL) {
-            continue;
-        }
-        if (declaration->kind == VITTE_AST_NODE_PICK_DECL &&
+        if (declaration != NULL &&
+            (declaration->kind == first_kind ||
+             declaration->kind == second_kind) &&
             declaration->child_count != 0u &&
             vitte_c17_ast_token_equal(
                 emitter,
@@ -2620,19 +3242,467 @@ vitte_c17_ast_find_pick_decl(
                 name)) {
             return declaration;
         }
+    }
+    return NULL;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_imported_declaration_in_scope(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *scope,
+    const vitte_ast_node_t *name,
+    vitte_ast_node_kind_t first_kind,
+    vitte_ast_node_kind_t second_kind,
+    bool *ambiguous)
+{
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *found = NULL;
+    size_t index;
+
+    if (scope == NULL || name == NULL || ambiguous == NULL) {
+        return NULL;
+    }
+    root = vitte_c17_ast_node(
+        emitter, vitte_parser_root(emitter->parser));
+    for (index = 0u; index < scope->child_count; ++index) {
+        const vitte_ast_node_t *use =
+            vitte_c17_ast_child(emitter, scope, index);
+        const vitte_ast_node_t *base;
+        const vitte_ast_node_t *candidate = NULL;
+        const vitte_ast_node_t *module;
+
+        if (use == NULL || use->kind != VITTE_AST_NODE_USE_DECL ||
+            use->child_count == 0u) {
+            continue;
+        }
+        base = vitte_c17_ast_child(emitter, use, 0u);
+        if (base == NULL || base->kind != VITTE_AST_NODE_PATH ||
+            base->child_count == 0u) {
+            continue;
+        }
+        if ((use->flags & VITTE_AST_FLAG_GLOB_IMPORT) != 0u) {
+            module = vitte_c17_ast_find_space_for_path(
+                emitter, root, base, base->child_count, 0u, 0u);
+            if (module != NULL) {
+                candidate = vitte_c17_ast_find_named_declaration_in_scope(
+                    emitter,
+                    vitte_c17_ast_child(emitter, module, 1u),
+                    name,
+                    first_kind,
+                    second_kind);
+            }
+        } else if (use->child_count == 1u ||
+                   (use->child_count == 2u &&
+                    vitte_c17_ast_child(emitter, use, 1u)->kind ==
+                        VITTE_AST_NODE_IDENTIFIER)) {
+            const vitte_ast_node_t *import_name =
+                use->child_count == 2u
+                    ? vitte_c17_ast_child(emitter, use, 1u)
+                    : vitte_c17_ast_child(
+                          emitter, base, base->child_count - 1u);
+            if (vitte_c17_ast_token_equal(emitter, import_name, name) &&
+                vitte_c17_ast_find_space_for_path(
+                    emitter, root, base, base->child_count, 0u, 0u) == NULL) {
+                module = base->child_count == 1u
+                    ? NULL
+                    : vitte_c17_ast_find_space_for_path(
+                          emitter,
+                          root,
+                          base,
+                          base->child_count - 1u,
+                          0u,
+                          0u);
+                candidate = vitte_c17_ast_find_named_declaration_in_scope(
+                    emitter,
+                    module == NULL && base->child_count == 1u
+                        ? root
+                        : vitte_c17_ast_child(emitter, module, 1u),
+                    vitte_c17_ast_child(
+                        emitter, base, base->child_count - 1u),
+                    first_kind,
+                    second_kind);
+            }
+        } else {
+            size_t item_index;
+
+            module = vitte_c17_ast_find_space_for_path(
+                emitter, root, base, base->child_count, 0u, 0u);
+            for (item_index = 1u;
+                 module != NULL && item_index < use->child_count;
+                 ++item_index) {
+                const vitte_ast_node_t *item =
+                    vitte_c17_ast_child(emitter, use, item_index);
+                const vitte_ast_node_t *next =
+                    item_index + 1u < use->child_count
+                        ? vitte_c17_ast_child(
+                              emitter, use, item_index + 1u)
+                        : NULL;
+                const vitte_ast_node_t *import_name;
+                const vitte_ast_node_t *item_module;
+                size_t consumed;
+
+                if (item == NULL || item->kind != VITTE_AST_NODE_PATH ||
+                    item->child_count == 0u) {
+                    continue;
+                }
+                import_name = next != NULL &&
+                    next->kind == VITTE_AST_NODE_IDENTIFIER
+                        ? next
+                        : vitte_c17_ast_child(
+                              emitter, item, item->child_count - 1u);
+                if (next != NULL &&
+                    next->kind == VITTE_AST_NODE_IDENTIFIER) {
+                    ++item_index;
+                }
+                if (!vitte_c17_ast_token_equal(
+                        emitter, import_name, name)) {
+                    continue;
+                }
+                item_module = module;
+                consumed = 0u;
+                while (item_module != NULL &&
+                       consumed + 1u < item->child_count) {
+                    const vitte_ast_node_t *nested =
+                        vitte_c17_ast_find_direct_space(
+                            emitter,
+                            vitte_c17_ast_child(
+                                emitter, item_module, 1u),
+                            item,
+                            consumed,
+                            item->child_count - 1u);
+                    const vitte_ast_node_t *nested_path =
+                        vitte_c17_ast_child(emitter, nested, 0u);
+                    if (nested == NULL || nested_path == NULL ||
+                        nested_path->kind != VITTE_AST_NODE_PATH ||
+                        nested_path->child_count == 0u) {
+                        item_module = NULL;
+                        break;
+                    }
+                    consumed += nested_path->child_count;
+                    item_module = nested;
+                }
+                if (item_module != NULL) {
+                    candidate =
+                        vitte_c17_ast_find_named_declaration_in_scope(
+                            emitter,
+                            vitte_c17_ast_child(
+                                emitter, item_module, 1u),
+                            vitte_c17_ast_child(
+                                emitter, item, item->child_count - 1u),
+                            first_kind,
+                            second_kind);
+                }
+                if (candidate != NULL) {
+                    break;
+                }
+            }
+        }
+        if (candidate != NULL) {
+            if (found != NULL && found != candidate) {
+                *ambiguous = true;
+                return NULL;
+            }
+            found = candidate;
+        }
+    }
+    return found;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_current_imported_declaration(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *name,
+    vitte_ast_node_kind_t first_kind,
+    vitte_ast_node_kind_t second_kind,
+    bool *ambiguous)
+{
+    const vitte_ast_node_t *root;
+    size_t index;
+
+    for (index = emitter->space_depth; index != 0u; --index) {
+        const vitte_ast_node_t *found =
+            vitte_c17_ast_find_imported_declaration_in_scope(
+                emitter,
+                vitte_c17_ast_child(
+                    emitter, emitter->space_stack[index - 1u], 1u),
+                name,
+                first_kind,
+                second_kind,
+                ambiguous);
+        if (found != NULL || *ambiguous) {
+            return found;
+        }
+    }
+    root = vitte_c17_ast_node(
+        emitter, vitte_parser_root(emitter->parser));
+    return vitte_c17_ast_find_imported_declaration_in_scope(
+        emitter,
+        root,
+        name,
+        first_kind,
+        second_kind,
+        ambiguous);
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_unique_named_declaration(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *scope,
+    const vitte_ast_node_t *name,
+    vitte_ast_node_kind_t first_kind,
+    vitte_ast_node_kind_t second_kind,
+    size_t *matches,
+    size_t depth)
+{
+    const vitte_ast_node_t *found = NULL;
+    size_t index;
+
+    if (scope == NULL || name == NULL || matches == NULL || depth > 128u) {
+        return NULL;
+    }
+    for (index = 0u; index < scope->child_count && *matches < 2u; ++index) {
+        const vitte_ast_node_t *declaration =
+            vitte_c17_ast_child(emitter, scope, index);
+
+        if (declaration == NULL) {
+            continue;
+        }
+        if ((declaration->kind == first_kind ||
+             declaration->kind == second_kind) &&
+            declaration->child_count != 0u &&
+            vitte_c17_ast_token_equal(
+                emitter,
+                vitte_c17_ast_child(emitter, declaration, 0u),
+                name)) {
+            ++*matches;
+            found = declaration;
+            continue;
+        }
         if (declaration->kind == VITTE_AST_NODE_SPACE_DECL &&
             declaration->child_count > 1u) {
-            const vitte_ast_node_t *found =
-                vitte_c17_ast_find_pick_decl(
+            const vitte_ast_node_t *nested =
+                vitte_c17_ast_find_unique_named_declaration(
                     emitter,
                     vitte_c17_ast_child(emitter, declaration, 1u),
-                    name);
-            if (found != NULL) {
-                return found;
+                    name,
+                    first_kind,
+                    second_kind,
+                    matches,
+                    depth + 1u);
+            if (nested != NULL) {
+                found = nested;
             }
         }
     }
-    return NULL;
+    return found;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_path_declaration(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *path,
+    vitte_ast_node_kind_t first_kind,
+    vitte_ast_node_kind_t second_kind)
+{
+    const vitte_ast_node_t *name;
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *scope;
+    size_t module_path_count;
+    size_t index;
+
+    if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
+        path->child_count == 0u) {
+        return NULL;
+    }
+    name = vitte_c17_ast_child(emitter, path, path->child_count - 1u);
+    root = vitte_c17_ast_node(
+        emitter, vitte_parser_root(emitter->parser));
+    if (path->child_count > 1u) {
+        module_path_count = path->child_count - 1u;
+        scope = vitte_c17_ast_find_module_for_path(
+            emitter, path, module_path_count);
+        if (scope == NULL) {
+            return NULL;
+        }
+        return vitte_c17_ast_find_named_declaration_in_scope(
+            emitter,
+            vitte_c17_ast_child(emitter, scope, 1u),
+            name,
+            first_kind,
+            second_kind);
+    }
+    for (index = emitter->space_depth; index != 0u; --index) {
+        const vitte_ast_node_t *space = emitter->space_stack[index - 1u];
+        const vitte_ast_node_t *found =
+            vitte_c17_ast_find_named_declaration_in_scope(
+                emitter,
+                vitte_c17_ast_child(emitter, space, 1u),
+                name,
+                first_kind,
+                second_kind);
+        if (found != NULL) {
+            return found;
+        }
+    }
+    {
+        const vitte_ast_node_t *found =
+            vitte_c17_ast_find_named_declaration_in_scope(
+                emitter, root, name, first_kind, second_kind);
+        bool ambiguous = false;
+        size_t matches = 0u;
+
+        if (found != NULL) {
+            return found;
+        }
+        found = vitte_c17_ast_find_current_imported_declaration(
+            emitter,
+            name,
+            first_kind,
+            second_kind,
+            &ambiguous);
+        if (found != NULL || ambiguous) {
+            return found;
+        }
+        found = vitte_c17_ast_find_unique_named_declaration(
+            emitter,
+            root,
+            name,
+            first_kind,
+            second_kind,
+            &matches,
+            0u);
+        return matches == 1u ? found : NULL;
+    }
+}
+
+static bool
+vitte_c17_ast_find_declaration_scope(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *node,
+    const vitte_ast_node_t *declaration,
+    const vitte_ast_node_t **spaces,
+    size_t space_depth,
+    const vitte_ast_node_t **declaration_spaces,
+    size_t *declaration_space_depth)
+{
+    const vitte_ast_node_t *current;
+    const vitte_ast_node_t *reverse_spaces[128];
+    size_t reverse_depth = 0u;
+    size_t index;
+
+    (void)spaces;
+    (void)space_depth;
+    if (node == NULL || declaration == NULL || declaration_spaces == NULL ||
+        declaration_space_depth == NULL || emitter->parent_ids == NULL) {
+        return false;
+    }
+    current = declaration;
+    while (current != NULL && current != node) {
+        if (current->kind == VITTE_AST_NODE_SPACE_DECL) {
+            if (reverse_depth >=
+                sizeof(reverse_spaces) / sizeof(reverse_spaces[0])) {
+                return false;
+            }
+            reverse_spaces[reverse_depth++] = current;
+        }
+        if (current->id >= emitter->parent_id_count) {
+            return false;
+        }
+        current = vitte_c17_ast_node(
+            emitter,
+            emitter->parent_ids[(size_t)current->id]);
+    }
+    if (current != node) {
+        return false;
+    }
+    for (index = 0u; index < reverse_depth; ++index) {
+        declaration_spaces[index] = reverse_spaces[reverse_depth - index - 1u];
+    }
+    *declaration_space_depth = reverse_depth;
+    return true;
+}
+
+static void
+vitte_c17_ast_emit_declaration_name(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *declaration,
+    const vitte_ast_node_t *name)
+{
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *declaration_spaces[128];
+    size_t declaration_space_depth = 0u;
+    size_t index;
+
+    if (name == NULL) {
+        emitter->failed = true;
+        return;
+    }
+    root = vitte_c17_ast_node(
+        emitter, vitte_parser_root(emitter->parser));
+    if (declaration == NULL) {
+        vitte_c17_ast_write_token(emitter, name);
+        return;
+    }
+    if (!vitte_c17_ast_find_declaration_scope(
+            emitter,
+            root,
+            declaration,
+            NULL,
+            0u,
+            declaration_spaces,
+            &declaration_space_depth)) {
+        vitte_c17_ast_write_token(emitter, name);
+        return;
+    }
+    for (index = 0u; index < declaration_space_depth; ++index) {
+        const vitte_ast_node_t *space_path =
+            vitte_c17_ast_child(
+                emitter, declaration_spaces[index], 0u);
+        if (space_path == NULL ||
+            space_path->kind != VITTE_AST_NODE_PATH ||
+            space_path->child_count == 0u) {
+            emitter->failed = true;
+            return;
+        }
+        if (index != 0u) {
+            vitte_c17_ast_write(emitter, "_");
+        }
+        vitte_c17_ast_emit_path(emitter, space_path);
+    }
+    if (declaration_space_depth != 0u) {
+        vitte_c17_ast_write(emitter, "_");
+    }
+    vitte_c17_ast_write_token(emitter, name);
+}
+
+static bool
+vitte_c17_ast_emit_resolved_procedure_name(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *path)
+{
+    const vitte_ast_node_t *procedure;
+    const vitte_ast_node_t *name;
+
+    if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
+        path->child_count == 0u) {
+        return false;
+    }
+    procedure = vitte_c17_ast_find_path_declaration(
+        emitter,
+        path,
+        VITTE_AST_NODE_PROC_DECL,
+        VITTE_AST_NODE_EXTERN_PROC_DECL);
+    if (procedure == NULL) {
+        return false;
+    }
+    name = vitte_c17_ast_child(emitter, procedure, 0u);
+    if (procedure->kind == VITTE_AST_NODE_EXTERN_PROC_DECL ||
+        vitte_c17_ast_is_intrinsic(emitter, procedure)) {
+        vitte_c17_ast_write_token(emitter, name);
+        return true;
+    }
+    vitte_c17_ast_emit_declaration_name(emitter, procedure, name);
+    return true;
 }
 
 static const vitte_ast_node_t *
@@ -2692,7 +3762,6 @@ vitte_c17_ast_resolve_pick_variant_path(
     const vitte_ast_node_t **pick_out,
     const vitte_ast_node_t **variant_out)
 {
-    const vitte_ast_node_t *root;
     const vitte_ast_node_t *pick_name;
     const vitte_ast_node_t *variant_name;
     const vitte_ast_node_t *pick;
@@ -2706,10 +3775,70 @@ vitte_c17_ast_resolve_pick_variant_path(
         emitter, path, path->child_count - 2u);
     variant_name = vitte_c17_ast_child(
         emitter, path, path->child_count - 1u);
-    root = vitte_c17_ast_node(
-        emitter,
-        vitte_parser_root(emitter->parser));
-    pick = vitte_c17_ast_find_pick_decl(emitter, root, pick_name);
+    if (path->child_count == 2u) {
+        size_t index;
+        const vitte_ast_node_t *root = vitte_c17_ast_node(
+            emitter, vitte_parser_root(emitter->parser));
+        pick = NULL;
+        for (index = emitter->space_depth; index != 0u; --index) {
+            pick = vitte_c17_ast_find_named_declaration_in_scope(
+                emitter,
+                vitte_c17_ast_child(
+                    emitter, emitter->space_stack[index - 1u], 1u),
+                pick_name,
+                VITTE_AST_NODE_PICK_DECL,
+                VITTE_AST_NODE_PICK_DECL);
+            if (pick != NULL) {
+                break;
+            }
+        }
+        if (pick == NULL) {
+            pick = vitte_c17_ast_find_named_declaration_in_scope(
+                emitter,
+                root,
+                pick_name,
+                VITTE_AST_NODE_PICK_DECL,
+                VITTE_AST_NODE_PICK_DECL);
+        }
+        if (pick == NULL) {
+            bool ambiguous = false;
+            pick = vitte_c17_ast_find_current_imported_declaration(
+                emitter,
+                pick_name,
+                VITTE_AST_NODE_PICK_DECL,
+                VITTE_AST_NODE_PICK_DECL,
+                &ambiguous);
+            if (ambiguous) {
+                return false;
+            }
+        }
+        if (pick == NULL) {
+            size_t matches = 0u;
+            pick = vitte_c17_ast_find_unique_named_declaration(
+                emitter,
+                root,
+                pick_name,
+                VITTE_AST_NODE_PICK_DECL,
+                VITTE_AST_NODE_PICK_DECL,
+                &matches,
+                0u);
+            if (matches != 1u) {
+                pick = NULL;
+            }
+        }
+    } else {
+        const vitte_ast_node_t *scope =
+            vitte_c17_ast_find_module_for_path(
+                emitter, path, path->child_count - 2u);
+        pick = scope == NULL
+            ? NULL
+            : vitte_c17_ast_find_named_declaration_in_scope(
+                  emitter,
+                  vitte_c17_ast_child(emitter, scope, 1u),
+                  pick_name,
+                  VITTE_AST_NODE_PICK_DECL,
+                  VITTE_AST_NODE_PICK_DECL);
+    }
     variant = vitte_c17_ast_find_pick_variant(
         emitter, pick, variant_name);
     if (pick == NULL || variant == NULL) {
@@ -2730,8 +3859,6 @@ vitte_c17_ast_pick_decl_for_type(
     const vitte_ast_node_t *type)
 {
     const vitte_ast_node_t *path;
-    const vitte_ast_node_t *name;
-    const vitte_ast_node_t *root;
 
     if (type == NULL) {
         return NULL;
@@ -2739,19 +3866,23 @@ vitte_c17_ast_pick_decl_for_type(
     if (type->kind == VITTE_AST_NODE_PICK_DECL) {
         return type;
     }
-    if (type->kind != VITTE_AST_NODE_TYPE_EXPR || type->child_count == 0u) {
+    if (type->kind == VITTE_AST_NODE_PATH) {
+        path = type;
+    } else if (type->kind == VITTE_AST_NODE_TYPE_EXPR &&
+               type->child_count != 0u) {
+        path = vitte_c17_ast_child(emitter, type, 0u);
+    } else {
         return NULL;
     }
-    path = vitte_c17_ast_child(emitter, type, 0u);
     if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
         path->child_count == 0u) {
         return NULL;
     }
-    name = vitte_c17_ast_child(emitter, path, path->child_count - 1u);
-    root = vitte_c17_ast_node(
+    return vitte_c17_ast_find_path_declaration(
         emitter,
-        vitte_parser_root(emitter->parser));
-    return vitte_c17_ast_find_pick_decl(emitter, root, name);
+        path,
+        VITTE_AST_NODE_PICK_DECL,
+        VITTE_AST_NODE_PICK_DECL);
 }
 
 static const vitte_ast_node_t *
@@ -2809,7 +3940,8 @@ vitte_c17_ast_emit_pick_unit_variant(
     pick_name = vitte_c17_ast_child(emitter, pick, 0u);
     variant_name = vitte_c17_ast_child(emitter, variant, 0u);
     if (!vitte_c17_ast_pick_has_payload(emitter, pick)) {
-        vitte_c17_ast_write_token(emitter, pick_name);
+        vitte_c17_ast_emit_declaration_name(
+            emitter, pick, pick_name);
         vitte_c17_ast_write(emitter, "_");
         vitte_c17_ast_write_token(emitter, variant_name);
         return;
@@ -2819,9 +3951,9 @@ vitte_c17_ast_emit_pick_unit_variant(
         return;
     }
     vitte_c17_ast_write(emitter, "((");
-    vitte_c17_ast_write_token(emitter, pick_name);
+    vitte_c17_ast_emit_declaration_name(emitter, pick, pick_name);
     vitte_c17_ast_write(emitter, "){ .tag = ");
-    vitte_c17_ast_write_token(emitter, pick_name);
+    vitte_c17_ast_emit_declaration_name(emitter, pick, pick_name);
     vitte_c17_ast_write(emitter, "_tag_");
     vitte_c17_ast_write_token(emitter, variant_name);
     vitte_c17_ast_write(emitter, " })");
@@ -2904,9 +4036,9 @@ vitte_c17_ast_emit_pick_variant_constructor(
     }
 
     vitte_c17_ast_write(emitter, "((");
-    vitte_c17_ast_write_token(emitter, pick_name);
+    vitte_c17_ast_emit_declaration_name(emitter, pick, pick_name);
     vitte_c17_ast_write(emitter, "){ .tag = ");
-    vitte_c17_ast_write_token(emitter, pick_name);
+    vitte_c17_ast_emit_declaration_name(emitter, pick, pick_name);
     vitte_c17_ast_write(emitter, "_tag_");
     vitte_c17_ast_write_token(emitter, variant_name);
     if (payload_count != 0u) {
@@ -2935,27 +4067,28 @@ vitte_c17_ast_is_pick_type(
     const vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *expression)
 {
-    const vitte_ast_node_t *name;
-    const vitte_ast_node_t *root;
-
     if (expression == NULL) {
         return false;
     }
     if (expression->kind == VITTE_AST_NODE_IDENTIFIER) {
-        name = expression;
+        const vitte_ast_node_t *root = vitte_c17_ast_node(
+            emitter, vitte_parser_root(emitter->parser));
+        return vitte_c17_ast_find_named_declaration_in_scope(
+            emitter,
+            root,
+            expression,
+            VITTE_AST_NODE_PICK_DECL,
+            VITTE_AST_NODE_PICK_DECL) != NULL;
     } else if (expression->kind == VITTE_AST_NODE_PATH &&
                expression->child_count != 0u) {
-        name = vitte_c17_ast_child(
+        return vitte_c17_ast_find_path_declaration(
             emitter,
             expression,
-            expression->child_count - 1u);
+            VITTE_AST_NODE_PICK_DECL,
+            VITTE_AST_NODE_PICK_DECL) != NULL;
     } else {
         return false;
     }
-    root = vitte_c17_ast_node(
-        emitter,
-        vitte_parser_root(emitter->parser));
-    return vitte_c17_ast_scope_declares_pick(emitter, root, name);
 }
 
 static const vitte_ast_node_t *
@@ -3249,9 +4382,60 @@ vitte_c17_ast_emit_expression(
                     emitter,
                     vitte_c17_ast_child(emitter, node, 0u));
             } else {
-                vitte_c17_ast_emit_expression(
-                    emitter,
-                    vitte_c17_ast_child(emitter, node, 0u));
+                const vitte_ast_node_t *operand =
+                    vitte_c17_ast_child(emitter, node, 0u);
+                bool visible_value = false;
+                const vitte_ast_node_t *type_declaration = NULL;
+                size_t parameter_index;
+
+                if (operand != NULL &&
+                    operand->kind == VITTE_AST_NODE_PATH &&
+                    operand->child_count == 1u) {
+                    const vitte_ast_node_t *name =
+                        vitte_c17_ast_child(emitter, operand, 0u);
+                    visible_value = vitte_c17_ast_is_visible_local(
+                        emitter, operand, name);
+                    for (parameter_index = 1u;
+                         !visible_value && emitter->function != NULL &&
+                         parameter_index < emitter->function->child_count;
+                         ++parameter_index) {
+                        const vitte_ast_node_t *parameter =
+                            vitte_c17_ast_child(
+                                emitter,
+                                emitter->function,
+                                parameter_index);
+                        if (parameter != NULL &&
+                            parameter->kind == VITTE_AST_NODE_PARAMETER &&
+                            vitte_c17_ast_token_equal(
+                                emitter,
+                                vitte_c17_ast_child(
+                                    emitter, parameter, 0u),
+                                name)) {
+                            visible_value = true;
+                        }
+                    }
+                    if (!visible_value) {
+                        type_declaration =
+                            vitte_c17_ast_find_path_declaration(
+                                emitter,
+                                operand,
+                                VITTE_AST_NODE_FORM_DECL,
+                                VITTE_AST_NODE_PICK_DECL);
+                        if (type_declaration == NULL) {
+                            type_declaration =
+                                vitte_c17_ast_find_path_declaration(
+                                    emitter,
+                                    operand,
+                                    VITTE_AST_NODE_TYPE_DECL,
+                                    VITTE_AST_NODE_OPAQUE_DECL);
+                        }
+                    }
+                }
+                if (type_declaration != NULL) {
+                    vitte_c17_ast_emit_type(emitter, operand);
+                } else {
+                    vitte_c17_ast_emit_expression(emitter, operand);
+                }
             }
             vitte_c17_ast_write(emitter, ")");
             return;
@@ -3376,14 +4560,30 @@ vitte_c17_ast_emit_expression(
             vitte_c17_ast_write(emitter, "(");
             left = vitte_c17_ast_child(emitter, node, 0u);
             if (left != NULL &&
-                left->kind == VITTE_AST_NODE_PATH &&
-                left->child_count != 0u) {
-                vitte_c17_ast_write_token(
-                    emitter,
-                    vitte_c17_ast_child(
+                left->kind == VITTE_AST_NODE_TYPE_EXPR) {
+                vitte_c17_ast_emit_type(emitter, left);
+            } else if (left != NULL &&
+                       left->kind == VITTE_AST_NODE_PATH &&
+                       left->child_count != 0u) {
+                const vitte_ast_node_t *form =
+                    vitte_c17_ast_find_path_declaration(
                         emitter,
                         left,
-                        left->child_count - 1u));
+                        VITTE_AST_NODE_FORM_DECL,
+                        VITTE_AST_NODE_FORM_DECL);
+                if (form != NULL) {
+                    vitte_c17_ast_emit_declaration_name(
+                        emitter,
+                        form,
+                        vitte_c17_ast_child(emitter, form, 0u));
+                } else {
+                    vitte_c17_ast_write_token(
+                        emitter,
+                        vitte_c17_ast_child(
+                            emitter,
+                            left,
+                            left->child_count - 1u));
+                }
             } else {
                 emitter->failed = true;
             }
@@ -3427,10 +4627,6 @@ vitte_c17_ast_emit_expression(
                 vitte_c17_ast_emit_function_name(
                     emitter,
                     vitte_c17_ast_child(emitter, node, 0u));
-            } else if (node->child_count == 3u) {
-                vitte_c17_ast_emit_path(emitter, node);
-            } else if (node->child_count == 2u) {
-                vitte_c17_ast_emit_path(emitter, node);
             } else if (node->child_count == 1u) {
                 left = vitte_c17_ast_child(emitter, node, 0u);
                 if (vitte_c17_ast_is_reference_parameter(
@@ -3440,6 +4636,61 @@ vitte_c17_ast_emit_expression(
                     vitte_c17_ast_write_token(emitter, left);
                     vitte_c17_ast_write(emitter, ")");
                 } else {
+                    const vitte_ast_node_t *global;
+                    bool local;
+                    size_t parameter_index;
+
+                    local = vitte_c17_ast_is_visible_local(
+                        emitter, node, left);
+                    for (parameter_index = 1u;
+                         !local && emitter->function != NULL &&
+                         parameter_index < emitter->function->child_count;
+                         ++parameter_index) {
+                        const vitte_ast_node_t *parameter =
+                            vitte_c17_ast_child(
+                                emitter,
+                                emitter->function,
+                                parameter_index);
+                        if (parameter != NULL &&
+                            parameter->kind == VITTE_AST_NODE_PARAMETER &&
+                            vitte_c17_ast_token_equal(
+                                emitter,
+                                vitte_c17_ast_child(
+                                    emitter, parameter, 0u),
+                                left)) {
+                            local = true;
+                        }
+                    }
+                    global = local ? NULL :
+                        vitte_c17_ast_find_path_declaration(
+                            emitter,
+                            node,
+                            VITTE_AST_NODE_CONST_DECL,
+                            VITTE_AST_NODE_STATIC_DECL);
+                    if (global != NULL) {
+                        vitte_c17_ast_emit_declaration_name(
+                            emitter,
+                            global,
+                            vitte_c17_ast_child(emitter, global, 0u));
+                    } else {
+                        vitte_c17_ast_emit_path(emitter, node);
+                    }
+                }
+            } else if (node->child_count > 1u) {
+                const vitte_ast_node_t *declaration =
+                    vitte_c17_ast_find_path_declaration(
+                        emitter,
+                        node,
+                        VITTE_AST_NODE_CONST_DECL,
+                        VITTE_AST_NODE_STATIC_DECL);
+                if (declaration != NULL) {
+                    vitte_c17_ast_emit_declaration_name(
+                        emitter,
+                        declaration,
+                        vitte_c17_ast_child(emitter, declaration, 0u));
+                } else if (!vitte_c17_ast_emit_resolved_procedure_name(
+                               emitter,
+                               node)) {
                     vitte_c17_ast_emit_path(emitter, node);
                 }
             } else {
@@ -4344,6 +5595,9 @@ vitte_c17_ast_emit_expression(
                         callee->child_count - 1u);
                 }
                 if (callee_name != NULL &&
+                    callee != NULL &&
+                    callee->kind == VITTE_AST_NODE_PATH &&
+                    callee->child_count == 1u &&
                     emitter->space_depth != 0u &&
                     vitte_c17_ast_is_local_space_function(
                         emitter,
@@ -4356,7 +5610,7 @@ vitte_c17_ast_emit_expression(
                     callee_emitted =
                         vitte_c17_ast_emit_resolved_procedure_name(
                             emitter,
-                            callee_name);
+                            callee);
                 }
                 if (!callee_emitted) {
                     vitte_c17_ast_emit_expression(emitter, callee);
@@ -4390,23 +5644,11 @@ vitte_c17_ast_emit_expression(
                 return;
             }
             if (vitte_c17_ast_is_pick_type(emitter, left)) {
-                const vitte_ast_node_t *pick_name;
-                const vitte_ast_node_t *root;
                 const vitte_ast_node_t *pick;
                 const vitte_ast_node_t *variant;
 
-                pick_name = left;
-                if (left->kind == VITTE_AST_NODE_PATH) {
-                    pick_name = vitte_c17_ast_child(
-                        emitter,
-                        left,
-                        left->child_count - 1u);
-                }
-                root = vitte_c17_ast_node(
-                    emitter,
-                    vitte_parser_root(emitter->parser));
-                pick = vitte_c17_ast_find_pick_decl(
-                    emitter, root, pick_name);
+                pick = vitte_c17_ast_pick_decl_for_type(
+                    emitter, left);
                 variant = vitte_c17_ast_find_pick_variant(
                     emitter, pick, right);
                 if (variant == NULL) {
@@ -5580,14 +6822,16 @@ vitte_c17_ast_emit_match_pattern_test(
             vitte_c17_ast_write(emitter, subject_name);
             if (vitte_c17_ast_pick_has_payload(emitter, pick)) {
                 vitte_c17_ast_write(emitter, ".tag == ");
-                vitte_c17_ast_write_token(
+                vitte_c17_ast_emit_declaration_name(
                     emitter,
+                    pick,
                     vitte_c17_ast_child(emitter, pick, 0u));
                 vitte_c17_ast_write(emitter, "_tag_");
             } else {
                 vitte_c17_ast_write(emitter, " == ");
-                vitte_c17_ast_write_token(
+                vitte_c17_ast_emit_declaration_name(
                     emitter,
+                    pick,
                     vitte_c17_ast_child(emitter, pick, 0u));
                 vitte_c17_ast_write(emitter, "_");
             }
@@ -6205,8 +7449,9 @@ vitte_c17_ast_emit_statement(
             vitte_c17_ast_indent(emitter, indent + 1u);
             if (subject_type != NULL &&
                 subject_type->kind == VITTE_AST_NODE_PICK_DECL) {
-                vitte_c17_ast_write_token(
+                vitte_c17_ast_emit_declaration_name(
                     emitter,
+                    subject_type,
                     vitte_c17_ast_child(emitter, subject_type, 0u));
             } else if (subject_type != NULL) {
                 vitte_c17_ast_emit_type(emitter, subject_type);
@@ -6268,8 +7513,9 @@ vitte_c17_ast_emit_statement(
                     vitte_c17_ast_indent(emitter, indent + 2u);
                     if (subject_type != NULL &&
                         subject_type->kind == VITTE_AST_NODE_PICK_DECL) {
-                        vitte_c17_ast_write_token(
+                        vitte_c17_ast_emit_declaration_name(
                             emitter,
+                            subject_type,
                             vitte_c17_ast_child(emitter, subject_type, 0u));
                     } else if (subject_type != NULL) {
                         vitte_c17_ast_emit_type(emitter, subject_type);
@@ -6572,7 +7818,7 @@ vitte_c17_ast_emit_form(
     }
 
     vitte_c17_ast_write(emitter, "struct ");
-    vitte_c17_ast_write_token(emitter, name);
+    vitte_c17_ast_emit_declaration_name(emitter, node, name);
     vitte_c17_ast_write(emitter, " {\n");
     if (field_count == 0u) {
         vitte_c17_ast_write(
@@ -6633,9 +7879,19 @@ vitte_c17_ast_layout_dependency_for_type(
     name = vitte_c17_ast_child(emitter, path, path->child_count - 1u);
     {
         const vitte_ast_node_t *form =
-            vitte_c17_ast_find_form(emitter, root, name);
+            vitte_c17_ast_find_path_declaration(
+                emitter,
+                path,
+                VITTE_AST_NODE_FORM_DECL,
+                VITTE_AST_NODE_FORM_DECL);
         const vitte_ast_node_t *pick =
-            vitte_c17_ast_find_pick_decl(emitter, root, name);
+            vitte_c17_ast_find_path_declaration(
+                emitter,
+                path,
+                VITTE_AST_NODE_PICK_DECL,
+                VITTE_AST_NODE_PICK_DECL);
+        (void)root;
+        (void)name;
         if (form != NULL) {
             return form;
         }
@@ -6654,6 +7910,12 @@ vitte_c17_ast_emit_layout_type_ordered(
     size_t state_count)
 {
     size_t index;
+    size_t previous_space_depth;
+    size_t declaration_space_depth = 0u;
+    const vitte_ast_node_t *previous_spaces[128];
+    const vitte_ast_node_t *spaces[128];
+    const vitte_ast_node_t *declaration_spaces[128];
+    bool success = false;
 
     if (declaration == NULL || states == NULL ||
         declaration->id >= state_count ||
@@ -6663,6 +7925,12 @@ vitte_c17_ast_emit_layout_type_ordered(
         emitter->failed = true;
         return false;
     }
+    if (declaration->kind == VITTE_AST_NODE_FORM_DECL &&
+        vitte_c17_ast_generic_form_parameter_count(
+            emitter, declaration, NULL) != 0u) {
+        states[declaration->id] = 2u;
+        return true;
+    }
     if (states[declaration->id] == 2u) {
         return true;
     }
@@ -6670,6 +7938,29 @@ vitte_c17_ast_emit_layout_type_ordered(
         emitter->failed = true;
         return false;
     }
+    previous_space_depth = emitter->space_depth;
+    if (previous_space_depth != 0u) {
+        (void)memcpy(
+            previous_spaces,
+            emitter->space_stack,
+            previous_space_depth * sizeof(previous_spaces[0]));
+    }
+    if (!vitte_c17_ast_find_declaration_scope(
+            emitter,
+            root,
+            declaration,
+            spaces,
+            0u,
+            declaration_spaces,
+            &declaration_space_depth)) {
+        emitter->failed = true;
+        return false;
+    }
+    (void)memcpy(
+        emitter->space_stack,
+        declaration_spaces,
+        declaration_space_depth * sizeof(declaration_spaces[0]));
+    emitter->space_depth = declaration_space_depth;
     states[declaration->id] = 1u;
 
     if (declaration->kind == VITTE_AST_NODE_FORM_DECL) {
@@ -6689,7 +7980,7 @@ vitte_c17_ast_emit_layout_type_ordered(
             if (dependency != NULL &&
                 !vitte_c17_ast_emit_layout_type_ordered(
                     emitter, root, dependency, states, state_count)) {
-                return false;
+                goto done;
             }
         }
     } else {
@@ -6717,7 +8008,7 @@ vitte_c17_ast_emit_layout_type_ordered(
                         dependency,
                         states,
                         state_count)) {
-                    return false;
+                    goto done;
                 }
             }
         }
@@ -6725,13 +8016,23 @@ vitte_c17_ast_emit_layout_type_ordered(
 
     if (declaration->kind == VITTE_AST_NODE_FORM_DECL) {
         if (!vitte_c17_ast_emit_form(emitter, declaration)) {
-            return false;
+            goto done;
         }
     } else if (!vitte_c17_ast_emit_pick(emitter, declaration)) {
-        return false;
+        goto done;
     }
     states[declaration->id] = 2u;
-    return true;
+    success = true;
+
+done:
+    if (previous_space_depth != 0u) {
+        (void)memcpy(
+            emitter->space_stack,
+            previous_spaces,
+            previous_space_depth * sizeof(previous_spaces[0]));
+    }
+    emitter->space_depth = previous_space_depth;
+    return success;
 }
 
 static void
@@ -6999,12 +8300,31 @@ vitte_c17_ast_emit_type_alias(
         target->operator_kind != VITTE_TOKEN_KW_PROC) {
         if (target->kind == VITTE_AST_NODE_ARRAY_TYPE) {
             vitte_c17_ast_write(emitter, "typedef ");
-            vitte_c17_ast_emit_declarator(emitter, target, name);
+            if (target->child_count == 1u) {
+                vitte_c17_ast_write(emitter, "VitteArray ");
+                vitte_c17_ast_emit_declaration_name(
+                    emitter, declaration, name);
+            } else if (target->child_count == 2u) {
+                vitte_c17_ast_emit_type(
+                    emitter,
+                    vitte_c17_ast_child(emitter, target, 1u));
+                vitte_c17_ast_write(emitter, " ");
+                vitte_c17_ast_emit_declaration_name(
+                    emitter, declaration, name);
+                vitte_c17_ast_write(emitter, "[");
+                vitte_c17_ast_emit_expression(
+                    emitter,
+                    vitte_c17_ast_child(emitter, target, 0u));
+                vitte_c17_ast_write(emitter, "]");
+            } else {
+                return false;
+            }
         } else {
             vitte_c17_ast_write(emitter, "typedef ");
             vitte_c17_ast_emit_type(emitter, target);
             vitte_c17_ast_write(emitter, " ");
-            vitte_c17_ast_write_token(emitter, name);
+            vitte_c17_ast_emit_declaration_name(
+                emitter, declaration, name);
         }
         vitte_c17_ast_write(emitter, ";\n");
         return !emitter->failed;
@@ -7023,7 +8343,7 @@ vitte_c17_ast_emit_type_alias(
         vitte_c17_ast_write(emitter, "void");
     }
     vitte_c17_ast_write(emitter, " (*");
-    vitte_c17_ast_write_token(emitter, name);
+    vitte_c17_ast_emit_declaration_name(emitter, declaration, name);
     vitte_c17_ast_write(emitter, ")(");
     if (parameter_count == 0u) {
         vitte_c17_ast_write(emitter, "void");
@@ -7104,8 +8424,16 @@ vitte_c17_ast_emit_function_type_aliases_in_scope(
                 emitter->failed = true;
                 return;
             }
+            if (emitter->space_depth >=
+                sizeof(emitter->space_stack) /
+                    sizeof(emitter->space_stack[0])) {
+                emitter->failed = true;
+                return;
+            }
+            emitter->space_stack[emitter->space_depth++] = declaration;
             vitte_c17_ast_emit_function_type_aliases_in_scope(
                 emitter, body);
+            --emitter->space_depth;
         }
         if (emitter->failed) {
             return;
@@ -7135,6 +8463,7 @@ vitte_c17_ast_emit_forms_in_scope(
 
         if (declaration->kind == VITTE_AST_NODE_FORM_DECL) {
             const vitte_ast_node_t *name;
+            size_t generic_index;
 
             name = vitte_c17_ast_child(emitter, declaration, 0u);
             if (name == NULL) {
@@ -7142,11 +8471,34 @@ vitte_c17_ast_emit_forms_in_scope(
                 return;
             }
             if (forward_declarations) {
-                vitte_c17_ast_write(emitter, "typedef struct ");
-                vitte_c17_ast_write_token(emitter, name);
-                vitte_c17_ast_write(emitter, " ");
-                vitte_c17_ast_write_token(emitter, name);
-                vitte_c17_ast_write(emitter, ";\n");
+                if (vitte_c17_ast_generic_form_parameter_count(
+                        emitter, declaration, NULL) == 0u) {
+                    vitte_c17_ast_write(emitter, "typedef struct ");
+                    vitte_c17_ast_emit_declaration_name(
+                        emitter, declaration, name);
+                    vitte_c17_ast_write(emitter, " ");
+                    vitte_c17_ast_emit_declaration_name(
+                        emitter, declaration, name);
+                    vitte_c17_ast_write(emitter, ";\n");
+                } else {
+                    for (generic_index = 0u;
+                         generic_index < emitter->generic_form_count;
+                         ++generic_index) {
+                        const vitte_c17_ast_generic_form_instance_t *instance =
+                            &emitter->generic_forms[generic_index];
+                        if (instance->declaration == declaration) {
+                            vitte_c17_ast_write(emitter, "typedef struct ");
+                            vitte_c17_ast_emit_generic_form_instance_name(
+                                emitter,
+                                instance);
+                            vitte_c17_ast_write(emitter, " ");
+                            vitte_c17_ast_emit_generic_form_instance_name(
+                                emitter,
+                                instance);
+                            vitte_c17_ast_write(emitter, ";\n");
+                        }
+                    }
+                }
             } else {
                 (void)vitte_c17_ast_emit_form(emitter, declaration);
             }
@@ -7160,11 +8512,71 @@ vitte_c17_ast_emit_forms_in_scope(
                 emitter->failed = true;
                 return;
             }
+            if (emitter->space_depth >=
+                sizeof(emitter->space_stack) /
+                    sizeof(emitter->space_stack[0])) {
+                emitter->failed = true;
+                return;
+            }
+            emitter->space_stack[emitter->space_depth++] = declaration;
             vitte_c17_ast_emit_forms_in_scope(
                 emitter,
                 body,
                 forward_declarations);
+            --emitter->space_depth;
         }
+    }
+}
+
+static void
+vitte_c17_ast_emit_generic_form_instances(
+    vitte_c17_ast_emitter_t *emitter)
+{
+    size_t index;
+
+    for (index = 0u;
+         index < emitter->generic_form_count && !emitter->failed;
+         ++index) {
+        const vitte_c17_ast_generic_form_instance_t *instance =
+            &emitter->generic_forms[index];
+        const vitte_ast_node_t *declaration = instance->declaration;
+        const vitte_ast_node_t *parameter_name =
+            vitte_c17_ast_generic_form_parameter_name(
+                emitter,
+                declaration);
+        size_t field_index;
+
+        if (parameter_name == NULL || instance->argument == NULL) {
+            emitter->failed = true;
+            return;
+        }
+        emitter->generic_parameter_name = parameter_name;
+        emitter->generic_argument = instance->argument;
+        vitte_c17_ast_write(emitter, "struct ");
+        vitte_c17_ast_emit_generic_form_instance_name(emitter, instance);
+        vitte_c17_ast_write(emitter, " {\n");
+        for (field_index = 1u;
+             field_index < declaration->child_count && !emitter->failed;
+             ++field_index) {
+            const vitte_ast_node_t *field =
+                vitte_c17_ast_child(emitter, declaration, field_index);
+            if (field == NULL || field->kind != VITTE_AST_NODE_FIELD_DECL) {
+                continue;
+            }
+            if (field->child_count < 2u) {
+                emitter->failed = true;
+                break;
+            }
+            vitte_c17_ast_write(emitter, "    ");
+            vitte_c17_ast_emit_declarator(
+                emitter,
+                vitte_c17_ast_child(emitter, field, 1u),
+                vitte_c17_ast_child(emitter, field, 0u));
+            vitte_c17_ast_write(emitter, ";\n");
+        }
+        vitte_c17_ast_write(emitter, "};\n\n");
+        emitter->generic_parameter_name = NULL;
+        emitter->generic_argument = NULL;
     }
 }
 
@@ -7227,13 +8639,13 @@ vitte_c17_ast_emit_pick(
         size_t emitted = 0u;
 
         vitte_c17_ast_write(emitter, "typedef enum ");
-        vitte_c17_ast_write_token(emitter, name);
+        vitte_c17_ast_emit_declaration_name(emitter, node, name);
         vitte_c17_ast_write(emitter, " {\n");
         for (index = 1u; index < node->child_count; ++index) {
             const vitte_ast_node_t *variant =
                 vitte_c17_ast_child(emitter, node, index);
             vitte_c17_ast_write(emitter, "    ");
-            vitte_c17_ast_write_token(emitter, name);
+            vitte_c17_ast_emit_declaration_name(emitter, node, name);
             vitte_c17_ast_write(emitter, "_");
             vitte_c17_ast_write_token(
                 emitter,
@@ -7244,13 +8656,13 @@ vitte_c17_ast_emit_pick(
                 emitted < variant_count ? ",\n" : "\n");
         }
         vitte_c17_ast_write(emitter, "} ");
-        vitte_c17_ast_write_token(emitter, name);
+        vitte_c17_ast_emit_declaration_name(emitter, node, name);
         vitte_c17_ast_write(emitter, ";\n\n");
         return !emitter->failed;
     }
 
     vitte_c17_ast_write(emitter, "typedef enum ");
-    vitte_c17_ast_write_token(emitter, name);
+    vitte_c17_ast_emit_declaration_name(emitter, node, name);
     vitte_c17_ast_write(emitter, "_tag {\n");
     {
         size_t emitted = 0u;
@@ -7258,7 +8670,7 @@ vitte_c17_ast_emit_pick(
             const vitte_ast_node_t *variant =
                 vitte_c17_ast_child(emitter, node, index);
             vitte_c17_ast_write(emitter, "    ");
-            vitte_c17_ast_write_token(emitter, name);
+            vitte_c17_ast_emit_declaration_name(emitter, node, name);
             vitte_c17_ast_write(emitter, "_tag_");
             vitte_c17_ast_write_token(
                 emitter,
@@ -7270,11 +8682,11 @@ vitte_c17_ast_emit_pick(
         }
     }
     vitte_c17_ast_write(emitter, "} ");
-    vitte_c17_ast_write_token(emitter, name);
+    vitte_c17_ast_emit_declaration_name(emitter, node, name);
     vitte_c17_ast_write(emitter, "_tag;\n\nstruct ");
-    vitte_c17_ast_write_token(emitter, name);
+    vitte_c17_ast_emit_declaration_name(emitter, node, name);
     vitte_c17_ast_write(emitter, " {\n    ");
-    vitte_c17_ast_write_token(emitter, name);
+    vitte_c17_ast_emit_declaration_name(emitter, node, name);
     vitte_c17_ast_write(emitter, "_tag tag;\n    union {\n");
     for (index = 1u; index < node->child_count; ++index) {
         const vitte_ast_node_t *variant =
@@ -7349,9 +8761,11 @@ vitte_c17_ast_emit_pick_forward_declarations_in_scope(
                 return;
             }
             vitte_c17_ast_write(emitter, "typedef struct ");
-            vitte_c17_ast_write_token(emitter, name);
+            vitte_c17_ast_emit_declaration_name(
+                emitter, declaration, name);
             vitte_c17_ast_write(emitter, " ");
-            vitte_c17_ast_write_token(emitter, name);
+            vitte_c17_ast_emit_declaration_name(
+                emitter, declaration, name);
             vitte_c17_ast_write(emitter, ";\n");
         } else if (declaration->kind == VITTE_AST_NODE_SPACE_DECL &&
                    declaration->child_count > 1u) {
@@ -7361,8 +8775,16 @@ vitte_c17_ast_emit_pick_forward_declarations_in_scope(
                 emitter->failed = true;
                 return;
             }
+            if (emitter->space_depth >=
+                sizeof(emitter->space_stack) /
+                    sizeof(emitter->space_stack[0])) {
+                emitter->failed = true;
+                return;
+            }
+            emitter->space_stack[emitter->space_depth++] = declaration;
             vitte_c17_ast_emit_pick_forward_declarations_in_scope(
                 emitter, body);
+            --emitter->space_depth;
         }
     }
 }
@@ -7400,8 +8822,16 @@ vitte_c17_ast_emit_picks_in_scope(
                 emitter->failed = true;
                 return;
             }
+            if (emitter->space_depth >=
+                sizeof(emitter->space_stack) /
+                    sizeof(emitter->space_stack[0])) {
+                emitter->failed = true;
+                return;
+            }
+            emitter->space_stack[emitter->space_depth++] = declaration;
             vitte_c17_ast_emit_picks_in_scope(
                 emitter, body, with_payload);
+            --emitter->space_depth;
         }
     }
 }
@@ -7439,7 +8869,7 @@ vitte_c17_ast_emit_constant(
             vitte_c17_ast_write(emitter, "static ");
             vitte_c17_ast_emit_type(emitter, element_type);
             vitte_c17_ast_write(emitter, " const ");
-            vitte_c17_ast_write_token(emitter, name);
+            vitte_c17_ast_emit_declaration_name(emitter, node, name);
             vitte_c17_ast_write(
                 emitter,
                 "_data[] VITTE_C17_AST_UNUSED = {");
@@ -7454,13 +8884,13 @@ vitte_c17_ast_emit_constant(
             vitte_c17_ast_write(emitter, "};\n");
         }
         vitte_c17_ast_write(emitter, "static const VitteArray ");
-        vitte_c17_ast_write_token(emitter, name);
+        vitte_c17_ast_emit_declaration_name(emitter, node, name);
         vitte_c17_ast_write(
             emitter,
             " VITTE_C17_AST_UNUSED = { ");
         if (initializer->child_count != 0u) {
             vitte_c17_ast_write(emitter, "(void *)");
-            vitte_c17_ast_write_token(emitter, name);
+            vitte_c17_ast_emit_declaration_name(emitter, node, name);
             vitte_c17_ast_write(emitter, "_data, ");
         } else {
             vitte_c17_ast_write(emitter, "NULL, ");
@@ -7491,7 +8921,7 @@ vitte_c17_ast_emit_constant(
         vitte_c17_ast_emit_type(emitter, type);
         vitte_c17_ast_write(emitter, " ");
     }
-    vitte_c17_ast_write_token(emitter, name);
+    vitte_c17_ast_emit_declaration_name(emitter, node, name);
     if (!(node->kind == VITTE_AST_NODE_STATIC_DECL &&
           (node->flags & VITTE_AST_FLAG_MUTABLE) != 0u)) {
         vitte_c17_ast_write(
@@ -7535,7 +8965,15 @@ vitte_c17_ast_emit_constants_in_scope(
                 emitter->failed = true;
                 return;
             }
+            if (emitter->space_depth >=
+                sizeof(emitter->space_stack) /
+                    sizeof(emitter->space_stack[0])) {
+                emitter->failed = true;
+                return;
+            }
+            emitter->space_stack[emitter->space_depth++] = declaration;
             vitte_c17_ast_emit_constants_in_scope(emitter, body);
+            --emitter->space_depth;
         }
     }
 }
@@ -7808,6 +9246,24 @@ vitte_c17_emit_ast_with_options(
             root)) {
         return false;
     }
+    vitte_c17_ast_validate_generic_form_fields(
+        &emitter,
+        root,
+        0u);
+    if (emitter.failed) {
+        return false;
+    }
+    vitte_c17_ast_collect_generic_form_instances(
+        &emitter,
+        root,
+        root,
+        0u);
+    if (emitter.failed) {
+        return false;
+    }
+    if (!vitte_c17_ast_build_parent_index(&emitter)) {
+        return false;
+    }
 
     has_terminal_api = false;
     for (index = 0u; index < root->child_count; ++index) {
@@ -8063,6 +9519,7 @@ vitte_c17_emit_ast_with_options(
             free(form_states);
         }
     }
+    vitte_c17_ast_emit_generic_form_instances(&emitter);
 
     vitte_c17_ast_emit_pick_equality_helpers_in_scope(
         &emitter,
@@ -8342,7 +9799,13 @@ vitte_c17_emit_ast_with_options(
             "}\n");
     }
 
-    return !emitter.failed && fflush(output) == 0;
+    {
+        bool success = !emitter.failed && fflush(output) == 0;
+        free(emitter.parent_ids);
+        emitter.parent_ids = NULL;
+        emitter.parent_id_count = 0u;
+        return success;
+    }
 }
 
 bool
