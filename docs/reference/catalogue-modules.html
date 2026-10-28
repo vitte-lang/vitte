@@ -17,9 +17,9 @@ keywords: modules packages bibliothèques JSON core versions installation dépô
   <strong>Un module présent dans le dépôt n’est pas forcément une release autonome.</strong>
   <p>Ce catalogue indique le dépôt d’origine, le numéro de release consulté et la copie locale lorsqu’ils diffèrent. L’état a été relevé le 28 octobre 2026 ; les versions et fichiers publiés peuvent évoluer. Vérifiez les pages Releases avant de choisir un paquet pour un projet.</p>
 </div>
-<div class="reference-callout warning">
-  <strong>Installation avec <code>vitte install</code> : à venir.</strong>
-  <p>La version publique actuelle du compilateur ne fournit pas encore cette commande. En attendant une release qui l’intègre, installez JSON depuis son archive versionnée en suivant le guide manuel ci-dessous.</p>
+<div class="reference-callout example">
+  <strong>Installation JSON disponible.</strong>
+  <p>La release JSON {{ json_package.version | escape }} est publiée et enregistrée. Depuis la racine d’un projet avec un Vitte compatible, <code>vitte install json</code> sélectionne la dernière version stable compatible, vérifie son SHA-256 et ajoute le paquet au manifeste et au verrou.</p>
 </div>
 
 <h2 id="inventaire">Modules documentés</h2>
@@ -27,29 +27,20 @@ keywords: modules packages bibliothèques JSON core versions installation dépô
 <tr><td><strong><code>{{ json_package.name | escape }}</code></strong></td><td><a href="{{ json_package.release_url | escape }}">Release autonome <code>{{ json_package.release_tag | escape }}</code></a>, tag immuable, commit <code>{{ json_package.source_commit | slice: 0, 7 }}</code><br><a href="{{ json_package.download_url | escape }}">Archive tar.gz — {{ json_package.version | escape }}</a><br>SHA-256 : <code>{{ json_package.sha256 | escape }}</code><br>Licence : <a href="{{ json_package.license_url | escape }}">{{ json_package.license | escape }}</a><br>Versions Vitte compatibles vérifiées : <code>{{ json_package.compatible_vitte_versions | join: ', ' }}</code><br>Copie intégrée : <code>{{ json_package.version | escape }}</code></td><td>Lexer, parser strict, arbre <code>JsonValue</code>, accès aux champs, validation, encodage, Unicode, limites et diagnostics.</td><td><span class="status-tag status-available">Disponible</span> : <code>make verify</code> passe depuis l’archive extraite avec le bootstrap Vitte {{ json_package.compatible_vitte_versions | join: ', ' }}. Le consommateur installé parser/encodeur et le test de concaténation passent aussi via <code>make -C modules/json verify</code> dans le dépôt Vitte. Cela ne constitue pas un audit runtime de chaque symbole.</td></tr>
 <tr><td><strong><code>core</code></strong></td><td><a href="https://github.com/vitte-lang/vitte/tree/main/modules/core">Sources de <code>modules/core</code></a><br>Versionnée avec le dépôt du compilateur, sans release indépendante décrite ici.</td><td>Familles d’APIs fondamentales documentées dans le <a href="https://github.com/vitte-lang/vitte/blob/main/modules/core/API.md">catalogue des exports</a> et le README du module.</td><td><span class="status-tag status-experimental">À vérifier par API</span> : le contrat source et la disponibilité native ne sont pas équivalents. Consultez la fiche de support du symbole précis et compilez un consommateur minimal.</td></tr>
 </tbody></table>
-<p>Cette première édition ne transforme pas les répertoires de sources en promesses de compatibilité. Un module ne sera ajouté comme paquet utilisable que lorsque son nom d’import, sa version, son mode d’installation et au moins un consommateur reproductible seront documentés.</p>
-<p>Les champs affichés sur le site et l’index préparé pour la future commande <code>vitte install</code> proviennent de <code>modules/json/registry.toml</code>. <code>docs/_data/module_registry.json</code> alimente le catalogue et <code>docs/registry/packages.tsv</code> publie les versions, leurs compatibilités et leurs SHA-256 ; ces fichiers sont générés avec <code>python3 scripts/generate_module_registry.py</code> puis vérifiés par le workflow Pages.</p>
+<p>JSON est le premier module de ce catalogue avec une release autonome, une empreinte enregistrée et une commande d’installation reproductible. Les autres répertoires de sources ne sont pas automatiquement des paquets utilisables : leur version, leur compatibilité et leur consommateur doivent aussi être documentés.</p>
+<p>Les champs affichés sur le site et l’index lu par <code>vitte install</code> proviennent de <code>modules/json/registry.toml</code>. <code>docs/_data/module_registry.json</code> alimente le catalogue et <code>docs/registry/packages.tsv</code> publie les versions, leurs compatibilités et leurs SHA-256 ; ces fichiers sont générés avec <code>python3 scripts/generate_module_registry.py</code> puis vérifiés par le workflow Pages.</p>
 
 <h2 id="json">JSON : le premier paquet externe</h2>
 <p>Le module JSON est la bibliothèque de données la plus complète présentée ici. Sa release autonome <a href="{{ json_package.release_url | escape }}"><code>{{ json_package.release_tag | escape }}</code></a> est liée à un tag immuable et fournit une archive avec son SHA-256. Le registre lit le nom, la version, l’URL, l’empreinte, la licence et les versions compatibles dans <code>modules/json/registry.toml</code> ; la branche <code>main</code> reste une source de développement et n’est pas une référence d’installation reproductible.</p>
 <p><a class="button" href="{{ '/module/json/' | relative_url }}">Ouvrir la page officielle du module JSON <span aria-hidden="true">→</span></a> <a class="button button-secondary" href="{{ '/reference/json/' | relative_url }}">Consulter la référence technique</a></p>
 
 <h2 id="installation">Installer le paquet JSON</h2>
-<p><strong>La commande <code>vitte install json</code> est à venir</strong> dans une release du compilateur. Elle visera la dernière version stable compatible; <code>--version</code> permettra d’épingler une version et <code>--global</code> d’installer pour l’utilisateur. Pour utiliser JSON maintenant, installez l’archive publiée manuellement :</p>
-<pre><code>curl -LO {{ json_package.download_url | escape }}
-curl -LO {{ json_package.download_url | append: '.sha256' | escape }}
-shasum -a 256 --check vitte-json-{{ json_package.version | escape }}.tar.gz.sha256
-tar -xzf vitte-json-{{ json_package.version | escape }}.tar.gz
-cd vitte-json-{{ json_package.version | escape }}
-make VITTE=/chemin/vers/vitte verify
-make install PREFIX="$HOME/.local"</code></pre>
-<p>La somme SHA-256 publiée est <code>{{ json_package.sha256 | escape }}</code>. Vérifiez-la avant extraction. Cette installation place le module sous <code>$HOME/.local/share/vitte/modules/json</code>. Ajoutez le répertoire parent à <code>VITTE_MODULE_PATH</code> si le compilateur ne le découvre pas :</p>
-<pre><code>export VITTE_MODULE_PATH="$HOME/.local/share/vitte/modules"
-build/bin/vitte compile application.vit -o application</code></pre>
-<p>Pour vérifier la copie intégrée au dépôt du compilateur, utilisez aussi :</p>
-<pre><code>make -C modules/json verify
-make install PREFIX="$HOME/.local"
-export PATH="$HOME/.local/bin:$PATH"</code></pre>
+<p>Depuis la racine de votre projet, exécutez la commande proposée :</p>
+<pre><code>vitte install json</code></pre>
+<p>Pour épingler JSON {{ json_package.version | escape }} :</p>
+<pre><code>vitte install json --version {{ json_package.version | escape }}</code></pre>
+<p>Vitte doit être compatible avec <code>{{ json_package.compatible_vitte_versions | join: ', ' }}</code>. Il faut aussi une connexion Internet et les commandes <code>curl</code> et <code>tar</code> dans le <code>PATH</code>. Le résultat attendu est <code>Installed json {{ json_package.version | escape }} in this project</code>. Les sources vont dans <code>.vitte/modules/json</code>; <code>vitte.packages.toml</code> et <code>vitte.lock</code> enregistrent la dépendance résolue. Pour l’utilisateur courant, ajoutez <code>--global</code>.</p>
+<p><a class="button" href="{{ '/module/json/' | relative_url }}#installation">Voir la commande d’installation <span aria-hidden="true">→</span></a> <a class="button button-secondary" href="https://github.com/Vitte-Foundation/json">Dépôt officiel JSON <span aria-hidden="true">↗</span></a></p>
 <p>Sous Windows, le séparateur de chemins de modules est le point-virgule. Le dépôt fournit également une cible de vérification qui installe le paquet dans un répertoire temporaire, compile un consommateur qui importe le parser et l’encodeur, puis exécute ce consommateur. Pour un clone autonome du dépôt JSON, suivez les instructions et les fichiers de la release correspondante ; les chemins <code>modules/json</code> ci-dessus sont ceux du dépôt monorepo Vitte.</p>
 
 <h2 id="surface-api">Carte rapide de l’API JSON 0.1.1 intégrée</h2>

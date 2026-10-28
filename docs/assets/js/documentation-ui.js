@@ -64,6 +64,24 @@
     wrapper.appendChild(button);
   });
 
+  document.querySelectorAll('[data-copy-command]').forEach((button) => {
+    const initialText = button.textContent;
+    button.addEventListener('click', async () => {
+      try {
+        await copyText(button.getAttribute('data-copy-command') || '');
+        button.textContent = 'Commande copiée';
+        button.dataset.copyState = 'copied';
+      } catch (error) {
+        button.textContent = 'Copie impossible';
+        button.dataset.copyState = 'error';
+      }
+      window.setTimeout(() => {
+        button.textContent = initialText;
+        delete button.dataset.copyState;
+      }, 1800);
+    });
+  });
+
   document.querySelectorAll('.lesson-body table, .reference-body table').forEach((table, index) => {
     if (table.parentElement.classList.contains('table-scroll')) return;
 

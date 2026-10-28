@@ -13,7 +13,7 @@ keywords: json module Vitte parse parse_strict JsonValue encode limites diagnost
   <strong>La release officielle JSON {{ json_package.version | escape }} est publiée.</strong>
   <p>Le tag immuable <a href="{{ json_package.release_url | escape }}"><code>{{ json_package.release_tag | escape }}</code></a> pointe vers le commit <code>{{ json_package.source_commit | escape }}</code>. L’archive autonome est accompagnée de son fichier SHA-256 : <code>{{ json_package.sha256 | escape }}</code>. {{ json_package.compatibility_verified | escape }}.</p>
 </div>
-<p><a class="button" href="{{ json_package.release_url | escape }}">Release JSON {{ json_package.version | escape }} <span aria-hidden="true">↗</span></a> <a class="button button-secondary" href="{{ json_package.download_url | escape }}">Télécharger l’archive source</a> <a class="button button-secondary" href="{{ '/reference/json/' | relative_url }}">Référence API détaillée</a></p>
+<p><button type="button" class="button copy-command-action" data-copy-command="vitte install json" aria-live="polite">Copier <code>vitte install json</code></button> <a class="button button-secondary" href="https://github.com/Vitte-Foundation/json">Dépôt JSON <span aria-hidden="true">↗</span></a> <a class="button button-secondary" href="{{ json_package.release_url | escape }}">Release {{ json_package.version | escape }}</a> <a class="button button-secondary" href="{{ '/reference/json/' | relative_url }}">Référence API détaillée</a></p>
 
 <h2 id="presentation">Ce que fournit le paquet</h2>
 <p>Le module prend une chaîne Vitte contenant du JSON, la transforme en tokens, construit une valeur Vitte, permet d’inspecter et de valider cette valeur, puis peut la réencoder. Le paquet est écrit en Vitte et le manifeste ne déclare aucune dépendance native. Le parsing travaille sur une chaîne déjà fournie par l’application : l’ouverture d’un fichier ou la lecture de stdin relève de la couche d’entrée du programme, pas du parser JSON.</p>
@@ -65,16 +65,22 @@ proc reformater(source: string) -> int {
 </ul>
 
 <h2 id="installer">Installation et import</h2>
-<div class="reference-callout warning"><strong><code>vitte install</code> : à venir.</strong><p>La version publique actuelle de Vitte ne fournit pas encore cette commande. Jusqu’à une release qui l’intègre, installez JSON avec son archive immuable et son SHA-256 comme décrit ici.</p></div>
-<p>La future commande <code>vitte install json</code> choisira la dernière version stable compatible; <code>--version {{ json_package.version | escape }}</code> épinglera une version précise, et <code>--global</code> installera pour l’utilisateur. En attendant, procédez manuellement :</p>
-<pre><code>curl -LO {{ json_package.download_url | escape }}
-curl -LO {{ json_package.download_url | append: '.sha256' | escape }}
-shasum -a 256 --check vitte-json-{{ json_package.version | escape }}.tar.gz.sha256
-tar -xzf vitte-json-{{ json_package.version | escape }}.tar.gz
-cd vitte-json-{{ json_package.version | escape }}
-make VITTE=/chemin/vers/vitte verify
-make install PREFIX="$HOME/.local"</code></pre>
-<p>La somme SHA-256 publiée est <code>{{ json_package.sha256 | escape }}</code>. Vérifiez-la avant extraction. Cette installation place le paquet dans <code>$HOME/.local/share/vitte/modules/json</code>; le parent de <code>json/</code> doit être résolu par Vitte. Ajoutez-le à <code>VITTE_MODULE_PATH</code> si nécessaire. Licence : <a href="{{ json_package.license_url | escape }}">{{ json_package.license | escape }}</a>. Versions Vitte compatibles vérifiées : <code>{{ json_package.compatible_vitte_versions | join: ', ' }}</code>.</p>
+<div class="reference-callout example"><strong>JSON {{ json_package.version | escape }} s’installe avec la commande Vitte.</strong><p>Version proposée par le registre : <code>{{ json_package.version | escape }}</code>. La release est publiée, enregistrée et vérifiée avec Vitte {{ json_package.compatible_vitte_versions | join: ', ' }}. Sans option de version, l’installateur sélectionne la dernière version stable compatible.</p></div>
+<h3>Prérequis</h3>
+<ul>
+  <li>Vitte {{ json_package.compatible_vitte_versions | join: ', ' }} ou une version compatible qui fournit la commande <code>install</code>.</li>
+  <li>Une connexion Internet pour lire le registre et télécharger l’archive.</li>
+  <li><code>curl</code> et <code>tar</code> accessibles dans le <code>PATH</code>.</li>
+  <li>Lancer la commande depuis la racine du projet pour une installation locale.</li>
+</ul>
+<h3>Installer la version proposée</h3>
+<p>Depuis la racine du projet, copiez cette commande. Sans option de version, Vitte choisit la dernière release stable compatible :</p>
+<pre><code>vitte install json</code></pre>
+<p>Pour fixer explicitement la version enregistrée dans le registre :</p>
+<pre><code>vitte install json --version {{ json_package.version | escape }}</code></pre>
+<p>Résultat attendu :</p>
+<pre><code>Installed json {{ json_package.version | escape }} in this project</code></pre>
+<p>Les sources sont placées dans <code>.vitte/modules/json</code>. Le manifeste <code>vitte.packages.toml</code> enregistre la dépendance et <code>vitte.lock</code> conserve la version exacte, l’URL et le SHA-256 de l’archive. La commande d’installation pour l’utilisateur est <code>vitte install json --global</code>; elle ne modifie pas les fichiers du projet. Licence : <a href="{{ json_package.license_url | escape }}">{{ json_package.license | escape }}</a>. <a href="https://github.com/Vitte-Foundation/json">Ouvrir le dépôt officiel JSON</a>.</p>
 
 <h2 id="preuves">Vérifications disponibles</h2>
 <p>La release autonome <code>{{ json_package.release_tag | escape }}</code> et la copie JSON <code>{{ json_package.version | escape }}</code> du dépôt Vitte ont toutes deux passé les parcours ci-dessous avec le bootstrap courant :</p>
