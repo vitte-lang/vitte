@@ -2781,8 +2781,13 @@ proc hir_lower_statement(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNod
             if (*node).child_count != 3 { return 0; }
             let iterable = hir_lower_expr(context, (*node).children[1]);
             let iterable_node = vitte_hir_get_node((*context).hir, iterable);
-            if iterable_node == null or (*iterable_node).kind != HIRNodeKind.Range { return 0; }
-            let element_type = (*iterable_node).type_;
+            if iterable_node == null { return 0; }
+            let mut element_type = (*iterable_node).type_;
+            if (*iterable_node).kind != HIRNodeKind.Range {
+                let iterable_type = vitte_hir_get_type((*context).hir, element_type);
+                if iterable_type == null or (*iterable_type).kind != HIRTypeKind.Array { return 0; }
+                set element_type = (*iterable_type).element_type;
+            }
             let saved_symbol_count = (*context).symbol_count;
             set result.kind = HIRNodeKind.For;
             set result.payload[0] = hir_lower_for_binding(context, (*node).children[0], element_type);

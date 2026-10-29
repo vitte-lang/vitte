@@ -31,7 +31,7 @@ The compiler HIR currently models:
 - expression statement
 - if statement
 - value-producing if expression
-- integer range expression and range-loop binding
+- integer range expression and range/fixed-array loop binding
 - while and infinite-loop statements
 - match statement with literal, wildcard, and supported pick patterns
 - integer literal
@@ -89,6 +89,7 @@ overflow. The owning `vitte_hir_t` records the last error.
 - if statement to if
 - value-producing if expression and block-expression value
 - exclusive and inclusive integer range expressions for `for`
+- fixed-array `for` iterables with their element type
 - `for` binding and body with a simple name or wildcard pattern
 - while and infinite-loop statements
 - match statements and supported patterns

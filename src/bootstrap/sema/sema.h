@@ -643,6 +643,10 @@ typedef struct vitte_sema {
     /* True while checking an ensures clause, where `result` is implicit. */
     bool current_contract_ensures;
 
+    /* Public use/export declarations, indexed once for name lookup. */
+    vitte_ast_node_id_t *explicit_exports;
+    size_t explicit_export_count;
+
     /*
      * Cached canonical builtin type IDs.
      */

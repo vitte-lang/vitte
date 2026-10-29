@@ -2764,13 +2764,97 @@ proc ir_lower_if_expr(context: *mut IRLowerContext, function: IRFunctionId, bloc
     return ir_lower_emit_value(context, IROpcode.Load, *block, result_type, &mut result_pointer, 1, &(*node).span);
 }
 
+// Evaluate the array expression once and copy each element into the loop binding.
+// The induction variable has its own storage so a mutable binding cannot alter it.
+proc ir_lower_for_array(context: *mut IRLowerContext, function: IRFunctionId, start: IRBlockId, node: *HIRNode, fallthrough: *mut IRBlockId) -> bool {
+    let pattern = ir_lower_node(context, (*node).payload[0]);
+    let iterable = ir_lower_node(context, (*node).payload[1]);
+    if pattern == null or iterable == null { return ir_fail((*context).ir, IRError.InvalidInstruction); }
+    let array_type = ir_lower_type(context, (*iterable).type_);
+    let array_record = vitte_ir_get_type((*context).ir, array_type);
+    if array_record == null or (*array_record).kind != IRTypeKind.Array {
+        return ir_fail((*context).ir, IRError.Unsupported);
+    }
+    let element_type = (*array_record).element_type;
+    let length = (*array_record).array_length;
+    let mut expression_block = start;
+    let array = ir_lower_expr(context, function, &mut expression_block, (*node).payload[1]);
+    let index_type = ir_lower_primitive(context, IRTypeKind.U64);
+    let bool_type = ir_lower_primitive(context, IRTypeKind.Bool);
+    let zero = vitte_ir_const_integer((*context).ir, index_type, 0);
+    let one = vitte_ir_const_integer((*context).ir, index_type, 1);
+    let upper = vitte_ir_const_integer((*context).ir, index_type, length as u64);
+    let mut pointer_desc = IRTypeDesc {};
+    set pointer_desc.kind = IRTypeKind.Pointer;
+    set pointer_desc.element_type = index_type;
+    let index_pointer_type = vitte_ir_intern_type((*context).ir, &pointer_desc);
+    set pointer_desc.element_type = element_type;
+    let element_pointer_type = vitte_ir_intern_type((*context).ir, &pointer_desc);
+    if array == 0 or index_type == 0 or bool_type == 0 or zero == 0 or one == 0 or upper == 0 or
+       index_pointer_type == 0 or element_pointer_type == 0 { return false; }
+    let counter = ir_lower_emit_value(context, IROpcode.Alloca, expression_block, index_pointer_type, null, 0, &(*node).span);
+    let mut initial_store: [IRValueId; 2] = [counter, zero];
+    if counter == 0 or ir_lower_emit(context, IROpcode.Store, expression_block, 0, &mut initial_store[0], 2, &(*node).span) == 0 { return false; }
+    let condition_block = ir_lower_new_block(context, function, "for.array.cond");
+    let body_block = ir_lower_new_block(context, function, "for.array.body");
+    let step_block = ir_lower_new_block(context, function, "for.array.step");
+    let exit_block = ir_lower_new_block(context, function, "for.array.exit");
+    if condition_block == 0 or body_block == 0 or step_block == 0 or exit_block == 0 or
+       vitte_ir_build_br((*context).ir, expression_block, condition_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+    let mut counter_operand = counter;
+    let current = ir_lower_emit_value(context, IROpcode.Load, condition_block, index_type, &mut counter_operand, 1, &(*node).span);
+    let mut comparison: [IRValueId; 2] = [current, upper];
+    let condition = ir_lower_emit_value(context, IROpcode.IcmpUlt, condition_block, bool_type, &mut comparison[0], 2, &(*node).span);
+    if current == 0 or condition == 0 or
+       vitte_ir_build_cond_br((*context).ir, condition_block, condition, body_block, exit_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+
+    let saved_symbol_count = (*context).symbol_count;
+    if (*pattern).kind == HIRNodeKind.PatternBinding {
+        let binding_symbol = (*pattern).payload[0] as HIRSymbolId;
+        let binding = ir_lower_symbol(context, binding_symbol);
+        let binding_type = if binding == null { 0 as IRTypeId } else { ir_lower_type(context, (*binding).type_) };
+        if binding_type != element_type { return ir_fail((*context).ir, IRError.TypeMismatch); }
+        let mut element_operands: [IRValueId; 2] = [array, current];
+        let address = ir_lower_emit_value(context, IROpcode.Gep, body_block, element_pointer_type, &mut element_operands[0], 2, &(*node).span);
+        let mut address_operand = address;
+        let value = ir_lower_emit_value(context, IROpcode.Load, body_block, element_type, &mut address_operand, 1, &(*node).span);
+        let storage = ir_lower_emit_value(context, IROpcode.Alloca, body_block, element_pointer_type, null, 0, &(*node).span);
+        let mut binding_store: [IRValueId; 2] = [storage, value];
+        if address == 0 or value == 0 or storage == 0 or
+           ir_lower_emit(context, IROpcode.Store, body_block, 0, &mut binding_store[0], 2, &(*node).span) == 0 or
+           not ir_lower_bind_value(context, binding_symbol, storage, true) { return false; }
+    } elif (*pattern).kind != HIRNodeKind.PatternWildcard {
+        return ir_fail((*context).ir, IRError.Unsupported);
+    }
+    if not ir_lower_push_loop(context, exit_block, step_block) { return false; }
+    let mut body_end = body_block;
+    let body_ok = ir_lower_statement(context, function, body_block, (*node).payload[2], &mut body_end);
+    set (*context).loop_count -= 1;
+    set (*context).symbol_count = saved_symbol_count;
+    if not body_ok { return false; }
+    let body_end_record = vitte_ir_get_block((*context).ir, body_end);
+    if body_end_record != null and not (*body_end_record).terminated and
+       vitte_ir_build_br((*context).ir, body_end, step_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+    let mut step_counter = counter;
+    let step_value = ir_lower_emit_value(context, IROpcode.Load, step_block, index_type, &mut step_counter, 1, &(*node).span);
+    let mut increment_operands: [IRValueId; 2] = [step_value, one];
+    let increment = ir_lower_emit_value(context, IROpcode.Add, step_block, index_type, &mut increment_operands[0], 2, &(*node).span);
+    let mut increment_store: [IRValueId; 2] = [counter, increment];
+    if step_value == 0 or increment == 0 or
+       ir_lower_emit(context, IROpcode.Store, step_block, 0, &mut increment_store[0], 2, &(*node).span) == 0 or
+       vitte_ir_build_br((*context).ir, step_block, condition_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+    set *fallthrough = exit_block;
+    return true;
+}
+
 proc ir_lower_for_range(context: *mut IRLowerContext, function: IRFunctionId, start: IRBlockId, node: *HIRNode, fallthrough: *mut IRBlockId) -> bool {
     if context == null { return false; }
     if node == null or (*node).kind != HIRNodeKind.For or fallthrough == null { return ir_fail((*context).ir, IRError.InvalidInstruction); }
     let pattern = ir_lower_node(context, (*node).payload[0]);
     let range = ir_lower_node(context, (*node).payload[1]);
-    if pattern == null or range == null or (*range).kind != HIRNodeKind.Range {
-        return ir_fail((*context).ir, IRError.Unsupported);
+    if pattern == null or range == null { return ir_fail((*context).ir, IRError.InvalidInstruction); }
+    if (*range).kind != HIRNodeKind.Range {
+        return ir_lower_for_array(context, function, start, node, fallthrough);
     }
     let range_type = ir_lower_type(context, (*range).type_);
     let range_type_record = vitte_ir_get_type((*context).ir, range_type);

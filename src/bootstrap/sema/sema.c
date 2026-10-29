@@ -2777,10 +2777,7 @@ vitte_sema_type_for_symbol(
         vitte_scope_get_symbol(
             &context->scopes,
             symbol_id);
-    if (symbol != NULL &&
-        (symbol->flags &
-         VITTE_SYMBOL_FLAG_IMPORTED) != 0u &&
-        symbol->payload != NULL) {
+    if (symbol != NULL && symbol->payload != NULL) {
         const vitte_ast_node_t *declaration;
         const vitte_sema_node_info_t *declaration_info;
 
@@ -2790,7 +2787,11 @@ vitte_sema_type_for_symbol(
             vitte_sema_node_info_private(
                 context,
                 declaration->id);
+        /* Declared symbols already carry their AST declaration. Resolve
+         * its type directly; retain the scan for synthetic/untyped symbols. */
         if (declaration_info != NULL &&
+            (declaration_info->symbol_id == symbol_id ||
+             (symbol->flags & VITTE_SYMBOL_FLAG_IMPORTED) != 0u) &&
             vitte_sema_node(
                 context,
                 declaration->id) == declaration &&
@@ -3517,7 +3518,7 @@ vitte_sema_is_explicitly_exported(
     vitte_scope_id_t scope_id)
 {
     vitte_ast_node_id_t node_id;
-    size_t node_count;
+    size_t export_index;
 
     if (context == NULL ||
         name == NULL ||
@@ -3525,16 +3526,14 @@ vitte_sema_is_explicitly_exported(
         return false;
     }
 
-    node_count =
-        vitte_parser_node_count(
-            context->parser);
-    for (node_id = 1u;
-         node_id <= (vitte_ast_node_id_t)node_count;
-         ++node_id) {
+    for (export_index = 0u;
+         export_index < context->explicit_export_count;
+         ++export_index) {
         const vitte_ast_node_t *export_node;
         const vitte_sema_node_info_t *export_info;
         size_t item_index;
 
+        node_id = context->explicit_exports[export_index];
         export_node =
             vitte_sema_node(
                 context,
@@ -12181,6 +12180,7 @@ vitte_sema_destroy(
         free(context->types);
         free(context->node_info);
         free(context->diagnostics);
+        free(context->explicit_exports);
     }
 
     memset(
@@ -12302,6 +12302,35 @@ vitte_sema_run(
         vitte_sema_u64_add_sat(
             context->stats.runs,
             UINT64_C(1));
+
+    /* The parser snapshot is immutable during analysis. Index explicit
+     * exports once instead of scanning the AST for every private name. */
+    size_t export_count = 0u;
+    for (size_t index = 0u; index < context->parser->node_count; ++index) {
+        const vitte_ast_node_t *node = &context->parser->nodes[index];
+        if (node->kind == VITTE_AST_NODE_USE_DECL &&
+            (node->flags & VITTE_AST_FLAG_PUBLIC) != 0u) {
+            ++export_count;
+        }
+    }
+    if (export_count != 0u) {
+        size_t export_bytes;
+        if (!vitte_sema_size_mul(export_count, sizeof(*context->explicit_exports),
+                                 &export_bytes)) {
+            return vitte_sema_fail(context, VITTE_SEMA_ERROR_OVERFLOW);
+        }
+        context->explicit_exports = malloc(export_bytes);
+        if (context->explicit_exports == NULL) {
+            return vitte_sema_fail(context, VITTE_SEMA_ERROR_OUT_OF_MEMORY);
+        }
+        for (size_t index = 0u; index < context->parser->node_count; ++index) {
+            const vitte_ast_node_t *node = &context->parser->nodes[index];
+            if (node->kind == VITTE_AST_NODE_USE_DECL &&
+                (node->flags & VITTE_AST_FLAG_PUBLIC) != 0u) {
+                context->explicit_exports[context->explicit_export_count++] = node->id;
+            }
+        }
+    }
 
     (void)vitte_sema_analyze_node(
         context,
