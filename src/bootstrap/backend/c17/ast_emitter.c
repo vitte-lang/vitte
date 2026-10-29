@@ -8529,6 +8529,60 @@ vitte_c17_ast_emit_forms_in_scope(
 }
 
 static void
+vitte_c17_ast_emit_opaque_forward_declarations_in_scope(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *scope)
+{
+    size_t index;
+
+    if (scope == NULL || emitter->failed) {
+        return;
+    }
+    for (index = 0u; index < scope->child_count; ++index) {
+        const vitte_ast_node_t *declaration =
+            vitte_c17_ast_child(emitter, scope, index);
+
+        if (declaration == NULL) {
+            emitter->failed = true;
+            return;
+        }
+        if (declaration->kind == VITTE_AST_NODE_OPAQUE_DECL) {
+            const vitte_ast_node_t *name =
+                vitte_c17_ast_child(emitter, declaration, 0u);
+            if (name == NULL) {
+                emitter->failed = true;
+                return;
+            }
+            vitte_c17_ast_write(emitter, "typedef struct ");
+            vitte_c17_ast_emit_declaration_name(
+                emitter, declaration, name);
+            vitte_c17_ast_write(emitter, " ");
+            vitte_c17_ast_emit_declaration_name(
+                emitter, declaration, name);
+            vitte_c17_ast_write(emitter, ";\n");
+        } else if (declaration->kind == VITTE_AST_NODE_SPACE_DECL &&
+                   declaration->child_count > 1u) {
+            const vitte_ast_node_t *body =
+                vitte_c17_ast_child(emitter, declaration, 1u);
+            if (body == NULL || body->kind != VITTE_AST_NODE_BLOCK ||
+                emitter->space_depth >=
+                    sizeof(emitter->space_stack) /
+                        sizeof(emitter->space_stack[0])) {
+                emitter->failed = true;
+                return;
+            }
+            emitter->space_stack[emitter->space_depth++] = declaration;
+            vitte_c17_ast_emit_opaque_forward_declarations_in_scope(
+                emitter, body);
+            --emitter->space_depth;
+        }
+        if (emitter->failed) {
+            return;
+        }
+    }
+}
+
+static void
 vitte_c17_ast_emit_generic_form_instances(
     vitte_c17_ast_emitter_t *emitter)
 {
@@ -9487,6 +9541,11 @@ vitte_c17_emit_ast_with_options(
         vitte_c17_ast_emit_debug_runtime(&emitter);
     }
 
+    vitte_c17_ast_emit_opaque_forward_declarations_in_scope(
+        &emitter,
+        root);
+    vitte_c17_ast_write(&emitter, "\n");
+
     vitte_c17_ast_emit_forms_in_scope(
         &emitter,
         root,
@@ -9758,6 +9817,7 @@ vitte_c17_emit_ast_with_options(
                    node->kind != VITTE_AST_NODE_TEST_DECL &&
                    node->kind != VITTE_AST_NODE_FORM_DECL &&
                    node->kind != VITTE_AST_NODE_PICK_DECL &&
+                   node->kind != VITTE_AST_NODE_OPAQUE_DECL &&
                    node->kind != VITTE_AST_NODE_CONST_DECL &&
                    node->kind != VITTE_AST_NODE_STATIC_DECL &&
                    node->kind != VITTE_AST_NODE_EXTERN_PROC_DECL &&

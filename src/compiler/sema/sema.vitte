@@ -832,13 +832,38 @@ proc sema_size_to_string(value: usize) -> string {
     return sema_size_to_string(value / 10) + string.from_byte((48 + (value % 10)) as u8);
 }
 
-proc sema_type_from_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId) -> SemaTypeId {
+proc sema_type_alias_target(context: *mut Sema, symbol_id: SymbolId) -> ASTNodeId {
+    if context == null or (*context).parser == null or symbol_id == 0 { return 0; }
+    let parser = (*context).parser;
+    let mut index: usize = 0;
+    while index < (*parser).node_count {
+        let candidate = &(*parser).nodes[index];
+        if (*candidate).kind == ASTNodeKind.TypeDecl and (*candidate).child_count >= 2 and (*candidate).id <= (*context).node_info_count as ASTNodeId {
+            let info = &(*context).node_info[((*candidate).id - 1) as usize];
+            if info.symbol_id == symbol_id {
+                let mut child_index: usize = 1;
+                let mut generic = false;
+                while child_index + 1 < (*candidate).child_count {
+                    let part = sema_child((*context).parser, candidate, child_index);
+                    if part == null or (*part).kind == ASTNodeKind.GenericParam or (*part).kind == ASTNodeKind.WhereClause { set generic = true; break; }
+                    set child_index += 1;
+                }
+                if not generic { return (*candidate).children[(*candidate).child_count - 1]; }
+            }
+        }
+        set index += 1;
+    }
+    return 0;
+}
+
+proc sema_type_from_node_depth(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId, depth: usize) -> SemaTypeId {
+    if depth > 128 { return (*context).type_error; }
     let node = sema_node((*context).parser, node_id);
     if node == null { return (*context).type_error; }
     if (*node).kind == ASTNodeKind.PointerType or (*node).kind == ASTNodeKind.ReferenceType or (*node).kind == ASTNodeKind.OptionalType or (*node).kind == ASTNodeKind.ArrayType {
         let element_node = sema_child((*context).parser, node, (*node).child_count - 1);
         if element_node == null { return (*context).type_error; }
-        let element = sema_type_from_node(context, (*element_node).id, scope_id);
+        let element = sema_type_from_node_depth(context, (*element_node).id, scope_id, depth + 1);
         let type_kind: SemaTypeKind = if (*node).kind == ASTNodeKind.PointerType { SemaTypeKind.Pointer } else if (*node).kind == ASTNodeKind.ReferenceType { SemaTypeKind.Reference } else if (*node).kind == ASTNodeKind.OptionalType { SemaTypeKind.Optional } else { SemaTypeKind.Array };
         let mut array_length: usize = 0;
         if (*node).kind == ASTNodeKind.ArrayType and (*node).child_count > 1 {
@@ -866,10 +891,23 @@ proc sema_type_from_node(context: *mut Sema, node_id: ASTNodeId, scope_id: Scope
         let symbol = vitte_scope_lookup_n(sema_scope_ptr(context), scope_id, (*token).lexeme.as_ptr() as *const u8, (*token).length);
         if symbol != 0 {
             let record = vitte_scope_get_symbol(sema_scope_ptr(context), symbol);
-            if record != null and ((*record).kind == SymbolKind.Type or (*record).kind == SymbolKind.Form or (*record).kind == SymbolKind.Pick or (*record).kind == SymbolKind.Trait or (*record).kind == SymbolKind.Opaque or (*record).kind == SymbolKind.GenericParameter) { let type_id = sema_symbol_type(context, symbol); if type_id != 0 { return type_id; } let kind: SemaTypeKind = if (*record).kind == SymbolKind.GenericParameter { SemaTypeKind.GenericParameter } else { SemaTypeKind.Named }; return sema_add_type(context, kind, 0, 0, symbol, false, 0, null, 0); }
+            if record != null and ((*record).kind == SymbolKind.Type or (*record).kind == SymbolKind.Form or (*record).kind == SymbolKind.Pick or (*record).kind == SymbolKind.Trait or (*record).kind == SymbolKind.Opaque or (*record).kind == SymbolKind.GenericParameter) {
+                if (*record).kind == SymbolKind.Type {
+                    let alias_target = sema_type_alias_target(context, symbol);
+                    if alias_target != 0 { return sema_type_from_node_depth(context, alias_target, scope_id, depth + 1); }
+                }
+                let type_id = sema_symbol_type(context, symbol);
+                if type_id != 0 { return type_id; }
+                let kind: SemaTypeKind = if (*record).kind == SymbolKind.GenericParameter { SemaTypeKind.GenericParameter } else { SemaTypeKind.Named };
+                return sema_add_type(context, kind, 0, 0, symbol, false, 0, null, 0);
+            }
         }
     }
     return (*context).type_error;
+}
+
+proc sema_type_from_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId) -> SemaTypeId {
+    return sema_type_from_node_depth(context, node_id, scope_id, 0);
 }
 
 /// Resolve `Pick::Variant` paths, including nongeneric payload variants.

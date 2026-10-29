@@ -1119,6 +1119,19 @@ test-import-collisions: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
 		done; \
 	done
 
+.PHONY: test-declaration-features
+test-declaration-features: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+	@set -e; \
+	for compiler in "$(TARGET_BIN)" "$(BOOTSTRAP_TARGET_BIN)"; do \
+		printf '[DECLARATIONS] values, aliases, and opaque pointers: %s\n' "$$compiler"; \
+		"$$compiler" run $(TEST_DIR)/declaration_features_runtime.vit --quiet --no-color; \
+		printf '[DECLARATIONS] immutable static rejection: %s\n' "$$compiler"; \
+		if output=$$("$$compiler" compile $(TEST_DIR)/static_immutable_write_rejected.vit --stop-after-sema --quiet --no-color 2>&1); then \
+			printf 'ERROR: immutable static write unexpectedly compiled\n'; exit 1; \
+		fi; \
+		case "$$output" in *E0513*) ;; *) printf '%s\n' "$$output"; printf 'ERROR: expected E0513 for immutable static write\n'; exit 1 ;; esac; \
+	done
+
 # HIR/IR lowering and C17 backend runtime smoke test. Keep the test on the
 # production Vitte path; the former standalone C harness is no longer tracked.
 .PHONY: test-ir-backend
@@ -1158,6 +1171,7 @@ compiler-power-gate: \
 	test-grammar \
 	test-sema \
 	test-import-collisions \
+	test-declaration-features \
 	test-imports \
 	test-native-frontend-subset \
 	test-native-bootstrap-parity \

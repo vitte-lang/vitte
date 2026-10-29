@@ -222,7 +222,7 @@ proc ir_type_text(context: &IRContext, type_id: u64, depth: usize) -> ?string {
             if name == null { return null; }
             return "struct " + name?;
         }
-        case IRTypeKind.Struct | IRTypeKind.Opaque | IRTypeKind.Pick => {
+        case IRTypeKind.Struct | IRTypeKind.Opaque | IRTypeKind.ForwardOpaque | IRTypeKind.Pick => {
             let name = ir_type_symbol(context, ty?, "vitte_type_");
             if name == null { return null; }
             return "struct " + name?;
@@ -235,6 +235,7 @@ proc ir_type_text(context: &IRContext, type_id: u64, depth: usize) -> ?string {
 proc ir_value_name(value: &IRValue) -> string {
     if value.kind == IRValueKind.Parameter and value.name != 0 { return "vitte_arg_" + ir_u64(value.id); }
     if value.kind == IRValueKind.Function { return "vitte_fn_" + ir_u64(value.function); }
+    if value.kind == IRValueKind.Global { return "(&vitte_global_" + ir_u64(value.global) + ")"; }
     return "vitte_v" + ir_u64(value.id);
 }
 
@@ -248,7 +249,7 @@ proc ir_value_text(context: &IRContext, value_id: u64) -> ?string {
         case IRValueKind.ConstantString => return ir_string_literal(context, value?.string_value);
         case IRValueKind.Null => return "NULL";
         case IRValueKind.Undef | IRValueKind.Poison => return "0";
-        case IRValueKind.Parameter | IRValueKind.Instruction => return ir_value_name(value?);
+        case IRValueKind.Parameter | IRValueKind.Instruction | IRValueKind.Global => return ir_value_name(value?);
         case IRValueKind.Function => {
             let function = ir_function(context, value?.function);
             if function == null { return null; }
@@ -773,7 +774,7 @@ export proc c17_emit_ir_with_options(context: &IRContext, options: &C17IREmitOpt
             let name = ir_type_symbol(context, ty, "vitte_type_");
             if name == null { return C17IRResult { success: false, source: "", error: "invalid named IR type" }; }
             set source += "struct " + name? + " { ";
-            if ty.kind == IRTypeKind.Struct and ty.field_count != 0 {
+            if ty.field_count != 0 {
                 let mut field_index: usize = 0;
                 while field_index < ty.field_count {
                     let field_type = ir_type_text(context, ty.field_types[field_index], 0);
@@ -786,6 +787,11 @@ export proc c17_emit_ir_with_options(context: &IRContext, options: &C17IREmitOpt
             }
             set source += "};\n";
         }
+        if ty.kind == IRTypeKind.ForwardOpaque {
+            let name = ir_type_symbol(context, ty, "vitte_type_");
+            if name == null { return C17IRResult { success: false, source: "", error: "invalid named opaque IR type" }; }
+            set source += "struct " + name? + ";\n";
+        }
         if ty.kind == IRTypeKind.Pick {
             let name = ir_type_symbol(context, ty, "vitte_type_");
             if name == null { return C17IRResult { success: false, source: "", error: "invalid named pick IR type" }; }
@@ -797,6 +803,18 @@ export proc c17_emit_ir_with_options(context: &IRContext, options: &C17IREmitOpt
             if name == null or element == null { return C17IRResult { success: false, source: "", error: "invalid slice IR type" }; }
             set source += "struct " + name? + " { " + element? + " *data; uint64_t length; };\n";
         }
+        set index += 1;
+    }
+    set source += "\n";
+    index = 0;
+    while index < context.global_count {
+        let global = &context.globals[index];
+        let type_name = ir_type_text(context, global.type_, 0);
+        let initial_value = ir_value_text(context, global.initializer);
+        if type_name == null or initial_value == null { return C17IRResult { success: false, source: "", error: "invalid IR global" }; }
+        set source += "static ";
+        if not global.mutable { set source += "const "; }
+        set source += type_name? + " vitte_global_" + ir_u64(global.id) + " = " + initial_value? + ";\n";
         set index += 1;
     }
     set source += "\n";

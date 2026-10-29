@@ -6,6 +6,7 @@ use compiler::hir::hir::{
     HIRBinaryOperator,
     HIRLiteralKind,
     HIRMatchArm,
+    HIRMutability,
     HIRNode,
     HIRNodeId,
     HIRNodeKind,
@@ -95,6 +96,7 @@ export pick IRTypeKind {
     Struct,
     Opaque,
     Pick,
+    ForwardOpaque,
     Count
 }
 
@@ -110,6 +112,7 @@ export pick IRValueKind {
     Parameter,
     Instruction,
     Function,
+    Global,
     Count
 }
 
@@ -260,6 +263,7 @@ export form IRValueDesc {
     string_value: IRStringId,
     function: IRFunctionId,
     instruction: IRInstructionId,
+    global: u64,
     parameter_index: usize
 }
 
@@ -275,6 +279,7 @@ export form IRValue {
     string_value: IRStringId,
     function: IRFunctionId,
     instruction: IRInstructionId,
+    global: u64,
     parameter_index: usize,
     use_count: u64
 }
@@ -357,6 +362,23 @@ export form IRFunction {
     entry_block: IRBlockId
 }
 
+export form IRGlobalDesc {
+    name: IRStringId,
+    type_: IRTypeId,
+    initializer: IRValueId,
+    mutable: bool,
+    span: IRSpan
+}
+
+export form IRGlobal {
+    id: u64,
+    name: IRStringId,
+    type_: IRTypeId,
+    initializer: IRValueId,
+    mutable: bool,
+    span: IRSpan
+}
+
 export form IRStats {
     strings_interned: u64,
     types_created: u64,
@@ -397,11 +419,15 @@ export form IRContext {
     functions: *mut IRFunction,
     function_count: usize,
     function_capacity: usize,
+    globals: *mut IRGlobal,
+    global_count: usize,
+    global_capacity: usize,
     max_types: usize,
     max_values: usize,
     max_instructions: usize,
     max_blocks: usize,
     max_functions: usize,
+    max_globals: usize,
     max_string_bytes: usize,
     stats: IRStats,
     generation: u64
@@ -620,6 +646,7 @@ proc ir_free_storage(context: *mut IRContext) {
     deallocate((*context).instructions as *mut u8);
     deallocate((*context).blocks as *mut u8);
     deallocate((*context).functions as *mut u8);
+    deallocate((*context).globals as *mut u8);
 }
 
 export proc vitte_ir_error_name(error: IRError) -> string {
@@ -687,6 +714,7 @@ export proc vitte_ir_type_kind_name(kind: IRTypeKind) -> string {
         case IRTypeKind.Struct => return "struct";
         case IRTypeKind.Opaque => return "opaque";
         case IRTypeKind.Pick => return "pick";
+        case IRTypeKind.ForwardOpaque => return "forward_opaque";
         case IRTypeKind.Count => return "count";
     }
     return "unknown";
@@ -705,6 +733,7 @@ export proc vitte_ir_value_kind_name(kind: IRValueKind) -> string {
         case IRValueKind.Parameter => return "parameter";
         case IRValueKind.Instruction => return "instruction";
         case IRValueKind.Function => return "function";
+        case IRValueKind.Global => return "global";
         case IRValueKind.Count => return "count";
     }
     return "unknown";
@@ -803,6 +832,7 @@ export proc vitte_ir_init(context: *mut IRContext) -> bool {
     set (*context).max_instructions = 16777216;
     set (*context).max_blocks = 4194304;
     set (*context).max_functions = 1048576;
+    set (*context).max_globals = 1048576;
     set (*context).max_string_bytes = 268435456;
     set (*context).generation = 1;
     return true;
@@ -815,6 +845,7 @@ export proc vitte_ir_reset(context: *mut IRContext) -> bool {
     let max_instructions = (*context).max_instructions;
     let max_blocks = (*context).max_blocks;
     let max_functions = (*context).max_functions;
+    let max_globals = (*context).max_globals;
     let max_string_bytes = (*context).max_string_bytes;
     let generation = (*context).generation;
     ir_free_storage(context);
@@ -827,6 +858,7 @@ export proc vitte_ir_reset(context: *mut IRContext) -> bool {
     set (*context).max_instructions = max_instructions;
     set (*context).max_blocks = max_blocks;
     set (*context).max_functions = max_functions;
+    set (*context).max_globals = max_globals;
     set (*context).max_string_bytes = max_string_bytes;
     set (*context).generation = if generation == IR_U64_MAX { IR_U64_MAX } else { generation + 1 };
     return true;
@@ -849,12 +881,14 @@ export proc vitte_ir_is_valid(context: *IRContext) -> bool {
        (*context).instruction_count > (*context).instruction_capacity or
        (*context).block_count > (*context).block_capacity or
        (*context).function_count > (*context).function_capacity or
+       (*context).global_count > (*context).global_capacity or
        (*context).string_count > (*context).string_capacity { return false; }
     if ((*context).type_count != 0 and (*context).types == null) or
        ((*context).value_count != 0 and (*context).values == null) or
        ((*context).instruction_count != 0 and (*context).instructions == null) or
        ((*context).block_count != 0 and (*context).blocks == null) or
        ((*context).function_count != 0 and (*context).functions == null) or
+       ((*context).global_count != 0 and (*context).globals == null) or
        ((*context).string_count != 0 and (*context).strings == null) { return false; }
     return true;
 }
@@ -1018,6 +1052,47 @@ export proc vitte_ir_get_type(context: *IRContext, id: IRTypeId) -> *IRType {
     return &(*context).types[(id - 1) as usize];
 }
 
+export proc vitte_ir_add_global(context: *mut IRContext, description: *IRGlobalDesc) -> u64 {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail_id(context, IRError.InvalidState); }
+    if description == null or vitte_ir_get_type(context, (*description).type_) == null or
+       vitte_ir_get_value(context, (*description).initializer) == null or
+       ((*description).name != 0 and vitte_ir_get_string(context, (*description).name) == null) {
+        return ir_fail_id(context, IRError.InvalidValue);
+    }
+    let initializer = vitte_ir_get_value(context, (*description).initializer);
+    if initializer == null or (*initializer).type_ != (*description).type_ or
+       ((*initializer).kind != IRValueKind.ConstantBool and (*initializer).kind != IRValueKind.ConstantInteger and
+        (*initializer).kind != IRValueKind.ConstantFloat and (*initializer).kind != IRValueKind.ConstantString and
+        (*initializer).kind != IRValueKind.Null) {
+        return ir_fail_id(context, IRError.Unsupported);
+    }
+    if (*context).global_count >= (*context).max_globals { return ir_fail_id(context, IRError.Limit); }
+    let mut required: usize = 0;
+    if not ir_size_add((*context).global_count, 1, &mut required) { return 0; }
+    let raw_globals = ir_reserve_array(context, (*context).globals as usize as *mut u8,
+        &mut (*context).global_capacity, (*context).global_count, required,
+        sizeof(IRGlobal), (*context).max_globals);
+    if raw_globals == null { return 0; }
+    set (*context).globals = raw_globals as usize as *mut IRGlobal;
+    let result = &mut (*context).globals[(*context).global_count];
+    set *result = IRGlobal {
+        id: required as u64,
+        name: (*description).name,
+        type_: (*description).type_,
+        initializer: (*description).initializer,
+        mutable: (*description).mutable,
+        span: (*description).span
+    };
+    set (*context).global_count = required;
+    set (*context).last_error = IRError.None;
+    return (*result).id;
+}
+
+export proc vitte_ir_get_global(context: *IRContext, id: u64) -> *IRGlobal {
+    if not vitte_ir_is_valid(context) or id == 0 or id > (*context).global_count as u64 { return null; }
+    return &(*context).globals[(id - 1) as usize];
+}
+
 export proc vitte_ir_add_value(context: *mut IRContext, description: *IRValueDesc) -> IRValueId {
     if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail_id(context, IRError.InvalidState); }
     if description == null or (*description).kind <= IRValueKind.Invalid or (*description).kind >= IRValueKind.Count or
@@ -1025,7 +1100,8 @@ export proc vitte_ir_add_value(context: *mut IRContext, description: *IRValueDes
     if ((*description).name != 0 and vitte_ir_get_string(context, (*description).name) == null) or
        ((*description).kind == IRValueKind.ConstantString and vitte_ir_get_string(context, (*description).string_value) == null) or
        ((*description).kind == IRValueKind.Parameter and vitte_ir_get_function(context, (*description).function) == null) or
-       ((*description).kind == IRValueKind.Instruction and vitte_ir_get_instruction(context, (*description).instruction) == null) {
+       ((*description).kind == IRValueKind.Instruction and vitte_ir_get_instruction(context, (*description).instruction) == null) or
+       ((*description).kind == IRValueKind.Global and vitte_ir_get_global(context, (*description).global) == null) {
         return ir_fail_id(context, IRError.InvalidValue);
     }
     if (*context).value_count >= (*context).max_values { return ir_fail_id(context, IRError.Limit); }
@@ -1049,6 +1125,7 @@ export proc vitte_ir_add_value(context: *mut IRContext, description: *IRValueDes
         string_value: (*description).string_value,
         function: (*description).function,
         instruction: (*description).instruction,
+        global: (*description).global,
         parameter_index: (*description).parameter_index,
         use_count: 0
     };
@@ -1479,6 +1556,10 @@ proc ir_validate_value(context: *mut IRContext, value: *IRValue) -> bool {
         let function = vitte_ir_get_function(context, (*value).function);
         if function == null or (*function).type_ != (*value).type_ { return ir_fail(context, IRError.InvalidFunction); }
     }
+    if (*value).kind == IRValueKind.Global {
+        let global = vitte_ir_get_global(context, (*value).global);
+        if global == null or (*value_type).kind != IRTypeKind.Pointer or (*value_type).element_type != (*global).type_ { return ir_fail(context, IRError.InvalidValue); }
+    }
     return true;
 }
 
@@ -1725,9 +1806,22 @@ export proc vitte_ir_validate(context: *mut IRContext) -> bool {
     ir_add_stat(&mut (*context).stats.validation_runs, 1);
     if (*context).string_count > (*context).string_capacity or (*context).type_count > (*context).type_capacity or
        (*context).value_count > (*context).value_capacity or (*context).instruction_count > (*context).instruction_capacity or
-       (*context).block_count > (*context).block_capacity or (*context).function_count > (*context).function_capacity { return ir_fail(context, IRError.Corruption); }
+       (*context).block_count > (*context).block_capacity or (*context).function_count > (*context).function_capacity or
+       (*context).global_count > (*context).global_capacity { return ir_fail(context, IRError.Corruption); }
     let mut index: usize = 0;
     while index < (*context).type_count { if (*context).types[index].id != index as u64 + 1 or not ir_validate_type(context, &mut (*context).types[index]) { ir_add_stat(&mut (*context).stats.validation_failures, 1); return false; } set index += 1; }
+    set index = 0;
+    while index < (*context).global_count {
+        let global = &(*context).globals[index];
+        let initial = vitte_ir_get_value(context, (*global).initializer);
+        if (*global).id != index as u64 + 1 or vitte_ir_get_type(context, (*global).type_) == null or
+           initial == null or (*initial).type_ != (*global).type_ or
+           ((*global).name != 0 and vitte_ir_get_string(context, (*global).name) == null) {
+            ir_add_stat(&mut (*context).stats.validation_failures, 1);
+            return ir_fail(context, IRError.InvalidValue);
+        }
+        set index += 1;
+    }
     set index = 0;
     while index < (*context).value_count { if (*context).values[index].id != index as u64 + 1 or not ir_validate_value(context, &mut (*context).values[index]) { ir_add_stat(&mut (*context).stats.validation_failures, 1); return false; } set index += 1; }
     set index = 0;
@@ -1969,6 +2063,7 @@ proc ir_lower_type(context: *mut IRLowerContext, id: HIRTypeId) -> IRTypeId {
                 if symbol != null {
                     set description.name = ir_lower_intern_hir_string(context, (*symbol).name);
                     if (*symbol).kind == HIRSymbolKind.Pick { set description.kind = IRTypeKind.Pick; }
+                    elif (*symbol).kind == HIRSymbolKind.Opaque { set description.kind = IRTypeKind.ForwardOpaque; }
                     elif (*symbol).kind == HIRSymbolKind.Form and not ir_lower_form_field_types(context, (*symbol).id, &mut description) {
                         deallocate(description.field_types as *mut u8);
                         return 0;
@@ -2875,10 +2970,20 @@ proc ir_lower_statement(context: *mut IRLowerContext, function: IRFunctionId, bl
     }
 }
 
-proc ir_lower_constant(context: *mut IRLowerContext, node_id: HIRNodeId) -> IRValueId {
+proc ir_lower_constant_as(context: *mut IRLowerContext, node_id: HIRNodeId, expected_type: IRTypeId) -> IRValueId {
     let node = ir_lower_node(context, node_id);
-    if node == null or (*node).kind != HIRNodeKind.Literal { return 0; }
-    let mut type_id = ir_lower_type(context, (*node).type_);
+    if node == null { return 0; }
+    if (*node).kind == HIRNodeKind.Symbol {
+        let mapped = ir_lower_find_value(context, (*node).payload[0]);
+        if mapped != null and not (*mapped).is_address {
+            let value = vitte_ir_get_value((*context).ir, (*mapped).value);
+            if value != null and (expected_type == 0 or (*value).type_ == expected_type) { return (*mapped).value; }
+        }
+        return 0;
+    }
+    if (*node).kind != HIRNodeKind.Literal { return 0; }
+    let mut type_id = expected_type;
+    if type_id == 0 { set type_id = ir_lower_type(context, (*node).type_); }
     if type_id == 0 { set type_id = ir_lower_default_type(context); }
     if type_id == 0 { return 0; }
     match (*node).payload[0] as HIRLiteralKind {
@@ -2894,6 +2999,10 @@ proc ir_lower_constant(context: *mut IRLowerContext, node_id: HIRNodeId) -> IRVa
         case HIRLiteralKind.Null => return vitte_ir_null((*context).ir, type_id);
         case _ => return 0;
     }
+}
+
+proc ir_lower_constant(context: *mut IRLowerContext, node_id: HIRNodeId) -> IRValueId {
+    return ir_lower_constant_as(context, node_id, 0);
 }
 
 proc ir_lower_cleanup(context: *mut IRLowerContext) {
@@ -2933,13 +3042,49 @@ export proc vitte_ir_lower_hir(ir: *mut IRContext, hir: *const HIR) -> bool {
         fill(context.functions as *mut u8, 0, bytes); set context.function_capacity = procedure_count;
         ir_add_stat(&mut (*ir).stats.allocations, 1);
     }
-    // Bind module constants before procedure bodies.
+    // Bind all constants first so statics can refer to declarations that appear later.
     index = 0;
     while index < item_count {
         let item = ir_lower_node(&mut context, items[index]);
-        if item != null and ((*item).kind == HIRNodeKind.ConstDecl or (*item).kind == HIRNodeKind.StaticDecl) {
-            let value = ir_lower_constant(&mut context, (*item).payload[1]);
-            if value == 0 or not ir_lower_bind_value(&mut context, (*item).payload[0], value, false) {
+        if item != null and (*item).kind == HIRNodeKind.ConstDecl {
+            let symbol = ir_lower_symbol(&mut context, (*item).payload[0]);
+            let type_hir: HIRTypeId = if (*item).payload[3] != 0 { (*item).payload[3] as HIRTypeId } elif symbol != null { (*symbol).type_ } else { 0 as HIRTypeId };
+            let type_id = ir_lower_type(&mut context, type_hir);
+            let value = ir_lower_constant_as(&mut context, (*item).payload[1], type_id);
+            if value == 0 or type_id == 0 or not ir_lower_bind_value(&mut context, (*item).payload[0], value, false) {
+                ir_lower_cleanup(&mut context); if (*ir).last_error == IRError.None { ir_fail(ir, IRError.Unsupported); }
+                set (*ir).state = IRState.Failed; return false;
+            }
+        }
+        set index += 1;
+    }
+    index = 0;
+    while index < item_count {
+        let item = ir_lower_node(&mut context, items[index]);
+        if item != null and (*item).kind == HIRNodeKind.StaticDecl {
+            let symbol = ir_lower_symbol(&mut context, (*item).payload[0]);
+            let type_hir: HIRTypeId = if (*item).payload[3] != 0 { (*item).payload[3] as HIRTypeId } elif symbol != null { (*symbol).type_ } else { 0 as HIRTypeId };
+            let type_id = ir_lower_type(&mut context, type_hir);
+            let initial = ir_lower_constant_as(&mut context, (*item).payload[1], type_id);
+            let hir_symbol = ir_lower_symbol(&mut context, (*item).payload[0]);
+            let symbol_name = if hir_symbol == null { 0 as IRStringId } else { ir_lower_intern_hir_string(&mut context, (*hir_symbol).name) };
+            let mut global_description: IRGlobalDesc = IRGlobalDesc {};
+            set global_description.name = symbol_name;
+            set global_description.type_ = type_id;
+            set global_description.initializer = initial;
+            set global_description.mutable = (((*item).payload[2] >> 32) as HIRMutability) == HIRMutability.Mutable;
+            set global_description.span = ir_lower_span(&(*item).span);
+            let global_id = if initial == 0 or type_id == 0 or symbol_name == 0 { 0 as u64 } else { vitte_ir_add_global(ir, &mut global_description) };
+            let mut pointer_description: IRTypeDesc = IRTypeDesc {};
+            set pointer_description.kind = IRTypeKind.Pointer;
+            set pointer_description.element_type = type_id;
+            let pointer_type = if global_id == 0 { 0 as IRTypeId } else { vitte_ir_intern_type(ir, &pointer_description) };
+            let mut address_description: IRValueDesc = IRValueDesc {};
+            set address_description.kind = IRValueKind.Global;
+            set address_description.type_ = pointer_type;
+            set address_description.global = global_id;
+            let address = if pointer_type == 0 { 0 as IRValueId } else { vitte_ir_add_value(ir, &mut address_description) };
+            if address == 0 or not ir_lower_bind_value(&mut context, (*item).payload[0], address, true) {
                 ir_lower_cleanup(&mut context); if (*ir).last_error == IRError.None { ir_fail(ir, IRError.Unsupported); }
                 set (*ir).state = IRState.Failed; return false;
             }
