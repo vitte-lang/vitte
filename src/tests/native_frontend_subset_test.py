@@ -259,6 +259,16 @@ INVALID_CASES = {
         'proc main() -> i64 { let boxed: Box<i64> = Box<i64> { value: "wrong" }; return 0; }\n',
         "VITTE_TYPE_E_MISMATCH",
     ),
+    "generic form first parameter checks field type": (
+        "form Pair<T, U> { first: T, second: U }\n"
+        "proc main() -> i64 { let pair: Pair<i64, bool> = Pair<i64, bool> { first: true, second: false }; return 0; }\n",
+        "VITTE_TYPE_E_MISMATCH",
+    ),
+    "generic form second parameter checks field type": (
+        "form Pair<T, U> { first: T, second: U }\n"
+        "proc main() -> i64 { let pair: Pair<i64, bool> = Pair<i64, bool> { first: 42, second: 7 }; return 0; }\n",
+        "VITTE_TYPE_E_MISMATCH",
+    ),
     "generic form requires every field": (
         "form Box<T> { value: T }\n"
         "proc main() -> i64 { let boxed: Box<i64> = Box<i64> {}; return 0; }\n",
@@ -316,6 +326,16 @@ AST_FALLBACK_CASES = {
         "}\n",
         "accept",
     ),
+    "generic form with multiple parameters is rejected by C17": (
+        "form Pair<T, U> { first: T, second: U }\n"
+        "proc main() -> i64 {\n"
+        "    let pair: Pair<i64, bool> = Pair<i64, bool> { first: 42, second: true };\n"
+        "    if pair.first != 42 { return 1; }\n"
+        "    if not pair.second { return 2; }\n"
+        "    return 0;\n"
+        "}\n",
+        "reject-multiple-parameters",
+    ),
     "generic form composition is rejected": (
         "form Box<T> { value: T }\n"
         "form Wrapper<T> { inner: Box<T> }\n"
@@ -362,6 +382,14 @@ def diagnostics_for(result: subprocess.CompletedProcess[str], label: str):
 def assert_ast_fallback(binary: Path, directory: Path, name: str, source: str, expectation: str):
     source_path = directory / (name.replace(" ", "_") + ".vit")
     source_path.write_text(source, encoding="utf-8")
+    if expectation == "reject-multiple-parameters":
+        checked = invoke(binary, "check", source_path)
+        if checked.returncode != 0:
+            raise AssertionError(
+                f"{name}: native parser/sema should resolve both generic parameters; "
+                f"stdout={checked.stdout!r}; stderr={checked.stderr!r}"
+            )
+
     result = subprocess.run(
         [
             str(binary), "compile", str(source_path), "--emit-c", "--quiet",
@@ -399,6 +427,18 @@ def assert_ast_fallback(binary: Path, directory: Path, name: str, source: str, e
             for item in diagnostics
         ):
             raise AssertionError(f"{name}: expected an explicit unsupported-composition detail, got {diagnostics!r}")
+    if expectation == "reject-multiple-parameters":
+        if result.stdout.strip():
+            raise AssertionError(f"{name}: failed code generation must not emit C source")
+        if "E0902" not in {item.get("code") for item in diagnostics}:
+            raise AssertionError(f"{name}: expected public backend diagnostic E0902, got {diagnostics!r}")
+        if not any(
+            "exactly one type parameter and one type argument" in item.get("details", "")
+            for item in diagnostics
+        ):
+            raise AssertionError(
+                f"{name}: expected the explicit single-parameter C17 limit, got {diagnostics!r}"
+            )
 
 
 def assert_generic_form_runtime(binary: Path):
