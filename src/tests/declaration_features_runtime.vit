@@ -1,0 +1,43 @@
+/// End-to-end coverage for module values and named type declarations.
+///
+/// This fixture keeps the language-level contracts small and observable:
+/// - constants can initialize values and feed calls;
+/// - `static mut` storage can be updated across a procedure body;
+/// - a primitive type alias works in declarations and procedure signatures;
+/// - opaque values can be passed as pointers without exposing their layout.
+
+space tests::declaration_features_runtime;
+
+const BASE: Number = 40;
+static mut COUNTER: Number = 0;
+type Number = i64;
+opaque Token;
+
+proc add_two(value: Number) -> Number {
+    return value + 2;
+}
+
+proc token_is_null(value: *Token) -> bool {
+    return value == null;
+}
+
+proc no_token() -> *Token {
+    return null;
+}
+
+proc increment_counter() -> Number {
+    set COUNTER = COUNTER + 1;
+    return COUNTER;
+}
+
+proc main() -> int {
+    let first = increment_counter();
+    let second = increment_counter();
+
+    let answer: Number = add_two(BASE);
+    if answer == 42 and first == 1 and second == 2 and COUNTER == 2 and token_is_null(no_token()) {
+        return 0;
+    }
+
+    return 1;
+}

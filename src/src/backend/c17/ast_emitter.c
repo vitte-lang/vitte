@@ -28,6 +28,7 @@ typedef struct vitte_c17_ast_emitter {
     const vitte_ast_node_t *function;
     const vitte_ast_node_t *space_stack[128];
     size_t space_depth;
+    size_t type_alias_depth;
     const char *source_path;
     bool debug_info;
     bool debug_runtime;
@@ -580,7 +581,107 @@ vitte_c17_ast_emit_type(
                            vitte_c17_ast_token_is(emitter, name, "int")) {
                     vitte_c17_ast_write(emitter, "int32_t");
                 } else {
-                    vitte_c17_ast_write_token(emitter, name);
+                    const vitte_ast_node_t *root;
+                    const vitte_ast_node_t *alias;
+                    size_t index;
+
+                    alias = NULL;
+                    for (index = emitter->space_depth;
+                         index != 0u && alias == NULL;
+                         --index) {
+                        const vitte_ast_node_t *space_body =
+                            vitte_c17_ast_child(
+                                emitter,
+                                emitter->space_stack[index - 1u],
+                                1u);
+                        size_t declaration_index;
+
+                        if (space_body == NULL ||
+                            space_body->kind != VITTE_AST_NODE_BLOCK) {
+                            continue;
+                        }
+                        for (declaration_index = 0u;
+                             declaration_index < space_body->child_count;
+                             ++declaration_index) {
+                            const vitte_ast_node_t *declaration =
+                                vitte_c17_ast_child(
+                                    emitter,
+                                    space_body,
+                                    declaration_index);
+                            if (declaration != NULL &&
+                                declaration->kind ==
+                                    VITTE_AST_NODE_TYPE_DECL &&
+                                (declaration->flags &
+                                 VITTE_AST_FLAG_TYPE_ALIAS) != 0u &&
+                                declaration->child_count >= 2u &&
+                                vitte_c17_ast_token_equal(
+                                    emitter,
+                                    vitte_c17_ast_child(
+                                        emitter, declaration, 0u),
+                                    name)) {
+                                alias = declaration;
+                                break;
+                            }
+                        }
+                    }
+
+                    root = vitte_c17_ast_node(
+                        emitter,
+                        vitte_parser_root(emitter->parser));
+                    for (index = 0u;
+                         index < (root != NULL ? root->child_count : 0u) &&
+                             alias == NULL;
+                         ++index) {
+                        const vitte_ast_node_t *declaration =
+                            vitte_c17_ast_child(emitter, root, index);
+                        if (declaration != NULL &&
+                            declaration->kind ==
+                                VITTE_AST_NODE_TYPE_DECL &&
+                            (declaration->flags &
+                             VITTE_AST_FLAG_TYPE_ALIAS) != 0u &&
+                            declaration->child_count >= 2u &&
+                            vitte_c17_ast_token_equal(
+                                emitter,
+                                vitte_c17_ast_child(
+                                    emitter, declaration, 0u),
+                                name)) {
+                            alias = declaration;
+                        }
+                    }
+
+                    if (alias != NULL) {
+                        bool has_generics = false;
+                        size_t child_index;
+
+                        for (child_index = 1u;
+                             child_index < alias->child_count;
+                             ++child_index) {
+                            const vitte_ast_node_t *child =
+                                vitte_c17_ast_child(
+                                    emitter, alias, child_index);
+                            if (child != NULL &&
+                                child->kind ==
+                                    VITTE_AST_NODE_GENERIC_PARAM) {
+                                has_generics = true;
+                                break;
+                            }
+                        }
+                        if (has_generics ||
+                            emitter->type_alias_depth >= 64u) {
+                            emitter->failed = true;
+                            return;
+                        }
+                        ++emitter->type_alias_depth;
+                        vitte_c17_ast_emit_type(
+                            emitter,
+                            vitte_c17_ast_child(
+                                emitter,
+                                alias,
+                                alias->child_count - 1u));
+                        --emitter->type_alias_depth;
+                    } else {
+                        vitte_c17_ast_write_token(emitter, name);
+                    }
                 }
             }
             return;
@@ -3504,6 +3605,50 @@ vitte_c17_ast_emit_forms_in_scope(
     }
 }
 
+static void
+vitte_c17_ast_emit_opaque_forward_declarations_in_scope(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *scope)
+{
+    size_t index;
+
+    if (scope == NULL || emitter->failed) {
+        return;
+    }
+    for (index = 0u; index < scope->child_count; ++index) {
+        const vitte_ast_node_t *declaration =
+            vitte_c17_ast_child(emitter, scope, index);
+
+        if (declaration == NULL) {
+            emitter->failed = true;
+            return;
+        }
+        if (declaration->kind == VITTE_AST_NODE_OPAQUE_DECL) {
+            const vitte_ast_node_t *name =
+                vitte_c17_ast_child(emitter, declaration, 0u);
+            if (name == NULL) {
+                emitter->failed = true;
+                return;
+            }
+            vitte_c17_ast_write(emitter, "typedef struct ");
+            vitte_c17_ast_write_token(emitter, name);
+            vitte_c17_ast_write(emitter, " ");
+            vitte_c17_ast_write_token(emitter, name);
+            vitte_c17_ast_write(emitter, ";\n");
+        } else if (declaration->kind == VITTE_AST_NODE_SPACE_DECL &&
+                   declaration->child_count > 1u) {
+            const vitte_ast_node_t *body =
+                vitte_c17_ast_child(emitter, declaration, 1u);
+            if (body == NULL || body->kind != VITTE_AST_NODE_BLOCK) {
+                emitter->failed = true;
+                return;
+            }
+            vitte_c17_ast_emit_opaque_forward_declarations_in_scope(
+                emitter, body);
+        }
+    }
+}
+
 static bool
 vitte_c17_ast_emit_pick(
     vitte_c17_ast_emitter_t *emitter,
@@ -4003,6 +4148,9 @@ vitte_c17_emit_ast_with_options(
         vitte_c17_ast_emit_debug_runtime(&emitter);
     }
 
+    vitte_c17_ast_emit_opaque_forward_declarations_in_scope(
+        &emitter,
+        root);
     vitte_c17_ast_emit_forms_in_scope(
         &emitter,
         root,
@@ -4249,9 +4397,12 @@ vitte_c17_emit_ast_with_options(
                    node->kind != VITTE_AST_NODE_TEST_DECL &&
                    node->kind != VITTE_AST_NODE_FORM_DECL &&
                    node->kind != VITTE_AST_NODE_PICK_DECL &&
+                   node->kind != VITTE_AST_NODE_OPAQUE_DECL &&
                    node->kind != VITTE_AST_NODE_CONST_DECL &&
                    node->kind != VITTE_AST_NODE_STATIC_DECL &&
-                   node->kind != VITTE_AST_NODE_EXTERN_PROC_DECL) {
+                   node->kind != VITTE_AST_NODE_EXTERN_PROC_DECL &&
+                   !(node->kind == VITTE_AST_NODE_TYPE_DECL &&
+                     (node->flags & VITTE_AST_FLAG_TYPE_ALIAS) != 0u)) {
             emitter.failed = true;
             break;
         }

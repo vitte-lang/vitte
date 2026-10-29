@@ -14,6 +14,7 @@ use compiler::ir::ir::{
     IROpcode,
     vitte_ir_get_block,
     vitte_ir_get_function,
+    vitte_ir_get_global,
     vitte_ir_get_instruction,
     vitte_ir_get_string,
     vitte_ir_get_type,
@@ -119,6 +120,13 @@ proc ir_dump_value(context: &IRContext, id: IRValueId) -> string {
             if function == null { return "@function#" + ir_dump_u64(value.function as u64); }
             let name = vitte_ir_get_string(context as *mut IRContext, function.name);
             if name == null { return "@function#" + ir_dump_u64(value.function as u64); }
+            return "@" + name.data.slice(0, name.length);
+        }
+        case IRValueKind.Global => {
+            let global = vitte_ir_get_global(context as *mut IRContext, value.global);
+            if global == null { return "@global#" + ir_dump_u64(value.global); }
+            let name = vitte_ir_get_string(context as *mut IRContext, global.name);
+            if name == null { return "@global#" + ir_dump_u64(value.global); }
             return "@" + name.data.slice(0, name.length);
         }
         case IRValueKind.Parameter => {

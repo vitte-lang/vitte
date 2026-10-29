@@ -4728,6 +4728,11 @@ vitte_parser_parse_value_declaration(
 
     (void)vitte_parser_advance(parser);
 
+    if (is_static &&
+        vitte_parser_match(parser, VITTE_TOKEN_KW_MUT)) {
+        flags |= VITTE_AST_FLAG_MUTABLE;
+    }
+
     name =
         vitte_parser_parse_identifier_node(
             parser);

@@ -7225,6 +7225,74 @@ vitte_sema_predeclare_types(
                 VITTE_SEMA_NODE_FLAG_PREDECLARED;
         }
     }
+
+    /* Materialize non-generic aliases after every named type has been
+     * predeclared.  This lets procedure signatures and value declarations
+     * use the alias's actual target type instead of the temporary nominal
+     * placeholder installed above. */
+    for (index = 0u;
+         index < declaration_count;
+         ++index) {
+        const vitte_ast_node_t *declaration;
+        const vitte_ast_node_t *target;
+        vitte_sema_node_info_t *declaration_info;
+        vitte_sema_type_id_t alias_type;
+        bool has_generics;
+        size_t child_index;
+
+        declaration =
+            vitte_sema_node(
+                context,
+                declarations[index]);
+        if (declaration == NULL ||
+            declaration->kind != VITTE_AST_NODE_TYPE_DECL ||
+            (declaration->flags & VITTE_AST_FLAG_TYPE_ALIAS) == 0u ||
+            declaration->child_count < 2u) {
+            continue;
+        }
+
+        has_generics = false;
+        for (child_index = 1u;
+             child_index < declaration->child_count;
+             ++child_index) {
+            const vitte_ast_node_t *child =
+                vitte_sema_node(
+                    context,
+                    declaration->children[child_index]);
+            if (child != NULL &&
+                child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
+                has_generics = true;
+                break;
+            }
+        }
+        if (has_generics) {
+            continue;
+        }
+
+        target = vitte_sema_node(
+            context,
+            declaration->children[declaration->child_count - 1u]);
+        if (target == NULL ||
+            (target->kind != VITTE_AST_NODE_TYPE_EXPR &&
+             target->kind != VITTE_AST_NODE_POINTER_TYPE &&
+             target->kind != VITTE_AST_NODE_REFERENCE_TYPE &&
+             target->kind != VITTE_AST_NODE_OPTIONAL_TYPE &&
+             target->kind != VITTE_AST_NODE_ARRAY_TYPE)) {
+            continue;
+        }
+
+        alias_type = vitte_sema_analyze_type_node(
+            context,
+            target->id,
+            scope_id);
+        declaration_info = vitte_sema_node_info_mut_private(
+            context,
+            declaration->id);
+        if (declaration_info != NULL &&
+            alias_type != context->type_error) {
+            declaration_info->type_id = alias_type;
+        }
+    }
 }
 
 /* ========================================================================= */
