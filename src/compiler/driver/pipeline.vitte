@@ -1137,16 +1137,6 @@ proc native_pipeline_form_field_type_supported(
     return native_pipeline_form_named_type_supported(parser, node, owner_name);
 }
 
-proc native_pipeline_for_range_supported(parser: &Parser, node: &ASTNode) -> bool {
-    if node.child_count != 3 or parser.nodes == null { return false; }
-    let iterable_id = node.children[1];
-    if iterable_id == 0 or iterable_id > parser.node_count as ASTNodeId { return false; }
-    let iterable_index = (iterable_id - 1) as usize;
-    let iterable = &parser.nodes[iterable_index];
-    return iterable.kind == ASTNodeKind.BinaryExpr and
-        (iterable.operator_kind == TokenKind.DotDot or iterable.operator_kind == TokenKind.DotDotEqual);
-}
-
 proc native_pipeline_requires_ast_codegen(parser: &Parser) -> bool {
     if parser.nodes == null { return false; }
     let mut index: usize = 0;
@@ -1154,7 +1144,6 @@ proc native_pipeline_requires_ast_codegen(parser: &Parser) -> bool {
         let node = &parser.nodes[index];
         if node.kind == ASTNodeKind.FormDecl and not native_pipeline_form_supported(parser, node) { return true; }
         if node.kind == ASTNodeKind.TestDecl { return true; }
-        if node.kind == ASTNodeKind.ForStmt and not native_pipeline_for_range_supported(parser, node) { return true; }
         set index += 1;
     }
     return false;

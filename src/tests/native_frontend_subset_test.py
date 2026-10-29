@@ -70,6 +70,78 @@ proc main() -> i64 {
     return 0;
 }
 """,
+    "array iteration through native IR": """\
+form Packet { values: [3]i64 }
+proc sum(values: [2]i64) -> i64 {
+    let mut total: i64 = 0;
+    for value in values { set total += value; }
+    return total;
+}
+proc main() -> i64 {
+    let values: [2]i64 = [20, 22];
+    let mut total: i64 = 0;
+    for value in values { set total += value; }
+    if total != 42 { return 1; }
+    let inferred = [2, 4, 6];
+    set total = 0;
+    for value in inferred {
+        if value == 4 { continue; }
+        set total += value;
+    }
+    if total != 8 { return 2; }
+    set total = 0;
+    for value in [3, 5, 9] {
+        if value == 9 { break; }
+        set total += value;
+    }
+    if total != 8 { return 3; }
+    let packet: Packet = Packet { values: [1, 2, 3] };
+    set total = 0;
+    for value in packet.values {
+        for other in values { set total += value + other; }
+    }
+    if total != 138 { return 4; }
+    let value: i64 = 99;
+    for value in values { if value == 99 { return 5; } }
+    if value != 99 { return 6; }
+    set total = 0;
+    for _ in values { set total += 1; }
+    if total != 2 { return 7; }
+    let bytes: [2]u8 = [1 as u8, 2 as u8];
+    set total = 0;
+    for byte in bytes { set total += byte as i64; }
+    if total != 3 { return 8; }
+    let empty: [0]i64 = [];
+    for _ in empty { return 9; }
+    for enabled in [true, false] {
+        if enabled { continue; }
+        set total += 1;
+    }
+    if total != 4 { return 11; }
+    let matrix: [2][2]i64 = [[1, 2], [3, 4]];
+    set total = 0;
+    for row in matrix {
+        for item in row { set total += item; }
+    }
+    if total != 10 { return 12; }
+    if sum(values) != 42 { return 13; }
+    let mut changing: [2]i64 = [1, 2];
+    set total = 0;
+    for item in changing {
+        set changing[1] = 12;
+        set total += item;
+    }
+    if total != 13 { return 14; }
+    let mut captured: [2]i64 = [1, 2];
+    set total = 0;
+    for item in captured {
+        set captured = [4, 8];
+        set total += item;
+    }
+    if total != 3 { return 15; }
+    return 0;
+}
+""",
     "scalar picks and match through native IR": """\
 pick State { Cold, Ready, Done }
 pick Other { Started }
@@ -260,15 +332,7 @@ AST_FALLBACK_CASES = {
         "proc main() -> i64 { return 0; }\n",
         "accept",
     ),
-    "non-range for statement": (
-        "proc main() -> i64 {\n"
-        "    let values: [2]i64 = [20, 22];\n"
-        "    let mut total: i64 = 0;\n"
-        "    for value in values { set total += value; }\n"
-        "    return total - 42;\n"
-        "}\n",
-        "reject",
-    ),
+
 }
 
 
@@ -402,6 +466,17 @@ def main() -> int:
                         f"{name}: run returned {executed.returncode}; "
                         f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
                     )
+            if name == "array iteration through native IR":
+                lowered = subprocess.run(
+                    [str(binary), "compile", str(source_path), "--emit-ir", "--no-color"],
+                    capture_output=True, text=True, timeout=60,
+                )
+                for opcode in ("gep", "icmp_ult", "cond_br"):
+                    if lowered.returncode != 0 or opcode not in lowered.stdout:
+                        raise AssertionError(f"{name}: missing {opcode}; {lowered.stdout!r}; {lowered.stderr!r}")
+                executed = invoke(binary, "run", source_path)
+                if executed.returncode != 0:
+                    raise AssertionError(f"{name}: run returned {executed.returncode}; {executed.stderr!r}")
             if name == "fixed arrays through native IR":
                 lowered = subprocess.run(
                     [
