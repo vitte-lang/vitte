@@ -75,6 +75,7 @@ form C17AstAliasSymbol {
     name: string,
     qualified_name: string,
     namespace: string,
+    declaration_id: ASTNodeId,
     target_id: ASTNodeId,
 }
 
@@ -86,18 +87,34 @@ form C17AstFormSymbol {
     layout_state: u8,
 }
 
+form C17AstOpaqueSymbol {
+    name: string,
+    qualified_name: string,
+    namespace: string,
+    node_id: ASTNodeId,
+}
+
 form C17AstGenericFormInstance {
     form_index: usize,
     type_node_id: ASTNodeId,
+    argument_count: usize,
+    argument_types: [string],
     namespace: string,
     c_name: string,
     layout_state: u8,
+    forward_declared: bool,
+}
+
+form C17AstGenericProcInstance {
+    procedure_index: usize,
+    argument_count: usize,
+    argument_types: [string],
+    c_name: string,
 }
 
 form C17AstTypeSubstitution {
     name: string,
-    type_node_id: ASTNodeId,
-    namespace: string,
+    type_text: string,
 }
 
 form C17AstPickSymbol {
@@ -129,9 +146,15 @@ form C17AstEmitter {
     alias_count: usize,
     forms: [C17AstFormSymbol; 1024],
     form_count: usize,
-    generic_forms: [C17AstGenericFormInstance; 512],
+    opaques: [C17AstOpaqueSymbol; 1024],
+    opaque_count: usize,
+    generic_forms: [C17AstGenericFormInstance],
     generic_form_count: usize,
-    type_substitutions: [C17AstTypeSubstitution; 32],
+    generic_procs: [C17AstGenericProcInstance],
+    generic_proc_count: usize,
+    generic_proc_c_name: string,
+    generic_call_owner_id: ASTNodeId,
+    type_substitutions: [C17AstTypeSubstitution],
     type_substitution_count: usize,
     picks: [C17AstPickSymbol; 1024],
     pick_count: usize,
@@ -469,6 +492,19 @@ proc ast_collect_symbols(
                 layout_state: 0,
             };
             set emitter.form_count += 1;
+        } elif declaration_node.kind == ASTNodeKind.OpaqueDecl {
+            let name = ast_token_text(emitter, ast_child(emitter, declaration_node, 0));
+            if name.len() == 0 or emitter.opaque_count >= AST_EMIT_MAX_SYMBOLS {
+                ast_fail(emitter, "opaque type symbol table is invalid or full");
+                return;
+            }
+            set emitter.opaques[emitter.opaque_count] = C17AstOpaqueSymbol {
+                name: name,
+                qualified_name: ast_qualified_name(name, active_space),
+                namespace: active_space,
+                node_id: declaration_node.id,
+            };
+            set emitter.opaque_count += 1;
         } elif declaration_node.kind == ASTNodeKind.PickDecl {
             let name = ast_token_text(emitter, ast_child(emitter, declaration_node, 0));
             if name.len() == 0 or emitter.pick_count >= AST_EMIT_MAX_SYMBOLS {
@@ -493,6 +529,7 @@ proc ast_collect_symbols(
                 name: name,
                 qualified_name: ast_qualified_name(name, active_space),
                 namespace: active_space,
+                declaration_id: declaration_node.id,
                 target_id: target?.id,
             };
             set emitter.alias_count += 1;
@@ -529,6 +566,209 @@ proc ast_proc_node_index(emitter: &C17AstEmitter, node_id: ASTNodeId) -> usize {
         set index += 1;
     }
     return usize.MAX;
+}
+
+proc ast_proc_generic_parameter_count(emitter: &C17AstEmitter, procedure: ?&ASTNode) -> usize {
+    if procedure == null { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 1;
+    while index < procedure?.child_count {
+        let child = ast_child(emitter, procedure, index);
+        if child != null and child?.kind == ASTNodeKind.GenericParam { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+proc ast_proc_generic_parameter(
+    emitter: &C17AstEmitter,
+    procedure: ?&ASTNode,
+    parameter_index: usize
+) -> ?&ASTNode {
+    if procedure == null { return null; }
+    let mut seen: usize = 0;
+    let mut index: usize = 1;
+    while index < procedure?.child_count {
+        let child = ast_child(emitter, procedure, index);
+        if child != null and child?.kind == ASTNodeKind.GenericParam {
+            if seen == parameter_index { return child; }
+            set seen += 1;
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+proc ast_proc_parameter_node(
+    emitter: &C17AstEmitter,
+    procedure: ?&ASTNode,
+    parameter_index: usize
+) -> ?&ASTNode {
+    if procedure == null { return null; }
+    let mut seen: usize = 0;
+    let mut index: usize = 1;
+    while index < procedure?.child_count {
+        let child = ast_child(emitter, procedure, index);
+        if child != null and child?.kind == ASTNodeKind.Parameter {
+            if seen == parameter_index { return child; }
+            set seen += 1;
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+proc ast_generic_proc_instance_index(emitter: &C17AstEmitter, c_name: string) -> usize {
+    let mut index: usize = 0;
+    while index < emitter.generic_proc_count {
+        if emitter.generic_procs[index].c_name == c_name { return index; }
+        set index += 1;
+    }
+    return usize.MAX;
+}
+
+proc ast_generic_proc_type_contains_parameter(
+    emitter: &C17AstEmitter,
+    procedure: ?&ASTNode,
+    type_node: ?&ASTNode,
+    generic_index: usize,
+    depth: usize
+) -> bool {
+    if type_node == null or depth > AST_EMIT_MAX_DEPTH { return false; }
+    if type_node?.kind == ASTNodeKind.TypeExpr and type_node?.child_count == 1 {
+        let path = ast_child(emitter, type_node, 0);
+        let generic = ast_proc_generic_parameter(emitter, procedure, generic_index);
+        if path != null and generic != null and
+           path?.kind == ASTNodeKind.Path and path?.child_count == 1 and
+           ast_path_text(emitter, path) ==
+               ast_token_text(emitter, ast_child(emitter, generic, 0)) {
+            return true;
+        }
+    }
+    let mut child_index: usize = 0;
+    while child_index < type_node?.child_count {
+        if ast_generic_proc_type_contains_parameter(
+            emitter,
+            procedure,
+            ast_child(emitter, type_node, child_index),
+            generic_index,
+            depth + 1
+        ) { return true; }
+        set child_index += 1;
+    }
+    return false;
+}
+
+/* Return an empty string when this part of the signature does not mention
+ * the selected parameter, a concrete C type when it does, and null when the
+ * source type shape cannot be matched safely. */
+proc ast_infer_generic_proc_type(
+    emitter: &mut C17AstEmitter,
+    procedure: ?&ASTNode,
+    pattern: ?&ASTNode,
+    actual: ?&ASTNode,
+    fallback_type: ?string,
+    generic_index: usize,
+    namespace: string,
+    depth: usize
+) -> ?string {
+    if pattern == null or depth > AST_EMIT_MAX_DEPTH { return null; }
+    if not ast_generic_proc_type_contains_parameter(
+        emitter,
+        procedure,
+        pattern,
+        generic_index,
+        depth
+    ) { return ""; }
+    let pattern_node = pattern?;
+    if pattern_node.kind == ASTNodeKind.TypeExpr and pattern_node.child_count == 1 {
+        let concrete_type: ?string = if actual != null {
+            ast_type_text(emitter, actual, namespace, depth + 1)
+        } else { fallback_type };
+        if concrete_type == null or concrete_type?.len() == 0 { return null; }
+        return concrete_type?;
+    }
+    if actual == null or pattern_node.kind != actual?.kind { return null; }
+
+    if pattern_node.kind == ASTNodeKind.TypeExpr {
+        let pattern_path = ast_child(emitter, pattern, 0);
+        let actual_path = ast_child(emitter, actual, 0);
+        if pattern_path == null or actual_path == null or
+           ast_path_text(emitter, pattern_path) != ast_path_text(emitter, actual_path) or
+           pattern_node.child_count != actual?.child_count {
+            return null;
+        }
+        let mut result: string = "";
+        let mut argument_index: usize = 1;
+        while argument_index < pattern_node.child_count {
+            let inferred = ast_infer_generic_proc_type(
+                emitter,
+                procedure,
+                ast_child(emitter, pattern, argument_index),
+                ast_child(emitter, actual, argument_index),
+                null,
+                generic_index,
+                namespace,
+                depth + 1
+            );
+            if inferred == null { return null; }
+            if inferred?.len() != 0 {
+                if result.len() != 0 and result != inferred? { return null; }
+                set result = inferred?;
+            }
+            set argument_index += 1;
+        }
+        return result;
+    }
+
+    if pattern_node.kind == ASTNodeKind.PointerType or
+       pattern_node.kind == ASTNodeKind.ReferenceType or
+       pattern_node.kind == ASTNodeKind.OptionalType {
+        return ast_infer_generic_proc_type(
+            emitter,
+            procedure,
+            ast_child(emitter, pattern, 0),
+            ast_child(emitter, actual, 0),
+            null,
+            generic_index,
+            namespace,
+            depth + 1
+        );
+    }
+    if pattern_node.kind == ASTNodeKind.ArrayType {
+        if pattern_node.child_count != actual?.child_count { return null; }
+        let mut result: string = "";
+        let mut part_index: usize = 0;
+        while part_index < pattern_node.child_count {
+            let pattern_part = ast_child(emitter, pattern, part_index);
+            let actual_part = ast_child(emitter, actual, part_index);
+            if pattern_part == null or actual_part == null { return null; }
+            if pattern_part?.kind == ASTNodeKind.IntegerLiteral {
+                if ast_token_text(emitter, pattern_part) != ast_token_text(emitter, actual_part) {
+                    return null;
+                }
+            } else {
+                let inferred = ast_infer_generic_proc_type(
+                    emitter,
+                    procedure,
+                    pattern_part,
+                    actual_part,
+                    null,
+                    generic_index,
+                    namespace,
+                    depth + 1
+                );
+                if inferred == null { return null; }
+                if inferred?.len() != 0 {
+                    if result.len() != 0 and result != inferred? { return null; }
+                    set result = inferred?;
+                }
+            }
+            set part_index += 1;
+        }
+        return result;
+    }
+    return null;
 }
 
 proc ast_resolve_proc_path(emitter: &C17AstEmitter, path: ?&ASTNode, namespace: string) -> usize {
@@ -612,6 +852,11 @@ proc ast_resolve_type_alias(emitter: &C17AstEmitter, node: ?&ASTNode, namespace:
         };
         if alias_index == usize.MAX { break; }
         let alias: &C17AstAliasSymbol = &emitter.aliases[alias_index];
+        let declaration = ast_node(emitter, alias.declaration_id);
+        if declaration != null and
+           ast_count_kind(emitter, declaration?, ASTNodeKind.GenericParam) != 0 {
+            break;
+        }
         set current = ast_node(emitter, alias.target_id);
         set current_space = alias.namespace;
         set depth += 1;
@@ -635,6 +880,25 @@ proc ast_form_index(emitter: &C17AstEmitter, name: string, namespace: string) ->
             if found != usize.MAX {
                 return usize.MAX;
             }
+            set found = index;
+        }
+        set index += 1;
+    }
+    return found;
+}
+
+proc ast_opaque_index(emitter: &C17AstEmitter, name: string, namespace: string) -> usize {
+    let wanted: string = if ast_has_namespace_separator(name) {
+        name
+    } else {
+        ast_qualified_name(name, namespace)
+    };
+    let mut found: usize = usize.MAX;
+    let mut index: usize = 0;
+    while index < emitter.opaque_count {
+        if emitter.opaques[index].qualified_name == wanted { return index; }
+        if emitter.opaques[index].name == name {
+            if found != usize.MAX { return usize.MAX; }
             set found = index;
         }
         set index += 1;
@@ -672,7 +936,7 @@ proc ast_form_generic_parameter(
 }
 
 proc ast_generic_form_instance_name(
-    emitter: &C17AstEmitter,
+    emitter: &mut C17AstEmitter,
     type_node: ?&ASTNode,
     namespace: string,
     depth: usize
@@ -690,12 +954,24 @@ proc ast_generic_form_instance_name(
        ast_form_generic_parameter_count(emitter, declaration?) == 0 {
         return null;
     }
-    if ast_form_generic_parameter_count(emitter, declaration?) != 1 or type_node?.child_count != 2 {
+    let parameter_count = ast_form_generic_parameter_count(emitter, declaration?);
+    if parameter_count == 0 or parameter_count != type_node?.child_count - 1 {
         return null;
     }
-    let argument_type = ast_type_text(emitter, ast_child(emitter, type_node, 1), namespace, depth + 1);
-    if argument_type == null { return null; }
-    return ast_mangle(emitter.forms[form_index].qualified_name + "@" + argument_type?, "vitte_type_");
+    let mut key = emitter.forms[form_index].qualified_name;
+    let mut argument_index: usize = 1;
+    while argument_index < type_node?.child_count {
+        let argument_type = ast_type_text(
+            emitter,
+            ast_child(emitter, type_node, argument_index),
+            namespace,
+            depth + 1
+        );
+        if argument_type == null { return null; }
+        set key = key + "@" + argument_type?;
+        set argument_index += 1;
+    }
+    return ast_mangle(key, "vitte_type_");
 }
 
 proc ast_generic_form_instance_index(emitter: &C17AstEmitter, c_name: string) -> usize {
@@ -716,11 +992,110 @@ proc ast_type_substitution_index(emitter: &C17AstEmitter, name: string) -> usize
     return usize.MAX;
 }
 
+proc ast_generic_alias_parameter_index(
+    emitter: &C17AstEmitter,
+    declaration: &ASTNode,
+    type_node: ?&ASTNode
+) -> usize {
+    if type_node == null or type_node?.kind != ASTNodeKind.TypeExpr or
+       type_node?.child_count != 1 {
+        return usize.MAX;
+    }
+    let path = ast_child(emitter, type_node, 0);
+    if path == null or path?.kind != ASTNodeKind.Path or path?.child_count != 1 {
+        return usize.MAX;
+    }
+    let name = ast_path_text(emitter, path);
+    let mut index: usize = 0;
+    let count = ast_count_kind(emitter, declaration, ASTNodeKind.GenericParam);
+    while index < count {
+        let parameter = ast_form_generic_parameter(emitter, declaration, index);
+        if parameter != null and ast_token_text(emitter, ast_child(emitter, parameter, 0)) == name {
+            return index;
+        }
+        set index += 1;
+    }
+    return usize.MAX;
+}
+
+proc ast_expand_generic_alias_type_text(
+    emitter: &mut C17AstEmitter,
+    application: &ASTNode,
+    declaration: &ASTNode,
+    application_namespace: string,
+    declaration_namespace: string,
+    depth: usize
+) -> ?string {
+    if depth > AST_EMIT_MAX_DEPTH { return null; }
+    let parameter_count = ast_count_kind(emitter, declaration, ASTNodeKind.GenericParam);
+    if parameter_count == 0 or application.child_count != parameter_count + 1 {
+        return null;
+    }
+    let saved_count = emitter.type_substitution_count;
+    if saved_count > usize.MAX - parameter_count { return null; }
+    while emitter.type_substitutions.len() < saved_count + parameter_count {
+        if not emitter.type_substitutions.push(C17AstTypeSubstitution {}) {
+            return null;
+        }
+    }
+    let mut index: usize = 0;
+    while index < parameter_count {
+        let parameter = ast_form_generic_parameter(emitter, declaration, index);
+        let argument = ast_child(emitter, application, index + 1);
+        if parameter == null or argument == null {
+            set emitter.type_substitution_count = saved_count;
+            return null;
+        }
+        let name = ast_token_text(emitter, ast_child(emitter, parameter, 0));
+        let argument_text = ast_type_text(
+            emitter, argument, application_namespace, depth + 1
+        );
+        if name.len() == 0 or argument_text == null {
+            set emitter.type_substitution_count = saved_count;
+            return null;
+        }
+        emitter.type_substitutions[saved_count + index] = C17AstTypeSubstitution {
+            name: name,
+            type_text: argument_text?,
+        };
+        set index += 1;
+    }
+    set emitter.type_substitution_count = saved_count + parameter_count;
+    let target = ast_child(emitter, declaration, declaration.child_count - 1);
+    let result = ast_type_text(
+        emitter, target, declaration_namespace, depth + 1
+    );
+    set emitter.type_substitution_count = saved_count;
+    return result;
+}
+
 proc ast_type_argument_is_generic_parameter(emitter: &C17AstEmitter, type_node: ?&ASTNode) -> bool {
     if type_node == null or type_node?.kind != ASTNodeKind.TypeExpr or type_node?.child_count != 1 { return false; }
     let path = ast_child(emitter, type_node, 0);
     if path == null or path?.kind != ASTNodeKind.Path or path?.child_count != 1 { return false; }
     let name = ast_path_text(emitter, path);
+    if ast_type_substitution_index(emitter, name) != usize.MAX { return false; }
+    let mut procedure_index: usize = 0;
+    while procedure_index < emitter.procedure_count {
+        let procedure = ast_node(
+            emitter,
+            emitter.procedures[procedure_index].node_id
+        );
+        let mut parameter_index: usize = 0;
+        while parameter_index < ast_proc_generic_parameter_count(emitter, procedure) {
+            let parameter = ast_proc_generic_parameter(
+                emitter,
+                procedure,
+                parameter_index
+            );
+            if parameter != null and
+               ast_token_text(emitter, ast_child(emitter, parameter, 0)) == name {
+                return true;
+            }
+            set parameter_index += 1;
+        }
+        set procedure_index += 1;
+    }
     let mut form_index: usize = 0;
     while form_index < emitter.form_count {
         let declaration = ast_node(emitter, emitter.forms[form_index].node_id);
@@ -734,7 +1109,221 @@ proc ast_type_argument_is_generic_parameter(emitter: &C17AstEmitter, type_node: 
         }
         set form_index += 1;
     }
+    let mut alias_index: usize = 0;
+    while alias_index < emitter.alias_count {
+        let declaration = ast_node(
+            emitter, emitter.aliases[alias_index].declaration_id
+        );
+        if declaration != null {
+            let mut parameter_index: usize = 0;
+            while parameter_index < ast_count_kind(
+                emitter, declaration?, ASTNodeKind.GenericParam
+            ) {
+                let parameter = ast_form_generic_parameter(
+                    emitter, declaration?, parameter_index
+                );
+                if parameter != null and
+                   ast_token_text(emitter, ast_child(emitter, parameter, 0)) == name {
+                    return true;
+                }
+                set parameter_index += 1;
+            }
+        }
+        set alias_index += 1;
+    }
     return false;
+}
+
+proc ast_type_contains_generic_parameter(
+    emitter: &C17AstEmitter,
+    type_node: ?&ASTNode,
+    depth: usize
+) -> bool {
+    if type_node == null or depth > AST_EMIT_MAX_DEPTH { return false; }
+    if ast_type_argument_is_generic_parameter(emitter, type_node) { return true; }
+    let mut index: usize = 0;
+    while index < type_node?.child_count {
+        if ast_type_contains_generic_parameter(
+            emitter,
+            ast_child(emitter, type_node, index),
+            depth + 1
+        ) {
+            return true;
+        }
+        set index += 1;
+    }
+    return false;
+}
+
+proc ast_register_generic_alias_form_instance(
+    emitter: &mut C17AstEmitter,
+    alias_application: &ASTNode,
+    namespace: string,
+    depth: usize
+) {
+    if depth > AST_EMIT_MAX_DEPTH or alias_application.child_count < 2 { return; }
+    let alias_path = ast_child(emitter, alias_application, 0);
+    if alias_path == null or alias_path?.kind != ASTNodeKind.Path { return; }
+    let alias_name = ast_path_text(emitter, alias_path);
+    let alias_index = if alias_path?.child_count > 1 {
+        ast_alias_index(emitter, alias_name, "")
+    } else {
+        ast_alias_index(emitter, alias_name, namespace)
+    };
+    if alias_index == usize.MAX { return; }
+    let alias = &emitter.aliases[alias_index];
+    let alias_declaration = ast_node(emitter, alias.declaration_id);
+    if alias_declaration == null { return; }
+    let alias_target = ast_child(
+        emitter,
+        alias_declaration,
+        alias_declaration?.child_count - 1
+    );
+    if alias_target == null or alias_target?.kind != ASTNodeKind.TypeExpr or
+       alias_target?.child_count < 2 {
+        return;
+    }
+    let form_path = ast_child(emitter, alias_target, 0);
+    if form_path == null or form_path?.kind != ASTNodeKind.Path { return; }
+    let form_index = ast_form_index(
+        emitter,
+        ast_path_text(emitter, form_path),
+        alias.namespace
+    );
+    if form_index == usize.MAX {
+        let nested_alias_index = if form_path?.child_count > 1 {
+            ast_alias_index(emitter, ast_path_text(emitter, form_path), "")
+        } else {
+            ast_alias_index(emitter, ast_path_text(emitter, form_path), alias.namespace)
+        };
+        if nested_alias_index == usize.MAX { return; }
+        let nested_alias = ast_node(
+            emitter, emitter.aliases[nested_alias_index].declaration_id
+        );
+        if nested_alias == null or
+           ast_count_kind(emitter, nested_alias?, ASTNodeKind.GenericParam) == 0 {
+            return;
+        }
+        let alias_parameter_count = ast_count_kind(
+            emitter, alias_declaration?, ASTNodeKind.GenericParam
+        );
+        if alias_parameter_count == 0 or
+           alias_application.child_count != alias_parameter_count + 1 {
+            ast_fail(emitter, "generic alias chain has an invalid parameter count");
+            return;
+        }
+        let saved_count = emitter.type_substitution_count;
+        if saved_count > usize.MAX - alias_parameter_count {
+            ast_fail(emitter, "generic alias substitution count overflow");
+            return;
+        }
+        while emitter.type_substitutions.len() < saved_count + alias_parameter_count {
+            if not emitter.type_substitutions.push(C17AstTypeSubstitution {}) {
+                ast_fail(emitter, "unable to allocate generic alias substitutions");
+                return;
+            }
+        }
+        let mut parameter_index: usize = 0;
+        while parameter_index < alias_parameter_count {
+            let parameter = ast_form_generic_parameter(
+                emitter, alias_declaration?, parameter_index
+            );
+            let argument = ast_child(
+                emitter, alias_application, parameter_index + 1
+            );
+            if parameter == null or argument == null {
+                set emitter.type_substitution_count = saved_count;
+                ast_fail(emitter, "generic alias chain is missing a parameter or argument");
+                return;
+            }
+            let parameter_name = ast_token_text(
+                emitter, ast_child(emitter, parameter, 0)
+            );
+            let argument_type = ast_type_text(
+                emitter, argument, namespace, depth + 1
+            );
+            if parameter_name.len() == 0 or argument_type == null {
+                set emitter.type_substitution_count = saved_count;
+                ast_fail(emitter, "generic alias chain argument cannot be represented in C17");
+                return;
+            }
+            emitter.type_substitutions[saved_count + parameter_index] = C17AstTypeSubstitution {
+                name: parameter_name,
+                type_text: argument_type?,
+            };
+            set parameter_index += 1;
+        }
+        set emitter.type_substitution_count = saved_count + alias_parameter_count;
+        ast_register_generic_form_instance(
+            emitter, alias_target?, alias.namespace, depth + 1
+        );
+        set emitter.type_substitution_count = saved_count;
+        return;
+    }
+    let form_declaration = ast_node(emitter, emitter.forms[form_index].node_id);
+    if form_declaration == null { return; }
+    let parameter_count = ast_form_generic_parameter_count(emitter, form_declaration?);
+    if parameter_count == 0 or parameter_count + 1 != alias_target?.child_count {
+        return;
+    }
+
+    let mut key = emitter.forms[form_index].qualified_name;
+    let mut argument_types: [string] = [];
+    let mut index: usize = 0;
+    while index < parameter_count {
+        let target_argument = ast_child(emitter, alias_target, index + 1);
+        let alias_parameter = ast_generic_alias_parameter_index(
+            emitter,
+            alias_declaration?,
+            target_argument
+        );
+        let concrete_argument = if alias_parameter != usize.MAX {
+            ast_child(emitter, alias_application, alias_parameter + 1)
+        } else {
+            target_argument
+        };
+        if ast_type_contains_generic_parameter(
+            emitter, concrete_argument, depth + 1
+        ) {
+            return;
+        }
+        let concrete_type = ast_type_text(
+            emitter,
+            concrete_argument,
+            if alias_parameter != usize.MAX { namespace } else { alias.namespace },
+            depth + 1
+        );
+        if concrete_type == null or not argument_types.push(concrete_type?) {
+            return;
+        }
+        set key = key + "@" + concrete_type?;
+        set index += 1;
+    }
+    let c_name = ast_mangle(key, "vitte_type_");
+    if ast_generic_form_instance_index(emitter, c_name) != usize.MAX { return; }
+    if not emitter.generic_forms.push(C17AstGenericFormInstance {}) {
+        ast_fail(emitter, "unable to allocate generic form specialization storage");
+        return;
+    }
+    let instance_index = emitter.generic_form_count;
+    emitter.generic_forms[instance_index].form_index = form_index;
+    emitter.generic_forms[instance_index].type_node_id = alias_target?.id;
+    emitter.generic_forms[instance_index].argument_count = parameter_count;
+    emitter.generic_forms[instance_index].namespace = alias.namespace;
+    emitter.generic_forms[instance_index].c_name = c_name;
+    emitter.generic_forms[instance_index].layout_state = 0;
+    emitter.generic_forms[instance_index].forward_declared = false;
+    let mut argument_index: usize = 0;
+    while argument_index < argument_types.len() {
+        if not emitter.generic_forms[instance_index].argument_types.push(
+            argument_types[argument_index]
+        ) {
+            ast_fail(emitter, "unable to allocate generic form argument substitutions");
+            return;
+        }
+        set argument_index += 1;
+    }
+    set emitter.generic_form_count += 1;
 }
 
 proc ast_register_generic_form_instance(
@@ -747,33 +1336,69 @@ proc ast_register_generic_form_instance(
     let path = ast_child(emitter, type_node, 0);
     if path == null or path?.kind != ASTNodeKind.Path or path?.child_count == 0 { return; }
     let form_index = ast_form_index(emitter, ast_path_text(emitter, path), namespace);
-    if form_index == usize.MAX { return; }
+    if form_index == usize.MAX {
+        ast_register_generic_alias_form_instance(
+            emitter, type_node, namespace, depth + 1
+        );
+        return;
+    }
     let declaration = ast_node(emitter, emitter.forms[form_index].node_id);
     if declaration == null or declaration?.kind != ASTNodeKind.FormDecl or
        ast_form_generic_parameter_count(emitter, declaration?) == 0 { return; }
-    if ast_form_generic_parameter_count(emitter, declaration?) != 1 or type_node.child_count != 2 {
-        ast_fail(emitter, "C17 generic form code generation currently requires exactly one type parameter and one type argument");
+    let parameter_count = ast_form_generic_parameter_count(emitter, declaration?);
+    if type_node.child_count != parameter_count + 1 {
+        ast_fail(emitter, "C17 generic form application must provide one type argument for every parameter");
         return;
     }
-    let argument = ast_child(emitter, type_node, 1);
-    if ast_type_argument_is_generic_parameter(emitter, argument) { return; }
+    let mut argument_index: usize = 1;
+    while argument_index < type_node.child_count {
+        let argument = ast_child(emitter, type_node, argument_index);
+        if ast_type_contains_generic_parameter(emitter, argument, 0) { return; }
+        let argument_type = ast_type_text(emitter, argument, namespace, depth + 1);
+        if argument_type == null {
+            ast_fail(emitter, "generic form argument type cannot be represented by the C17 backend");
+            return;
+        }
+        set argument_index += 1;
+    }
     let c_name = ast_generic_form_instance_name(emitter, type_node, namespace, 0);
     if c_name == null {
         ast_fail(emitter, "generic form argument type cannot be represented by the C17 backend");
         return;
     }
     if ast_generic_form_instance_index(emitter, c_name?) != usize.MAX { return; }
-    if emitter.generic_form_count >= 512 {
-        ast_fail(emitter, "generic form specialization limit exceeded");
+    if not emitter.generic_forms.push(C17AstGenericFormInstance {}) {
+        ast_fail(emitter, "unable to allocate generic form specialization storage");
         return;
     }
-    emitter.generic_forms[emitter.generic_form_count] = C17AstGenericFormInstance {
-        form_index: form_index,
-        type_node_id: type_node.id,
-        namespace: namespace,
-        c_name: c_name?,
-        layout_state: 0,
-    };
+    let instance_index = emitter.generic_form_count;
+    emitter.generic_forms[instance_index].form_index = form_index;
+    emitter.generic_forms[instance_index].type_node_id = type_node.id;
+    emitter.generic_forms[instance_index].argument_count = parameter_count;
+    emitter.generic_forms[instance_index].namespace = namespace;
+    emitter.generic_forms[instance_index].c_name = c_name?;
+    emitter.generic_forms[instance_index].layout_state = 0;
+    emitter.generic_forms[instance_index].forward_declared = false;
+    set argument_index = 1;
+    while argument_index < type_node.child_count {
+        let argument_type = ast_type_text(
+            emitter,
+            ast_child(emitter, type_node, argument_index),
+            namespace,
+            depth + 1
+        );
+        if argument_type == null {
+            ast_fail(emitter, "generic form argument type cannot be represented by the C17 backend");
+            return;
+        }
+        if not emitter.generic_forms[instance_index].argument_types.push(
+            argument_type?
+        ) {
+            ast_fail(emitter, "unable to allocate generic form argument substitutions");
+            return;
+        }
+        set argument_index += 1;
+    }
     set emitter.generic_form_count += 1;
 }
 
@@ -785,34 +1410,64 @@ proc ast_collect_generic_instances_in_tree(
 ) {
     if node == null or emitter.failed or depth > AST_EMIT_MAX_DEPTH { return; }
     let current = node?;
-    if current.kind == ASTNodeKind.TypeExpr and current.child_count > 1 {
-        ast_register_generic_form_instance(emitter, current, namespace, depth);
-    }
     let mut index: usize = 0;
     while index < current.child_count and not emitter.failed {
         ast_collect_generic_instances_in_tree(emitter, ast_child(emitter, current, index), namespace, depth + 1);
         set index += 1;
     }
+    if current.kind == ASTNodeKind.TypeExpr and current.child_count > 1 {
+        ast_register_generic_form_instance(emitter, current, namespace, depth);
+    }
 }
 
-proc ast_generic_form_field_contains_type_application(
-    emitter: &C17AstEmitter,
+proc ast_emit_generic_form_field_dependencies(
+    emitter: &mut C17AstEmitter,
     node: ?&ASTNode,
+    namespace: string,
+    requires_layout: bool,
     depth: usize
-) -> bool {
-    if node == null or depth > AST_EMIT_MAX_DEPTH { return false; }
+) {
+    if node == null or emitter.failed { return; }
+    if depth > AST_EMIT_MAX_DEPTH {
+        ast_fail(emitter, "generic form field dependency nesting exceeds the C17 emitter depth limit");
+        return;
+    }
     let current = node?;
-    if current.kind == ASTNodeKind.TypeExpr and current.child_count > 1 { return true; }
+    let child_requires_layout = requires_layout and
+        current.kind != ASTNodeKind.PointerType and
+        current.kind != ASTNodeKind.ReferenceType and
+        current.kind != ASTNodeKind.OptionalType and
+        (current.kind != ASTNodeKind.ArrayType or current.child_count > 1);
     let mut index: usize = 0;
-    while index < current.child_count {
-        if ast_generic_form_field_contains_type_application(
+    while index < current.child_count and not emitter.failed {
+        ast_emit_generic_form_field_dependencies(
             emitter,
             ast_child(emitter, current, index),
+            namespace,
+            child_requires_layout,
             depth + 1
-        ) { return true; }
+        );
         set index += 1;
     }
-    return false;
+    if emitter.failed or current.kind != ASTNodeKind.TypeExpr or current.child_count <= 1 { return; }
+
+    ast_register_generic_form_instance(emitter, current, namespace, depth);
+    if emitter.failed { return; }
+    let generic_name = ast_generic_form_instance_name(emitter, current, namespace, depth + 1);
+    if generic_name == null { return; }
+    let generic_index = ast_generic_form_instance_index(emitter, generic_name?);
+    if generic_index == usize.MAX {
+        ast_fail(emitter, "generic form field use has no collected specialization");
+        return;
+    }
+    if not emitter.generic_forms[generic_index].forward_declared {
+        let c_name = emitter.generic_forms[generic_index].c_name;
+        ast_write(emitter, "typedef struct " + c_name + " " + c_name + ";\n");
+        set emitter.generic_forms[generic_index].forward_declared = true;
+    }
+    if requires_layout {
+        ast_emit_generic_form_layout_ordered(emitter, generic_index, depth + 1);
+    }
 }
 
 proc ast_collect_generic_instances_in_scope(
@@ -922,6 +1577,363 @@ proc ast_local_index(emitter: &C17AstEmitter, name: string) -> usize {
     return usize.MAX;
 }
 
+proc ast_find_prior_local_decl_in_tree(
+    emitter: &C17AstEmitter,
+    node: ?&ASTNode,
+    name: string,
+    before: usize,
+    depth: usize
+) -> ?&ASTNode {
+    if node == null or depth > AST_EMIT_MAX_DEPTH { return null; }
+    let mut found: ?&ASTNode = null;
+    if node?.kind == ASTNodeKind.LetStmt and node?.child_count > 1 and
+       node?.span.begin < before and
+       ast_token_text(emitter, ast_child(emitter, node, 0)) == name {
+        set found = node;
+    }
+    let mut index: usize = 0;
+    while index < node?.child_count {
+        let nested = ast_find_prior_local_decl_in_tree(
+            emitter,
+            ast_child(emitter, node, index),
+            name,
+            before,
+            depth + 1
+        );
+        if nested != null and
+           (found == null or nested?.span.begin > found?.span.begin) {
+            set found = nested;
+        }
+        set index += 1;
+    }
+    return found;
+}
+
+proc ast_find_prior_local_decl(
+    emitter: &C17AstEmitter,
+    name_node: ?&ASTNode,
+    before_node: ?&ASTNode
+) -> ?&ASTNode {
+    if name_node == null or before_node == null or
+       emitter.generic_call_owner_id == 0 {
+        return null;
+    }
+    let function = ast_node(emitter, emitter.generic_call_owner_id);
+    if function == null { return null; }
+    let name = ast_path_text(emitter, name_node);
+    let mut index: usize = 1;
+    while index < function?.child_count {
+        let child = ast_child(emitter, function, index);
+        if child != null and child?.kind == ASTNodeKind.Block {
+            return ast_find_prior_local_decl_in_tree(
+                emitter,
+                child,
+                name,
+                before_node?.span.begin,
+                0
+            );
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+proc ast_generic_call_parameter_type(
+    emitter: &C17AstEmitter,
+    name_node: ?&ASTNode
+) -> ?&ASTNode {
+    if name_node == null or emitter.generic_call_owner_id == 0 {
+        return null;
+    }
+    let procedure = ast_node(emitter, emitter.generic_call_owner_id);
+    if procedure == null { return null; }
+    let name = ast_path_text(emitter, name_node);
+    let mut index: usize = 1;
+    while index < procedure?.child_count {
+        let parameter = ast_child(emitter, procedure, index);
+        if parameter != null and parameter?.kind == ASTNodeKind.Parameter and
+           ast_token_text(emitter, ast_child(emitter, parameter, 0)) == name {
+            return ast_child(emitter, parameter, 1);
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+proc ast_type_syntax_equal(
+    emitter: &C17AstEmitter,
+    left: ?&ASTNode,
+    right: ?&ASTNode,
+    depth: usize
+) -> bool {
+    if left == null or right == null or depth > AST_EMIT_MAX_DEPTH or
+       left?.kind != right?.kind or left?.child_count != right?.child_count {
+        return false;
+    }
+    if left?.kind == ASTNodeKind.Path {
+        return ast_path_text(emitter, left) == ast_path_text(emitter, right);
+    }
+    if left?.kind == ASTNodeKind.TypeExpr {
+        let left_path = ast_child(emitter, left, 0);
+        let right_path = ast_child(emitter, right, 0);
+        if left_path == null or right_path == null or
+           ast_path_text(emitter, left_path) != ast_path_text(emitter, right_path) {
+            return false;
+        }
+        let mut index: usize = 1;
+        while index < left?.child_count {
+            if not ast_type_syntax_equal(
+                emitter,
+                ast_child(emitter, left, index),
+                ast_child(emitter, right, index),
+                depth + 1
+            ) { return false; }
+            set index += 1;
+        }
+        return true;
+    }
+    if left?.child_count == 0 {
+        return ast_token_text(emitter, left) == ast_token_text(emitter, right);
+    }
+    let mut index: usize = 0;
+    while index < left?.child_count {
+        if not ast_type_syntax_equal(
+            emitter,
+            ast_child(emitter, left, index),
+            ast_child(emitter, right, index),
+            depth + 1
+        ) { return false; }
+        set index += 1;
+    }
+    return true;
+}
+
+proc ast_expression_type_node(
+    emitter: &C17AstEmitter,
+    node: ?&ASTNode,
+    namespace: string,
+    depth: usize
+) -> ?&ASTNode {
+    if node == null or depth > AST_EMIT_MAX_DEPTH { return null; }
+    if node?.kind == ASTNodeKind.Identifier or node?.kind == ASTNodeKind.Path {
+        let local_index = ast_local_index(emitter, ast_path_text(emitter, node));
+        if local_index != usize.MAX and emitter.locals[local_index].type_id != 0 {
+            return ast_node(emitter, emitter.locals[local_index].type_id);
+        }
+        let declaration = ast_find_prior_local_decl(emitter, node, node);
+        if declaration != null {
+            let mut index: usize = 1;
+            let mut inferred_initializer: ?&ASTNode = null;
+            while index < declaration?.child_count {
+                let child = ast_child(emitter, declaration, index);
+                if child != null and
+                   (child?.kind == ASTNodeKind.TypeExpr or
+                    child?.kind == ASTNodeKind.PointerType or
+                    child?.kind == ASTNodeKind.ReferenceType or
+                    child?.kind == ASTNodeKind.ArrayType or
+                    child?.kind == ASTNodeKind.OptionalType) {
+                    return child;
+                }
+                set inferred_initializer = child;
+                set index += 1;
+            }
+            if inferred_initializer != null {
+                return ast_expression_type_node(
+                    emitter,
+                    inferred_initializer,
+                    namespace,
+                    depth + 1
+                );
+            }
+        }
+        return ast_generic_call_parameter_type(emitter, node);
+    }
+    if node?.kind == ASTNodeKind.GroupExpr {
+        return ast_expression_type_node(
+            emitter,
+            ast_child(emitter, node, 0),
+            namespace,
+            depth + 1
+        );
+    }
+    if node?.kind == ASTNodeKind.CastExpr {
+        return ast_child(emitter, node, 1);
+    }
+    if node?.kind == ASTNodeKind.FormExpr {
+        return ast_child(emitter, node, 0);
+    }
+    if node?.kind == ASTNodeKind.TryExpr {
+        let operand_type = ast_expression_type_node(
+            emitter,
+            ast_child(emitter, node, 0),
+            namespace,
+            depth + 1
+        );
+        if operand_type != null and operand_type?.kind == ASTNodeKind.OptionalType {
+            return ast_child(emitter, operand_type, 0);
+        }
+        return null;
+    }
+    if node?.kind == ASTNodeKind.CallExpr and node?.child_count != 0 {
+        let procedure_index = ast_resolve_proc_path(
+            emitter,
+            ast_child(emitter, node, 0),
+            namespace
+        );
+        if procedure_index == usize.MAX { return null; }
+        let procedure = ast_node(
+            emitter,
+            emitter.procedures[procedure_index].node_id
+        );
+        if procedure == null { return null; }
+        let return_type = ast_function_return_type(emitter, procedure?);
+        let generic_count = ast_proc_generic_parameter_count(emitter, procedure);
+        let mut generic_return: bool = false;
+        let mut generic_index: usize = 0;
+        while generic_index < generic_count {
+            if ast_generic_proc_type_contains_parameter(
+                emitter,
+                procedure,
+                return_type,
+                generic_index,
+                0
+            ) { set generic_return = true; }
+            set generic_index += 1;
+        }
+        if generic_return {
+            let mut child_index: usize = 1;
+            let mut argument_index: usize = 1;
+            while child_index < procedure?.child_count and argument_index < node?.child_count {
+                let parameter = ast_child(emitter, procedure, child_index);
+                if parameter != null and parameter?.kind == ASTNodeKind.Parameter {
+                    let parameter_type = ast_child(emitter, parameter, 1);
+                    if ast_type_syntax_equal(
+                        emitter,
+                        return_type,
+                        parameter_type,
+                        0
+                    ) {
+                        let argument_type = ast_expression_type_node(
+                            emitter,
+                            ast_child(emitter, node, argument_index),
+                            namespace,
+                            depth + 1
+                        );
+                        if argument_type != null { return argument_type; }
+                    }
+                    set argument_index += 1;
+                }
+                set child_index += 1;
+            }
+            return null;
+        }
+        return return_type;
+    }
+    if node?.kind == ASTNodeKind.MemberExpr {
+        let object = ast_child(emitter, node, 0);
+        let member = ast_child(emitter, node, 1);
+        let object_type = ast_expression_type_node(
+            emitter,
+            object,
+            namespace,
+            depth + 1
+        );
+        let resolved = ast_resolve_type_alias(emitter, object_type, namespace);
+        let mut aggregate_type = resolved.node;
+        if aggregate_type != null and
+           (aggregate_type?.kind == ASTNodeKind.PointerType or
+            aggregate_type?.kind == ASTNodeKind.ReferenceType) {
+            set aggregate_type = ast_child(emitter, aggregate_type, 0);
+        }
+        if aggregate_type == null or aggregate_type?.kind != ASTNodeKind.TypeExpr {
+            return null;
+        }
+        let aggregate_path = ast_child(emitter, aggregate_type, 0);
+        if aggregate_path == null or aggregate_path?.kind != ASTNodeKind.Path {
+            return null;
+        }
+        let form_index = ast_form_index(
+            emitter,
+            ast_path_text(emitter, aggregate_path),
+            resolved.namespace
+        );
+        if form_index == usize.MAX { return null; }
+        let form_node = ast_node(emitter, emitter.forms[form_index].node_id);
+        if form_node == null or form_node?.kind != ASTNodeKind.FormDecl {
+            return null;
+        }
+        let member_name = ast_token_text(emitter, member);
+        let mut field_index: usize = 1;
+        while field_index < form_node?.child_count {
+            let field = ast_child(emitter, form_node, field_index);
+            if field != null and field?.kind == ASTNodeKind.FieldDecl and
+               ast_token_text(emitter, ast_child(emitter, field, 0)) == member_name {
+                return ast_child(emitter, field, 1);
+            }
+            set field_index += 1;
+        }
+    }
+    return null;
+}
+
+proc ast_optional_payload_uses_pointer_representation(
+    emitter: &C17AstEmitter,
+    payload: ?&ASTNode,
+    owner_type: ?&ASTNode,
+    namespace: string,
+    depth: usize
+) -> bool {
+    if payload == null or depth > AST_EMIT_MAX_DEPTH { return false; }
+    let resolved = ast_resolve_type_alias(emitter, payload, namespace);
+    if resolved.node == null { return false; }
+    let concrete = resolved.node;
+    if concrete?.kind == ASTNodeKind.PointerType or
+       concrete?.kind == ASTNodeKind.ReferenceType or
+       (concrete?.kind == ASTNodeKind.TypeExpr and
+        concrete?.operator_kind == TokenKind.KwProc) {
+        return true;
+    }
+    if concrete?.kind != ASTNodeKind.TypeExpr or concrete?.child_count != 1 {
+        return false;
+    }
+    let path = ast_child(emitter, concrete, 0);
+    if path == null or path?.kind != ASTNodeKind.Path or path?.child_count != 1 {
+        return false;
+    }
+    let payload_name = ast_token_text(emitter, ast_child(emitter, path, 0));
+    if payload_name == "str" or payload_name == "string" { return true; }
+    if owner_type == null or owner_type?.kind != ASTNodeKind.TypeExpr or
+       owner_type?.child_count <= 1 {
+        return false;
+    }
+    let owner_path = ast_child(emitter, owner_type, 0);
+    if owner_path == null or owner_path?.kind != ASTNodeKind.Path { return false; }
+    let form_index = ast_form_index(
+        emitter,
+        ast_path_text(emitter, owner_path),
+        namespace
+    );
+    if form_index == usize.MAX { return false; }
+    let declaration = ast_node(emitter, emitter.forms[form_index].node_id);
+    if declaration == null { return false; }
+    let mut parameter_index: usize = 0;
+    while parameter_index < ast_form_generic_parameter_count(emitter, declaration?) {
+        let parameter = ast_form_generic_parameter(emitter, declaration?, parameter_index);
+        if parameter != null and
+           ast_token_text(emitter, ast_child(emitter, parameter, 0)) == payload_name {
+            return ast_optional_payload_uses_pointer_representation(
+                emitter,
+                ast_child(emitter, owner_type, parameter_index + 1),
+                null,
+                namespace,
+                depth + 1
+            );
+        }
+        set parameter_index += 1;
+    }
+    return false;
+}
+
 proc ast_add_local(
     emitter: &mut C17AstEmitter,
     name: string,
@@ -943,7 +1955,7 @@ proc ast_add_local(
 }
 
 proc ast_type_text(
-    emitter: &C17AstEmitter,
+    emitter: &mut C17AstEmitter,
     node: ?&ASTNode,
     namespace: string,
     depth: usize
@@ -1001,16 +2013,187 @@ proc ast_type_text(
             let substitution_index = ast_type_substitution_index(emitter, parameter_name);
             if substitution_index != usize.MAX {
                 let substitution = emitter.type_substitutions[substitution_index];
-                return ast_type_text(
-                    emitter,
-                    ast_node(emitter, substitution.type_node_id),
-                    substitution.namespace,
-                    depth + 1
-                );
+                return substitution.type_text;
             }
         }
     }
     if node.child_count > 1 {
+        let path = ast_child(emitter, node, 0);
+        if path != null and path?.kind == ASTNodeKind.Path {
+            let alias_name = ast_path_text(emitter, path);
+            let alias_index = if path?.child_count > 1 {
+                ast_alias_index(emitter, alias_name, "")
+            } else {
+                ast_alias_index(emitter, alias_name, namespace)
+            };
+            if alias_index != usize.MAX {
+                let alias = &emitter.aliases[alias_index];
+                let declaration = ast_node(emitter, alias.declaration_id);
+                let parameter_count = if declaration != null {
+                    ast_count_kind(emitter, declaration?, ASTNodeKind.GenericParam)
+                } else { 0 as usize };
+                if parameter_count != 0 {
+                    let argument_count = node.child_count - 1;
+                    if argument_count != parameter_count or declaration == null {
+                        return null;
+                    }
+                    let target = ast_child(emitter, declaration, declaration?.child_count - 1);
+                    if target == null {
+                        return null;
+                    }
+                    if target?.kind == ASTNodeKind.TypeExpr and
+                       target?.child_count > 1 {
+                        let nested_path = ast_child(emitter, target, 0);
+                        if nested_path != null and nested_path?.kind == ASTNodeKind.Path {
+                            let nested_name = ast_path_text(emitter, nested_path);
+                            let nested_alias_index = if nested_path?.child_count > 1 {
+                                ast_alias_index(emitter, nested_name, "")
+                            } else {
+                                ast_alias_index(emitter, nested_name, alias.namespace)
+                            };
+                            if nested_alias_index != usize.MAX {
+                                let nested_alias = ast_node(
+                                    emitter, emitter.aliases[nested_alias_index].declaration_id
+                                );
+                                if nested_alias != null and
+                                   ast_count_kind(emitter, nested_alias?, ASTNodeKind.GenericParam) != 0 {
+                                    return ast_expand_generic_alias_type_text(
+                                        emitter,
+                                        node?,
+                                        declaration?,
+                                        namespace,
+                                        alias.namespace,
+                                        depth + 1
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    let target_parameter = ast_generic_alias_parameter_index(
+                        emitter, declaration?, target
+                    );
+                    if target_parameter != usize.MAX {
+                        return ast_type_text(
+                            emitter,
+                            ast_child(emitter, node, target_parameter + 1),
+                            namespace,
+                            depth + 1
+                        );
+                    }
+                    if target?.kind == ASTNodeKind.PointerType or
+                       target?.kind == ASTNodeKind.ReferenceType {
+                        let element = ast_child(emitter, target, 0);
+                        let element_parameter = ast_generic_alias_parameter_index(
+                            emitter, declaration?, element
+                        );
+                        let element_text = if element_parameter != usize.MAX {
+                            ast_type_text(
+                                emitter,
+                                ast_child(emitter, node, element_parameter + 1),
+                                namespace,
+                                depth + 1
+                            )
+                        } else {
+                            ast_type_text(emitter, element, namespace, depth + 1)
+                        };
+                        if element_text == null { return null; }
+                        return element_text? + " *";
+                    }
+                    if target?.kind == ASTNodeKind.OptionalType {
+                        let element = ast_child(emitter, target, 0);
+                        let element_parameter = ast_generic_alias_parameter_index(
+                            emitter, declaration?, element
+                        );
+                        if element_parameter != usize.MAX {
+                            let actual = ast_child(emitter, node, element_parameter + 1);
+                            let actual_text = ast_type_text(
+                                emitter, actual, namespace, depth + 1
+                            );
+                            if actual_text == null { return null; }
+                            if actual != null and (actual?.kind == ASTNodeKind.PointerType or
+                                actual?.kind == ASTNodeKind.ReferenceType) {
+                                return actual_text?;
+                            }
+                            return actual_text? + " *";
+                        }
+                    }
+                    if target?.kind == ASTNodeKind.ArrayType and target?.child_count == 1 {
+                        return "VitteArray";
+                    }
+                    if target?.kind == ASTNodeKind.TypeExpr {
+                        if target?.child_count > 1 {
+                            let form_path = ast_child(emitter, target, 0);
+                            if form_path == null or form_path?.kind != ASTNodeKind.Path {
+                                return null;
+                            }
+                            let form_index = ast_form_index(
+                                emitter,
+                                ast_path_text(emitter, form_path),
+                                alias.namespace
+                            );
+                            if form_index == usize.MAX { return null; }
+                            let form_declaration = ast_node(
+                                emitter,
+                                emitter.forms[form_index].node_id
+                            );
+                            if form_declaration == null { return null; }
+                            let form_parameter_count = ast_form_generic_parameter_count(
+                                emitter, form_declaration?
+                            );
+                            if form_parameter_count == 0 or
+                               form_parameter_count + 1 != target?.child_count {
+                                return null;
+                            }
+                            let mut key = emitter.forms[form_index].qualified_name;
+                            let mut form_argument_index: usize = 0;
+                            while form_argument_index < form_parameter_count {
+                                let target_argument = ast_child(
+                                    emitter, target, form_argument_index + 1
+                                );
+                                let alias_parameter = ast_generic_alias_parameter_index(
+                                    emitter, declaration?, target_argument
+                                );
+                                let concrete_argument = if alias_parameter != usize.MAX {
+                                    ast_child(emitter, node, alias_parameter + 1)
+                                } else {
+                                    target_argument
+                                };
+                                let argument_type = ast_type_text(
+                                    emitter,
+                                    concrete_argument,
+                                    if alias_parameter != usize.MAX { namespace } else { alias.namespace },
+                                    depth + 1
+                                );
+                                if argument_type == null { return null; }
+                                set key = key + "@" + argument_type?;
+                                set form_argument_index += 1;
+                            }
+                            return ast_mangle(key, "vitte_type_");
+                        }
+                        return ast_type_text(emitter, target, alias.namespace, depth + 1);
+                    }
+                    return null;
+                }
+            }
+            let opaque_index = if path?.child_count > 1 {
+                ast_opaque_index(emitter, alias_name, "")
+            } else {
+                ast_opaque_index(emitter, alias_name, namespace)
+            };
+            if opaque_index != usize.MAX {
+                let declaration = ast_node(
+                    emitter, emitter.opaques[opaque_index].node_id
+                );
+                if declaration == null or
+                   ast_form_generic_parameter_count(emitter, declaration?) != node.child_count - 1 {
+                    return null;
+                }
+                return ast_mangle(
+                    emitter.opaques[opaque_index].qualified_name,
+                    "vitte_type_"
+                );
+            }
+        }
         let generic_name = ast_generic_form_instance_name(emitter, node, namespace, depth + 1);
         if generic_name != null { return generic_name?; }
         return null;
@@ -1046,6 +2229,86 @@ proc ast_type_text(
     return ast_mangle(qualified, "vitte_type_");
 }
 
+/// Resolve the concrete element C type of a generic alias chain ending in a
+/// dynamic array, for example `Values2<i64>` where `Values2<T> = Values<T>`.
+proc ast_generic_alias_slice_element_text(
+    emitter: &mut C17AstEmitter,
+    application: ?&ASTNode,
+    namespace: string,
+    depth: usize
+) -> ?string {
+    if application == null or application?.kind != ASTNodeKind.TypeExpr or
+       application?.child_count < 2 or depth > AST_EMIT_MAX_DEPTH {
+        return null;
+    }
+    let path = ast_child(emitter, application, 0);
+    if path == null or path?.kind != ASTNodeKind.Path { return null; }
+    let alias_name = ast_path_text(emitter, path);
+    let alias_index = if path?.child_count > 1 {
+        ast_alias_index(emitter, alias_name, "")
+    } else {
+        ast_alias_index(emitter, alias_name, namespace)
+    };
+    if alias_index == usize.MAX { return null; }
+    let alias = &emitter.aliases[alias_index];
+    let declaration = ast_node(emitter, alias.declaration_id);
+    if declaration == null { return null; }
+    let parameter_count = ast_count_kind(
+        emitter, declaration?, ASTNodeKind.GenericParam
+    );
+    if parameter_count == 0 or application?.child_count != parameter_count + 1 {
+        return null;
+    }
+    let target = ast_child(
+        emitter, declaration, declaration?.child_count - 1
+    );
+    if target == null { return null; }
+    let saved_count = emitter.type_substitution_count;
+    if saved_count > usize.MAX - parameter_count { return null; }
+    while emitter.type_substitutions.len() < saved_count + parameter_count {
+        if not emitter.type_substitutions.push(C17AstTypeSubstitution {}) {
+            return null;
+        }
+    }
+    let mut index: usize = 0;
+    while index < parameter_count {
+        let parameter = ast_form_generic_parameter(emitter, declaration?, index);
+        let argument = ast_child(emitter, application, index + 1);
+        if parameter == null or argument == null {
+            set emitter.type_substitution_count = saved_count;
+            return null;
+        }
+        let parameter_name = ast_token_text(
+            emitter, ast_child(emitter, parameter, 0)
+        );
+        let argument_text = ast_type_text(
+            emitter, argument, namespace, depth + 1
+        );
+        if parameter_name.len() == 0 or argument_text == null {
+            set emitter.type_substitution_count = saved_count;
+            return null;
+        }
+        emitter.type_substitutions[saved_count + index] = C17AstTypeSubstitution {
+            name: parameter_name,
+            type_text: argument_text?,
+        };
+        set index += 1;
+    }
+    set emitter.type_substitution_count = saved_count + parameter_count;
+    let result: ?string = if target?.kind == ASTNodeKind.ArrayType and
+        target?.child_count == 1 {
+        ast_type_text(emitter, ast_child(emitter, target, 0), alias.namespace, depth + 1)
+    } elif target?.kind == ASTNodeKind.TypeExpr and target?.child_count > 1 {
+        ast_generic_alias_slice_element_text(
+            emitter, target, alias.namespace, depth + 1
+        )
+    } else {
+        null
+    };
+    set emitter.type_substitution_count = saved_count;
+    return result;
+}
+
 proc ast_emit_type(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace: string) {
     let text = ast_type_text(emitter, node, namespace, 0);
     if text == null {
@@ -1055,7 +2318,7 @@ proc ast_emit_type(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace: stri
     ast_write(emitter, text?);
 }
 
-proc ast_infer_type_text(emitter: &C17AstEmitter, node: ?&ASTNode, namespace: string, depth: usize) -> ?string {
+proc ast_infer_type_text(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace: string, depth: usize) -> ?string {
     if node == null or depth > AST_EMIT_MAX_DEPTH {
         return null;
     }
@@ -1082,6 +2345,44 @@ proc ast_infer_type_text(emitter: &C17AstEmitter, node: ?&ASTNode, namespace: st
             }
             if local.type_text.len() != 0 { return local.type_text; }
         }
+        let declaration = ast_find_prior_local_decl(emitter, node, node);
+        if declaration != null {
+            let mut declared_type: ?&ASTNode = null;
+            let mut initializer: ?&ASTNode = null;
+            let mut child_index: usize = 1;
+            while child_index < declaration?.child_count {
+                let child = ast_child(emitter, declaration, child_index);
+                if child != null and
+                   (child?.kind == ASTNodeKind.TypeExpr or
+                    child?.kind == ASTNodeKind.PointerType or
+                    child?.kind == ASTNodeKind.ReferenceType or
+                    child?.kind == ASTNodeKind.ArrayType or
+                    child?.kind == ASTNodeKind.OptionalType) {
+                    set declared_type = child;
+                } else {
+                    set initializer = child;
+                }
+                set child_index += 1;
+            }
+            if declared_type != null {
+                return ast_type_text(emitter, declared_type, namespace, depth + 1);
+            }
+            return ast_infer_type_text(
+                emitter,
+                initializer,
+                namespace,
+                depth + 1
+            );
+        }
+        let parameter_type = ast_generic_call_parameter_type(emitter, node);
+        if parameter_type != null {
+            return ast_type_text(
+                emitter,
+                parameter_type,
+                namespace,
+                depth + 1
+            );
+        }
         return null;
     }
     if node.kind == ASTNodeKind.UnaryExpr {
@@ -1107,7 +2408,169 @@ proc ast_infer_type_text(emitter: &C17AstEmitter, node: ?&ASTNode, namespace: st
     if node.kind == ASTNodeKind.CastExpr {
         return ast_type_text(emitter, ast_child(emitter, node, 1), namespace, depth + 1);
     }
+    if node.kind == ASTNodeKind.FormExpr {
+        return ast_type_text(
+            emitter,
+            ast_child(emitter, node, 0),
+            namespace,
+            depth + 1
+        );
+    }
+    if node.kind == ASTNodeKind.CallExpr and node.child_count != 0 {
+        return ast_generic_call_result_type_text(
+            emitter,
+            node,
+            namespace,
+            depth + 1
+        );
+    }
+    if node.kind == ASTNodeKind.TryExpr {
+        let optional_type = ast_expression_type_node(
+            emitter,
+            ast_child(emitter, node, 0),
+            namespace,
+            depth + 1
+        );
+        if optional_type != null and optional_type?.kind == ASTNodeKind.OptionalType {
+            return ast_type_text(
+                emitter,
+                ast_child(emitter, optional_type, 0),
+                namespace,
+                depth + 1
+            );
+        }
+    }
     return null;
+}
+
+proc ast_generic_call_result_type_text(
+    emitter: &mut C17AstEmitter,
+    call: ?&ASTNode,
+    namespace: string,
+    depth: usize
+) -> ?string {
+    if call == null or depth > AST_EMIT_MAX_DEPTH or
+       call?.kind != ASTNodeKind.CallExpr or call?.child_count == 0 {
+        return null;
+    }
+    let procedure_index = ast_resolve_proc_path(
+        emitter,
+        ast_child(emitter, call, 0),
+        namespace
+    );
+    if procedure_index == usize.MAX { return null; }
+    let procedure = ast_node(
+        emitter,
+        emitter.procedures[procedure_index].node_id
+    );
+    if procedure == null { return null; }
+    let return_type = ast_function_return_type(emitter, procedure?);
+    if return_type == null { return null; }
+    let generic_count = ast_proc_generic_parameter_count(emitter, procedure);
+    if generic_count == 0 {
+        return ast_type_text(emitter, return_type, namespace, depth + 1);
+    }
+
+    let mut generic_index: usize = 0;
+    while generic_index < generic_count {
+        let generic = ast_proc_generic_parameter(
+            emitter,
+            procedure,
+            generic_index
+        );
+        let generic_name = ast_token_text(
+            emitter,
+            ast_child(emitter, generic, 0)
+        );
+        let return_path = ast_child(emitter, return_type, 0);
+        if return_type?.kind == ASTNodeKind.TypeExpr and
+           return_type?.child_count == 1 and
+           return_path != null and return_path?.kind == ASTNodeKind.Path and
+           return_path?.child_count == 1 and
+           ast_path_text(emitter, return_path) == generic_name {
+            let mut inferred_type: string = "";
+            let mut parameter_index: usize = 0;
+            while parameter_index + 1 < call?.child_count {
+                let parameter = ast_proc_parameter_node(
+                    emitter,
+                    procedure,
+                    parameter_index
+                );
+                let parameter_type = ast_child(emitter, parameter, 1);
+                let argument = ast_child(emitter, call, parameter_index + 1);
+                let argument_node = ast_expression_type_node(
+                    emitter,
+                    argument,
+                    namespace,
+                    depth + 1
+                );
+                let argument_text = ast_infer_type_text(
+                    emitter,
+                    argument,
+                    namespace,
+                    depth + 1
+                );
+                let inferred = ast_infer_generic_proc_type(
+                    emitter,
+                    procedure,
+                    parameter_type,
+                    argument_node,
+                    argument_text,
+                    generic_index,
+                    namespace,
+                    depth + 1
+                );
+                if inferred == null { return null; }
+                if inferred?.len() != 0 {
+                    if inferred_type.len() != 0 and
+                       inferred_type != inferred? { return null; }
+                    set inferred_type = inferred?;
+                }
+                set parameter_index += 1;
+            }
+            if inferred_type.len() != 0 { return inferred_type; }
+            return null;
+        }
+        set generic_index += 1;
+    }
+
+    let mut parameter_index: usize = 0;
+    while parameter_index + 1 < call?.child_count {
+        let parameter = ast_proc_parameter_node(
+            emitter,
+            procedure,
+            parameter_index
+        );
+        let parameter_type = ast_child(emitter, parameter, 1);
+        if ast_type_syntax_equal(
+            emitter,
+            return_type,
+            parameter_type,
+            0
+        ) {
+            let inferred_argument = ast_infer_type_text(
+                emitter,
+                ast_child(emitter, call, parameter_index + 1),
+                namespace,
+                depth + 1
+            );
+            if inferred_argument != null { return inferred_argument?; }
+        }
+        set parameter_index += 1;
+    }
+
+    generic_index = 0;
+    while generic_index < generic_count {
+        if ast_generic_proc_type_contains_parameter(
+            emitter,
+            procedure,
+            return_type,
+            generic_index,
+            0
+        ) { return null; }
+        set generic_index += 1;
+    }
+    return ast_type_text(emitter, return_type, namespace, depth + 1);
 }
 
 proc ast_c_type_is_pointer(type_text: ?string) -> bool {
@@ -1535,8 +2998,85 @@ proc ast_emit_array_literal(
     expected_type: ?&ASTNode
 ) {
     let mut element_text: ?string = null;
-    if expected_type != null and expected_type.kind == ASTNodeKind.ArrayType {
-        element_text = ast_type_text(emitter, ast_child(emitter, expected_type, 0), namespace, 0);
+    if expected_type != null and expected_type.kind == ASTNodeKind.TypeExpr {
+        element_text = ast_generic_alias_slice_element_text(
+            emitter, expected_type, namespace, depth + 1
+        );
+    } elif expected_type != null and expected_type.kind == ASTNodeKind.ArrayType {
+        if expected_type.child_count == 2 {
+            element_text = ast_type_text(
+                emitter,
+                ast_child(emitter, expected_type, 1),
+                namespace,
+                0
+            );
+            if element_text == null and node.child_count != 0 {
+                let first = ast_child(emitter, node, 0);
+                if first != null and first?.kind == ASTNodeKind.FormExpr {
+                    element_text = ast_type_text(
+                        emitter,
+                        ast_child(emitter, first, 0),
+                        namespace,
+                        0
+                    );
+                }
+            }
+            if element_text == null {
+                ast_fail(emitter, "fixed array literal needs a concrete element type");
+                return;
+            }
+            ast_write(emitter, "{");
+            let mut fixed_index: usize = 0;
+            while fixed_index < node.child_count and not emitter.failed {
+                if fixed_index != 0 { ast_write(emitter, ", "); }
+                ast_emit_expression(
+                    emitter,
+                    ast_child(emitter, node, fixed_index),
+                    namespace,
+                    depth + 1
+                );
+                set fixed_index += 1;
+            }
+            ast_write(emitter, "}");
+            return;
+        }
+        if expected_type.child_count != 1 {
+            ast_fail(emitter, "array type has an invalid number of components");
+            return;
+        }
+        if node.child_count == 0 {
+            ast_write(emitter, "(VitteArray){0}");
+            return;
+        }
+        let first = ast_child(emitter, node, 0);
+        if first != null {
+            let inferred_element = ast_infer_type_text(
+                emitter,
+                first,
+                namespace,
+                depth + 1
+            );
+            if inferred_element != null {
+                element_text = inferred_element;
+            } elif first?.kind == ASTNodeKind.FormExpr {
+                element_text = ast_type_text(
+                    emitter,
+                    ast_child(emitter, first, 0),
+                    namespace,
+                    depth + 1
+                );
+            }
+        }
+        // A generic field declaration such as `[Box<T>]` still contains the
+        // template parameter here. Prefer a concrete type from the initializer.
+        if element_text == null {
+            element_text = ast_type_text(
+                emitter,
+                ast_child(emitter, expected_type, 0),
+                namespace,
+                0
+            );
+        }
     } elif node.child_count != 0 {
         element_text = ast_infer_type_text(emitter, ast_child(emitter, node, 0), namespace, 0);
     }
@@ -1599,6 +3139,15 @@ proc ast_emit_expression(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace
                 return;
             }
             ast_write(emitter, "(" + type_name? + "){ ");
+            let generic_instance_index = ast_generic_form_instance_index(emitter, type_name?);
+            let form_declaration: ?&ASTNode = if generic_instance_index != usize.MAX {
+                ast_node(
+                    emitter,
+                    emitter.forms[
+                        emitter.generic_forms[generic_instance_index].form_index
+                    ].node_id
+                )
+            } else { null };
             let mut index: usize = 1;
             while index < node.child_count and not emitter.failed {
                 let field = ast_child(emitter, node, index);
@@ -1608,7 +3157,48 @@ proc ast_emit_expression(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace
                 }
                 if index != 1 { ast_write(emitter, ", "); }
                 ast_write(emitter, "." + ast_mangle(ast_token_text(emitter, ast_child(emitter, field, 0)), "vitte_field_") + " = ");
-                ast_emit_expression(emitter, ast_child(emitter, field, 1), namespace, depth + 1);
+                let field_name = ast_token_text(emitter, ast_child(emitter, field, 0));
+                let mut declared_field_type: ?&ASTNode = null;
+                if form_declaration != null {
+                    let mut declaration_index: usize = 1;
+                    while declaration_index < form_declaration?.child_count {
+                        let declared_field = ast_child(
+                            emitter,
+                            form_declaration,
+                            declaration_index
+                        );
+                        if declared_field != null and
+                           declared_field?.kind == ASTNodeKind.FieldDecl and
+                           ast_token_text(
+                               emitter,
+                               ast_child(emitter, declared_field, 0)
+                           ) == field_name {
+                            set declared_field_type = ast_child(
+                                emitter,
+                                declared_field,
+                                1
+                            );
+                            break;
+                        }
+                        set declaration_index += 1;
+                    }
+                }
+                let field_value = ast_child(emitter, field, 1);
+                if field_value != null and field_value?.kind == ASTNodeKind.ArrayExpr and
+                   declared_field_type != null and
+                   declared_field_type?.kind == ASTNodeKind.ArrayType and
+                   (declared_field_type?.child_count == 1 or
+                    declared_field_type?.child_count == 2) {
+                    ast_emit_array_literal(
+                        emitter,
+                        field_value?,
+                        namespace,
+                        depth + 1,
+                        declared_field_type
+                    );
+                } else {
+                    ast_emit_expression(emitter, field_value, namespace, depth + 1);
+                }
                 set index += 1;
             }
             ast_write(emitter, " }");
@@ -1667,6 +3257,52 @@ proc ast_emit_expression(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace
             ast_emit_expression(emitter, right, namespace, depth + 1);
             ast_write(emitter, ")");
         },
+        case ASTNodeKind.TryExpr => {
+            if node.child_count != 1 {
+                ast_fail(emitter, "optional unwrap expression is malformed");
+                return;
+            }
+            let operand = ast_child(emitter, node, 0);
+            let optional_type = ast_expression_type_node(
+                emitter,
+                operand,
+                namespace,
+                depth + 1
+            );
+            if optional_type == null or optional_type?.kind != ASTNodeKind.OptionalType or
+               optional_type?.child_count != 1 {
+                ast_fail(emitter, "optional unwrap needs a resolvable optional operand type");
+                return;
+            }
+            let owner_type: ?&ASTNode = if operand != null and operand?.kind == ASTNodeKind.MemberExpr {
+                ast_expression_type_node(
+                    emitter,
+                    ast_child(emitter, operand, 0),
+                    namespace,
+                    depth + 1
+                )
+            } else { optional_type };
+            let payload = ast_child(emitter, optional_type, 0);
+            if ast_optional_payload_uses_pointer_representation(
+                emitter,
+                payload,
+                owner_type,
+                namespace,
+                0
+            ) {
+                ast_write(emitter, "((__typeof__(");
+                ast_emit_expression(emitter, operand, namespace, depth + 1);
+                ast_write(emitter, "))vitte_optional_require((const void *)(");
+                ast_emit_expression(emitter, operand, namespace, depth + 1);
+                ast_write(emitter, ")))");
+            } else {
+                ast_write(emitter, "(*((__typeof__(* (");
+                ast_emit_expression(emitter, operand, namespace, depth + 1);
+                ast_write(emitter, ")) *)vitte_optional_require((const void *)(");
+                ast_emit_expression(emitter, operand, namespace, depth + 1);
+                ast_write(emitter, "))))");
+            }
+        },
         case ASTNodeKind.CastExpr => {
             if node.child_count != 2 {
                 ast_fail(emitter, "cast expression must have a value and a target type");
@@ -1694,6 +3330,34 @@ proc ast_emit_expression(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace
         },
         case _ => ast_fail(emitter, "AST expression is not implemented by the native C17 emitter"),
     }
+}
+
+proc ast_emit_generic_form_field_declarator(
+    emitter: &mut C17AstEmitter,
+    type_node: ?&ASTNode,
+    field_name: string,
+    namespace: string
+) {
+    if type_node == null {
+        ast_fail(emitter, "generic form field has no type");
+        return;
+    }
+    if type_node?.kind == ASTNodeKind.ArrayType and type_node?.child_count == 2 {
+        let length = ast_child(emitter, type_node, 0);
+        let element_type = ast_child(emitter, type_node, 1);
+        if length == null or length?.kind != ASTNodeKind.IntegerLiteral or
+           element_type == null {
+            ast_fail(emitter, "fixed generic form array field is malformed");
+            return;
+        }
+        ast_emit_type(emitter, element_type, namespace);
+        ast_write(emitter, " " + field_name + "[");
+        ast_emit_integer_literal(emitter, length);
+        ast_write(emitter, "]");
+        return;
+    }
+    ast_emit_type(emitter, type_node, namespace);
+    ast_write(emitter, " " + field_name);
 }
 
 proc ast_emit_if_expression(emitter: &mut C17AstEmitter, node: &ASTNode, namespace: string, depth: usize) {
@@ -1767,6 +3431,264 @@ proc ast_call_argument_needs_address(
         }
     }
     return true;
+}
+
+proc ast_generic_proc_call_name(
+    emitter: &mut C17AstEmitter,
+    procedure_index: usize,
+    call: &ASTNode,
+    namespace: string
+) -> ?string {
+    if procedure_index >= emitter.procedure_count { return null; }
+    let procedure = ast_node(emitter, emitter.procedures[procedure_index].node_id);
+    let generic_count = ast_proc_generic_parameter_count(emitter, procedure);
+    if procedure == null or generic_count == 0 { return null; }
+    let mut generic_types: [string] = [];
+    let mut generic_type_is_set: [bool] = [];
+    let unset_generic_type: bool = false;
+    let mut generic_index: usize = 0;
+    while generic_index < generic_count {
+        if not generic_types.push("") or not generic_type_is_set.push(unset_generic_type) {
+            ast_fail(emitter, "unable to allocate generic procedure type substitutions");
+            return null;
+        }
+        let generic = ast_proc_generic_parameter(emitter, procedure, generic_index);
+        if generic == null or generic?.child_count != 1 {
+            ast_fail(emitter, "generic procedure parameter bounds are not supported by C17 specialization yet");
+            return null;
+        }
+        set generic_index += 1;
+    }
+
+    let mut child_index: usize = 1;
+    while child_index < procedure?.child_count {
+        let child = ast_child(emitter, procedure, child_index);
+        if child != null and child?.kind == ASTNodeKind.WhereClause {
+            ast_fail(emitter, "generic procedure where predicates must be checked before C17 specialization");
+            return null;
+        }
+        set child_index += 1;
+    }
+
+    let mut parameter_index: usize = 0;
+    while parameter_index + 1 < call.child_count {
+        let parameter = ast_proc_parameter_node(emitter, procedure, parameter_index);
+        let parameter_type = ast_child(emitter, parameter, 1);
+        let argument = ast_child(emitter, call, parameter_index + 1);
+        let argument_node = ast_expression_type_node(
+            emitter,
+            argument,
+            namespace,
+            0
+        );
+        let argument_text = ast_infer_type_text(
+            emitter,
+            argument,
+            namespace,
+            0
+        );
+        if parameter_type == null {
+            ast_fail(emitter, "generic procedure parameter is missing its type");
+            return null;
+        }
+        generic_index = 0;
+        while generic_index < generic_count {
+            let inferred = ast_infer_generic_proc_type(
+                emitter,
+                procedure,
+                parameter_type,
+                argument_node,
+                argument_text,
+                generic_index,
+                namespace,
+                0
+            );
+            if inferred == null {
+                ast_fail(emitter, "generic procedure argument types do not provide a consistent C17 specialization");
+                return null;
+            }
+            if inferred?.len() != 0 {
+                if generic_type_is_set[generic_index] and
+                   generic_types[generic_index] != inferred? {
+                    ast_fail(emitter, "generic procedure call has conflicting type arguments");
+                    return null;
+                }
+                set generic_types[generic_index] = inferred?;
+                set generic_type_is_set[generic_index] = true;
+            }
+            set generic_index += 1;
+        }
+        set parameter_index += 1;
+    }
+
+    let mut key = emitter.procedures[procedure_index].qualified_name + "_generic";
+    generic_index = 0;
+    while generic_index < generic_count {
+        if not generic_type_is_set[generic_index] {
+            ast_fail(emitter, "generic procedure type argument cannot be inferred from its parameters");
+            return null;
+        }
+        set key = key + "_" + generic_types[generic_index];
+        set generic_index += 1;
+    }
+    return ast_mangle(key, "vitte_fn_");
+}
+
+proc ast_register_generic_proc_call(
+    emitter: &mut C17AstEmitter,
+    procedure_index: usize,
+    call: &ASTNode,
+    namespace: string
+) {
+    let c_name = ast_generic_proc_call_name(emitter, procedure_index, call, namespace);
+    if c_name == null or emitter.failed { return; }
+    if ast_generic_proc_instance_index(emitter, c_name?) != usize.MAX { return; }
+    let procedure = ast_node(emitter, emitter.procedures[procedure_index].node_id);
+    let generic_count = ast_proc_generic_parameter_count(emitter, procedure);
+    if not emitter.generic_procs.push(C17AstGenericProcInstance {}) {
+        ast_fail(emitter, "unable to allocate generic procedure specialization storage");
+        return;
+    }
+    let instance_index = emitter.generic_proc_count;
+    emitter.generic_procs[instance_index].procedure_index = procedure_index;
+    emitter.generic_procs[instance_index].argument_count = generic_count;
+    emitter.generic_procs[instance_index].c_name = c_name?;
+    let mut generic_index: usize = 0;
+    while generic_index < generic_count {
+        let mut parameter_index: usize = 0;
+        let mut resolved_type: string = "";
+        while parameter_index + 1 < call.child_count {
+            let parameter = ast_proc_parameter_node(emitter, procedure, parameter_index);
+            let parameter_type = ast_child(emitter, parameter, 1);
+            let argument = ast_child(emitter, call, parameter_index + 1);
+            let argument_node = ast_expression_type_node(
+                emitter,
+                argument,
+                namespace,
+                0
+            );
+            let argument_text = ast_infer_type_text(
+                emitter,
+                argument,
+                namespace,
+                0
+            );
+            let inferred = ast_infer_generic_proc_type(
+                emitter,
+                procedure,
+                parameter_type,
+                argument_node,
+                argument_text,
+                generic_index,
+                namespace,
+                0
+            );
+            if inferred == null {
+                ast_fail(emitter, "generic procedure specialization has an incompatible nested type argument");
+                return;
+            }
+            if inferred?.len() != 0 {
+                if resolved_type.len() != 0 and resolved_type != inferred? {
+                    ast_fail(emitter, "generic procedure call has conflicting type arguments");
+                    return;
+                }
+                set resolved_type = inferred?;
+            }
+            set parameter_index += 1;
+        }
+        if resolved_type.len() == 0 or
+           not emitter.generic_procs[instance_index].argument_types.push(resolved_type) {
+            ast_fail(emitter, "generic procedure specialization is missing a concrete type argument");
+            return;
+        }
+        set generic_index += 1;
+    }
+    set emitter.generic_proc_count += 1;
+}
+
+proc ast_collect_generic_proc_instances_in_tree(
+    emitter: &mut C17AstEmitter,
+    node: ?&ASTNode,
+    namespace: string,
+    depth: usize
+) {
+    if node == null or emitter.failed or depth > AST_EMIT_MAX_DEPTH { return; }
+    let current = node?;
+    if (current.kind == ASTNodeKind.ProcDecl or current.kind == ASTNodeKind.ExternProcDecl) and
+       ast_proc_generic_parameter_count(emitter, current) != 0 {
+        return;
+    }
+    let saved_call_owner = emitter.generic_call_owner_id;
+    let owns_call_scope = current.kind == ASTNodeKind.ProcDecl or
+        current.kind == ASTNodeKind.ExternProcDecl;
+    if owns_call_scope { set emitter.generic_call_owner_id = current.id; }
+    let mut index: usize = 0;
+    while index < current.child_count and not emitter.failed {
+        ast_collect_generic_proc_instances_in_tree(
+            emitter,
+            ast_child(emitter, current, index),
+            namespace,
+            depth + 1
+        );
+        set index += 1;
+    }
+    if current.kind == ASTNodeKind.CallExpr and current.child_count != 0 {
+        let procedure_index = ast_resolve_proc_path(
+            emitter,
+            ast_child(emitter, current, 0),
+            namespace
+        );
+        if procedure_index != usize.MAX and
+           ast_proc_generic_parameter_count(
+               emitter,
+               ast_node(emitter, emitter.procedures[procedure_index].node_id)
+           ) != 0 {
+            ast_register_generic_proc_call(
+                emitter,
+                procedure_index,
+                current,
+                namespace
+            );
+        }
+    }
+    if owns_call_scope { set emitter.generic_call_owner_id = saved_call_owner; }
+}
+
+proc ast_collect_generic_proc_instances_in_scope(
+    emitter: &mut C17AstEmitter,
+    scope: &ASTNode,
+    namespace: string,
+    depth: usize
+) {
+    if depth > AST_EMIT_MAX_DEPTH { return; }
+    let mut index: usize = 0;
+    let mut active_space: string = namespace;
+    while index < scope.child_count and not emitter.failed {
+        let declaration = ast_child(emitter, scope, index);
+        if declaration == null { return; }
+        if declaration?.kind == ASTNodeKind.SpaceDecl {
+            let path = ast_child(emitter, declaration, 0);
+            let body = ast_child(emitter, declaration, 1);
+            if path != null and body != null and body?.kind == ASTNodeKind.Block {
+                ast_collect_generic_proc_instances_in_scope(
+                    emitter,
+                    body?,
+                    ast_join_space(active_space, ast_path_text(emitter, path)),
+                    depth + 1
+                );
+            } elif path != null and body == null {
+                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+            }
+        } else {
+            ast_collect_generic_proc_instances_in_tree(
+                emitter,
+                declaration,
+                active_space,
+                depth + 1
+            );
+        }
+        set index += 1;
+    }
 }
 
 proc ast_emit_call(emitter: &mut C17AstEmitter, node: &ASTNode, namespace: string, depth: usize) {
@@ -1851,7 +3773,18 @@ proc ast_emit_call(emitter: &mut C17AstEmitter, node: &ASTNode, namespace: strin
     let proc_index: usize = if local_callee { usize.MAX } else { ast_resolve_proc_path(emitter, callee, namespace) };
     if proc_index != usize.MAX {
         let procedure: &C17AstProcSymbol = &emitter.procedures[proc_index];
-        if procedure.external { ast_write(emitter, procedure.name); }
+        if ast_proc_generic_parameter_count(
+            emitter,
+            ast_node(emitter, procedure.node_id)
+        ) != 0 {
+            let generic_name = ast_generic_proc_call_name(emitter, proc_index, node, namespace);
+            if generic_name == null or
+               ast_generic_proc_instance_index(emitter, generic_name?) == usize.MAX {
+                ast_fail(emitter, "generic procedure specialization was not collected before C17 emission");
+                return;
+            }
+            ast_write(emitter, generic_name?);
+        } elif procedure.external { ast_write(emitter, procedure.name); }
         else { ast_write(emitter, ast_mangle(procedure.qualified_name, "vitte_fn_")); }
     } else {
         ast_emit_expression(emitter, callee, namespace, depth + 1);
@@ -1911,6 +3844,21 @@ proc ast_emit_index(emitter: &mut C17AstEmitter, node: &ASTNode, namespace: stri
             ast_emit_expression(emitter, ast_child(emitter, node, 1), namespace, depth + 1);
             ast_write(emitter, " ]");
             return;
+        }
+        if type_node != null and type_node?.kind == ASTNodeKind.TypeExpr {
+            let element_text = ast_generic_alias_slice_element_text(
+                emitter, type_node, resolved_type.namespace, 0
+            );
+            if element_text != null {
+                ast_write(emitter, "((" + element_text? + " *)(( ");
+                ast_emit_expression(emitter, base, namespace, depth + 1);
+                ast_write(emitter, ").data))[ ");
+                ast_emit_expression(
+                    emitter, ast_child(emitter, node, 1), namespace, depth + 1
+                );
+                ast_write(emitter, " ]");
+                return;
+            }
         }
     }
     ast_emit_expression(emitter, base, namespace, depth + 1);
@@ -2113,7 +4061,8 @@ proc ast_emit_statement(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace:
              ASTNodeKind.CharacterLiteral | ASTNodeKind.BoolLiteral | ASTNodeKind.NullLiteral |
              ASTNodeKind.Path | ASTNodeKind.Identifier | ASTNodeKind.CallExpr | ASTNodeKind.MemberExpr |
              ASTNodeKind.IndexExpr | ASTNodeKind.BinaryExpr | ASTNodeKind.AssignExpr | ASTNodeKind.UnaryExpr |
-             ASTNodeKind.CastExpr | ASTNodeKind.FormExpr | ASTNodeKind.ArrayExpr | ASTNodeKind.IfExpr => {
+             ASTNodeKind.CastExpr | ASTNodeKind.FormExpr | ASTNodeKind.ArrayExpr | ASTNodeKind.IfExpr |
+             ASTNodeKind.TryExpr => {
             ast_emit_expression(emitter, node, namespace, depth + 1);
             ast_write(emitter, ";\n");
         },
@@ -2180,15 +4129,26 @@ proc ast_emit_let(emitter: &mut C17AstEmitter, node: &ASTNode, namespace: string
     ast_write(emitter, type_text? + " " + ast_mangle(name, "vitte_local_"));
     if initializer != null {
         ast_write(emitter, " = ");
-        if initializer.kind == ASTNodeKind.ArrayExpr and type_node != null and type_node?.kind == ASTNodeKind.ArrayType {
+        if initializer.kind == ASTNodeKind.ArrayExpr and type_node != null and
+           (type_node?.kind == ASTNodeKind.ArrayType or
+            type_node?.kind == ASTNodeKind.TypeExpr) {
             ast_emit_array_literal(emitter, initializer?, namespace, depth + 1, type_node);
         } else {
             ast_emit_expression(emitter, initializer, namespace, depth + 1);
         }
     }
     ast_write(emitter, ";\n");
-    let type_id: ASTNodeId = if type_node != null { type_node?.id } else { 0 as ASTNodeId };
-    let resolved_type = ast_resolve_type_alias(emitter, type_node, namespace);
+    let inferred_type_node: ?&ASTNode = if type_node != null {
+        type_node
+    } else {
+        ast_expression_type_node(emitter, initializer, namespace, 0)
+    };
+    let type_id: ASTNodeId = if inferred_type_node != null {
+        inferred_type_node?.id
+    } else {
+        0 as ASTNodeId
+    };
+    let resolved_type = ast_resolve_type_alias(emitter, inferred_type_node, namespace);
     let by_reference = resolved_type.node != null and resolved_type.node?.kind == ASTNodeKind.ReferenceType;
     ast_add_local(emitter, name, type_id, type_text?, by_reference);
 }
@@ -2309,7 +4269,7 @@ proc ast_emit_function_signature(
     while index < function.child_count {
         let child = ast_child(emitter, function, index);
         if child != null and (child.kind == ASTNodeKind.GenericParam or
-            child.kind == ASTNodeKind.WhereClause) {
+            child.kind == ASTNodeKind.WhereClause) and emitter.generic_proc_c_name.len() == 0 {
             ast_fail(emitter, "generic procedures and where constraints must be monomorphized and checked before C17 emission");
             return;
         }
@@ -2326,7 +4286,9 @@ proc ast_emit_function_signature(
         ast_write(emitter, " ");
     }
     let qualified = ast_qualified_name(name, namespace);
-    if function.kind == ASTNodeKind.ExternProcDecl {
+    if emitter.generic_proc_c_name.len() != 0 {
+        ast_write(emitter, emitter.generic_proc_c_name);
+    } elif function.kind == ASTNodeKind.ExternProcDecl {
         ast_write(emitter, name);
     } else {
         ast_write(emitter, ast_mangle(qualified, "vitte_fn_"));
@@ -2365,6 +4327,138 @@ proc ast_emit_function_signature(
     else { ast_write(emitter, ") {\n"); }
 }
 
+proc ast_prepare_generic_proc_instance(
+    emitter: &mut C17AstEmitter,
+    instance_index: usize
+) -> usize {
+    if instance_index >= emitter.generic_proc_count {
+        ast_fail(emitter, "generic procedure specialization index is invalid");
+        return emitter.type_substitution_count;
+    }
+    let instance = &emitter.generic_procs[instance_index];
+    let procedure = ast_node(
+        emitter,
+        emitter.procedures[instance.procedure_index].node_id
+    );
+    let saved_count = emitter.type_substitution_count;
+    if procedure == null or instance.argument_count !=
+       ast_proc_generic_parameter_count(emitter, procedure) {
+        ast_fail(emitter, "generic procedure specialization has an invalid signature");
+        return saved_count;
+    }
+    while emitter.type_substitutions.len() < saved_count + instance.argument_count {
+        if not emitter.type_substitutions.push(C17AstTypeSubstitution {}) {
+            ast_fail(emitter, "unable to allocate generic procedure substitutions");
+            return saved_count;
+        }
+    }
+    let mut index: usize = 0;
+    while index < instance.argument_count {
+        let parameter = ast_proc_generic_parameter(emitter, procedure, index);
+        let parameter_name = ast_token_text(emitter, ast_child(emitter, parameter, 0));
+        if parameter == null or parameter_name.len() == 0 or
+           index >= instance.argument_types.len() {
+            ast_fail(emitter, "generic procedure specialization is missing a type argument");
+            return saved_count;
+        }
+        emitter.type_substitutions[saved_count + index] = C17AstTypeSubstitution {
+            name: parameter_name,
+            type_text: instance.argument_types[index],
+        };
+        set index += 1;
+    }
+    set emitter.type_substitution_count = saved_count + instance.argument_count;
+    set emitter.generic_proc_c_name = instance.c_name;
+    return saved_count;
+}
+
+proc ast_restore_generic_proc_instance(
+    emitter: &mut C17AstEmitter,
+    saved_count: usize
+) {
+    set emitter.type_substitution_count = saved_count;
+    set emitter.generic_proc_c_name = "";
+}
+
+proc ast_collect_nested_generic_proc_instances(
+    emitter: &mut C17AstEmitter
+) {
+    let mut instance_index: usize = 0;
+    while instance_index < emitter.generic_proc_count and not emitter.failed {
+        let procedure_index = emitter.generic_procs[instance_index].procedure_index;
+        let procedure = ast_node(
+            emitter,
+            emitter.procedures[procedure_index].node_id
+        );
+        if procedure == null { return; }
+        let mut body: ?&ASTNode = null;
+        let mut child_index: usize = 1;
+        while child_index < procedure?.child_count {
+            let child = ast_child(emitter, procedure, child_index);
+            if child != null and child?.kind == ASTNodeKind.Block {
+                set body = child;
+                break;
+            }
+            set child_index += 1;
+        }
+        if body != null {
+            let saved_substitutions = ast_prepare_generic_proc_instance(
+                emitter,
+                instance_index
+            );
+            let saved_owner = emitter.generic_call_owner_id;
+            set emitter.generic_call_owner_id = procedure?.id;
+            ast_collect_generic_proc_instances_in_tree(
+                emitter,
+                body,
+                emitter.procedures[procedure_index].namespace,
+                0
+            );
+            set emitter.generic_call_owner_id = saved_owner;
+            ast_restore_generic_proc_instance(emitter, saved_substitutions);
+        }
+        set instance_index += 1;
+    }
+}
+
+proc ast_emit_generic_proc_prototypes(emitter: &mut C17AstEmitter) {
+    let mut index: usize = 0;
+    while index < emitter.generic_proc_count and not emitter.failed {
+        let saved_count = ast_prepare_generic_proc_instance(emitter, index);
+        let procedure_index = emitter.generic_procs[index].procedure_index;
+        let procedure = ast_node(emitter, emitter.procedures[procedure_index].node_id);
+        if procedure != null {
+            ast_emit_function_signature(
+                emitter,
+                procedure?,
+                emitter.procedures[procedure_index].namespace,
+                true
+            );
+        }
+        ast_restore_generic_proc_instance(emitter, saved_count);
+        set index += 1;
+    }
+    if emitter.generic_proc_count != 0 and not emitter.failed { ast_write(emitter, "\n"); }
+}
+
+proc ast_emit_generic_proc_definitions(emitter: &mut C17AstEmitter) {
+    let mut index: usize = 0;
+    while index < emitter.generic_proc_count and not emitter.failed {
+        let saved_count = ast_prepare_generic_proc_instance(emitter, index);
+        let procedure_index = emitter.generic_procs[index].procedure_index;
+        let procedure = ast_node(emitter, emitter.procedures[procedure_index].node_id);
+        if procedure != null {
+            ast_emit_function_definition(
+                emitter,
+                procedure?,
+                emitter.procedures[procedure_index].namespace
+            );
+        }
+        ast_restore_generic_proc_instance(emitter, saved_count);
+        set index += 1;
+    }
+}
+
 proc ast_emit_forward_types(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace: string, depth: usize) {
     if depth > AST_EMIT_MAX_DEPTH { ast_fail(emitter, "declaration nesting exceeds the C17 emitter depth limit"); return; }
     let mut index: usize = 0;
@@ -2383,18 +4477,17 @@ proc ast_emit_forward_types(emitter: &mut C17AstEmitter, scope: &ASTNode, namesp
             if ast_form_generic_parameter_count(emitter, declaration?) == 0 {
                 let symbol = ast_mangle(ast_qualified_name(name, active_space), "vitte_type_");
                 ast_write(emitter, "typedef struct " + symbol + " " + symbol + ";\n");
-            } elif ast_form_generic_parameter_count(emitter, declaration?) == 1 {
+            } else {
                 let mut generic_index: usize = 0;
                 while generic_index < emitter.generic_form_count {
-                    let instance = &emitter.generic_forms[generic_index];
-                    if instance.form_index == form_index {
-                        ast_write(emitter, "typedef struct " + instance.c_name + " " + instance.c_name + ";\n");
+                    if emitter.generic_forms[generic_index].form_index == form_index and
+                       not emitter.generic_forms[generic_index].forward_declared {
+                        let c_name = emitter.generic_forms[generic_index].c_name;
+                        ast_write(emitter, "typedef struct " + c_name + " " + c_name + ";\n");
+                        set emitter.generic_forms[generic_index].forward_declared = true;
                     }
                     set generic_index += 1;
                 }
-            } else {
-                ast_fail(emitter, "C17 generic form code generation currently requires exactly one type parameter");
-                return;
             }
         } elif declaration.kind == ASTNodeKind.OpaqueDecl {
             let name = ast_token_text(emitter, ast_child(emitter, declaration, 0));
@@ -2402,9 +4495,8 @@ proc ast_emit_forward_types(emitter: &mut C17AstEmitter, scope: &ASTNode, namesp
             let mut child_index: usize = 1;
             while child_index < declaration.child_count {
                 let child = ast_child(emitter, declaration, child_index);
-                if child != null and (child?.kind == ASTNodeKind.GenericParam or
-                    child?.kind == ASTNodeKind.WhereClause) {
-                    ast_fail(emitter, "generic opaque types and where constraints must be monomorphized before C17 emission");
+                if child != null and child?.kind == ASTNodeKind.WhereClause {
+                    ast_fail(emitter, "where constraints on opaque types must be checked before C17 emission");
                     return;
                 }
                 set child_index += 1;
@@ -2420,11 +4512,7 @@ proc ast_emit_forward_types(emitter: &mut C17AstEmitter, scope: &ASTNode, namesp
                 set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
             }
         } elif declaration.kind == ASTNodeKind.TypeDecl {
-            let target = ast_child(emitter, declaration, 1);
-            if target != null and target?.kind == ASTNodeKind.GenericParam {
-                ast_fail(emitter, "generic type aliases must be monomorphized before C17 emission");
-                return;
-            }
+            /* Generic aliases expand at their concrete type-use sites. */
         }
         set index += 1;
     }
@@ -2497,8 +4585,9 @@ proc ast_emit_aliases(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace: s
                 set child_index += 1;
             }
             if generic {
-                ast_fail(emitter, "generic type aliases must be monomorphized before C17 emission");
-                return;
+                /* Generic aliases are emitted after substitution at use sites. */
+                set index += 1;
+                continue;
             }
             let target = ast_type_decl_target(emitter, declaration?);
             if target == null {
@@ -2646,28 +4735,55 @@ proc ast_emit_generic_form_layout_ordered(
     let declaration = ast_node(emitter, form_symbol.node_id);
     let type_node = ast_node(emitter, instance.type_node_id);
     if declaration == null or type_node == null or declaration?.kind != ASTNodeKind.FormDecl or
-       type_node?.kind != ASTNodeKind.TypeExpr or type_node?.child_count != 2 {
+       type_node?.kind != ASTNodeKind.TypeExpr or
+       type_node?.child_count != instance.argument_count + 1 {
         ast_fail(emitter, "generic form specialization points to an invalid declaration or type application");
         return;
     }
-    if ast_form_generic_parameter_count(emitter, declaration?) != 1 {
-        ast_fail(emitter, "C17 generic form code generation currently requires exactly one type parameter");
-        return;
+    if not emitter.generic_forms[instance_index].forward_declared {
+        ast_write(emitter, "typedef struct " + instance.c_name + " " + instance.c_name + ";\n");
+        set emitter.generic_forms[instance_index].forward_declared = true;
     }
-    let parameter = ast_form_generic_parameter(emitter, declaration?, 0);
-    if parameter == null { ast_fail(emitter, "generic form declaration is missing its type parameter"); return; }
-    let parameter_name = ast_token_text(emitter, ast_child(emitter, parameter, 0));
-    if parameter_name.len() == 0 or emitter.type_substitution_count >= 32 {
-        ast_fail(emitter, "generic form type substitution limit exceeded");
+    let parameter_count = ast_form_generic_parameter_count(emitter, declaration?);
+    if parameter_count == 0 or parameter_count != instance.argument_count or
+       emitter.type_substitution_count > usize.MAX - parameter_count {
+        ast_fail(emitter, "generic form specialization has an invalid parameter count");
         return;
     }
     let saved_substitution_count = emitter.type_substitution_count;
-    emitter.type_substitutions[emitter.type_substitution_count] = C17AstTypeSubstitution {
-        name: parameter_name,
-        type_node_id: type_node?.children[1],
-        namespace: instance.namespace,
-    };
-    set emitter.type_substitution_count += 1;
+    let required_substitutions = saved_substitution_count + parameter_count;
+    while emitter.type_substitutions.len() < required_substitutions {
+        if not emitter.type_substitutions.push(C17AstTypeSubstitution {}) {
+            ast_fail(emitter, "unable to allocate generic form substitutions");
+            return;
+        }
+    }
+    let mut parameter_index: usize = 0;
+    while parameter_index < parameter_count {
+        let parameter = ast_form_generic_parameter(emitter, declaration?, parameter_index);
+        if parameter == null {
+            ast_fail(emitter, "generic form declaration is missing a type parameter");
+            set emitter.type_substitution_count = saved_substitution_count;
+            return;
+        }
+        let parameter_name = ast_token_text(emitter, ast_child(emitter, parameter, 0));
+        if parameter_name.len() == 0 {
+            ast_fail(emitter, "generic form type substitution has an empty parameter name");
+            set emitter.type_substitution_count = saved_substitution_count;
+            return;
+        }
+        if parameter_index >= emitter.generic_forms[instance_index].argument_types.len() {
+            ast_fail(emitter, "generic form argument type cannot be represented by the C17 backend");
+            set emitter.type_substitution_count = saved_substitution_count;
+            return;
+        }
+        emitter.type_substitutions[emitter.type_substitution_count] = C17AstTypeSubstitution {
+            name: parameter_name,
+            type_text: emitter.generic_forms[instance_index].argument_types[parameter_index],
+        };
+        set emitter.type_substitution_count += 1;
+        set parameter_index += 1;
+    }
 
     let mut field_count: usize = 0;
     let mut field_index: usize = 1;
@@ -2684,15 +4800,13 @@ proc ast_emit_generic_form_layout_ordered(
                 set emitter.type_substitution_count = saved_substitution_count;
                 return;
             }
-            if ast_generic_form_field_contains_type_application(
+            ast_emit_generic_form_field_dependencies(
                 emitter,
                 ast_child(emitter, field, 1),
+                form_symbol.namespace,
+                true,
                 0
-            ) {
-                ast_fail(emitter, "generic form field compositions are not supported by C17 code generation");
-                set emitter.type_substitution_count = saved_substitution_count;
-                return;
-            }
+            );
             set field_count += 1;
         }
         set field_index += 1;
@@ -2705,8 +4819,13 @@ proc ast_emit_generic_form_layout_ordered(
         let field = ast_child(emitter, declaration, field_index);
         if field != null and field?.kind == ASTNodeKind.FieldDecl {
             ast_write(emitter, "    ");
-            ast_emit_type(emitter, ast_child(emitter, field, 1), form_symbol.namespace);
-            ast_write(emitter, " " + ast_mangle(ast_token_text(emitter, ast_child(emitter, field, 0)), "vitte_field_") + ";\n");
+            ast_emit_generic_form_field_declarator(
+                emitter,
+                ast_child(emitter, field, 1),
+                ast_mangle(ast_token_text(emitter, ast_child(emitter, field, 0)), "vitte_field_"),
+                form_symbol.namespace
+            );
+            ast_write(emitter, ";\n");
         }
         set field_index += 1;
     }
@@ -2756,7 +4875,7 @@ proc ast_emit_types(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace: str
     }
 }
 
-proc ast_is_static_initializer(emitter: &C17AstEmitter, node: ?&ASTNode, namespace: string, depth: usize) -> bool {
+proc ast_is_static_initializer(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace: string, depth: usize) -> bool {
     if node == null or depth > AST_EMIT_MAX_DEPTH { return false; }
     if node.kind == ASTNodeKind.IntegerLiteral or node.kind == ASTNodeKind.FloatLiteral or
        node.kind == ASTNodeKind.StringLiteral or node.kind == ASTNodeKind.CharacterLiteral or
@@ -2848,7 +4967,9 @@ proc ast_emit_prototypes(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace
         let declaration = ast_child(emitter, scope, index);
         if declaration == null { ast_fail(emitter, "invalid procedure declaration"); return; }
         if declaration.kind == ASTNodeKind.ProcDecl or declaration.kind == ASTNodeKind.ExternProcDecl {
-            ast_emit_function_signature(emitter, declaration?, active_space, true);
+            if ast_proc_generic_parameter_count(emitter, declaration) == 0 {
+                ast_emit_function_signature(emitter, declaration?, active_space, true);
+            }
         } elif declaration.kind == ASTNodeKind.SpaceDecl {
             let path = ast_child(emitter, declaration, 0);
             let body = ast_child(emitter, declaration, 1);
@@ -2867,7 +4988,9 @@ proc ast_emit_prototypes(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace
 }
 
 proc ast_emit_function_definition(emitter: &mut C17AstEmitter, function: &ASTNode, namespace: string) {
-    if function.kind != ASTNodeKind.ProcDecl { return; }
+    if function.kind != ASTNodeKind.ProcDecl or
+       (ast_proc_generic_parameter_count(emitter, function) != 0 and
+        emitter.generic_proc_c_name.len() == 0) { return; }
     let body = ast_find_direct_kind(emitter, function, ASTNodeKind.Block);
     if body == null { return; }
     let saved_local_count = emitter.local_count;
@@ -2922,7 +5045,9 @@ proc ast_emit_definitions(emitter: &mut C17AstEmitter, scope: &ASTNode, namespac
         let declaration = ast_child(emitter, scope, index);
         if declaration == null { ast_fail(emitter, "invalid procedure definition"); return; }
         if declaration.kind == ASTNodeKind.ProcDecl {
-            ast_emit_function_definition(emitter, declaration?, active_space);
+            if ast_proc_generic_parameter_count(emitter, declaration) == 0 {
+                ast_emit_function_definition(emitter, declaration?, active_space);
+            }
         } elif declaration.kind == ASTNodeKind.SpaceDecl {
             let path = ast_child(emitter, declaration, 0);
             let body = ast_child(emitter, declaration, 1);
@@ -3019,6 +5144,7 @@ proc ast_emit_runtime(emitter: &mut C17AstEmitter) {
         "#define VITTE_C17_AST_COLD\n" +
         "#endif\n" +
         "typedef struct VitteArray { void *data; size_t length; } VitteArray;\n" +
+        "static inline void *vitte_optional_require(const void *value) { if (value == NULL) abort(); return (void *)value; }\n" +
         "static inline VitteArray vitte_array_from(const void *items, size_t count, size_t item_size) {\n" +
         "    VitteArray result = { NULL, 0 };\n" +
         "    if (count == 0 || items == NULL || item_size == 0 || count > SIZE_MAX / item_size) return result;\n" +
@@ -3100,6 +5226,8 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
         return C17AstEmitResult { success: false, source: "", error: emitter.error };
     }
     ast_collect_generic_instances_in_scope(&mut emitter, root?, "", 0);
+    ast_collect_generic_proc_instances_in_scope(&mut emitter, root?, "", 0);
+    ast_collect_nested_generic_proc_instances(&mut emitter);
     if emitter.failed {
         return C17AstEmitResult { success: false, source: "", error: emitter.error };
     }
@@ -3121,8 +5249,10 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
     ast_emit_globals(&mut emitter, root?, "", 0);
     if not emitter.failed { ast_write(&mut emitter, "\n"); }
     ast_emit_prototypes(&mut emitter, root?, "", 0);
+    if not emitter.failed { ast_emit_generic_proc_prototypes(&mut emitter); }
     if not emitter.failed { ast_write(&mut emitter, "\n"); }
     ast_emit_definitions(&mut emitter, root?, "", 0);
+    if not emitter.failed { ast_emit_generic_proc_definitions(&mut emitter); }
     let entry_proc = ast_find_entry(&emitter, root?);
     if entry_proc == null and not emitter.failed {
         ast_emit_tests(&mut emitter, root?, "", 0);
@@ -3146,7 +5276,7 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
             let entry_symbol = ast_mangle(emitter.procedures[entry_index].qualified_name, "vitte_fn_");
             let return_type = ast_function_return_type(&emitter, entry_proc?);
             if return_type != null {
-                let text = ast_type_text(&emitter, return_type, emitter.procedures[entry_index].namespace, 0);
+                let text = ast_type_text(&mut emitter, return_type, emitter.procedures[entry_index].namespace, 0);
                 if text == null {
                     ast_fail(&mut emitter, "main return type cannot be emitted");
                 } elif text? == "void" {

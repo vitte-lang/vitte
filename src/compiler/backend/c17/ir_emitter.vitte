@@ -227,7 +227,7 @@ proc ir_type_text(context: &IRContext, type_id: u64, depth: usize) -> ?string {
             if name == null { return null; }
             return "struct " + name?;
         }
-        case IRTypeKind.Function => return "void *";
+        case IRTypeKind.Function => return ir_type_symbol(context, ty?, "vitte_fn_type_");
         case IRTypeKind.Invalid | IRTypeKind.Count => return null;
     }
 }
@@ -537,10 +537,19 @@ proc ir_instruction_text(context: &IRContext, instruction: &IRInstruction) -> ?s
     if opcode == IROpcode.SliceMake {
         if instruction.result == 0 or instruction.operand_count != 2 { return null; }
         let slice_type = ir_type_text(context, instruction.result_type, 0);
+        let slice_ir_type = ir_type(context, instruction.result_type);
+        let element_type = if slice_ir_type == null { null } else { ir_type_text(context, slice_ir_type?.element_type, 0) };
         let data = ir_value_text(context, instruction.operands[0]);
         let length = ir_value_text(context, instruction.operands[1]);
-        if slice_type == null or data == null or length == null { return null; }
-        return name? + " = (" + slice_type? + "){ " + data? + ", (uint64_t)" + length? + " };";
+        if slice_type == null or element_type == null or data == null or length == null { return null; }
+        let mut text: string = name? + " = (" + slice_type? + "){ NULL, (uint64_t)(" + length? + ") };";
+        set text += "\n    if ((uint64_t)(" + length? + ") != 0u) {";
+        set text += "\n        if ((uint64_t)(" + length? + ") > SIZE_MAX / sizeof(" + element_type? + ")) abort();";
+        set text += "\n        " + name? + ".data = (" + element_type? + " *)malloc(sizeof(" + element_type? + ") * (size_t)(" + length? + "));";
+        set text += "\n        if (" + name? + ".data == NULL) abort();";
+        set text += "\n        memcpy(" + name? + ".data, " + data? + ", sizeof(" + element_type? + ") * (size_t)(" + length? + "));";
+        set text += "\n    }";
+        return text;
     }
     if opcode == IROpcode.SliceData {
         if instruction.result == 0 or instruction.operand_count != 1 { return null; }
@@ -802,6 +811,29 @@ export proc c17_emit_ir_with_options(context: &IRContext, options: &C17IREmitOpt
             let element = ir_type_text(context, ty.element_type, 0);
             if name == null or element == null { return C17IRResult { success: false, source: "", error: "invalid slice IR type" }; }
             set source += "struct " + name? + " { " + element? + " *data; uint64_t length; };\n";
+        }
+        if ty.kind == IRTypeKind.Function {
+            let name = ir_type_symbol(context, ty, "vitte_fn_type_");
+            let function_return_text = ir_type_text(context, ty.return_type, 0);
+            if name == null or function_return_text == null { return C17IRResult { success: false, source: "", error: "invalid function IR type" }; }
+            set source += "typedef " + function_return_text? + " (*" + name? + ")( ";
+            if ty.parameter_count == 0 {
+                set source += "void";
+            } else {
+                let mut parameter_index: usize = 0;
+                while parameter_index < ty.parameter_count {
+                    let parameter_type = ir_type_text(context, ty.parameter_types[parameter_index], 0);
+                    if parameter_type == null { return C17IRResult { success: false, source: "", error: "invalid function parameter IR type" }; }
+                    if parameter_index != 0 { set source += ", "; }
+                    set source += parameter_type?;
+                    set parameter_index += 1;
+                }
+            }
+            if ty.is_variadic {
+                if ty.parameter_count != 0 { set source += ", "; }
+                set source += "...";
+            }
+            set source += ");\n";
         }
         set index += 1;
     }

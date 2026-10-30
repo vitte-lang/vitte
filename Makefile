@@ -784,7 +784,8 @@ GRAMMAR_FIXTURES := \
 	$(TEST_DIR)/grammar_alignment/ref_param_type_marker_ok.vit \
 	$(TEST_DIR)/expression_literals_parse.vit \
 	$(TEST_DIR)/form_parse.vit \
-	$(TEST_DIR)/pick_parse.vit
+	$(TEST_DIR)/pick_parse.vit \
+	$(TEST_DIR)/nested_generic_type_arguments_parse.vit
 
 $(GRAMMAR_TEST_BIN): $(TEST_DIR)/grammar_parser_test.c $(LIB_OBJECTS)
 	@mkdir -p $(BIN_DIR)
