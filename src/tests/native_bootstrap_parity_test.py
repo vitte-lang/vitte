@@ -395,6 +395,12 @@ def run_check(binary: Path, source_path: Path, label: str):
 
 
 def run_program(binary: Path, source_path: Path, label: str):
+    if sys.platform == "win32" and "bootstrap" in binary.name.lower():
+        executed = run_bootstrap_emitted_c(binary, source_path, label)
+        if executed.returncode == 0:
+            return True, ()
+        return False, (f"generated C program exited with status {executed.returncode}",)
+
     result = subprocess.run(
         [
             str(binary),
@@ -413,6 +419,39 @@ def run_program(binary: Path, source_path: Path, label: str):
     return diagnostic_codes(result, binary, label)
 
 
+def run_bootstrap_emitted_c(binary: Path, source_path: Path, label: str, emitted=None):
+    """Run bootstrap-generated C with MinGW when its POSIX run driver is absent."""
+    if emitted is None:
+        emitted = run_emit_c(binary, source_path)
+    if emitted.returncode != 0:
+        raise AssertionError(
+            f"{label}: bootstrap C emission failed on Windows; "
+            f"stdout={emitted.stdout[:2000]!r}; stderr={emitted.stderr[:4000]!r}"
+        )
+
+    with tempfile.TemporaryDirectory(prefix="vitte-bootstrap-parity-") as temp_dir:
+        c_source = Path(temp_dir) / "program.c"
+        executable = Path(temp_dir) / "program.exe"
+        c_source.write_text(emitted.stdout, encoding="utf-8")
+        compiled = subprocess.run(
+            ["cc", "-std=c17", str(c_source), "-o", str(executable)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if compiled.returncode != 0:
+            raise AssertionError(
+                f"{label}: MinGW rejected bootstrap-generated C; "
+                f"stdout={compiled.stdout[:2000]!r}; stderr={compiled.stderr[:4000]!r}"
+            )
+        return subprocess.run(
+            [str(executable)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+
 def expect_runtime_abort(binary: Path, source_path: Path, label: str):
     emitted = run_emit_c(binary, source_path)
     if emitted.returncode != 0 or "abort()" not in emitted.stdout:
@@ -420,6 +459,12 @@ def expect_runtime_abort(binary: Path, source_path: Path, label: str):
             f"{label}: compiler must emit the checked optional trap; "
             f"returncode={emitted.returncode}, stderr={emitted.stderr[:1000]!r}"
         )
+    if sys.platform == "win32" and "bootstrap" in binary.name.lower():
+        executed = run_bootstrap_emitted_c(binary, source_path, label, emitted)
+        if executed.returncode == 0:
+            raise AssertionError(f"{label}: generated C should abort for a null unwrap")
+        return
+
     result = subprocess.run(
         [
             str(binary),
