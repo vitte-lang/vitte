@@ -524,6 +524,18 @@ main(void)
             true
         },
         {
+            "nested generic type arguments",
+            "form Box<T> { value: T }\n"
+            "form Outer<T> { wrapped: Box<T> }\n"
+            "proc main() -> i64 {\n"
+            "    let outer: Outer<Box<i64>> = Outer<Box<i64>> {\n"
+            "        wrapped: Box<Box<i64>> { value: Box<i64> { value: 42 } },\n"
+            "    };\n"
+            "    return outer.wrapped.value.value - 42;\n"
+            "}\n",
+            true
+        },
+        {
             "attributed procedure declaration",
             "#[cold]\nproc tagged() -> i64 { return 1; }\n",
             true

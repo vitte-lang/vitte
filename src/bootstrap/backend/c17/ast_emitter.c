@@ -19,28 +19,63 @@
 
 #include "../../platform/platform.h"
 
-#define VITTE_C17_AST_GENERIC_FORM_INSTANCE_MAX 256u
-#define VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX 64u
+#define VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX 512u
+#define VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX 512u
 
 typedef struct vitte_c17_ast_generic_form_instance {
     const vitte_ast_node_t *declaration;
-    const vitte_ast_node_t *argument;
+    const vitte_ast_node_t *type_expression;
+    const vitte_ast_node_t **arguments;
+    size_t argument_count;
     char argument_name[VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+    unsigned char layout_state;
+    bool forward_declared;
 } vitte_c17_ast_generic_form_instance_t;
+
+typedef struct vitte_c17_ast_generic_proc_instance {
+    const vitte_ast_node_t *declaration;
+    const vitte_ast_node_t **argument_type_nodes;
+    const char **argument_c_types;
+    char **argument_type_keys;
+    size_t argument_count;
+    char c_name[96];
+} vitte_c17_ast_generic_proc_instance_t;
+
+typedef struct vitte_c17_ast_generic_proc_call_binding {
+    size_t call_id;
+    size_t owner_instance_index;
+    size_t target_instance_index;
+} vitte_c17_ast_generic_proc_call_binding_t;
 
 typedef struct vitte_c17_ast_emitter {
     FILE *output;
     const vitte_parser_t *parser;
     const vitte_ast_node_t *function;
-    const vitte_ast_node_t *generic_parameter_name;
-    const vitte_ast_node_t *generic_argument;
+    const vitte_ast_node_t **generic_parameter_names;
+    const vitte_ast_node_t **generic_arguments;
+    const char **generic_c_type_names;
+    size_t generic_substitution_count;
+    size_t generic_substitution_capacity;
+    size_t *generic_call_instance_ids;
+    const vitte_ast_node_t **procedure_declarations;
+    size_t procedure_declaration_count;
+    size_t procedure_declaration_capacity;
+    vitte_c17_ast_generic_proc_instance_t *generic_procs;
+    size_t generic_proc_count;
+    size_t generic_proc_capacity;
+    vitte_c17_ast_generic_proc_call_binding_t *generic_proc_call_bindings;
+    size_t generic_proc_call_binding_count;
+    size_t generic_proc_call_binding_capacity;
+    size_t generic_proc_context_index;
+    bool generic_proc_context_active;
+    const char *generic_proc_c_name;
     const vitte_ast_node_t *space_stack[128];
     size_t space_depth;
     vitte_ast_node_id_t *parent_ids;
     size_t parent_id_count;
-    vitte_c17_ast_generic_form_instance_t generic_forms[
-        VITTE_C17_AST_GENERIC_FORM_INSTANCE_MAX];
+    vitte_c17_ast_generic_form_instance_t *generic_forms;
     size_t generic_form_count;
+    size_t generic_form_capacity;
     const char *source_path;
     bool debug_info;
     bool debug_runtime;
@@ -93,8 +128,25 @@ vitte_c17_ast_emit_generic_form_instance_name(
 
 static const vitte_c17_ast_generic_form_instance_t *
 vitte_c17_ast_generic_form_instance_for_type(
-    const vitte_c17_ast_emitter_t *emitter,
+    vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *type);
+
+static bool
+vitte_c17_ast_generic_argument_name(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    char *name,
+    size_t name_capacity,
+    size_t depth);
+
+static const char *
+vitte_c17_ast_source_scalar_name_from_c_type(const char *c_type);
+
+static bool
+vitte_c17_ast_emit_generic_form_layout_ordered(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t instance_index,
+    size_t depth);
 
 static const vitte_ast_node_t *
 vitte_c17_ast_find_path_declaration(
@@ -118,6 +170,229 @@ vitte_c17_ast_node(
 }
 
 static bool
+vitte_c17_ast_emitter_reserve_generic_forms(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t required)
+{
+    size_t capacity;
+    size_t bytes;
+    vitte_c17_ast_generic_form_instance_t *forms;
+
+    if (emitter == NULL) {
+        return false;
+    }
+    if (required <= emitter->generic_form_capacity) {
+        return true;
+    }
+    capacity = emitter->generic_form_capacity != 0u
+        ? emitter->generic_form_capacity
+        : 8u;
+    while (capacity < required) {
+        if (capacity > SIZE_MAX / 2u) {
+            capacity = required;
+            break;
+        }
+        capacity *= 2u;
+    }
+    if (capacity < required ||
+        capacity > SIZE_MAX / sizeof(*forms)) {
+        return false;
+    }
+    bytes = capacity * sizeof(*forms);
+    forms = (vitte_c17_ast_generic_form_instance_t *)realloc(
+        emitter->generic_forms,
+        bytes);
+    if (forms == NULL) {
+        return false;
+    }
+    memset(
+        forms + emitter->generic_form_capacity,
+        0,
+        (capacity - emitter->generic_form_capacity) * sizeof(*forms));
+    emitter->generic_forms = forms;
+    emitter->generic_form_capacity = capacity;
+    return true;
+}
+
+static bool
+vitte_c17_ast_emitter_reserve_generic_procs(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t required)
+{
+    size_t capacity;
+    vitte_c17_ast_generic_proc_instance_t *procedures;
+
+    if (emitter == NULL) {
+        return false;
+    }
+    if (required <= emitter->generic_proc_capacity) {
+        return true;
+    }
+    capacity = emitter->generic_proc_capacity != 0u
+        ? emitter->generic_proc_capacity
+        : 8u;
+    while (capacity < required) {
+        if (capacity > SIZE_MAX / 2u) {
+            capacity = required;
+            break;
+        }
+        capacity *= 2u;
+    }
+    if (capacity < required ||
+        capacity > SIZE_MAX / sizeof(*procedures)) {
+        return false;
+    }
+    procedures = (vitte_c17_ast_generic_proc_instance_t *)realloc(
+        emitter->generic_procs,
+        capacity * sizeof(*procedures));
+    if (procedures == NULL) {
+        return false;
+    }
+    memset(
+        procedures + emitter->generic_proc_capacity,
+        0,
+        (capacity - emitter->generic_proc_capacity) * sizeof(*procedures));
+    emitter->generic_procs = procedures;
+    emitter->generic_proc_capacity = capacity;
+    return true;
+}
+
+static bool
+vitte_c17_ast_emitter_reserve_procedure_declarations(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t required)
+{
+    size_t capacity;
+    const vitte_ast_node_t **declarations;
+    if (emitter == NULL) { return false; }
+    if (required <= emitter->procedure_declaration_capacity) {
+        return true;
+    }
+    capacity = emitter->procedure_declaration_capacity != 0u
+        ? emitter->procedure_declaration_capacity
+        : 8u;
+    while (capacity < required) {
+        if (capacity > SIZE_MAX / 2u) {
+            capacity = required;
+            break;
+        }
+        capacity *= 2u;
+    }
+    if (capacity < required ||
+        capacity > SIZE_MAX / sizeof(*declarations)) {
+        return false;
+    }
+    declarations = (const vitte_ast_node_t **)realloc(
+        (void *)emitter->procedure_declarations,
+        capacity * sizeof(*declarations));
+    if (declarations == NULL) { return false; }
+    emitter->procedure_declarations = declarations;
+    emitter->procedure_declaration_capacity = capacity;
+    return true;
+}
+
+static bool
+vitte_c17_ast_emitter_reserve_generic_proc_call_bindings(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t required)
+{
+    size_t capacity;
+    vitte_c17_ast_generic_proc_call_binding_t *bindings;
+
+    if (emitter == NULL) { return false; }
+    if (required <= emitter->generic_proc_call_binding_capacity) {
+        return true;
+    }
+    capacity = emitter->generic_proc_call_binding_capacity != 0u
+        ? emitter->generic_proc_call_binding_capacity
+        : 8u;
+    while (capacity < required) {
+        if (capacity > SIZE_MAX / 2u) {
+            capacity = required;
+            break;
+        }
+        capacity *= 2u;
+    }
+    if (capacity < required ||
+        capacity > SIZE_MAX / sizeof(*bindings)) {
+        return false;
+    }
+    bindings = (vitte_c17_ast_generic_proc_call_binding_t *)realloc(
+        emitter->generic_proc_call_bindings,
+        capacity * sizeof(*bindings));
+    if (bindings == NULL) { return false; }
+    emitter->generic_proc_call_bindings = bindings;
+    emitter->generic_proc_call_binding_capacity = capacity;
+    return true;
+}
+
+static void
+vitte_c17_ast_emitter_release_generic_state(
+    vitte_c17_ast_emitter_t *emitter)
+{
+    if (emitter == NULL) {
+        return;
+    }
+    free(emitter->parent_ids);
+    free(emitter->generic_parameter_names);
+    free(emitter->generic_arguments);
+    free(emitter->generic_c_type_names);
+    free(emitter->generic_call_instance_ids);
+    free((void *)emitter->procedure_declarations);
+    free(emitter->generic_proc_call_bindings);
+    {
+        size_t index;
+        for (index = 0u; index < emitter->generic_form_count; ++index) {
+            free((void *)emitter->generic_forms[index].arguments);
+            emitter->generic_forms[index].arguments = NULL;
+        }
+        for (index = 0u; index < emitter->generic_proc_count; ++index) {
+            size_t argument_index;
+            for (argument_index = 0u;
+                 argument_index <
+                     emitter->generic_procs[index].argument_count;
+                 ++argument_index) {
+                free(emitter->generic_procs[index].argument_type_keys != NULL
+                    ? emitter->generic_procs[index].argument_type_keys[
+                          argument_index]
+                    : NULL);
+            }
+            free((void *)emitter->generic_procs[index].argument_type_nodes);
+            free((void *)emitter->generic_procs[index].argument_c_types);
+            free(emitter->generic_procs[index].argument_type_keys);
+            emitter->generic_procs[index].argument_type_nodes = NULL;
+            emitter->generic_procs[index].argument_c_types = NULL;
+            emitter->generic_procs[index].argument_type_keys = NULL;
+        }
+    }
+    free(emitter->generic_forms);
+    free(emitter->generic_procs);
+    emitter->parent_ids = NULL;
+    emitter->parent_id_count = 0u;
+    emitter->generic_parameter_names = NULL;
+    emitter->generic_arguments = NULL;
+    emitter->generic_c_type_names = NULL;
+    emitter->generic_substitution_count = 0u;
+    emitter->generic_substitution_capacity = 0u;
+    emitter->generic_call_instance_ids = NULL;
+    emitter->procedure_declarations = NULL;
+    emitter->procedure_declaration_count = 0u;
+    emitter->procedure_declaration_capacity = 0u;
+    emitter->generic_procs = NULL;
+    emitter->generic_proc_count = 0u;
+    emitter->generic_proc_capacity = 0u;
+    emitter->generic_proc_call_bindings = NULL;
+    emitter->generic_proc_call_binding_count = 0u;
+    emitter->generic_proc_call_binding_capacity = 0u;
+    emitter->generic_proc_context_index = 0u;
+    emitter->generic_proc_context_active = false;
+    emitter->generic_proc_c_name = NULL;
+    emitter->generic_forms = NULL;
+    emitter->generic_form_count = 0u;
+    emitter->generic_form_capacity = 0u;
+}
+
+static bool
 vitte_c17_ast_build_parent_index(
     vitte_c17_ast_emitter_t *emitter)
 {
@@ -131,9 +406,29 @@ vitte_c17_ast_build_parent_index(
     emitter->parent_ids = (vitte_ast_node_id_t *)calloc(
         emitter->parent_id_count,
         sizeof(*emitter->parent_ids));
-    if (emitter->parent_ids == NULL) {
+    emitter->generic_parameter_names =
+        (const vitte_ast_node_t **)calloc(
+            emitter->parent_id_count,
+            sizeof(*emitter->generic_parameter_names));
+    emitter->generic_arguments =
+        (const vitte_ast_node_t **)calloc(
+            emitter->parent_id_count,
+            sizeof(*emitter->generic_arguments));
+    emitter->generic_c_type_names = (const char **)calloc(
+        emitter->parent_id_count,
+        sizeof(*emitter->generic_c_type_names));
+    emitter->generic_call_instance_ids = (size_t *)calloc(
+        emitter->parent_id_count,
+        sizeof(*emitter->generic_call_instance_ids));
+    if (emitter->parent_ids == NULL ||
+        emitter->generic_parameter_names == NULL ||
+        emitter->generic_arguments == NULL ||
+        emitter->generic_c_type_names == NULL ||
+        emitter->generic_call_instance_ids == NULL) {
+        vitte_c17_ast_emitter_release_generic_state(emitter);
         return false;
     }
+    emitter->generic_substitution_capacity = emitter->parent_id_count;
     for (index = 0u; index < emitter->parser->node_count; ++index) {
         const vitte_ast_node_t *parent = &emitter->parser->nodes[index];
         size_t child_index;
@@ -147,9 +442,7 @@ vitte_c17_ast_build_parent_index(
                 child_id >= emitter->parent_id_count ||
                 emitter->parent_ids[(size_t)child_id] !=
                     VITTE_AST_INVALID_ID) {
-                free(emitter->parent_ids);
-                emitter->parent_ids = NULL;
-                emitter->parent_id_count = 0u;
+                vitte_c17_ast_emitter_release_generic_state(emitter);
                 return false;
             }
             emitter->parent_ids[(size_t)child_id] = parent->id;
@@ -1000,7 +1293,11 @@ vitte_c17_ast_generic_form_parameter_count(
         *has_where = false;
     }
     if (declaration == NULL ||
-        declaration->kind != VITTE_AST_NODE_FORM_DECL) {
+        (declaration->kind != VITTE_AST_NODE_FORM_DECL &&
+         declaration->kind != VITTE_AST_NODE_PROC_DECL &&
+         declaration->kind != VITTE_AST_NODE_EXTERN_PROC_DECL &&
+         declaration->kind != VITTE_AST_NODE_TYPE_DECL &&
+         declaration->kind != VITTE_AST_NODE_OPAQUE_DECL)) {
         return 0u;
     }
     for (index = 1u; index < declaration->child_count; ++index) {
@@ -1022,8 +1319,10 @@ vitte_c17_ast_generic_form_parameter_count(
 static const vitte_ast_node_t *
 vitte_c17_ast_generic_form_parameter_name(
     const vitte_c17_ast_emitter_t *emitter,
-    const vitte_ast_node_t *declaration)
+    const vitte_ast_node_t *declaration,
+    size_t wanted_index)
 {
+    size_t parameter_index = 0u;
     size_t index;
 
     if (declaration == NULL) {
@@ -1034,11 +1333,237 @@ vitte_c17_ast_generic_form_parameter_name(
             vitte_c17_ast_child(emitter, declaration, index);
         if (child != NULL &&
             child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
-            return vitte_c17_ast_child(emitter, child, 0u);
+            if (parameter_index == wanted_index) {
+                return vitte_c17_ast_child(emitter, child, 0u);
+            }
+            ++parameter_index;
         }
     }
     return NULL;
 }
+
+/* Return the concrete element type of a direct generic alias to a dynamic
+ * array, for example `type Values<T> = [T]` used as `Values<i64>`. */
+static const vitte_ast_node_t *
+vitte_c17_ast_generic_alias_slice_element(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type)
+{
+    const vitte_ast_node_t *path;
+    const vitte_ast_node_t *alias;
+    const vitte_ast_node_t *target;
+    const vitte_ast_node_t *element;
+    const vitte_ast_node_t *element_path;
+    const vitte_ast_node_t *element_name;
+    size_t parameter_count;
+    size_t index;
+
+    if (emitter == NULL || type == NULL ||
+        type->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        type->child_count < 2u) {
+        return NULL;
+    }
+    path = vitte_c17_ast_child(emitter, type, 0u);
+    alias = vitte_c17_ast_find_path_declaration(
+        emitter,
+        path,
+        VITTE_AST_NODE_TYPE_DECL,
+        VITTE_AST_NODE_TYPE_DECL);
+    if (alias == NULL ||
+        (alias->flags & VITTE_AST_FLAG_TYPE_ALIAS) == 0u ||
+        alias->child_count < 2u) {
+        return NULL;
+    }
+    target = vitte_c17_ast_child(
+        emitter, alias, alias->child_count - 1u);
+    if (target == NULL || target->kind != VITTE_AST_NODE_ARRAY_TYPE ||
+        target->child_count != 1u) {
+        return NULL;
+    }
+    element = vitte_c17_ast_child(emitter, target, 0u);
+    element_path = element != NULL &&
+            element->kind == VITTE_AST_NODE_TYPE_EXPR
+        ? vitte_c17_ast_child(emitter, element, 0u)
+        : NULL;
+    element_name = element_path != NULL &&
+            element_path->kind == VITTE_AST_NODE_PATH &&
+            element_path->child_count == 1u
+        ? vitte_c17_ast_child(emitter, element_path, 0u)
+        : NULL;
+    parameter_count = vitte_c17_ast_generic_form_parameter_count(
+        emitter, alias, NULL);
+    for (index = 0u; index < parameter_count; ++index) {
+        const vitte_ast_node_t *parameter =
+            vitte_c17_ast_generic_form_parameter_name(
+                emitter, alias, index);
+        if (element_name != NULL && parameter != NULL &&
+            vitte_c17_ast_token_equal(
+                emitter, element_name, parameter)) {
+            return index + 1u < type->child_count
+                ? vitte_c17_ast_child(emitter, type, index + 1u)
+                : NULL;
+        }
+    }
+    return element;
+}
+
+static bool
+vitte_c17_ast_type_expression_is_parameter(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    const vitte_ast_node_t *parameter_name);
+
+static size_t
+vitte_c17_ast_generic_substitution_index(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type)
+{
+    size_t index;
+
+    if (emitter == NULL || type == NULL) {
+        return SIZE_MAX;
+    }
+    index = emitter->generic_substitution_count;
+    while (index != 0u) {
+        --index;
+        if (vitte_c17_ast_type_expression_is_parameter(
+                emitter,
+                type,
+                emitter->generic_parameter_names[index])) {
+            return index;
+        }
+    }
+    return SIZE_MAX;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_resolve_generic_argument(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    size_t depth)
+{
+    size_t substitution_index;
+
+    if (emitter == NULL || type == NULL ||
+        depth > VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX) {
+        return NULL;
+    }
+    substitution_index =
+        vitte_c17_ast_generic_substitution_index(emitter, type);
+    if (substitution_index == SIZE_MAX) {
+        return type;
+    }
+    {
+        const vitte_ast_node_t *argument =
+            emitter->generic_arguments[substitution_index];
+        size_t saved_substitution_count =
+            emitter->generic_substitution_count;
+        const vitte_ast_node_t *resolved;
+
+        if (argument == NULL || argument == type) {
+            return NULL;
+        }
+        emitter->generic_substitution_count = substitution_index;
+        resolved = vitte_c17_ast_resolve_generic_argument(
+            emitter, argument, depth + 1u);
+        emitter->generic_substitution_count = saved_substitution_count;
+        return resolved;
+    }
+}
+
+/* Resolve the concrete element type of a generic alias chain ending in a
+ * dynamic array.  Keeping each alias substitution active lets `Values2<T> =
+ * Values<T>` resolve the `T` in the final `[T]` target. */
+static const vitte_ast_node_t *
+vitte_c17_ast_generic_alias_slice_element_recursive(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    size_t depth)
+{
+    const vitte_ast_node_t *path;
+    const vitte_ast_node_t *alias;
+    const vitte_ast_node_t *target;
+    const vitte_ast_node_t *result = NULL;
+    size_t parameter_count;
+    size_t saved_count;
+    size_t index;
+
+    if (emitter == NULL || type == NULL ||
+        type->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        type->child_count < 2u ||
+        depth > VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX) {
+        return NULL;
+    }
+    path = vitte_c17_ast_child(emitter, type, 0u);
+    alias = vitte_c17_ast_find_path_declaration(
+        emitter,
+        path,
+        VITTE_AST_NODE_TYPE_DECL,
+        VITTE_AST_NODE_TYPE_DECL);
+    parameter_count = vitte_c17_ast_generic_form_parameter_count(
+        emitter, alias, NULL);
+    if (alias == NULL || parameter_count == 0u ||
+        (alias->flags & VITTE_AST_FLAG_TYPE_ALIAS) == 0u ||
+        parameter_count != type->child_count - 1u) {
+        return NULL;
+    }
+    saved_count = emitter->generic_substitution_count;
+    if (saved_count > emitter->generic_substitution_capacity ||
+        parameter_count >
+            emitter->generic_substitution_capacity - saved_count) {
+        return NULL;
+    }
+    for (index = 0u; index < parameter_count; ++index) {
+        size_t substitution_index = saved_count + index;
+        emitter->generic_parameter_names[substitution_index] =
+            vitte_c17_ast_generic_form_parameter_name(
+                emitter, alias, index);
+        emitter->generic_arguments[substitution_index] =
+            vitte_c17_ast_child(emitter, type, index + 1u);
+        emitter->generic_c_type_names[substitution_index] = NULL;
+        if (emitter->generic_parameter_names[substitution_index] == NULL ||
+            emitter->generic_arguments[substitution_index] == NULL) {
+            for (index = 0u; index < parameter_count; ++index) {
+                size_t cleanup_index = saved_count + index;
+                emitter->generic_parameter_names[cleanup_index] = NULL;
+                emitter->generic_arguments[cleanup_index] = NULL;
+                emitter->generic_c_type_names[cleanup_index] = NULL;
+            }
+            return NULL;
+        }
+    }
+    emitter->generic_substitution_count = saved_count + parameter_count;
+    target = vitte_c17_ast_child(
+        emitter, alias, alias->child_count - 1u);
+    if (target != NULL && target->kind == VITTE_AST_NODE_ARRAY_TYPE &&
+        target->child_count == 1u) {
+        result = vitte_c17_ast_resolve_generic_argument(
+            emitter,
+            vitte_c17_ast_child(emitter, target, 0u),
+            depth + 1u);
+    } else if (target != NULL &&
+               target->kind == VITTE_AST_NODE_TYPE_EXPR &&
+               target->child_count > 1u) {
+        result = vitte_c17_ast_generic_alias_slice_element_recursive(
+            emitter, target, depth + 1u);
+    }
+    emitter->generic_substitution_count = saved_count;
+    for (index = 0u; index < parameter_count; ++index) {
+        size_t substitution_index = saved_count + index;
+        emitter->generic_parameter_names[substitution_index] = NULL;
+        emitter->generic_arguments[substitution_index] = NULL;
+        emitter->generic_c_type_names[substitution_index] = NULL;
+    }
+    return result;
+}
+
+static bool
+vitte_c17_ast_generic_application_argument_name(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *application,
+    char *name,
+    size_t name_capacity,
+    size_t depth);
 
 static bool
 vitte_c17_ast_simple_type_name(
@@ -1092,9 +1617,253 @@ vitte_c17_ast_generic_scalar_argument(const char *name)
     return false;
 }
 
+static bool
+vitte_c17_ast_type_expression_is_parameter(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    const vitte_ast_node_t *parameter_name)
+{
+    const vitte_ast_node_t *path;
+    const vitte_ast_node_t *name;
+
+    if (type == NULL || type->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        type->child_count != 1u) {
+        return false;
+    }
+    path = vitte_c17_ast_child(emitter, type, 0u);
+    if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
+        path->child_count != 1u) {
+        return false;
+    }
+    name = vitte_c17_ast_child(emitter, path, 0u);
+    return name != NULL && parameter_name != NULL &&
+           vitte_c17_ast_token_equal(emitter, name, parameter_name);
+}
+
+static bool
+vitte_c17_ast_type_expression_is_any_generic_parameter(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type)
+{
+    size_t node_count;
+    size_t index;
+
+    node_count = vitte_parser_node_count(emitter->parser);
+    for (index = 1u; index <= node_count; ++index) {
+        const vitte_ast_node_t *parameter = vitte_parser_get_node(
+            emitter->parser, (vitte_ast_node_id_t)index);
+        if (parameter != NULL &&
+            parameter->kind == VITTE_AST_NODE_GENERIC_PARAM &&
+            parameter->child_count != 0u &&
+            vitte_c17_ast_type_expression_is_parameter(
+                emitter,
+                type,
+                vitte_c17_ast_child(emitter, parameter, 0u))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+vitte_c17_ast_generic_type_contains_parameter(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    size_t depth)
+{
+    size_t index;
+
+    if (type == NULL || depth > VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX) {
+        return false;
+    }
+    {
+        size_t substitution_index =
+            vitte_c17_ast_generic_substitution_index(emitter, type);
+        if (substitution_index != SIZE_MAX) {
+            return vitte_c17_ast_generic_type_contains_parameter(
+                emitter,
+                emitter->generic_arguments[substitution_index],
+                depth + 1u);
+        }
+    }
+    if (vitte_c17_ast_type_expression_is_any_generic_parameter(
+            emitter, type)) {
+        return true;
+    }
+    for (index = 0u; index < type->child_count; ++index) {
+        if (vitte_c17_ast_generic_type_contains_parameter(
+                emitter,
+                vitte_c17_ast_child(emitter, type, index),
+                depth + 1u)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+vitte_c17_ast_generic_application_argument_name(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *application,
+    char *name,
+    size_t name_capacity,
+    size_t depth)
+{
+    size_t used = 0u;
+    size_t index;
+
+    if (application == NULL ||
+        application->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        application->child_count < 2u || name == NULL ||
+        name_capacity == 0u ||
+        depth > VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX) {
+        return false;
+    }
+    name[0] = '\0';
+    for (index = 1u; index < application->child_count; ++index) {
+        char argument_name[
+            VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+        size_t argument_length;
+        size_t separator_length = index == 1u ? 0u : 2u;
+
+        if (!vitte_c17_ast_generic_argument_name(
+                emitter,
+                vitte_c17_ast_child(emitter, application, index),
+                argument_name,
+                sizeof(argument_name),
+                depth + 1u)) {
+            return false;
+        }
+        argument_length = strlen(argument_name);
+        if (used > name_capacity - 1u ||
+            separator_length > name_capacity - 1u - used ||
+            argument_length > name_capacity - 1u - used -
+                                  separator_length) {
+            return false;
+        }
+        if (separator_length != 0u) {
+            name[used++] = '_';
+            name[used++] = '_';
+        }
+        (void)memcpy(name + used, argument_name, argument_length);
+        used += argument_length;
+        name[used] = '\0';
+    }
+    return used != 0u;
+}
+
+static bool
+vitte_c17_ast_generic_argument_name(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    char *name,
+    size_t name_capacity,
+    size_t depth)
+{
+    char simple_name[VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+
+    if (type == NULL || name == NULL || name_capacity == 0u ||
+        depth > VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX) {
+        return false;
+    }
+    {
+        size_t substitution_index =
+            vitte_c17_ast_generic_substitution_index(emitter, type);
+        if (substitution_index != SIZE_MAX) {
+            const vitte_ast_node_t *argument =
+                emitter->generic_arguments[substitution_index];
+            size_t saved_substitution_count =
+                emitter->generic_substitution_count;
+            bool resolved;
+            if (argument == NULL || argument == type) {
+                const char *source_name =
+                    vitte_c17_ast_source_scalar_name_from_c_type(
+                        emitter->generic_c_type_names[substitution_index]);
+                if (source_name == NULL ||
+                    strlen(source_name) >= name_capacity) {
+                    return false;
+                }
+                memcpy(name, source_name, strlen(source_name) + 1u);
+                return true;
+            }
+            emitter->generic_substitution_count = substitution_index;
+            resolved = vitte_c17_ast_generic_argument_name(
+                emitter,
+                argument,
+                name,
+                name_capacity,
+                depth + 1u);
+            emitter->generic_substitution_count =
+                saved_substitution_count;
+            return resolved;
+        }
+    }
+    if (vitte_c17_ast_simple_type_name(
+            emitter, type, simple_name, sizeof(simple_name))) {
+        if (!vitte_c17_ast_generic_scalar_argument(simple_name) ||
+            strlen(simple_name) >= name_capacity) {
+            return false;
+        }
+        (void)memcpy(name, simple_name, strlen(simple_name) + 1u);
+        return true;
+    }
+    if (type->kind == VITTE_AST_NODE_TYPE_EXPR &&
+        type->child_count > 1u) {
+        const vitte_ast_node_t *path =
+            vitte_c17_ast_child(emitter, type, 0u);
+        const vitte_ast_node_t *form_name = path != NULL &&
+                path->kind == VITTE_AST_NODE_PATH &&
+                path->child_count == 1u
+            ? vitte_c17_ast_child(emitter, path, 0u)
+            : NULL;
+        const vitte_ast_node_t *root = vitte_c17_ast_node(
+            emitter, vitte_parser_root(emitter->parser));
+        const vitte_ast_node_t *form;
+        const vitte_token_t *token;
+        bool has_where = false;
+        size_t parameter_count;
+        char nested_name[VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+        size_t token_length;
+        size_t nested_length;
+
+        token = vitte_c17_ast_token(emitter, form_name);
+        form = vitte_c17_ast_find_form(emitter, root, form_name);
+        parameter_count = vitte_c17_ast_generic_form_parameter_count(
+            emitter, form, &has_where);
+        if (token == NULL || token->lexeme == NULL ||
+            token->length == 0u || form == NULL ||
+            parameter_count == 0u || has_where ||
+            type->child_count != parameter_count + 1u ||
+            !vitte_c17_ast_generic_application_argument_name(
+                emitter,
+                type,
+                nested_name,
+                sizeof(nested_name),
+                depth + 1u)) {
+            return false;
+        }
+        token_length = token->length;
+        nested_length = strlen(nested_name);
+        if (token_length == 0u || name_capacity < 3u ||
+            token_length > name_capacity - 3u ||
+            nested_length > name_capacity - token_length - 3u) {
+            return false;
+        }
+        (void)memcpy(name, token->lexeme, token_length);
+        name[token_length] = '_';
+        name[token_length + 1u] = '_';
+        (void)memcpy(
+            name + token_length + 2u,
+            nested_name,
+            nested_length + 1u);
+        return true;
+    }
+    return false;
+}
+
 static const vitte_c17_ast_generic_form_instance_t *
 vitte_c17_ast_generic_form_instance_for_type(
-    const vitte_c17_ast_emitter_t *emitter,
+    vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *type)
 {
     const vitte_ast_node_t *root;
@@ -1102,20 +1871,23 @@ vitte_c17_ast_generic_form_instance_for_type(
     const vitte_ast_node_t *form_name;
     const vitte_ast_node_t *form;
     char argument_name[VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+    size_t parameter_count;
+    bool has_where = false;
     size_t index;
 
     if (type == NULL || type->kind != VITTE_AST_NODE_TYPE_EXPR ||
-        type->child_count != 2u) {
+        type->child_count < 2u) {
         return NULL;
     }
     path = vitte_c17_ast_child(emitter, type, 0u);
     if (path == NULL || path->kind != VITTE_AST_NODE_PATH ||
         path->child_count == 0u ||
-        !vitte_c17_ast_simple_type_name(
+        !vitte_c17_ast_generic_application_argument_name(
             emitter,
-            vitte_c17_ast_child(emitter, type, 1u),
+            type,
             argument_name,
-            sizeof(argument_name))) {
+            sizeof(argument_name),
+            0u)) {
         return NULL;
     }
     form_name = vitte_c17_ast_child(
@@ -1124,9 +1896,10 @@ vitte_c17_ast_generic_form_instance_for_type(
         emitter,
         vitte_parser_root(emitter->parser));
     form = vitte_c17_ast_find_form(emitter, root, form_name);
-    if (form == NULL ||
-        vitte_c17_ast_generic_form_parameter_count(
-            emitter, form, NULL) != 1u) {
+    parameter_count = vitte_c17_ast_generic_form_parameter_count(
+        emitter, form, &has_where);
+    if (form == NULL || has_where || parameter_count == 0u ||
+        type->child_count != parameter_count + 1u) {
         return NULL;
     }
     for (index = 0u; index < emitter->generic_form_count; ++index) {
@@ -1178,9 +1951,19 @@ vitte_c17_ast_collect_generic_form_instances(
         emitter->failed = true;
         return;
     }
-    if (node->kind == VITTE_AST_NODE_TYPE_EXPR &&
-        node->operator_kind != VITTE_TOKEN_KW_PROC &&
-        node->child_count > 1u) {
+    for (index = 0u; index < node->child_count && !emitter->failed; ++index) {
+        vitte_c17_ast_collect_generic_form_instances(
+            emitter,
+            root,
+            vitte_c17_ast_child(emitter, node, index),
+            depth + 1u);
+    }
+    if (emitter->failed || node->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        node->operator_kind == VITTE_TOKEN_KW_PROC ||
+        node->child_count <= 1u) {
+        return;
+    }
+    {
         const vitte_ast_node_t *path =
             vitte_c17_ast_child(emitter, node, 0u);
         const vitte_ast_node_t *form_name = path != NULL &&
@@ -1189,9 +1972,96 @@ vitte_c17_ast_collect_generic_form_instances(
             : NULL;
         const vitte_ast_node_t *form =
             vitte_c17_ast_find_form(emitter, root, form_name);
-        if (form == NULL ||
-            vitte_c17_ast_generic_form_parameter_count(
-                emitter, form, NULL) == 0u) {
+        if (form == NULL) {
+            const vitte_ast_node_t *alias =
+                vitte_c17_ast_find_path_declaration(
+                    emitter,
+                    path,
+                    VITTE_AST_NODE_TYPE_DECL,
+                    VITTE_AST_NODE_TYPE_DECL);
+            if (alias != NULL &&
+                (alias->flags & VITTE_AST_FLAG_TYPE_ALIAS) != 0u &&
+                vitte_c17_ast_generic_form_parameter_count(
+                    emitter, alias, NULL) != 0u) {
+                bool has_where = false;
+                size_t parameter_count =
+                    vitte_c17_ast_generic_form_parameter_count(
+                        emitter, alias, &has_where);
+                size_t saved_substitution_count =
+                    emitter->generic_substitution_count;
+                const vitte_ast_node_t *target =
+                    vitte_c17_ast_child(
+                        emitter, alias, alias->child_count - 1u);
+                size_t parameter_index;
+
+                if (has_where || parameter_count == SIZE_MAX ||
+                    node->child_count != parameter_count + 1u ||
+                    saved_substitution_count >
+                        emitter->generic_substitution_capacity ||
+                    parameter_count >
+                        emitter->generic_substitution_capacity -
+                            saved_substitution_count ||
+                    target == NULL) {
+                    emitter->failed = true;
+                    return;
+                }
+                for (parameter_index = 0u;
+                     parameter_index < parameter_count;
+                     ++parameter_index) {
+                    size_t substitution_index =
+                        saved_substitution_count + parameter_index;
+                    emitter->generic_parameter_names[substitution_index] =
+                        vitte_c17_ast_generic_form_parameter_name(
+                            emitter, alias, parameter_index);
+                    emitter->generic_arguments[substitution_index] =
+                        vitte_c17_ast_child(
+                            emitter, node, parameter_index + 1u);
+                    emitter->generic_c_type_names[substitution_index] = NULL;
+                    if (emitter->generic_parameter_names[
+                            substitution_index] == NULL ||
+                        emitter->generic_arguments[substitution_index] == NULL) {
+                        emitter->generic_substitution_count =
+                            saved_substitution_count;
+                        emitter->failed = true;
+                        return;
+                    }
+                }
+                emitter->generic_substitution_count =
+                    saved_substitution_count + parameter_count;
+                /* Discover the concrete form instances introduced by the
+                 * alias target while its generic parameters are substituted
+                 * by this use site's arguments. */
+                vitte_c17_ast_collect_generic_form_instances(
+                    emitter, root, target, depth + 1u);
+                while (emitter->generic_substitution_count >
+                       saved_substitution_count) {
+                    --emitter->generic_substitution_count;
+                    emitter->generic_parameter_names[
+                        emitter->generic_substitution_count] = NULL;
+                    emitter->generic_arguments[
+                        emitter->generic_substitution_count] = NULL;
+                    emitter->generic_c_type_names[
+                        emitter->generic_substitution_count] = NULL;
+                }
+                return;
+            }
+            {
+                const vitte_ast_node_t *opaque =
+                    vitte_c17_ast_find_path_declaration(
+                        emitter,
+                        path,
+                        VITTE_AST_NODE_OPAQUE_DECL,
+                        VITTE_AST_NODE_OPAQUE_DECL);
+                if (opaque != NULL) {
+                    size_t expected =
+                        vitte_c17_ast_generic_form_parameter_count(
+                            emitter, opaque, NULL);
+                    if (expected != node->child_count - 1u) {
+                        emitter->failed = true;
+                    }
+                    return;
+                }
+            }
             emitter->failed = true;
             return;
         }
@@ -1203,15 +2073,31 @@ vitte_c17_ast_collect_generic_form_instances(
             char argument_name[
                 VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
             size_t instance_index;
+            size_t argument_index;
+            const vitte_ast_node_t **resolved_arguments = NULL;
 
-            if (parameter_count != 1u || has_where ||
-                node->child_count != 2u ||
-                !vitte_c17_ast_simple_type_name(
+            if (parameter_count == 0u || has_where ||
+                parameter_count == SIZE_MAX ||
+                node->child_count != parameter_count + 1u) {
+                emitter->failed = true;
+                return;
+            }
+            for (argument_index = 1u;
+                 argument_index < node->child_count;
+                 ++argument_index) {
+                if (vitte_c17_ast_generic_type_contains_parameter(
+                        emitter,
+                        vitte_c17_ast_child(emitter, node, argument_index),
+                        0u)) {
+                    return;
+                }
+            }
+            if (!vitte_c17_ast_generic_application_argument_name(
                     emitter,
-                    vitte_c17_ast_child(emitter, node, 1u),
+                    node,
                     argument_name,
-                    sizeof(argument_name)) ||
-                !vitte_c17_ast_generic_scalar_argument(argument_name)) {
+                    sizeof(argument_name),
+                    0u)) {
                 emitter->failed = true;
                 return;
             }
@@ -1238,99 +2124,57 @@ vitte_c17_ast_collect_generic_form_instances(
                 }
             }
             if (instance_index == emitter->generic_form_count) {
-                if (emitter->generic_form_count >=
-                    VITTE_C17_AST_GENERIC_FORM_INSTANCE_MAX) {
+                if (parameter_count >
+                    SIZE_MAX / sizeof(resolved_arguments[0])) {
+                    emitter->failed = true;
+                    return;
+                }
+                resolved_arguments = (const vitte_ast_node_t **)malloc(
+                    parameter_count * sizeof(resolved_arguments[0]));
+                if (resolved_arguments == NULL) {
+                    emitter->failed = true;
+                    return;
+                }
+                for (argument_index = 0u;
+                     argument_index < parameter_count;
+                     ++argument_index) {
+                    resolved_arguments[argument_index] =
+                        vitte_c17_ast_resolve_generic_argument(
+                            emitter,
+                            vitte_c17_ast_child(
+                                emitter,
+                                node,
+                                argument_index + 1u),
+                            0u);
+                    if (resolved_arguments[argument_index] == NULL) {
+                        free((void *)resolved_arguments);
+                        emitter->failed = true;
+                        return;
+                    }
+                }
+                if (emitter->generic_form_count == SIZE_MAX ||
+                    !vitte_c17_ast_emitter_reserve_generic_forms(
+                        emitter,
+                        emitter->generic_form_count + 1u)) {
+                    free((void *)resolved_arguments);
                     emitter->failed = true;
                     return;
                 }
                 emitter->generic_forms[instance_index].declaration = form;
-                emitter->generic_forms[instance_index].argument =
-                    vitte_c17_ast_child(emitter, node, 1u);
+                emitter->generic_forms[instance_index].type_expression = node;
+                emitter->generic_forms[instance_index].arguments =
+                    resolved_arguments;
+                emitter->generic_forms[instance_index].argument_count =
+                    parameter_count;
                 (void)memcpy(
                     emitter->generic_forms[instance_index].argument_name,
                     argument_name,
                     strlen(argument_name) + 1u);
+                emitter->generic_forms[instance_index].layout_state = 0u;
+                emitter->generic_forms[instance_index].forward_declared = false;
                 ++emitter->generic_form_count;
             }
         }
-    }
-    for (index = 0u; index < node->child_count && !emitter->failed; ++index) {
-        vitte_c17_ast_collect_generic_form_instances(
-            emitter,
-            root,
-            vitte_c17_ast_child(emitter, node, index),
-            depth + 1u);
-    }
-}
-
-static bool
-vitte_c17_ast_contains_type_application(
-    const vitte_c17_ast_emitter_t *emitter,
-    const vitte_ast_node_t *node,
-    size_t depth)
-{
-    size_t index;
-
-    if (node == NULL || depth > 512u) {
-        return false;
-    }
-    if (node->kind == VITTE_AST_NODE_TYPE_EXPR &&
-        node->operator_kind != VITTE_TOKEN_KW_PROC &&
-        node->child_count > 1u) {
-        return true;
-    }
-    for (index = 0u; index < node->child_count; ++index) {
-        if (vitte_c17_ast_contains_type_application(
-                emitter,
-                vitte_c17_ast_child(emitter, node, index),
-                depth + 1u)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static void
-vitte_c17_ast_validate_generic_form_fields(
-    vitte_c17_ast_emitter_t *emitter,
-    const vitte_ast_node_t *node,
-    size_t depth)
-{
-    size_t index;
-
-    if (node == NULL || emitter->failed) {
-        return;
-    }
-    if (depth > 512u) {
-        emitter->failed = true;
-        return;
-    }
-    if (node->kind == VITTE_AST_NODE_FORM_DECL) {
-        size_t field_index;
-        for (field_index = 1u;
-             field_index < node->child_count && !emitter->failed;
-             ++field_index) {
-            const vitte_ast_node_t *field =
-                vitte_c17_ast_child(emitter, node, field_index);
-            if (field == NULL ||
-                field->kind != VITTE_AST_NODE_FIELD_DECL ||
-                field->child_count < 2u) {
-                continue;
-            }
-            if (vitte_c17_ast_contains_type_application(
-                    emitter,
-                    vitte_c17_ast_child(emitter, field, 1u),
-                    0u)) {
-                emitter->failed = true;
-                return;
-            }
-        }
-    }
-    for (index = 0u; index < node->child_count && !emitter->failed; ++index) {
-        vitte_c17_ast_validate_generic_form_fields(
-            emitter,
-            vitte_c17_ast_child(emitter, node, index),
-            depth + 1u);
     }
 }
 
@@ -1450,6 +2294,86 @@ vitte_c17_ast_emit_type(
             }
             if (node->operator_kind != VITTE_TOKEN_KW_PROC &&
                 node->child_count > 1u) {
+                const vitte_ast_node_t *opaque =
+                    vitte_c17_ast_find_path_declaration(
+                        emitter,
+                        name,
+                        VITTE_AST_NODE_OPAQUE_DECL,
+                        VITTE_AST_NODE_OPAQUE_DECL);
+                if (opaque != NULL) {
+                    size_t expected =
+                        vitte_c17_ast_generic_form_parameter_count(
+                            emitter, opaque, NULL);
+                    if (expected != node->child_count - 1u) {
+                        emitter->failed = true;
+                        return;
+                    }
+                    vitte_c17_ast_emit_declaration_name(
+                        emitter,
+                        opaque,
+                        vitte_c17_ast_child(emitter, opaque, 0u));
+                    return;
+                }
+            }
+            if (node->operator_kind != VITTE_TOKEN_KW_PROC &&
+                node->child_count > 1u) {
+                const vitte_ast_node_t *alias =
+                    vitte_c17_ast_find_path_declaration(
+                        emitter,
+                        name,
+                        VITTE_AST_NODE_TYPE_DECL,
+                        VITTE_AST_NODE_TYPE_DECL);
+                size_t parameter_count =
+                    vitte_c17_ast_generic_form_parameter_count(
+                        emitter, alias, NULL);
+                if (alias != NULL && parameter_count != 0u &&
+                    (alias->flags & VITTE_AST_FLAG_TYPE_ALIAS) != 0u) {
+                    const vitte_ast_node_t *target;
+                    size_t saved_count =
+                        emitter->generic_substitution_count;
+                    size_t argument_count = node->child_count - 1u;
+                    size_t index;
+                    if (parameter_count != argument_count ||
+                        saved_count > emitter->generic_substitution_capacity ||
+                        parameter_count >
+                            emitter->generic_substitution_capacity - saved_count) {
+                        emitter->failed = true;
+                        return;
+                    }
+                    for (index = 0u; index < parameter_count; ++index) {
+                        size_t substitution_index = saved_count + index;
+                        emitter->generic_parameter_names[substitution_index] =
+                            vitte_c17_ast_generic_form_parameter_name(
+                                emitter, alias, index);
+                        emitter->generic_arguments[substitution_index] =
+                            vitte_c17_ast_child(emitter, node, index + 1u);
+                        emitter->generic_c_type_names[substitution_index] = NULL;
+                        if (emitter->generic_parameter_names[substitution_index] == NULL ||
+                            emitter->generic_arguments[substitution_index] == NULL) {
+                            emitter->failed = true;
+                            emitter->generic_substitution_count = saved_count;
+                            return;
+                        }
+                    }
+                    emitter->generic_substitution_count =
+                        saved_count + parameter_count;
+                    target = vitte_c17_ast_child(
+                        emitter, alias, alias->child_count - 1u);
+                    vitte_c17_ast_emit_type(emitter, target);
+                    while (emitter->generic_substitution_count > saved_count) {
+                        --emitter->generic_substitution_count;
+                        emitter->generic_parameter_names[
+                            emitter->generic_substitution_count] = NULL;
+                        emitter->generic_arguments[
+                            emitter->generic_substitution_count] = NULL;
+                        emitter->generic_c_type_names[
+                            emitter->generic_substitution_count] = NULL;
+                    }
+                    return;
+                }
+            }
+            if (node->operator_kind != VITTE_TOKEN_KW_PROC &&
+                node->child_count > 1u) {
                 const vitte_c17_ast_generic_form_instance_t *instance =
                     vitte_c17_ast_generic_form_instance_for_type(
                         emitter,
@@ -1463,20 +2387,33 @@ vitte_c17_ast_emit_type(
                     instance);
                 return;
             }
-            if (emitter->generic_parameter_name != NULL &&
-                name->child_count == 1u &&
-                vitte_c17_ast_token_equal(
-                    emitter,
-                    vitte_c17_ast_child(emitter, name, 0u),
-                    emitter->generic_parameter_name)) {
-                if (emitter->generic_argument == NULL) {
-                    emitter->failed = true;
+            {
+                size_t substitution_index =
+                    vitte_c17_ast_generic_substitution_index(
+                        emitter, node);
+                if (substitution_index != SIZE_MAX) {
+                    const char *concrete_c_type =
+                        emitter->generic_c_type_names[
+                            substitution_index];
+                    const vitte_ast_node_t *argument =
+                        emitter->generic_arguments[substitution_index];
+                    size_t saved_substitution_count =
+                        emitter->generic_substitution_count;
+                    if (concrete_c_type != NULL) {
+                        vitte_c17_ast_write(emitter, concrete_c_type);
+                        return;
+                    }
+                    if (argument == NULL) {
+                        emitter->failed = true;
+                        return;
+                    }
+                    emitter->generic_substitution_count =
+                        substitution_index;
+                    vitte_c17_ast_emit_type(emitter, argument);
+                    emitter->generic_substitution_count =
+                        saved_substitution_count;
                     return;
                 }
-                vitte_c17_ast_emit_type(
-                    emitter,
-                    emitter->generic_argument);
-                return;
             }
             {
                 const vitte_ast_node_t *path;
@@ -1630,6 +2567,105 @@ vitte_c17_ast_emit_declarator(
     if (type == NULL || name == NULL) {
         emitter->failed = true;
         return;
+    }
+
+    if (type->kind == VITTE_AST_NODE_TYPE_EXPR &&
+        type->operator_kind != VITTE_TOKEN_KW_PROC &&
+        type->child_count > 1u) {
+        const vitte_ast_node_t *path =
+            vitte_c17_ast_child(emitter, type, 0u);
+        const vitte_ast_node_t *alias =
+            vitte_c17_ast_find_path_declaration(
+                emitter,
+                path,
+                VITTE_AST_NODE_TYPE_DECL,
+                VITTE_AST_NODE_TYPE_DECL);
+        size_t parameter_count =
+            vitte_c17_ast_generic_form_parameter_count(
+                emitter, alias, NULL);
+
+        if (alias != NULL && parameter_count != 0u &&
+            (alias->flags & VITTE_AST_FLAG_TYPE_ALIAS) != 0u) {
+            const vitte_ast_node_t *target = vitte_c17_ast_child(
+                emitter, alias, alias->child_count - 1u);
+
+            /* C array types need the identifier inside the declarator. Walk
+             * generic alias chains until the array target is reached, keeping
+             * each alias substitution active while the nested declarator is
+             * emitted. */
+            bool target_is_fixed_array = target != NULL &&
+                target->kind == VITTE_AST_NODE_ARRAY_TYPE &&
+                target->child_count == 2u;
+            bool target_is_generic_alias = false;
+            if (target != NULL &&
+                target->kind == VITTE_AST_NODE_TYPE_EXPR &&
+                target->operator_kind != VITTE_TOKEN_KW_PROC &&
+                target->child_count > 1u) {
+                const vitte_ast_node_t *target_path =
+                    vitte_c17_ast_child(emitter, target, 0u);
+                const vitte_ast_node_t *nested_alias =
+                    vitte_c17_ast_find_path_declaration(
+                        emitter,
+                        target_path,
+                        VITTE_AST_NODE_TYPE_DECL,
+                        VITTE_AST_NODE_TYPE_DECL);
+                target_is_generic_alias = nested_alias != NULL &&
+                    (nested_alias->flags & VITTE_AST_FLAG_TYPE_ALIAS) != 0u &&
+                    vitte_c17_ast_generic_form_parameter_count(
+                        emitter, nested_alias, NULL) != 0u;
+            }
+            if (target_is_fixed_array || target_is_generic_alias) {
+                size_t saved_count =
+                    emitter->generic_substitution_count;
+                size_t argument_count = type->child_count - 1u;
+                size_t index;
+
+                if (parameter_count != argument_count ||
+                    saved_count > emitter->generic_substitution_capacity ||
+                    parameter_count >
+                        emitter->generic_substitution_capacity - saved_count) {
+                    emitter->failed = true;
+                    return;
+                }
+                for (index = 0u; index < parameter_count; ++index) {
+                    size_t substitution_index = saved_count + index;
+
+                    emitter->generic_parameter_names[substitution_index] =
+                        vitte_c17_ast_generic_form_parameter_name(
+                            emitter, alias, index);
+                    emitter->generic_arguments[substitution_index] =
+                        vitte_c17_ast_child(emitter, type, index + 1u);
+                    emitter->generic_c_type_names[substitution_index] = NULL;
+                    if (emitter->generic_parameter_names[
+                            substitution_index] == NULL ||
+                        emitter->generic_arguments[substitution_index] == NULL) {
+                        emitter->failed = true;
+                        while (index + 1u != 0u) {
+                            size_t cleanup_index = saved_count + index;
+                            emitter->generic_parameter_names[cleanup_index] = NULL;
+                            emitter->generic_arguments[cleanup_index] = NULL;
+                            emitter->generic_c_type_names[cleanup_index] = NULL;
+                            if (index == 0u) {
+                                break;
+                            }
+                            --index;
+                        }
+                        return;
+                    }
+                }
+                emitter->generic_substitution_count =
+                    saved_count + parameter_count;
+                vitte_c17_ast_emit_declarator(emitter, target, name);
+                emitter->generic_substitution_count = saved_count;
+                for (index = 0u; index < parameter_count; ++index) {
+                    size_t substitution_index = saved_count + index;
+                    emitter->generic_parameter_names[substitution_index] = NULL;
+                    emitter->generic_arguments[substitution_index] = NULL;
+                    emitter->generic_c_type_names[substitution_index] = NULL;
+                }
+                return;
+            }
+        }
     }
 
     if (type->kind == VITTE_AST_NODE_ARRAY_TYPE) {
@@ -1883,6 +2919,65 @@ static const vitte_ast_node_t *
 vitte_c17_ast_call_return_type(
     const vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *call);
+
+static bool
+vitte_c17_ast_type_paths_equal(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *left,
+    const vitte_ast_node_t *right);
+
+static bool
+vitte_c17_ast_type_syntax_equal(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *left,
+    const vitte_ast_node_t *right,
+    size_t depth)
+{
+    size_t index;
+
+    if (left == NULL || right == NULL || depth > 512u ||
+        left->kind != right->kind ||
+        left->child_count != right->child_count ||
+        left->operator_kind != right->operator_kind ||
+        left->flags != right->flags) {
+        return false;
+    }
+    if (left->kind == VITTE_AST_NODE_PATH) {
+        return vitte_c17_ast_type_paths_equal(emitter, left, right);
+    }
+    if (left->kind == VITTE_AST_NODE_TYPE_EXPR) {
+        if (left->child_count == 0u ||
+            !vitte_c17_ast_type_paths_equal(
+                emitter,
+                vitte_c17_ast_child(emitter, left, 0u),
+                vitte_c17_ast_child(emitter, right, 0u))) {
+            return false;
+        }
+        for (index = 1u; index < left->child_count; ++index) {
+            if (!vitte_c17_ast_type_syntax_equal(
+                    emitter,
+                    vitte_c17_ast_child(emitter, left, index),
+                    vitte_c17_ast_child(emitter, right, index),
+                    depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (left->child_count == 0u) {
+        return vitte_c17_ast_token_equal(emitter, left, right);
+    }
+    for (index = 0u; index < left->child_count; ++index) {
+        if (!vitte_c17_ast_type_syntax_equal(
+                emitter,
+                vitte_c17_ast_child(emitter, left, index),
+                vitte_c17_ast_child(emitter, right, index),
+                depth + 1u)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 static const vitte_ast_node_t *
 vitte_c17_ast_find_form(
@@ -2295,6 +3390,14 @@ vitte_c17_ast_expression_type(
         if (array_type->kind == VITTE_AST_NODE_POINTER_TYPE ||
             array_type->kind == VITTE_AST_NODE_REFERENCE_TYPE) {
             return vitte_c17_ast_child(emitter, array_type, 0u);
+        }
+        if (array_type->kind == VITTE_AST_NODE_TYPE_EXPR) {
+            const vitte_ast_node_t *element =
+                vitte_c17_ast_generic_alias_slice_element(
+                    emitter, array_type);
+            if (element != NULL) {
+                return element;
+            }
         }
         if (array_type->kind != VITTE_AST_NODE_ARRAY_TYPE) {
             return NULL;
@@ -2938,34 +4041,1001 @@ vitte_c17_ast_find_procedure_named(
     const vitte_ast_node_t *name)
 {
     size_t index;
-
-    if (node == NULL || name == NULL) {
-        return NULL;
-    }
-
-    if ((node->kind == VITTE_AST_NODE_PROC_DECL ||
-         node->kind == VITTE_AST_NODE_EXTERN_PROC_DECL) &&
-        node->child_count != 0u &&
-        vitte_c17_ast_token_equal(
-            emitter,
-            vitte_c17_ast_child(emitter, node, 0u),
-            name)) {
-        return node;
-    }
-
-    for (index = 0u; index < node->child_count; ++index) {
-        const vitte_ast_node_t *found;
-
-        found = vitte_c17_ast_find_procedure_named(
-            emitter,
-            vitte_c17_ast_child(emitter, node, index),
-            name);
-        if (found != NULL) {
-            return found;
+    if (node == NULL || name == NULL) { return NULL; }
+    (void)node;
+    for (index = 0u; index < emitter->procedure_declaration_count; ++index) {
+        const vitte_ast_node_t *declaration =
+            emitter->procedure_declarations[index];
+        if (declaration != NULL && declaration->child_count != 0u &&
+            vitte_c17_ast_token_equal(
+                emitter,
+                vitte_c17_ast_child(emitter, declaration, 0u),
+                name)) {
+            return declaration;
         }
     }
-
     return NULL;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_find_generic_procedure_named(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *name)
+{
+    size_t index;
+    if (emitter == NULL || name == NULL) { return NULL; }
+    for (index = 0u;
+         index < emitter->procedure_declaration_count;
+         ++index) {
+        const vitte_ast_node_t *declaration =
+            emitter->procedure_declarations[index];
+        if (declaration != NULL && declaration->child_count != 0u &&
+            vitte_c17_ast_generic_form_parameter_count(
+                emitter, declaration, NULL) != 0u &&
+            vitte_c17_ast_token_equal(
+                emitter,
+                vitte_c17_ast_child(emitter, declaration, 0u),
+                name)) {
+            return declaration;
+        }
+    }
+    return NULL;
+}
+
+static const char *
+vitte_c17_ast_scalar_c_type_name(const char *name)
+{
+    if (name == NULL) { return NULL; }
+    if (strcmp(name, "bool") == 0) { return "bool"; }
+    if (strcmp(name, "char") == 0) { return "char"; }
+    if (strcmp(name, "i8") == 0) { return "int8_t"; }
+    if (strcmp(name, "u8") == 0) { return "uint8_t"; }
+    if (strcmp(name, "i16") == 0) { return "int16_t"; }
+    if (strcmp(name, "u16") == 0) { return "uint16_t"; }
+    if (strcmp(name, "i32") == 0 || strcmp(name, "int") == 0) {
+        return "int32_t";
+    }
+    if (strcmp(name, "u32") == 0) { return "uint32_t"; }
+    if (strcmp(name, "i64") == 0) { return "int64_t"; }
+    if (strcmp(name, "u64") == 0) { return "uint64_t"; }
+    if (strcmp(name, "isize") == 0) { return "ptrdiff_t"; }
+    if (strcmp(name, "usize") == 0) { return "size_t"; }
+    if (strcmp(name, "f32") == 0) { return "float"; }
+    if (strcmp(name, "f64") == 0) { return "double"; }
+    if (strcmp(name, "str") == 0 || strcmp(name, "string") == 0) {
+        return "const char *";
+    }
+    if (strcmp(name, "void") == 0 || strcmp(name, "unit") == 0) {
+        return "void";
+    }
+    return NULL;
+}
+
+static const vitte_ast_node_t *
+vitte_c17_ast_enclosing_procedure(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *node)
+{
+    const vitte_ast_node_t *current;
+
+    if (emitter == NULL || node == NULL || emitter->parent_ids == NULL ||
+        node->id >= emitter->parent_id_count) {
+        return NULL;
+    }
+    current = node;
+    while (current != NULL && current->id < emitter->parent_id_count) {
+        vitte_ast_node_id_t parent_id =
+            emitter->parent_ids[(size_t)current->id];
+        if (parent_id == VITTE_AST_INVALID_ID) { return NULL; }
+        current = vitte_c17_ast_node(emitter, parent_id);
+        if (current != NULL &&
+            (current->kind == VITTE_AST_NODE_PROC_DECL ||
+             current->kind == VITTE_AST_NODE_EXTERN_PROC_DECL)) {
+            return current;
+        }
+    }
+    return NULL;
+}
+
+static bool
+vitte_c17_ast_generic_parameter_type_matches(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    const vitte_ast_node_t *parameter_name)
+{
+    const vitte_ast_node_t *path;
+    if (type == NULL || parameter_name == NULL ||
+        type->kind != VITTE_AST_NODE_TYPE_EXPR || type->child_count != 1u) {
+        return false;
+    }
+    path = vitte_c17_ast_child(emitter, type, 0u);
+    return path != NULL && path->kind == VITTE_AST_NODE_PATH &&
+           path->child_count == 1u &&
+           vitte_c17_ast_token_equal(
+               emitter,
+               vitte_c17_ast_child(emitter, path, 0u),
+               parameter_name);
+}
+
+static const char *
+vitte_c17_ast_infer_scalar_c_type(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *expression,
+    const vitte_ast_node_t *call);
+
+static const char *
+vitte_c17_ast_infer_generic_call_result_scalar(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *expression,
+    const vitte_ast_node_t *enclosing_call)
+{
+    const vitte_ast_node_t *callee;
+    const vitte_ast_node_t *procedure;
+    const vitte_ast_node_t *return_type;
+    size_t generic_count;
+    size_t generic_index;
+
+    if (emitter == NULL || expression == NULL ||
+        expression->kind != VITTE_AST_NODE_CALL_EXPR ||
+        expression->child_count == 0u) {
+        return NULL;
+    }
+    callee = vitte_c17_ast_child(emitter, expression, 0u);
+    if (callee == NULL ||
+        (callee->kind != VITTE_AST_NODE_PATH &&
+         callee->kind != VITTE_AST_NODE_IDENTIFIER)) {
+        return NULL;
+    }
+    if (callee->kind == VITTE_AST_NODE_PATH) {
+        procedure = vitte_c17_ast_find_path_declaration(
+            emitter,
+            callee,
+            VITTE_AST_NODE_PROC_DECL,
+            VITTE_AST_NODE_EXTERN_PROC_DECL);
+        if (procedure == NULL && callee->child_count == 1u) {
+            procedure = vitte_c17_ast_find_generic_procedure_named(
+                emitter,
+                vitte_c17_ast_child(emitter, callee, 0u));
+        }
+    } else {
+        procedure = vitte_c17_ast_find_generic_procedure_named(
+            emitter, callee);
+    }
+    generic_count = vitte_c17_ast_generic_form_parameter_count(
+        emitter, procedure, NULL);
+    if (procedure == NULL || generic_count == 0u) { return NULL; }
+    return_type = vitte_c17_ast_function_return_type(emitter, procedure);
+    if (return_type == NULL) { return NULL; }
+
+    for (generic_index = 0u;
+         generic_index < generic_count;
+         ++generic_index) {
+        const vitte_ast_node_t *generic_name =
+            vitte_c17_ast_generic_form_parameter_name(
+                emitter, procedure, generic_index);
+        size_t parameter_index;
+        size_t argument_index = 1u;
+        size_t found = 0u;
+        const char *resolved = NULL;
+
+        if (!vitte_c17_ast_generic_parameter_type_matches(
+                emitter, return_type, generic_name)) {
+            continue;
+        }
+        for (parameter_index = 1u;
+             parameter_index < procedure->child_count;
+             ++parameter_index) {
+            const vitte_ast_node_t *parameter =
+                vitte_c17_ast_child(emitter, procedure, parameter_index);
+            const vitte_ast_node_t *parameter_type;
+            const vitte_ast_node_t *argument;
+            const char *candidate;
+
+            if (parameter == NULL ||
+                parameter->kind != VITTE_AST_NODE_PARAMETER) {
+                continue;
+            }
+            parameter_type = vitte_c17_ast_child(emitter, parameter, 1u);
+            if (vitte_c17_ast_generic_parameter_type_matches(
+                    emitter, parameter_type, generic_name)) {
+                ++found;
+                if (argument_index >= expression->child_count) {
+                    return NULL;
+                }
+                argument = vitte_c17_ast_child(
+                    emitter, expression, argument_index);
+                candidate = vitte_c17_ast_infer_scalar_c_type(
+                    emitter, argument, enclosing_call);
+                if (candidate == NULL ||
+                    (resolved != NULL && strcmp(resolved, candidate) != 0)) {
+                    return NULL;
+                }
+                resolved = candidate;
+            }
+            ++argument_index;
+        }
+        if (found != 0u) { return resolved; }
+    }
+    return NULL;
+}
+
+static bool
+vitte_c17_ast_generic_procedure_has_parameter_bounds(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *procedure)
+{
+    size_t index;
+    if (procedure == NULL) { return false; }
+    for (index = 1u; index < procedure->child_count; ++index) {
+        const vitte_ast_node_t *child =
+            vitte_c17_ast_child(emitter, procedure, index);
+        if (child != NULL &&
+            child->kind == VITTE_AST_NODE_GENERIC_PARAM &&
+            child->child_count > 1u) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static const char *
+vitte_c17_ast_infer_scalar_c_type(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *expression,
+    const vitte_ast_node_t *call)
+{
+    const vitte_ast_node_t *previous_function;
+    const vitte_ast_node_t *type;
+    const char *scalar_type;
+    size_t substitution_index;
+    char name[64];
+
+    if (expression == NULL) { return NULL; }
+    if (expression->kind == VITTE_AST_NODE_IDENTIFIER ||
+        expression->kind == VITTE_AST_NODE_PATH) {
+        const vitte_ast_node_t *owner;
+        const vitte_ast_node_t *local_name;
+        const vitte_ast_node_t *initializer;
+        const vitte_ast_node_t *local_previous_function;
+        const char *inferred;
+
+        owner = vitte_c17_ast_enclosing_procedure(emitter, call);
+        local_name = expression;
+        if (expression->kind == VITTE_AST_NODE_PATH &&
+            expression->child_count == 1u) {
+            local_name = vitte_c17_ast_child(emitter, expression, 0u);
+        }
+        local_previous_function = emitter->function;
+        emitter->function = owner;
+        initializer = vitte_c17_ast_find_local_initializer(
+            emitter, owner, local_name);
+        if (initializer != NULL) {
+            inferred = vitte_c17_ast_infer_scalar_c_type(
+                emitter, initializer, call);
+            emitter->function = local_previous_function;
+            if (inferred != NULL) { return inferred; }
+        } else {
+            emitter->function = local_previous_function;
+        }
+    }
+    switch (expression->kind) {
+        case VITTE_AST_NODE_INTEGER_LITERAL: return "int64_t";
+        case VITTE_AST_NODE_FLOAT_LITERAL: return "double";
+        case VITTE_AST_NODE_STRING_LITERAL: return "const char *";
+        case VITTE_AST_NODE_CHARACTER_LITERAL: return "char";
+        case VITTE_AST_NODE_BOOL_LITERAL: return "bool";
+        case VITTE_AST_NODE_NULL_LITERAL: return "void *";
+        case VITTE_AST_NODE_GROUP_EXPR:
+            return vitte_c17_ast_infer_scalar_c_type(
+                emitter,
+                vitte_c17_ast_child(emitter, expression, 0u),
+                call);
+        case VITTE_AST_NODE_CALL_EXPR: {
+            const char *generic_result =
+                vitte_c17_ast_infer_generic_call_result_scalar(
+                    emitter, expression, call);
+            if (generic_result != NULL) { return generic_result; }
+            previous_function = emitter->function;
+            emitter->function = vitte_c17_ast_enclosing_procedure(
+                emitter, call);
+            type = vitte_c17_ast_expression_type(emitter, expression);
+            emitter->function = previous_function;
+            break;
+        }
+        case VITTE_AST_NODE_CAST_EXPR:
+            type = vitte_c17_ast_child(emitter, expression, 1u);
+            break;
+        default:
+            previous_function = emitter->function;
+            emitter->function = vitte_c17_ast_enclosing_procedure(
+                emitter, call);
+            type = vitte_c17_ast_expression_type(emitter, expression);
+            emitter->function = previous_function;
+            break;
+    }
+    if (!vitte_c17_ast_simple_type_name(
+            emitter,
+            type,
+            name,
+            sizeof(name))) {
+        return NULL;
+    }
+    scalar_type = vitte_c17_ast_scalar_c_type_name(name);
+    if (scalar_type != NULL) { return scalar_type; }
+    substitution_index = vitte_c17_ast_generic_substitution_index(
+        emitter, type);
+    if (substitution_index != SIZE_MAX &&
+        substitution_index < emitter->generic_substitution_count) {
+        return emitter->generic_c_type_names[substitution_index];
+    }
+    return NULL;
+}
+
+static size_t
+vitte_c17_ast_generic_proc_instance_for_call(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *call)
+{
+    size_t index;
+    if (emitter == NULL || call == NULL ||
+        call->id >= emitter->parent_id_count) {
+        return SIZE_MAX;
+    }
+    if (emitter->generic_proc_context_active) {
+        index = emitter->generic_proc_call_binding_count;
+        while (index != 0u) {
+            const vitte_c17_ast_generic_proc_call_binding_t *binding;
+            --index;
+            binding = &emitter->generic_proc_call_bindings[index];
+            if (binding->call_id == (size_t)call->id &&
+                binding->owner_instance_index ==
+                    emitter->generic_proc_context_index) {
+                return binding->target_instance_index;
+            }
+        }
+        return SIZE_MAX;
+    }
+    if (emitter->generic_call_instance_ids == NULL ||
+        emitter->generic_call_instance_ids[(size_t)call->id] == 0u) {
+        return SIZE_MAX;
+    }
+    return emitter->generic_call_instance_ids[(size_t)call->id] - 1u;
+}
+
+static char *
+vitte_c17_ast_duplicate_string(const char *text)
+{
+    size_t length;
+    char *copy;
+    if (text == NULL) { return NULL; }
+    length = strlen(text);
+    if (length == SIZE_MAX) { return NULL; }
+    copy = (char *)malloc(length + 1u);
+    if (copy == NULL) { return NULL; }
+    memcpy(copy, text, length + 1u);
+    return copy;
+}
+
+static const char *
+vitte_c17_ast_source_scalar_name_from_c_type(const char *c_type)
+{
+    if (c_type == NULL) { return NULL; }
+    if (strcmp(c_type, "bool") == 0) { return "bool"; }
+    if (strcmp(c_type, "char") == 0) { return "char"; }
+    if (strcmp(c_type, "int8_t") == 0) { return "i8"; }
+    if (strcmp(c_type, "uint8_t") == 0) { return "u8"; }
+    if (strcmp(c_type, "int16_t") == 0) { return "i16"; }
+    if (strcmp(c_type, "uint16_t") == 0) { return "u16"; }
+    if (strcmp(c_type, "int32_t") == 0) { return "i32"; }
+    if (strcmp(c_type, "uint32_t") == 0) { return "u32"; }
+    if (strcmp(c_type, "int64_t") == 0) { return "i64"; }
+    if (strcmp(c_type, "uint64_t") == 0) { return "u64"; }
+    if (strcmp(c_type, "float") == 0) { return "f32"; }
+    if (strcmp(c_type, "double") == 0) { return "f64"; }
+    if (strcmp(c_type, "const char *") == 0) { return "string"; }
+    return NULL;
+}
+
+static const char *
+vitte_c17_ast_c_type_for_generic_argument(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type)
+{
+    char name[128];
+    size_t substitution_index;
+    if (type == NULL) { return NULL; }
+    if (vitte_c17_ast_simple_type_name(
+            emitter, type, name, sizeof(name))) {
+        const char *scalar = vitte_c17_ast_scalar_c_type_name(name);
+        if (scalar != NULL) { return scalar; }
+    }
+    substitution_index =
+        vitte_c17_ast_generic_substitution_index(emitter, type);
+    if (substitution_index != SIZE_MAX &&
+        substitution_index < emitter->generic_substitution_count) {
+        return emitter->generic_c_type_names[substitution_index];
+    }
+    return NULL;
+}
+
+static bool
+vitte_c17_ast_type_paths_equal(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *left,
+    const vitte_ast_node_t *right)
+{
+    size_t index;
+    if (left == NULL || right == NULL ||
+        left->kind != VITTE_AST_NODE_PATH ||
+        right->kind != VITTE_AST_NODE_PATH ||
+        left->child_count != right->child_count) {
+        return false;
+    }
+    for (index = 0u; index < left->child_count; ++index) {
+        if (!vitte_c17_ast_token_equal(
+                emitter,
+                vitte_c17_ast_child(emitter, left, index),
+                vitte_c17_ast_child(emitter, right, index))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
+vitte_c17_ast_type_contains_generic_parameter(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    const vitte_ast_node_t *parameter_name,
+    size_t depth)
+{
+    size_t index;
+    if (type == NULL || parameter_name == NULL || depth > 512u) {
+        return false;
+    }
+    if (vitte_c17_ast_generic_parameter_type_matches(
+            emitter, type, parameter_name)) {
+        return true;
+    }
+    for (index = 0u; index < type->child_count; ++index) {
+        if (vitte_c17_ast_type_contains_generic_parameter(
+                emitter,
+                vitte_c17_ast_child(emitter, type, index),
+                parameter_name,
+                depth + 1u)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
+vitte_c17_ast_infer_generic_parameter_from_type(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *pattern,
+    const vitte_ast_node_t *actual_type,
+    const vitte_ast_node_t *actual_expression,
+    const vitte_ast_node_t *call,
+    const vitte_ast_node_t *parameter_name,
+    const vitte_ast_node_t **resolved_type,
+    const char **resolved_c_type,
+    char *resolved_key,
+    size_t resolved_key_capacity,
+    bool *found,
+    size_t depth)
+{
+    size_t index;
+    if (emitter == NULL || pattern == NULL || parameter_name == NULL ||
+        found == NULL || depth > VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX) {
+        return false;
+    }
+    if (!vitte_c17_ast_type_contains_generic_parameter(
+            emitter, pattern, parameter_name, depth)) {
+        return true;
+    }
+    if (vitte_c17_ast_generic_parameter_type_matches(
+            emitter, pattern, parameter_name)) {
+        char candidate_key[VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+        const vitte_ast_node_t *candidate_type = actual_type;
+        const char *candidate_c_type = NULL;
+        const char *source_name;
+        bool key_ready = false;
+        candidate_key[0] = '\0';
+        if (candidate_type != NULL) {
+            candidate_c_type =
+                vitte_c17_ast_c_type_for_generic_argument(
+                    emitter, candidate_type);
+            key_ready = vitte_c17_ast_generic_argument_name(
+                emitter,
+                candidate_type,
+                candidate_key,
+                sizeof(candidate_key),
+                depth + 1u);
+            if (!key_ready) {
+                candidate_c_type =
+                    vitte_c17_ast_infer_scalar_c_type(
+                        emitter, actual_expression, call);
+                if (candidate_c_type != NULL) {
+                    candidate_type = NULL;
+                }
+            }
+        } else {
+            candidate_c_type = vitte_c17_ast_infer_scalar_c_type(
+                emitter, actual_expression, call);
+        }
+        if (!key_ready) {
+            source_name = vitte_c17_ast_source_scalar_name_from_c_type(
+                candidate_c_type);
+            if (source_name != NULL &&
+                strlen(source_name) < sizeof(candidate_key)) {
+                memcpy(candidate_key, source_name, strlen(source_name) + 1u);
+                key_ready = true;
+            }
+        }
+        if (!key_ready || candidate_key[0] == '\0') { return false; }
+        if (!*found) {
+            if (strlen(candidate_key) >= resolved_key_capacity) {
+                return false;
+            }
+            *resolved_type = candidate_type;
+            *resolved_c_type = candidate_c_type;
+            memcpy(resolved_key, candidate_key, strlen(candidate_key) + 1u);
+            *found = true;
+            return true;
+        }
+        if (strcmp(resolved_key, candidate_key) != 0) { return false; }
+        if (*resolved_type == NULL && candidate_type != NULL) {
+            *resolved_type = candidate_type;
+        }
+        if (*resolved_c_type == NULL && candidate_c_type != NULL) {
+            *resolved_c_type = candidate_c_type;
+        }
+        return true;
+    }
+
+    if (actual_type == NULL || pattern->kind != actual_type->kind) {
+        return false;
+    }
+    if (pattern->kind == VITTE_AST_NODE_TYPE_EXPR) {
+        const vitte_ast_node_t *pattern_path =
+            vitte_c17_ast_child(emitter, pattern, 0u);
+        const vitte_ast_node_t *actual_path =
+            vitte_c17_ast_child(emitter, actual_type, 0u);
+        if (!vitte_c17_ast_type_paths_equal(
+                emitter, pattern_path, actual_path) ||
+            pattern->child_count != actual_type->child_count) {
+            return false;
+        }
+        for (index = 1u; index < pattern->child_count; ++index) {
+            if (!vitte_c17_ast_infer_generic_parameter_from_type(
+                    emitter,
+                    vitte_c17_ast_child(emitter, pattern, index),
+                    vitte_c17_ast_child(emitter, actual_type, index),
+                    actual_expression,
+                    call,
+                    parameter_name,
+                    resolved_type,
+                    resolved_c_type,
+                    resolved_key,
+                    resolved_key_capacity,
+                    found,
+                    depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (pattern->kind == VITTE_AST_NODE_ARRAY_TYPE) {
+        if (pattern->child_count != actual_type->child_count) {
+            return false;
+        }
+        for (index = 0u; index < pattern->child_count; ++index) {
+            const vitte_ast_node_t *pattern_child =
+                vitte_c17_ast_child(emitter, pattern, index);
+            const vitte_ast_node_t *actual_child =
+                vitte_c17_ast_child(emitter, actual_type, index);
+            if (pattern_child == NULL || actual_child == NULL) {
+                return false;
+            }
+            if (pattern_child->kind == VITTE_AST_NODE_INTEGER_LITERAL) {
+                if (!vitte_c17_ast_token_equal(
+                        emitter, pattern_child, actual_child)) {
+                    return false;
+                }
+            } else if (!vitte_c17_ast_infer_generic_parameter_from_type(
+                           emitter,
+                           pattern_child,
+                           actual_child,
+                           actual_expression,
+                           call,
+                           parameter_name,
+                           resolved_type,
+                           resolved_c_type,
+                           resolved_key,
+                           resolved_key_capacity,
+                           found,
+                           depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    for (index = 0u; index < pattern->child_count; ++index) {
+        if (!vitte_c17_ast_infer_generic_parameter_from_type(
+                emitter,
+                vitte_c17_ast_child(emitter, pattern, index),
+                vitte_c17_ast_child(emitter, actual_type, index),
+                actual_expression,
+                call,
+                parameter_name,
+                resolved_type,
+                resolved_c_type,
+                resolved_key,
+                resolved_key_capacity,
+                found,
+                depth + 1u)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
+vitte_c17_ast_bind_generic_proc_call(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *call,
+    size_t target_instance_index)
+{
+    size_t index;
+    if (emitter == NULL || call == NULL ||
+        call->id >= emitter->parent_id_count ||
+        target_instance_index >= emitter->generic_proc_count) {
+        return false;
+    }
+    if (!emitter->generic_proc_context_active) {
+        if (emitter->generic_call_instance_ids == NULL) { return false; }
+        emitter->generic_call_instance_ids[(size_t)call->id] =
+            target_instance_index + 1u;
+        return true;
+    }
+    for (index = 0u;
+         index < emitter->generic_proc_call_binding_count;
+         ++index) {
+        vitte_c17_ast_generic_proc_call_binding_t *binding =
+            &emitter->generic_proc_call_bindings[index];
+        if (binding->call_id == (size_t)call->id &&
+            binding->owner_instance_index ==
+                emitter->generic_proc_context_index) {
+            binding->target_instance_index = target_instance_index;
+            return true;
+        }
+    }
+    if (emitter->generic_proc_call_binding_count == SIZE_MAX ||
+        !vitte_c17_ast_emitter_reserve_generic_proc_call_bindings(
+            emitter,
+            emitter->generic_proc_call_binding_count + 1u)) {
+        return false;
+    }
+    emitter->generic_proc_call_bindings[
+        emitter->generic_proc_call_binding_count++] =
+        (vitte_c17_ast_generic_proc_call_binding_t){
+            (size_t)call->id,
+            emitter->generic_proc_context_index,
+            target_instance_index,
+        };
+    return true;
+}
+
+static bool
+vitte_c17_ast_generic_proc_arguments_equal(
+    const vitte_c17_ast_generic_proc_instance_t *instance,
+    const vitte_ast_node_t *procedure,
+    char *const *argument_type_keys,
+    size_t argument_count)
+{
+    size_t index;
+    if (instance == NULL || instance->declaration != procedure ||
+        instance->argument_count != argument_count) {
+        return false;
+    }
+    for (index = 0u; index < argument_count; ++index) {
+        if (instance->argument_type_keys[index] == NULL ||
+            argument_type_keys[index] == NULL ||
+            strcmp(instance->argument_type_keys[index],
+                   argument_type_keys[index]) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void
+vitte_c17_ast_register_generic_proc_call(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *call)
+{
+    const vitte_ast_node_t *callee;
+    const vitte_ast_node_t *procedure;
+    const vitte_ast_node_t *procedure_name;
+    const vitte_ast_node_t *argument_type;
+    const vitte_ast_node_t *parameter;
+    const vitte_ast_node_t *argument;
+    const vitte_ast_node_t *owner;
+    const vitte_ast_node_t **argument_type_nodes;
+    const char **argument_c_types;
+    char **argument_type_keys;
+    const vitte_ast_node_t *previous_function;
+    size_t generic_count;
+    size_t parameter_count;
+    size_t generic_index;
+    size_t parameter_index;
+    size_t instance_index;
+    size_t index;
+    bool has_where;
+
+    if (emitter == NULL || call == NULL ||
+        call->kind != VITTE_AST_NODE_CALL_EXPR || call->child_count == 0u ||
+        call->id >= emitter->parent_id_count) {
+        return;
+    }
+    callee = vitte_c17_ast_child(emitter, call, 0u);
+    if (callee == NULL ||
+        (callee->kind != VITTE_AST_NODE_PATH &&
+         callee->kind != VITTE_AST_NODE_IDENTIFIER)) {
+        return;
+    }
+    if (callee->kind == VITTE_AST_NODE_PATH && callee->child_count > 1u) {
+        procedure_name = vitte_c17_ast_child(
+            emitter,
+            callee,
+            callee->child_count - 1u);
+        if (vitte_c17_ast_find_generic_procedure_named(
+                emitter, procedure_name) == NULL) {
+            return;
+        }
+        procedure = vitte_c17_ast_find_path_declaration(
+            emitter,
+            callee,
+            VITTE_AST_NODE_PROC_DECL,
+            VITTE_AST_NODE_EXTERN_PROC_DECL);
+    } else {
+        procedure_name = callee->kind == VITTE_AST_NODE_PATH
+            ? vitte_c17_ast_child(emitter, callee, 0u)
+            : callee;
+        procedure = vitte_c17_ast_find_generic_procedure_named(
+            emitter, procedure_name);
+    }
+    generic_count = vitte_c17_ast_generic_form_parameter_count(
+        emitter,
+        procedure,
+        &has_where);
+    if (generic_count == 0u) { return; }
+    owner = vitte_c17_ast_enclosing_procedure(emitter, call);
+    if (owner != NULL &&
+        vitte_c17_ast_generic_form_parameter_count(
+            emitter,
+            owner,
+            NULL) != 0u &&
+        !emitter->generic_proc_context_active) {
+        return;
+    }
+    if (procedure == NULL || procedure->kind != VITTE_AST_NODE_PROC_DECL ||
+        has_where ||
+        vitte_c17_ast_generic_procedure_has_parameter_bounds(
+            emitter, procedure)) {
+        emitter->failed = true;
+        return;
+    }
+    argument_type_nodes = (const vitte_ast_node_t **)calloc(
+        generic_count, sizeof(*argument_type_nodes));
+    argument_c_types = (const char **)calloc(
+        generic_count, sizeof(*argument_c_types));
+    argument_type_keys = (char **)calloc(
+        generic_count, sizeof(*argument_type_keys));
+    if (argument_type_nodes == NULL || argument_c_types == NULL ||
+        argument_type_keys == NULL) {
+        free((void *)argument_type_nodes);
+        free((void *)argument_c_types);
+        free(argument_type_keys);
+        emitter->failed = true;
+        return;
+    }
+    parameter_count = 0u;
+    for (index = 1u; index < procedure->child_count; ++index) {
+        parameter = vitte_c17_ast_child(emitter, procedure, index);
+        if (parameter != NULL &&
+            parameter->kind == VITTE_AST_NODE_PARAMETER) {
+            ++parameter_count;
+        }
+    }
+    if (parameter_count + 1u != call->child_count) {
+        free((void *)argument_type_nodes);
+        free((void *)argument_c_types);
+        free(argument_type_keys);
+        emitter->failed = true;
+        return;
+    }
+    for (generic_index = 0u;
+         generic_index < generic_count;
+         ++generic_index) {
+        const vitte_ast_node_t *generic_parameter =
+            vitte_c17_ast_generic_form_parameter_name(
+                emitter, procedure, generic_index);
+        bool found = false;
+        char resolved_key[VITTE_C17_AST_GENERIC_FORM_ARGUMENT_NAME_MAX];
+        const vitte_ast_node_t *resolved_type = NULL;
+        const char *resolved_c_type = NULL;
+        resolved_key[0] = '\0';
+        if (generic_parameter == NULL) {
+            emitter->failed = true;
+            break;
+        }
+        for (parameter_index = 0u;
+             parameter_index < parameter_count;
+             ++parameter_index) {
+            parameter = NULL;
+            {
+                size_t seen = 0u;
+                for (index = 1u; index < procedure->child_count; ++index) {
+                    const vitte_ast_node_t *candidate =
+                        vitte_c17_ast_child(emitter, procedure, index);
+                    if (candidate != NULL &&
+                        candidate->kind == VITTE_AST_NODE_PARAMETER &&
+                        seen++ == parameter_index) {
+                        parameter = candidate;
+                        break;
+                    }
+                }
+            }
+            argument_type = parameter != NULL
+                ? vitte_c17_ast_child(emitter, parameter, 1u)
+                : NULL;
+            if (!vitte_c17_ast_type_contains_generic_parameter(
+                    emitter, argument_type, generic_parameter, 0u)) {
+                continue;
+            }
+            argument = vitte_c17_ast_child(
+                emitter, call, parameter_index + 1u);
+            previous_function = emitter->function;
+            emitter->function = owner;
+            {
+                const vitte_ast_node_t *actual_type =
+                    vitte_c17_ast_expression_type(emitter, argument);
+                bool inferred =
+                    vitte_c17_ast_infer_generic_parameter_from_type(
+                        emitter,
+                        argument_type,
+                        actual_type,
+                        argument,
+                        call,
+                        generic_parameter,
+                        &resolved_type,
+                        &resolved_c_type,
+                        resolved_key,
+                        sizeof(resolved_key),
+                        &found,
+                        0u);
+                emitter->function = previous_function;
+                if (!inferred) {
+                    emitter->failed = true;
+                    break;
+                }
+            }
+        }
+        if (!found) { emitter->failed = true; }
+        if (emitter->failed) { break; }
+        argument_type_nodes[generic_index] = resolved_type;
+        argument_c_types[generic_index] = resolved_c_type;
+        argument_type_keys[generic_index] =
+            vitte_c17_ast_duplicate_string(resolved_key);
+        if (argument_type_keys[generic_index] == NULL) {
+            emitter->failed = true;
+            break;
+        }
+    }
+    if (emitter->failed) {
+        for (generic_index = 0u;
+             generic_index < generic_count;
+             ++generic_index) {
+            free(argument_type_keys[generic_index]);
+        }
+        free((void *)argument_type_nodes);
+        free((void *)argument_c_types);
+        free(argument_type_keys);
+        return;
+    }
+    for (instance_index = 0u;
+         instance_index < emitter->generic_proc_count;
+         ++instance_index) {
+        if (vitte_c17_ast_generic_proc_arguments_equal(
+                &emitter->generic_procs[instance_index],
+                procedure,
+                argument_type_keys,
+                generic_count)) {
+            if (!vitte_c17_ast_bind_generic_proc_call(
+                    emitter, call, instance_index)) {
+                emitter->failed = true;
+            }
+            for (generic_index = 0u;
+                 generic_index < generic_count;
+                 ++generic_index) {
+                free(argument_type_keys[generic_index]);
+            }
+            free((void *)argument_type_nodes);
+            free((void *)argument_c_types);
+            free(argument_type_keys);
+            return;
+        }
+    }
+    if (emitter->generic_proc_count == SIZE_MAX ||
+        !vitte_c17_ast_emitter_reserve_generic_procs(
+            emitter,
+            emitter->generic_proc_count + 1u)) {
+        for (generic_index = 0u;
+             generic_index < generic_count;
+             ++generic_index) {
+            free(argument_type_keys[generic_index]);
+        }
+        free((void *)argument_type_nodes);
+        free((void *)argument_c_types);
+        free(argument_type_keys);
+        emitter->failed = true;
+        return;
+    }
+    instance_index = emitter->generic_proc_count;
+    emitter->generic_procs[instance_index].argument_type_nodes =
+        argument_type_nodes;
+    emitter->generic_procs[instance_index].argument_c_types =
+        argument_c_types;
+    emitter->generic_procs[instance_index].argument_type_keys =
+        argument_type_keys;
+    emitter->generic_procs[instance_index].declaration = procedure;
+    emitter->generic_procs[instance_index].argument_count = generic_count;
+    (void)snprintf(
+        emitter->generic_procs[instance_index].c_name,
+        sizeof(emitter->generic_procs[instance_index].c_name),
+        "vitte_generic_proc_%zu",
+        instance_index);
+    ++emitter->generic_proc_count;
+    if (!vitte_c17_ast_bind_generic_proc_call(
+            emitter, call, instance_index)) {
+        emitter->failed = true;
+    }
+}
+
+static void
+vitte_c17_ast_collect_generic_proc_instances(
+    vitte_c17_ast_emitter_t *emitter)
+{
+    size_t index;
+    if (emitter == NULL || emitter->parser == NULL) {
+        return;
+    }
+    for (index = 0u;
+         index < emitter->parser->node_count && !emitter->failed;
+         ++index) {
+        const vitte_ast_node_t *node = &emitter->parser->nodes[index];
+        if (node->kind == VITTE_AST_NODE_PROC_DECL ||
+            node->kind == VITTE_AST_NODE_EXTERN_PROC_DECL) {
+            if (emitter->procedure_declaration_count == SIZE_MAX ||
+                !vitte_c17_ast_emitter_reserve_procedure_declarations(
+                    emitter,
+                    emitter->procedure_declaration_count + 1u)) {
+                emitter->failed = true;
+                return;
+            }
+            emitter->procedure_declarations[
+                emitter->procedure_declaration_count++] = node;
+        }
+    }
+    for (index = 0u;
+         index < emitter->parser->node_count && !emitter->failed;
+         ++index) {
+        const vitte_ast_node_t *node = &emitter->parser->nodes[index];
+        if (node->kind == VITTE_AST_NODE_CALL_EXPR) {
+            vitte_c17_ast_register_generic_proc_call(emitter, node);
+        }
+    }
 }
 
 static bool
@@ -4100,7 +6170,10 @@ vitte_c17_ast_call_return_type(
     const vitte_ast_node_t *callee_name;
     const vitte_ast_node_t *root;
     const vitte_ast_node_t *procedure;
+    const vitte_ast_node_t *return_type;
+    size_t generic_parameter_count;
     size_t index;
+    size_t argument_index;
 
     if (call == NULL ||
         call->kind != VITTE_AST_NODE_CALL_EXPR ||
@@ -4135,21 +6208,56 @@ vitte_c17_ast_call_return_type(
         return NULL;
     }
 
+    return_type = vitte_c17_ast_function_return_type(emitter, procedure);
+    if (return_type == NULL) {
+        return NULL;
+    }
+    generic_parameter_count =
+        vitte_c17_ast_generic_form_parameter_count(
+            emitter, procedure, NULL);
+    if (generic_parameter_count == 0u) {
+        return return_type;
+    }
+    argument_index = 1u;
     for (index = 1u; index < procedure->child_count; ++index) {
         const vitte_ast_node_t *child;
 
         child = vitte_c17_ast_child(emitter, procedure, index);
+        if (child != NULL &&
+            child->kind == VITTE_AST_NODE_PARAMETER) {
+            const vitte_ast_node_t *parameter_type =
+                vitte_c17_ast_child(emitter, child, 1u);
+            if (vitte_c17_ast_type_syntax_equal(
+                    emitter,
+                    return_type,
+                    parameter_type,
+                    0u) &&
+                argument_index < call->child_count) {
+                const vitte_ast_node_t *actual_type =
+                    vitte_c17_ast_expression_type(
+                        emitter,
+                        vitte_c17_ast_child(
+                            emitter,
+                            call,
+                            argument_index));
+                if (actual_type != NULL) {
+                    return actual_type;
+                }
+            }
+            ++argument_index;
+            continue;
+        }
         if (child != NULL &&
             (child->kind == VITTE_AST_NODE_TYPE_EXPR ||
              child->kind == VITTE_AST_NODE_ARRAY_TYPE ||
              child->kind == VITTE_AST_NODE_POINTER_TYPE ||
              child->kind == VITTE_AST_NODE_REFERENCE_TYPE ||
              child->kind == VITTE_AST_NODE_OPTIONAL_TYPE)) {
-            return child;
+            return return_type;
         }
     }
 
-    return NULL;
+    return return_type;
 }
 
 static bool
@@ -4356,6 +6464,75 @@ vitte_c17_ast_emit_pointer_value(
 }
 
 static void
+vitte_c17_ast_emit_form_array_initializer(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *array,
+    const vitte_ast_node_t *array_type)
+{
+    const vitte_ast_node_t *element_type = NULL;
+    size_t index;
+
+    if (emitter == NULL || array == NULL ||
+        array->kind != VITTE_AST_NODE_ARRAY_EXPR || array_type == NULL ||
+        array_type->kind != VITTE_AST_NODE_ARRAY_TYPE) {
+        if (emitter != NULL) {
+            emitter->failed = true;
+        }
+        return;
+    }
+
+    if (array_type->child_count == 1u) {
+        if (array->child_count == 0u) {
+            vitte_c17_ast_write(emitter, "(VitteArray){0}");
+            return;
+        }
+        element_type = vitte_c17_ast_expression_type(
+            emitter,
+            vitte_c17_ast_child(emitter, array, 0u));
+        if (element_type == NULL) {
+            element_type = vitte_c17_ast_child(emitter, array_type, 0u);
+        }
+        if (element_type == NULL) {
+            emitter->failed = true;
+            return;
+        }
+        vitte_c17_ast_write(emitter, "vitte_array_from((");
+        vitte_c17_ast_emit_type(emitter, element_type);
+        vitte_c17_ast_write(emitter, "[]){");
+        for (index = 0u; index < array->child_count; ++index) {
+            if (index != 0u) {
+                vitte_c17_ast_write(emitter, ", ");
+            }
+            vitte_c17_ast_emit_expression(
+                emitter,
+                vitte_c17_ast_child(emitter, array, index));
+        }
+        (void)fprintf(
+            emitter->output,
+            "}, %zuu, sizeof(",
+            array->child_count);
+        vitte_c17_ast_emit_type(emitter, element_type);
+        vitte_c17_ast_write(emitter, "))");
+        return;
+    }
+
+    if (array_type->child_count != 2u) {
+        emitter->failed = true;
+        return;
+    }
+    vitte_c17_ast_write(emitter, "{");
+    for (index = 0u; index < array->child_count; ++index) {
+        if (index != 0u) {
+            vitte_c17_ast_write(emitter, ", ");
+        }
+        vitte_c17_ast_emit_expression(
+            emitter,
+            vitte_c17_ast_child(emitter, array, index));
+    }
+    vitte_c17_ast_write(emitter, "}");
+}
+
+static void
 vitte_c17_ast_emit_expression(
     vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *node)
@@ -4492,13 +6669,23 @@ vitte_c17_ast_emit_expression(
                  operand_type->kind == VITTE_AST_NODE_REFERENCE_TYPE) ||
                 (operand_type == NULL &&
                  vitte_c17_ast_expression_is_pointer(emitter, operand))) {
+                vitte_c17_ast_write(emitter, "((__typeof__(");
                 vitte_c17_ast_emit_expression(emitter, operand);
+                vitte_c17_ast_write(
+                    emitter,
+                    "))vitte_optional_require((const void *)(");
+                vitte_c17_ast_emit_expression(emitter, operand);
+                vitte_c17_ast_write(emitter, ")))");
                 return;
             }
 
-            vitte_c17_ast_write(emitter, "(*(");
+            vitte_c17_ast_write(emitter, "(*((__typeof__(* (");
             vitte_c17_ast_emit_expression(emitter, operand);
-            vitte_c17_ast_write(emitter, "))");
+            vitte_c17_ast_write(
+                emitter,
+                ")) *)vitte_optional_require((const void *)(");
+            vitte_c17_ast_emit_expression(emitter, operand);
+            vitte_c17_ast_write(emitter, "))))");
             return;
         }
 
@@ -4557,6 +6744,37 @@ vitte_c17_ast_emit_expression(
                 emitter->failed = true;
                 return;
             }
+            {
+                const vitte_ast_node_t *form_declaration = NULL;
+                const vitte_ast_node_t *form_name;
+
+                left = vitte_c17_ast_child(emitter, node, 0u);
+                if (left != NULL &&
+                    left->kind == VITTE_AST_NODE_TYPE_EXPR) {
+                    const vitte_c17_ast_generic_form_instance_t *instance =
+                        vitte_c17_ast_generic_form_instance_for_type(
+                            emitter, left);
+                    const vitte_ast_node_t *path =
+                        vitte_c17_ast_child(emitter, left, 0u);
+                    form_name = path != NULL &&
+                            path->kind == VITTE_AST_NODE_PATH &&
+                            path->child_count != 0u
+                        ? vitte_c17_ast_child(
+                              emitter, path, path->child_count - 1u)
+                        : NULL;
+                    if (instance != NULL) {
+                        form_declaration = instance->declaration;
+                    } else if (form_name != NULL) {
+                        const vitte_ast_node_t *root = vitte_c17_ast_node(
+                            emitter,
+                            vitte_parser_root(emitter->parser));
+                        form_declaration = vitte_c17_ast_find_form(
+                            emitter, root, form_name);
+                    }
+                } else {
+                    form_name = NULL;
+                }
+
             vitte_c17_ast_write(emitter, "(");
             left = vitte_c17_ast_child(emitter, node, 0u);
             if (left != NULL &&
@@ -4609,11 +6827,55 @@ vitte_c17_ast_emit_expression(
                     emitter,
                     vitte_c17_ast_child(emitter, field, 0u));
                 vitte_c17_ast_write(emitter, " = ");
-                vitte_c17_ast_emit_expression(
-                    emitter,
-                    vitte_c17_ast_child(emitter, field, 1u));
+                {
+                    const vitte_ast_node_t *field_name =
+                        vitte_c17_ast_child(emitter, field, 0u);
+                    const vitte_ast_node_t *field_value =
+                        vitte_c17_ast_child(emitter, field, 1u);
+                    const vitte_ast_node_t *field_type = NULL;
+                    size_t declaration_index;
+
+                    if (form_declaration != NULL && field_name != NULL) {
+                        for (declaration_index = 1u;
+                             declaration_index <
+                                 form_declaration->child_count;
+                             ++declaration_index) {
+                            const vitte_ast_node_t *declared_field =
+                                vitte_c17_ast_child(
+                                    emitter,
+                                    form_declaration,
+                                    declaration_index);
+                            if (declared_field != NULL &&
+                                declared_field->kind ==
+                                    VITTE_AST_NODE_FIELD_DECL &&
+                                vitte_c17_ast_token_equal(
+                                    emitter,
+                                    vitte_c17_ast_child(
+                                        emitter, declared_field, 0u),
+                                    field_name)) {
+                                field_type = vitte_c17_ast_child(
+                                    emitter, declared_field, 1u);
+                                break;
+                            }
+                        }
+                    }
+                    if (field_value != NULL &&
+                        field_value->kind == VITTE_AST_NODE_ARRAY_EXPR &&
+                        field_type != NULL &&
+                        field_type->kind == VITTE_AST_NODE_ARRAY_TYPE) {
+                        vitte_c17_ast_emit_form_array_initializer(
+                            emitter,
+                            field_value,
+                            field_type);
+                    } else {
+                        vitte_c17_ast_emit_expression(
+                            emitter,
+                            field_value);
+                    }
+                }
             }
             vitte_c17_ast_write(emitter, " }");
+            }
             return;
 
         case VITTE_AST_NODE_PATH:
@@ -5581,9 +7843,13 @@ vitte_c17_ast_emit_expression(
                     vitte_c17_ast_child(emitter, node, 0u))) {
                 const vitte_ast_node_t *callee;
                 const vitte_ast_node_t *callee_name;
+                size_t generic_instance;
                 bool callee_emitted;
 
                 callee = vitte_c17_ast_child(emitter, node, 0u);
+                generic_instance =
+                    vitte_c17_ast_generic_proc_instance_for_call(
+                        emitter, node);
                 callee_name = NULL;
                 callee_emitted = false;
                 if (callee != NULL &&
@@ -5594,7 +7860,13 @@ vitte_c17_ast_emit_expression(
                         callee,
                         callee->child_count - 1u);
                 }
-                if (callee_name != NULL &&
+                if (generic_instance != SIZE_MAX &&
+                    generic_instance < emitter->generic_proc_count) {
+                    vitte_c17_ast_write(
+                        emitter,
+                        emitter->generic_procs[generic_instance].c_name);
+                    callee_emitted = true;
+                } else if (callee_name != NULL &&
                     callee != NULL &&
                     callee->kind == VITTE_AST_NODE_PATH &&
                     callee->child_count == 1u &&
@@ -5688,6 +7960,7 @@ vitte_c17_ast_emit_expression(
                 const vitte_ast_node_t *base_type;
                 const vitte_ast_node_t *array_type;
                 const vitte_ast_node_t *base;
+                const vitte_ast_node_t *slice_element;
                 bool array_pointer;
 
                 base = vitte_c17_ast_child(emitter, node, 0u);
@@ -5702,6 +7975,12 @@ vitte_c17_ast_emit_expression(
                         : NULL;
                 }
                 array_type = base_type;
+                slice_element = array_type != NULL &&
+                        array_type->kind == VITTE_AST_NODE_ARRAY_TYPE &&
+                        array_type->child_count == 1u
+                    ? vitte_c17_ast_child(emitter, array_type, 0u)
+                    : vitte_c17_ast_generic_alias_slice_element_recursive(
+                          emitter, array_type, 0u);
                 if (vitte_c17_ast_expression_is_string(emitter, base)) {
                     vitte_c17_ast_write(emitter, "((uint8_t)(");
                     vitte_c17_ast_emit_expression(emitter, base);
@@ -5710,17 +7989,11 @@ vitte_c17_ast_emit_expression(
                         emitter,
                         vitte_c17_ast_child(emitter, node, 1u));
                     vitte_c17_ast_write(emitter, "]))");
-                } else if (array_type != NULL &&
-                    array_type->kind ==
-                        VITTE_AST_NODE_ARRAY_TYPE &&
-                    array_type->child_count == 1u) {
+                } else if (slice_element != NULL) {
                     vitte_c17_ast_write(emitter, "((");
                     vitte_c17_ast_emit_type(
                         emitter,
-                        vitte_c17_ast_child(
-                            emitter,
-                            array_type,
-                            0u));
+                        slice_element);
                     vitte_c17_ast_write(emitter, " *)(");
                     if (array_pointer) {
                         vitte_c17_ast_emit_pointer_value(emitter, base);
@@ -5976,10 +8249,9 @@ vitte_c17_ast_emit_block_contents(
     }
 
     for (index = 0u; index < block->child_count; ++index) {
-        vitte_c17_ast_emit_statement(
-            emitter,
-            vitte_c17_ast_child(emitter, block, index),
-            indent);
+        const vitte_ast_node_t *statement =
+            vitte_c17_ast_child(emitter, block, index);
+        vitte_c17_ast_emit_statement(emitter, statement, indent);
     }
 }
 
@@ -6992,33 +9264,6 @@ vitte_c17_ast_emit_statement(
             }
             if (node->child_count > 1u &&
                 vitte_c17_ast_child(emitter, node, 1u) != NULL &&
-                vitte_c17_ast_child(emitter, node, 1u)->kind ==
-                    VITTE_AST_NODE_ARRAY_TYPE) {
-                const vitte_ast_node_t *array_type;
-
-                array_type = vitte_c17_ast_child(emitter, node, 1u);
-                if (array_type->child_count == 1u) {
-                    vitte_c17_ast_write(emitter, "VitteArray ");
-                    vitte_c17_ast_write_token(emitter, child);
-                    index = 2u;
-                } else if (array_type->child_count == 2u) {
-                    vitte_c17_ast_emit_type(
-                        emitter,
-                        vitte_c17_ast_child(emitter, array_type, 1u));
-                    vitte_c17_ast_write(emitter, " ");
-                    vitte_c17_ast_write_token(emitter, child);
-                    vitte_c17_ast_write(emitter, "[");
-                    vitte_c17_ast_emit_expression(
-                        emitter,
-                        vitte_c17_ast_child(emitter, array_type, 0u));
-                    vitte_c17_ast_write(emitter, "]");
-                    index = 2u;
-                } else {
-                    emitter->failed = true;
-                    return;
-                }
-            } else if (node->child_count > 1u &&
-                vitte_c17_ast_child(emitter, node, 1u) != NULL &&
                 (vitte_c17_ast_child(emitter, node, 1u)->kind ==
                      VITTE_AST_NODE_TYPE_EXPR ||
                  vitte_c17_ast_child(emitter, node, 1u)->kind ==
@@ -7026,12 +9271,13 @@ vitte_c17_ast_emit_statement(
                  vitte_c17_ast_child(emitter, node, 1u)->kind ==
                      VITTE_AST_NODE_REFERENCE_TYPE ||
                  vitte_c17_ast_child(emitter, node, 1u)->kind ==
+                     VITTE_AST_NODE_ARRAY_TYPE ||
+                 vitte_c17_ast_child(emitter, node, 1u)->kind ==
                      VITTE_AST_NODE_OPTIONAL_TYPE)) {
-                vitte_c17_ast_emit_type(
+                vitte_c17_ast_emit_declarator(
                     emitter,
-                    vitte_c17_ast_child(emitter, node, 1u));
-                vitte_c17_ast_write(emitter, " ");
-                vitte_c17_ast_write_token(emitter, child);
+                    vitte_c17_ast_child(emitter, node, 1u),
+                    child);
                 index = 2u;
             } else if (node->child_count > 1u) {
                 const vitte_ast_node_t *initializer;
@@ -7044,24 +9290,35 @@ vitte_c17_ast_emit_statement(
                 if (initializer != NULL &&
                     initializer->kind == VITTE_AST_NODE_CALL_EXPR) {
                     const vitte_ast_node_t *return_type;
+                    const char *inferred_call_type;
 
-                    return_type =
-                        vitte_c17_ast_expression_type(
+                    inferred_call_type =
+                        vitte_c17_ast_infer_scalar_c_type(
                             emitter,
+                            initializer,
                             initializer);
-                    if (return_type == NULL) {
-                        if (vitte_c17_ast_is_string_builtin_call(
+                    if (inferred_call_type == NULL) {
+                        return_type =
+                            vitte_c17_ast_expression_type(
                                 emitter,
-                                initializer)) {
-                            /* Built-in string constructors lower to the
-                             * backend's `const char *` string representation. */
-                            vitte_c17_ast_write(emitter, "const char *");
+                                initializer);
+                        if (return_type == NULL) {
+                            if (vitte_c17_ast_is_string_builtin_call(
+                                    emitter,
+                                    initializer)) {
+                                /* Built-in string constructors lower to the
+                                 * backend's `const char *` representation. */
+                                vitte_c17_ast_write(
+                                    emitter, "const char *");
+                            } else {
+                                emitter->failed = true;
+                                return;
+                            }
                         } else {
-                            emitter->failed = true;
-                            return;
+                            vitte_c17_ast_emit_type(emitter, return_type);
                         }
                     } else {
-                        vitte_c17_ast_emit_type(emitter, return_type);
+                        vitte_c17_ast_write(emitter, inferred_call_type);
                     }
                 } else {
                     const vitte_ast_node_t *inferred_ast_type;
@@ -7167,27 +9424,27 @@ vitte_c17_ast_emit_statement(
                     return;
                 }
                 vitte_c17_ast_write(emitter, " = ");
+                {
+                    const vitte_ast_node_t *declared_type =
+                        node->child_count > 1u
+                            ? vitte_c17_ast_child(emitter, node, 1u)
+                            : NULL;
+                    const vitte_ast_node_t *slice_element =
+                        declared_type != NULL &&
+                                declared_type->kind ==
+                                    VITTE_AST_NODE_ARRAY_TYPE &&
+                                declared_type->child_count == 1u
+                            ? vitte_c17_ast_child(
+                                  emitter, declared_type, 0u)
+                            : vitte_c17_ast_generic_alias_slice_element_recursive(
+                                  emitter, declared_type, 0u);
                 if (initializer != NULL &&
                     initializer->kind == VITTE_AST_NODE_ARRAY_EXPR &&
-                    node->child_count > 1u &&
-                    vitte_c17_ast_child(emitter, node, 1u) != NULL &&
-                    vitte_c17_ast_child(emitter, node, 1u)->kind ==
-                        VITTE_AST_NODE_ARRAY_TYPE &&
-                    vitte_c17_ast_child(
-                        emitter,
-                        node,
-                        1u)->child_count == 1u) {
+                    slice_element != NULL) {
                     const vitte_ast_node_t *element_type;
                     size_t item_index;
 
-                    element_type =
-                        vitte_c17_ast_child(
-                            emitter,
-                            vitte_c17_ast_child(
-                                emitter,
-                                node,
-                                1u),
-                            0u);
+                    element_type = slice_element;
                     if (initializer->child_count == 0u) {
                         vitte_c17_ast_write(
                             emitter,
@@ -7238,6 +9495,7 @@ vitte_c17_ast_emit_statement(
                         emitter,
                         initializer);
                 }
+                }
             }
             vitte_c17_ast_write(emitter, ";\n");
             if (vitte_c17_ast_debug_scalar_let(emitter, node)) {
@@ -7272,6 +9530,57 @@ vitte_c17_ast_emit_statement(
                     vitte_c17_ast_indent(emitter, indent);
                     vitte_c17_ast_write(emitter, "return;\n");
                     return;
+                }
+                if (node->child_count != 0u) {
+                    const vitte_ast_node_t *return_value;
+                    const vitte_ast_node_t *slice_element;
+
+                    return_value = vitte_c17_ast_child(emitter, node, 0u);
+                    slice_element = return_type != NULL &&
+                            return_type->kind == VITTE_AST_NODE_ARRAY_TYPE &&
+                            return_type->child_count == 1u
+                        ? vitte_c17_ast_child(emitter, return_type, 0u)
+                        : vitte_c17_ast_generic_alias_slice_element_recursive(
+                              emitter, return_type, 0u);
+                    if (return_value != NULL &&
+                        return_value->kind == VITTE_AST_NODE_ARRAY_EXPR &&
+                        slice_element != NULL) {
+                        size_t item_index;
+
+                        vitte_c17_ast_write(emitter, "return ");
+                        if (return_value->child_count == 0u) {
+                            vitte_c17_ast_write(
+                                emitter, "(VitteArray){0}");
+                        } else {
+                            vitte_c17_ast_write(
+                                emitter, "vitte_array_from((");
+                            vitte_c17_ast_emit_type(
+                                emitter, slice_element);
+                            vitte_c17_ast_write(emitter, "[]){");
+                            for (item_index = 0u;
+                                 item_index < return_value->child_count;
+                                 ++item_index) {
+                                if (item_index != 0u) {
+                                    vitte_c17_ast_write(emitter, ", ");
+                                }
+                                vitte_c17_ast_emit_expression(
+                                    emitter,
+                                    vitte_c17_ast_child(
+                                        emitter, return_value, item_index));
+                            }
+                            if (fprintf(
+                                    emitter->output,
+                                    "}, %zuu, sizeof(",
+                                    return_value->child_count) < 0) {
+                                emitter->failed = true;
+                            }
+                            vitte_c17_ast_emit_type(
+                                emitter, slice_element);
+                            vitte_c17_ast_write(emitter, "))");
+                        }
+                        vitte_c17_ast_write(emitter, ";\n");
+                        return;
+                    }
                 }
                 vitte_c17_ast_write(emitter, "return");
                 if (node->child_count != 0u) {
@@ -7666,6 +9975,191 @@ vitte_c17_ast_find_child_kind(
 }
 
 static void
+vitte_c17_ast_emit_generic_function_alias_parameter(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    const vitte_ast_node_t *parameter_name,
+    bool *emitted,
+    size_t depth)
+{
+    const vitte_ast_node_t *path;
+    const vitte_ast_node_t *alias;
+    const vitte_ast_node_t *target;
+    size_t generic_count;
+    size_t saved_count;
+    size_t parameter_count;
+    size_t index;
+    bool has_return;
+
+    if (emitted != NULL) {
+        *emitted = false;
+    }
+    if (emitter == NULL || type == NULL || parameter_name == NULL ||
+        emitted == NULL || type->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        type->child_count < 2u) {
+        return;
+    }
+    if (depth > VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX) {
+        *emitted = true;
+        emitter->failed = true;
+        return;
+    }
+    path = vitte_c17_ast_child(emitter, type, 0u);
+    alias = vitte_c17_ast_find_path_declaration(
+        emitter,
+        path,
+        VITTE_AST_NODE_TYPE_DECL,
+        VITTE_AST_NODE_TYPE_DECL);
+    generic_count = vitte_c17_ast_generic_form_parameter_count(
+        emitter, alias, NULL);
+    target = alias != NULL && alias->child_count > 1u
+        ? vitte_c17_ast_child(emitter, alias, alias->child_count - 1u)
+        : NULL;
+    if (alias == NULL || generic_count == 0u || target == NULL) {
+        return;
+    }
+    saved_count = emitter->generic_substitution_count;
+    if (target->kind == VITTE_AST_NODE_TYPE_EXPR &&
+        target->operator_kind != VITTE_TOKEN_KW_PROC &&
+        target->child_count > 1u) {
+        const vitte_ast_node_t *target_path =
+            vitte_c17_ast_child(emitter, target, 0u);
+        const vitte_ast_node_t *nested_alias =
+            vitte_c17_ast_find_path_declaration(
+                emitter,
+                target_path,
+                VITTE_AST_NODE_TYPE_DECL,
+                VITTE_AST_NODE_TYPE_DECL);
+        size_t nested_generic_count =
+            vitte_c17_ast_generic_form_parameter_count(
+                emitter, nested_alias, NULL);
+
+        if (nested_alias != NULL &&
+            (nested_alias->flags & VITTE_AST_FLAG_TYPE_ALIAS) != 0u &&
+            nested_generic_count != 0u) {
+            if (generic_count != type->child_count - 1u ||
+                saved_count > emitter->generic_substitution_capacity ||
+                generic_count >
+                    emitter->generic_substitution_capacity - saved_count) {
+                *emitted = true;
+                emitter->failed = true;
+                return;
+            }
+            for (index = 0u; index < generic_count; ++index) {
+                size_t substitution_index = saved_count + index;
+                emitter->generic_parameter_names[substitution_index] =
+                    vitte_c17_ast_generic_form_parameter_name(
+                        emitter, alias, index);
+                emitter->generic_arguments[substitution_index] =
+                    vitte_c17_ast_child(emitter, type, index + 1u);
+                emitter->generic_c_type_names[substitution_index] = NULL;
+                if (emitter->generic_parameter_names[substitution_index] == NULL ||
+                    emitter->generic_arguments[substitution_index] == NULL) {
+                    emitter->failed = true;
+                    while (index != 0u ||
+                           emitter->generic_parameter_names[saved_count] != NULL) {
+                        size_t cleanup_index = saved_count + index;
+                        emitter->generic_parameter_names[cleanup_index] = NULL;
+                        emitter->generic_arguments[cleanup_index] = NULL;
+                        emitter->generic_c_type_names[cleanup_index] = NULL;
+                        if (index == 0u) {
+                            break;
+                        }
+                        --index;
+                    }
+                    return;
+                }
+            }
+            emitter->generic_substitution_count =
+                saved_count + generic_count;
+            vitte_c17_ast_emit_generic_function_alias_parameter(
+                emitter,
+                target,
+                parameter_name,
+                emitted,
+                depth + 1u);
+            emitter->generic_substitution_count = saved_count;
+            for (index = 0u; index < generic_count; ++index) {
+                size_t substitution_index = saved_count + index;
+                emitter->generic_parameter_names[substitution_index] = NULL;
+                emitter->generic_arguments[substitution_index] = NULL;
+                emitter->generic_c_type_names[substitution_index] = NULL;
+            }
+            return;
+        }
+    }
+    if (target->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        target->operator_kind != VITTE_TOKEN_KW_PROC) {
+        return;
+    }
+    *emitted = true;
+    if (generic_count != type->child_count - 1u) {
+        emitter->failed = true;
+        return;
+    }
+    if (saved_count > emitter->generic_substitution_capacity ||
+        generic_count > emitter->generic_substitution_capacity - saved_count) {
+        emitter->failed = true;
+        return;
+    }
+    for (index = 0u; index < generic_count; ++index) {
+        size_t substitution_index = saved_count + index;
+        emitter->generic_parameter_names[substitution_index] =
+            vitte_c17_ast_generic_form_parameter_name(
+                emitter, alias, index);
+        emitter->generic_arguments[substitution_index] =
+            vitte_c17_ast_child(emitter, type, index + 1u);
+        emitter->generic_c_type_names[substitution_index] = NULL;
+        if (emitter->generic_parameter_names[substitution_index] == NULL ||
+            emitter->generic_arguments[substitution_index] == NULL) {
+            emitter->failed = true;
+            goto cleanup;
+        }
+    }
+    emitter->generic_substitution_count = saved_count + generic_count;
+    has_return = (target->flags &
+        VITTE_AST_FLAG_FUNCTION_TYPE_HAS_RETURN) != 0u;
+    if (has_return && target->child_count == 0u) {
+        emitter->failed = true;
+        goto cleanup;
+    }
+    parameter_count = target->child_count - (has_return ? 1u : 0u);
+    if (has_return) {
+        vitte_c17_ast_emit_type(
+            emitter,
+            vitte_c17_ast_child(
+                emitter, target, target->child_count - 1u));
+    } else {
+        vitte_c17_ast_write(emitter, "void");
+    }
+    vitte_c17_ast_write(emitter, " (*");
+    vitte_c17_ast_write_token(emitter, parameter_name);
+    vitte_c17_ast_write(emitter, ")( ");
+    if (parameter_count == 0u) {
+        vitte_c17_ast_write(emitter, "void");
+    } else {
+        for (index = 0u; index < parameter_count; ++index) {
+            if (index != 0u) {
+                vitte_c17_ast_write(emitter, ", ");
+            }
+            vitte_c17_ast_emit_type(
+                emitter,
+                vitte_c17_ast_child(emitter, target, index));
+        }
+    }
+    vitte_c17_ast_write(emitter, ")");
+
+cleanup:
+    emitter->generic_substitution_count = saved_count;
+    for (index = 0u; index < generic_count; ++index) {
+        size_t substitution_index = saved_count + index;
+        emitter->generic_parameter_names[substitution_index] = NULL;
+        emitter->generic_arguments[substitution_index] = NULL;
+        emitter->generic_c_type_names[substitution_index] = NULL;
+    }
+}
+
+static void
 vitte_c17_ast_emit_parameter_list(
     vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *function)
@@ -7676,6 +10170,9 @@ vitte_c17_ast_emit_parameter_list(
     first = true;
     for (index = 1u; index < function->child_count; ++index) {
         const vitte_ast_node_t *parameter;
+        const vitte_ast_node_t *parameter_type;
+        const vitte_ast_node_t *parameter_name;
+        bool emitted_generic_function_alias;
 
         parameter = vitte_c17_ast_child(emitter, function, index);
         if (parameter == NULL ||
@@ -7686,13 +10183,19 @@ vitte_c17_ast_emit_parameter_list(
         if (!first) {
             vitte_c17_ast_write(emitter, ", ");
         }
-        vitte_c17_ast_emit_type(
+        parameter_type = vitte_c17_ast_child(emitter, parameter, 1u);
+        parameter_name = vitte_c17_ast_child(emitter, parameter, 0u);
+        emitted_generic_function_alias = false;
+        vitte_c17_ast_emit_generic_function_alias_parameter(
             emitter,
-            vitte_c17_ast_child(emitter, parameter, 1u));
-        vitte_c17_ast_write(emitter, " ");
-        vitte_c17_ast_write_token(
-            emitter,
-            vitte_c17_ast_child(emitter, parameter, 0u));
+            parameter_type,
+            parameter_name,
+            &emitted_generic_function_alias,
+            0u);
+        if (!emitted_generic_function_alias) {
+            vitte_c17_ast_emit_declarator(
+                emitter, parameter_type, parameter_name);
+        }
         first = false;
     }
 
@@ -7726,8 +10229,13 @@ vitte_c17_ast_emit_function_signature(
         const vitte_ast_node_t *child =
             vitte_c17_ast_child(emitter, function, index);
         if (child != NULL &&
-            (child->kind == VITTE_AST_NODE_GENERIC_PARAM ||
-             child->kind == VITTE_AST_NODE_WHERE_CLAUSE)) {
+            child->kind == VITTE_AST_NODE_WHERE_CLAUSE) {
+            emitter->failed = true;
+            return;
+        }
+        if (child != NULL &&
+            child->kind == VITTE_AST_NODE_GENERIC_PARAM &&
+            emitter->generic_proc_c_name == NULL) {
             if (vitte_c17_ast_is_core_pointer_generic(
                     emitter,
                     function)) {
@@ -7776,6 +10284,8 @@ vitte_c17_ast_emit_function_signature(
 
     if (function->kind == VITTE_AST_NODE_EXTERN_PROC_DECL) {
         vitte_c17_ast_write_token(emitter, name);
+    } else if (emitter->generic_proc_c_name != NULL) {
+        vitte_c17_ast_write(emitter, emitter->generic_proc_c_name);
     } else if (emitter->space_depth == 0u &&
         vitte_c17_ast_token_is(emitter, name, "main")) {
         vitte_c17_ast_write(emitter, "vitte_entry_main");
@@ -8401,10 +10911,8 @@ vitte_c17_ast_emit_function_type_aliases_in_scope(
                 }
             }
             if (has_generics) {
-                /* Omitting a generic alias here leaves references to a
-                 * source-only name in generated C. */
-                emitter->failed = true;
-                return;
+                /* Generic aliases are expanded at each concrete type use. */
+                continue;
             }
             if (!has_generics && target != NULL &&
                 (target->kind == VITTE_AST_NODE_TYPE_EXPR ||
@@ -8486,7 +10994,8 @@ vitte_c17_ast_emit_forms_in_scope(
                          ++generic_index) {
                         const vitte_c17_ast_generic_form_instance_t *instance =
                             &emitter->generic_forms[generic_index];
-                        if (instance->declaration == declaration) {
+                        if (instance->declaration == declaration &&
+                            !instance->forward_declared) {
                             vitte_c17_ast_write(emitter, "typedef struct ");
                             vitte_c17_ast_emit_generic_form_instance_name(
                                 emitter,
@@ -8496,6 +11005,7 @@ vitte_c17_ast_emit_forms_in_scope(
                                 emitter,
                                 instance);
                             vitte_c17_ast_write(emitter, ";\n");
+                            emitter->generic_forms[generic_index].forward_declared = true;
                         }
                     }
                 }
@@ -8582,30 +11092,214 @@ vitte_c17_ast_emit_opaque_forward_declarations_in_scope(
     }
 }
 
-static void
-vitte_c17_ast_emit_generic_form_instances(
-    vitte_c17_ast_emitter_t *emitter)
+static bool
+vitte_c17_ast_emit_generic_form_type_dependencies(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *type,
+    bool requires_layout,
+    size_t depth)
 {
     size_t index;
 
-    for (index = 0u;
-         index < emitter->generic_form_count && !emitter->failed;
-         ++index) {
-        const vitte_c17_ast_generic_form_instance_t *instance =
-            &emitter->generic_forms[index];
-        const vitte_ast_node_t *declaration = instance->declaration;
+    if (type == NULL || depth > VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX) {
+        emitter->failed = true;
+        return false;
+    }
+    if (type->kind == VITTE_AST_NODE_POINTER_TYPE ||
+        type->kind == VITTE_AST_NODE_REFERENCE_TYPE ||
+        type->kind == VITTE_AST_NODE_OPTIONAL_TYPE) {
+        for (index = 0u; index < type->child_count; ++index) {
+            if (!vitte_c17_ast_emit_generic_form_type_dependencies(
+                    emitter,
+                    vitte_c17_ast_child(emitter, type, index),
+                    false,
+                    depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (type->kind == VITTE_AST_NODE_ARRAY_TYPE) {
+        /* A fixed-size array stores its elements inline, so its element
+         * type must have a complete layout before the containing form is
+         * emitted. Dynamic arrays contain a pointer-backed VitteArray header
+         * and do not impose that dependency. */
+        for (index = 0u; index < type->child_count; ++index) {
+            bool element_requires_layout =
+                requires_layout && type->child_count > 1u && index == 1u;
+            if (!vitte_c17_ast_emit_generic_form_type_dependencies(
+                    emitter,
+                    vitte_c17_ast_child(emitter, type, index),
+                    element_requires_layout,
+                    depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    {
+        size_t substitution_index =
+            vitte_c17_ast_generic_substitution_index(emitter, type);
+        if (substitution_index != SIZE_MAX) {
+            const vitte_ast_node_t *argument =
+                emitter->generic_arguments[substitution_index];
+            size_t saved_substitution_count =
+                emitter->generic_substitution_count;
+            bool resolved;
+            if (argument == NULL) {
+                return false;
+            }
+            emitter->generic_substitution_count = substitution_index;
+            resolved = vitte_c17_ast_emit_generic_form_type_dependencies(
+                emitter,
+                argument,
+                requires_layout,
+                depth + 1u);
+            emitter->generic_substitution_count =
+                saved_substitution_count;
+            return resolved;
+        }
+    }
+    for (index = 0u; index < type->child_count; ++index) {
+        if (!vitte_c17_ast_emit_generic_form_type_dependencies(
+                emitter,
+                vitte_c17_ast_child(emitter, type, index),
+                requires_layout,
+                depth + 1u)) {
+            return false;
+        }
+    }
+    if (type->kind == VITTE_AST_NODE_TYPE_EXPR &&
+        type->operator_kind != VITTE_TOKEN_KW_PROC &&
+        type->child_count > 1u) {
+        const vitte_ast_node_t *root = vitte_c17_ast_node(
+            emitter,
+            vitte_parser_root(emitter->parser));
+        const vitte_c17_ast_generic_form_instance_t *dependency =
+            vitte_c17_ast_generic_form_instance_for_type(emitter, type);
+        size_t dependency_index;
+
+        if (dependency == NULL && root != NULL) {
+            vitte_c17_ast_collect_generic_form_instances(
+                emitter, root, type, depth + 1u);
+            dependency = vitte_c17_ast_generic_form_instance_for_type(
+                emitter, type);
+        }
+        if (dependency == NULL) {
+            emitter->failed = true;
+            return false;
+        }
+        dependency_index = (size_t)(dependency - emitter->generic_forms);
+        if (requires_layout) {
+            return vitte_c17_ast_emit_generic_form_layout_ordered(
+                emitter, dependency_index, depth + 1u);
+        }
+        if (!emitter->generic_forms[dependency_index].forward_declared) {
+            vitte_c17_ast_write(emitter, "typedef struct ");
+            vitte_c17_ast_emit_generic_form_instance_name(
+                emitter,
+                &emitter->generic_forms[dependency_index]);
+            vitte_c17_ast_write(emitter, " ");
+            vitte_c17_ast_emit_generic_form_instance_name(
+                emitter,
+                &emitter->generic_forms[dependency_index]);
+            vitte_c17_ast_write(emitter, ";\n");
+            emitter->generic_forms[dependency_index].forward_declared = true;
+        }
+        return !emitter->failed;
+    }
+    return !emitter->failed;
+}
+
+static bool
+vitte_c17_ast_emit_generic_form_layout_ordered(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t instance_index,
+    size_t depth)
+{
+    vitte_c17_ast_generic_form_instance_t *instance;
+    const vitte_ast_node_t *declaration;
+    size_t parameter_count;
+    size_t saved_substitution_count;
+    size_t parameter_index;
+    size_t field_index;
+
+    if (emitter == NULL || emitter->failed ||
+        instance_index >= emitter->generic_form_count ||
+        depth > VITTE_C17_AST_GENERIC_FORM_TYPE_DEPTH_MAX) {
+        if (emitter != NULL) {
+            emitter->failed = true;
+        }
+        return false;
+    }
+    instance = &emitter->generic_forms[instance_index];
+    if (instance->layout_state == 2u) {
+        return true;
+    }
+    if (instance->layout_state == 1u) {
+        emitter->failed = true;
+        return false;
+    }
+    declaration = instance->declaration;
+    parameter_count = vitte_c17_ast_generic_form_parameter_count(
+        emitter, declaration, NULL);
+    if (declaration == NULL || parameter_count == 0u ||
+        parameter_count != instance->argument_count ||
+        instance->type_expression == NULL ||
+        instance->arguments == NULL ||
+        parameter_count > SIZE_MAX -
+            emitter->generic_substitution_count ||
+        emitter->generic_substitution_count + parameter_count >
+            emitter->generic_substitution_capacity) {
+        emitter->failed = true;
+        return false;
+    }
+    instance->layout_state = 1u;
+    saved_substitution_count = emitter->generic_substitution_count;
+    for (parameter_index = 0u;
+         parameter_index < parameter_count;
+         ++parameter_index) {
         const vitte_ast_node_t *parameter_name =
             vitte_c17_ast_generic_form_parameter_name(
-                emitter,
-                declaration);
-        size_t field_index;
-
-        if (parameter_name == NULL || instance->argument == NULL) {
+                emitter, declaration, parameter_index);
+        const vitte_ast_node_t *argument =
+            instance->arguments[parameter_index];
+        if (parameter_name == NULL || argument == NULL) {
+            emitter->generic_substitution_count =
+                saved_substitution_count;
             emitter->failed = true;
-            return;
+            return false;
         }
-        emitter->generic_parameter_name = parameter_name;
-        emitter->generic_argument = instance->argument;
+        emitter->generic_parameter_names[
+            emitter->generic_substitution_count] = parameter_name;
+        emitter->generic_arguments[
+            emitter->generic_substitution_count] = argument;
+        ++emitter->generic_substitution_count;
+    }
+
+    for (field_index = 1u;
+         field_index < declaration->child_count && !emitter->failed;
+         ++field_index) {
+        const vitte_ast_node_t *field =
+            vitte_c17_ast_child(emitter, declaration, field_index);
+        if (field == NULL || field->kind != VITTE_AST_NODE_FIELD_DECL) {
+            continue;
+        }
+        if (field->child_count < 2u ||
+            !vitte_c17_ast_emit_generic_form_type_dependencies(
+                emitter,
+                vitte_c17_ast_child(emitter, field, 1u),
+                true,
+                depth + 1u)) {
+            emitter->generic_substitution_count =
+                saved_substitution_count;
+            return false;
+        }
+    }
+
+    /* Dependency discovery can grow generic_forms and move its allocation. */
+    instance = &emitter->generic_forms[instance_index];
+    if (!emitter->failed) {
         vitte_c17_ast_write(emitter, "struct ");
         vitte_c17_ast_emit_generic_form_instance_name(emitter, instance);
         vitte_c17_ast_write(emitter, " {\n");
@@ -8629,8 +11323,26 @@ vitte_c17_ast_emit_generic_form_instances(
             vitte_c17_ast_write(emitter, ";\n");
         }
         vitte_c17_ast_write(emitter, "};\n\n");
-        emitter->generic_parameter_name = NULL;
-        emitter->generic_argument = NULL;
+    }
+    emitter->generic_substitution_count = saved_substitution_count;
+    if (emitter->failed) {
+        return false;
+    }
+    instance->layout_state = 2u;
+    return true;
+}
+
+static void
+vitte_c17_ast_emit_generic_form_instances(
+    vitte_c17_ast_emitter_t *emitter)
+{
+    size_t index;
+
+    for (index = 0u;
+         index < emitter->generic_form_count && !emitter->failed;
+         ++index) {
+        (void)vitte_c17_ast_emit_generic_form_layout_ordered(
+            emitter, index, 0u);
     }
 }
 
@@ -9116,6 +11828,169 @@ vitte_c17_ast_emit_function(
     return !emitter->failed;
 }
 
+static bool
+vitte_c17_ast_prepare_generic_proc_instance(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t instance_index,
+    size_t *saved_substitution_count)
+{
+    const vitte_c17_ast_generic_proc_instance_t *instance;
+    size_t parameter_count;
+    size_t index;
+
+    if (emitter == NULL || saved_substitution_count == NULL ||
+        instance_index >= emitter->generic_proc_count) {
+        return false;
+    }
+    instance = &emitter->generic_procs[instance_index];
+    parameter_count = vitte_c17_ast_generic_form_parameter_count(
+        emitter, instance->declaration, NULL);
+    if (emitter->generic_substitution_count >
+            emitter->generic_substitution_capacity ||
+        parameter_count != instance->argument_count ||
+        parameter_count > emitter->generic_substitution_capacity -
+            emitter->generic_substitution_count) {
+        emitter->failed = true;
+        return false;
+    }
+    *saved_substitution_count = emitter->generic_substitution_count;
+    for (index = 0u; index < parameter_count; ++index) {
+        const vitte_ast_node_t *parameter_name =
+            vitte_c17_ast_generic_form_parameter_name(
+                emitter, instance->declaration, index);
+        size_t substitution_index = emitter->generic_substitution_count;
+        if (parameter_name == NULL ||
+            (instance->argument_c_types[index] == NULL &&
+             instance->argument_type_nodes[index] == NULL)) {
+            emitter->failed = true;
+            emitter->generic_substitution_count =
+                *saved_substitution_count;
+            return false;
+        }
+        emitter->generic_parameter_names[substitution_index] = parameter_name;
+        emitter->generic_arguments[substitution_index] =
+            instance->argument_type_nodes[index];
+        emitter->generic_c_type_names[substitution_index] =
+            instance->argument_c_types[index];
+        ++emitter->generic_substitution_count;
+    }
+    emitter->generic_proc_c_name = instance->c_name;
+    return true;
+}
+
+static void
+vitte_c17_ast_restore_generic_proc_instance(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t saved_substitution_count)
+{
+    size_t index;
+    if (emitter == NULL) { return; }
+    for (index = saved_substitution_count;
+         index < emitter->generic_substitution_count;
+         ++index) {
+        emitter->generic_parameter_names[index] = NULL;
+        emitter->generic_arguments[index] = NULL;
+        emitter->generic_c_type_names[index] = NULL;
+    }
+    emitter->generic_substitution_count = saved_substitution_count;
+    emitter->generic_proc_c_name = NULL;
+}
+
+static void
+vitte_c17_ast_collect_nested_generic_proc_instances(
+    vitte_c17_ast_emitter_t *emitter)
+{
+    size_t instance_index = 0u;
+
+    while (emitter != NULL &&
+           instance_index < emitter->generic_proc_count &&
+           !emitter->failed) {
+        const vitte_ast_node_t *procedure =
+            emitter->generic_procs[instance_index].declaration;
+        const vitte_ast_node_t *previous_function = emitter->function;
+        size_t saved_substitution_count;
+        size_t node_index;
+
+        if (procedure == NULL ||
+            !vitte_c17_ast_prepare_generic_proc_instance(
+                emitter,
+                instance_index,
+                &saved_substitution_count)) {
+            emitter->failed = true;
+            break;
+        }
+        emitter->function = procedure;
+        emitter->generic_proc_context_active = true;
+        emitter->generic_proc_context_index = instance_index;
+        for (node_index = 0u;
+             node_index < emitter->parser->node_count && !emitter->failed;
+             ++node_index) {
+            const vitte_ast_node_t *node =
+                &emitter->parser->nodes[node_index];
+            if (node->kind == VITTE_AST_NODE_CALL_EXPR &&
+                vitte_c17_ast_enclosing_procedure(emitter, node) ==
+                    procedure) {
+                vitte_c17_ast_register_generic_proc_call(emitter, node);
+            }
+        }
+        emitter->generic_proc_context_active = false;
+        emitter->function = previous_function;
+        vitte_c17_ast_restore_generic_proc_instance(
+            emitter, saved_substitution_count);
+        ++instance_index;
+    }
+}
+
+static void
+vitte_c17_ast_emit_generic_proc_prototypes(
+    vitte_c17_ast_emitter_t *emitter)
+{
+    size_t index;
+    for (index = 0u;
+         index < emitter->generic_proc_count && !emitter->failed;
+         ++index) {
+        size_t saved_substitution_count;
+        if (!vitte_c17_ast_prepare_generic_proc_instance(
+                emitter, index, &saved_substitution_count)) {
+            emitter->failed = true;
+            break;
+        }
+        vitte_c17_ast_emit_function_signature(
+            emitter,
+            emitter->generic_procs[index].declaration,
+            true);
+        vitte_c17_ast_restore_generic_proc_instance(
+            emitter, saved_substitution_count);
+    }
+}
+
+static void
+vitte_c17_ast_emit_generic_proc_definitions(
+    vitte_c17_ast_emitter_t *emitter)
+{
+    size_t index;
+    for (index = 0u;
+         index < emitter->generic_proc_count && !emitter->failed;
+         ++index) {
+        size_t saved_substitution_count;
+        if (!vitte_c17_ast_prepare_generic_proc_instance(
+                emitter, index, &saved_substitution_count)) {
+            emitter->failed = true;
+            break;
+        }
+        emitter->generic_proc_context_active = true;
+        emitter->generic_proc_context_index = index;
+        if (!vitte_c17_ast_emit_function(
+                emitter,
+                emitter->generic_procs[index].declaration)) {
+            emitter->failed = true;
+        }
+        emitter->generic_proc_context_active = false;
+        vitte_c17_ast_restore_generic_proc_instance(
+            emitter, saved_substitution_count);
+    }
+}
+
 static void
 vitte_c17_ast_emit_space_functions(
     vitte_c17_ast_emitter_t *emitter,
@@ -9181,6 +12056,12 @@ vitte_c17_ast_emit_space_functions(
                         continue;
                     }
                     if (member->kind == VITTE_AST_NODE_PROC_DECL) {
+                        if (vitte_c17_ast_generic_form_parameter_count(
+                                emitter,
+                                member,
+                                NULL) != 0u) {
+                            continue;
+                        }
                         if (prototypes) {
                             vitte_c17_ast_emit_function_signature(
                                 emitter,
@@ -9300,11 +12181,7 @@ vitte_c17_emit_ast_with_options(
             root)) {
         return false;
     }
-    vitte_c17_ast_validate_generic_form_fields(
-        &emitter,
-        root,
-        0u);
-    if (emitter.failed) {
+    if (!vitte_c17_ast_build_parent_index(&emitter)) {
         return false;
     }
     vitte_c17_ast_collect_generic_form_instances(
@@ -9312,10 +12189,10 @@ vitte_c17_emit_ast_with_options(
         root,
         root,
         0u);
+    vitte_c17_ast_collect_generic_proc_instances(&emitter);
+    vitte_c17_ast_collect_nested_generic_proc_instances(&emitter);
     if (emitter.failed) {
-        return false;
-    }
-    if (!vitte_c17_ast_build_parent_index(&emitter)) {
+        vitte_c17_ast_emitter_release_generic_state(&emitter);
         return false;
     }
 
@@ -9357,6 +12234,7 @@ vitte_c17_emit_ast_with_options(
         "#define vitte_core_pointer_is_null(value) ((value) == NULL)\n"
         "#define vitte_core_pointer_read(source) (*(source))\n"
         "#define vitte_core_pointer_write(destination, ...) ((void)(*(destination) = (__VA_ARGS__)))\n"
+        "static inline void *vitte_optional_require(const void *value) { if (value == NULL) abort(); return (void *)value; }\n"
         "\n"
         "#if defined(__GNUC__) || defined(__clang__)\n"
         "#define VITTE_C17_AST_UNUSED __attribute__((__unused__))\n"
@@ -9591,7 +12469,11 @@ vitte_c17_emit_ast_with_options(
         const vitte_ast_node_t *node;
 
         node = vitte_c17_ast_child(&emitter, root, index);
-        if (node != NULL && node->kind == VITTE_AST_NODE_PROC_DECL) {
+        if (node != NULL && node->kind == VITTE_AST_NODE_PROC_DECL &&
+            vitte_c17_ast_generic_form_parameter_count(
+                &emitter,
+                node,
+                NULL) == 0u) {
             vitte_c17_ast_emit_function_signature(
                 &emitter,
                 node,
@@ -9609,6 +12491,7 @@ vitte_c17_emit_ast_with_options(
         &emitter,
         root,
         true);
+    vitte_c17_ast_emit_generic_proc_prototypes(&emitter);
 
     vitte_c17_ast_write(
         &emitter,
@@ -9778,7 +12661,11 @@ vitte_c17_emit_ast_with_options(
 
         node = vitte_c17_ast_child(&emitter, root, index);
         if (node == NULL ||
-            node->kind != VITTE_AST_NODE_PROC_DECL) {
+            node->kind != VITTE_AST_NODE_PROC_DECL ||
+            vitte_c17_ast_generic_form_parameter_count(
+                &emitter,
+                node,
+                NULL) != 0u) {
             continue;
         }
         name = vitte_c17_ast_child(&emitter, node, 0u);
@@ -9792,7 +12679,11 @@ vitte_c17_emit_ast_with_options(
         const vitte_ast_node_t *node;
 
         node = vitte_c17_ast_child(&emitter, root, index);
-        if (node != NULL && node->kind == VITTE_AST_NODE_PROC_DECL) {
+        if (node != NULL && node->kind == VITTE_AST_NODE_PROC_DECL &&
+            vitte_c17_ast_generic_form_parameter_count(
+                &emitter,
+                node,
+                NULL) == 0u) {
             if (!vitte_c17_ast_emit_function(&emitter, node)) {
                 break;
             }
@@ -9815,6 +12706,7 @@ vitte_c17_emit_ast_with_options(
                    node->kind != VITTE_AST_NODE_SPACE_DECL &&
                    node->kind != VITTE_AST_NODE_USE_DECL &&
                    node->kind != VITTE_AST_NODE_TEST_DECL &&
+                   node->kind != VITTE_AST_NODE_PROC_DECL &&
                    node->kind != VITTE_AST_NODE_FORM_DECL &&
                    node->kind != VITTE_AST_NODE_PICK_DECL &&
                    node->kind != VITTE_AST_NODE_OPAQUE_DECL &&
@@ -9831,6 +12723,7 @@ vitte_c17_emit_ast_with_options(
         &emitter,
         root,
         false);
+    vitte_c17_ast_emit_generic_proc_definitions(&emitter);
 
     if (has_main && !emitter.failed) {
         vitte_c17_ast_write(
@@ -9861,9 +12754,7 @@ vitte_c17_emit_ast_with_options(
 
     {
         bool success = !emitter.failed && fflush(output) == 0;
-        free(emitter.parent_ids);
-        emitter.parent_ids = NULL;
-        emitter.parent_id_count = 0u;
+        vitte_c17_ast_emitter_release_generic_state(&emitter);
         return success;
     }
 }

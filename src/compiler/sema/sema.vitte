@@ -39,6 +39,7 @@ use compiler::parser::parser::{
     Parser,
     ParserSpan,
     ParserToken,
+    PARSER_AST_FLAG_FUNCTION_TYPE_HAS_RETURN,
     PARSER_AST_FLAG_MUTABLE,
     PARSER_AST_FLAG_PUBLIC,
     PARSER_AST_FLAG_EXTERN,
@@ -174,6 +175,15 @@ export form SemaType {
     generic_argument_count: usize,
     function_parameter_types: *SemaTypeId,
     function_parameter_count: usize
+}
+
+form SemaGenericCallBinding {
+    parameter_type: SemaTypeId,
+    concrete_type: SemaTypeId
+}
+
+form SemaGenericCallInference {
+    bindings: [SemaGenericCallBinding]
 }
 
 export pick SemaConstantKind {
@@ -391,15 +401,35 @@ proc sema_reserve_diagnostics(context: *mut Sema, required: usize) -> bool {
     return true;
 }
 
-proc sema_add_type(context: *mut Sema, kind: SemaTypeKind, element: SemaTypeId, array_length: usize, symbol: SymbolId, is_mutable: bool, return_type: SemaTypeId, parameters: *const SemaTypeId, parameter_count: usize) -> SemaTypeId {
+proc sema_add_type_with_arguments(
+    context: *mut Sema,
+    kind: SemaTypeKind,
+    element: SemaTypeId,
+    array_length: usize,
+    symbol: SymbolId,
+    is_mutable: bool,
+    return_type: SemaTypeId,
+    parameters: *const SemaTypeId,
+    parameter_count: usize,
+    generic_arguments: *const SemaTypeId,
+    generic_argument_count: usize
+) -> SemaTypeId {
     if context == null or (*context).type_count >= (*context).max_types { if context != null { set (*context).last_error = SemaError.TypeLimit; } return 0; }
     let mut index: usize = 0;
     while index < (*context).type_count {
         let candidate = (&((*context).types[index])) as *const SemaType;
-        if (*candidate).kind == kind and (*candidate).element_type == element and (*candidate).array_length == array_length and (*candidate).symbol_id == symbol and (*candidate).is_mutable == is_mutable and (*candidate).return_type == return_type and (*candidate).function_parameter_count == parameter_count {
+        if (*candidate).kind == kind and (*candidate).element_type == element and (*candidate).array_length == array_length and (*candidate).symbol_id == symbol and (*candidate).is_mutable == is_mutable and (*candidate).return_type == return_type and (*candidate).function_parameter_count == parameter_count and (*candidate).generic_argument_count == generic_argument_count {
             let mut same = true;
             let mut parameter_index: usize = 0;
             while parameter_index < parameter_count { if (*candidate).function_parameter_types[parameter_index] != parameters[parameter_index] { set same = false; break; } set parameter_index += 1; }
+            set parameter_index = 0;
+            while parameter_index < generic_argument_count {
+                if (*candidate).generic_arguments[parameter_index] != generic_arguments[parameter_index] {
+                    set same = false;
+                    break;
+                }
+                set parameter_index += 1;
+            }
             if same { set (*context).stats.type_intern_hits = sema_sat_add((*context).stats.type_intern_hits, 1); return (*candidate).id; }
         }
         set index += 1;
@@ -427,9 +457,24 @@ proc sema_add_type(context: *mut Sema, kind: SemaTypeKind, element: SemaTypeId, 
         set (*type_entry).function_parameter_types = parameter_storage as usize as *SemaTypeId;
         set (*type_entry).function_parameter_count = parameter_count;
     }
+    if generic_argument_count != 0 {
+        if generic_arguments == null or generic_argument_count > SEMA_SIZE_MAX / sizeof(SemaTypeId) { set (*context).last_error = SemaError.InvalidArgument; return 0; }
+        let generic_storage = allocate(generic_argument_count * sizeof(SemaTypeId));
+        if generic_storage == null { set (*context).last_error = SemaError.OutOfMemory; return 0; }
+        copy(generic_storage, generic_arguments as *const u8, generic_argument_count * sizeof(SemaTypeId));
+        set (*type_entry).generic_arguments = generic_storage as usize as *SemaTypeId;
+        set (*type_entry).generic_argument_count = generic_argument_count;
+    }
     set (*context).type_count += 1;
     set (*context).stats.types_created = sema_sat_add((*context).stats.types_created, 1);
     return id;
+}
+
+proc sema_add_type(context: *mut Sema, kind: SemaTypeKind, element: SemaTypeId, array_length: usize, symbol: SymbolId, is_mutable: bool, return_type: SemaTypeId, parameters: *const SemaTypeId, parameter_count: usize) -> SemaTypeId {
+    return sema_add_type_with_arguments(
+        context, kind, element, array_length, symbol, is_mutable,
+        return_type, parameters, parameter_count, null, 0
+    );
 }
 
 proc sema_builtin_types(context: *mut Sema) -> bool {
@@ -559,6 +604,309 @@ proc sema_expression_assignable(context: *const Sema, destination: SemaTypeId, s
         if value_source == (*context).type_i64 and sema_integer_literal_fits(context, destination, (*context).parser, source_node) { return true; }
     }
     return false;
+}
+
+proc sema_generic_call_bind(
+    context: *mut Sema,
+    inference: &mut SemaGenericCallInference,
+    parameter_type: SemaTypeId,
+    concrete_type: SemaTypeId
+) -> bool {
+    let mut index: usize = 0;
+    while index < inference.bindings.len() {
+        if inference.bindings[index].parameter_type == parameter_type {
+            return sema_type_identical(
+                context as *const Sema,
+                inference.bindings[index].concrete_type,
+                concrete_type,
+                0
+            );
+        }
+        set index += 1;
+    }
+    return inference.bindings.push(SemaGenericCallBinding {
+        parameter_type: parameter_type,
+        concrete_type: concrete_type
+    });
+}
+
+proc sema_generic_call_type_contains_parameter(
+    context: *const Sema,
+    type_id: SemaTypeId,
+    depth: usize
+) -> bool {
+    if context == null or type_id == 0 or
+       type_id > (*context).type_count as SemaTypeId or depth > 512 {
+        return false;
+    }
+    let type_record = &(*context).types[(type_id - 1) as usize];
+    if (*type_record).kind == SemaTypeKind.GenericParameter { return true; }
+    if (*type_record).element_type != 0 and
+       sema_generic_call_type_contains_parameter(
+           context,
+           (*type_record).element_type,
+           depth + 1
+       ) { return true; }
+    if (*type_record).return_type != 0 and
+       sema_generic_call_type_contains_parameter(
+           context,
+           (*type_record).return_type,
+           depth + 1
+       ) { return true; }
+    let mut index: usize = 0;
+    while index < (*type_record).generic_argument_count {
+        if sema_generic_call_type_contains_parameter(
+            context,
+            (*type_record).generic_arguments[index],
+            depth + 1
+        ) { return true; }
+        set index += 1;
+    }
+    set index = 0;
+    while index < (*type_record).function_parameter_count {
+        if sema_generic_call_type_contains_parameter(
+            context,
+            (*type_record).function_parameter_types[index],
+            depth + 1
+        ) { return true; }
+        set index += 1;
+    }
+    return false;
+}
+
+proc sema_generic_call_unify_type(
+    context: *mut Sema,
+    inference: &mut SemaGenericCallInference,
+    expected: SemaTypeId,
+    actual: SemaTypeId,
+    source_node: *const ASTNode,
+    depth: usize
+) -> bool {
+    if context == null or expected == 0 or actual == 0 or
+       expected > (*context).type_count as SemaTypeId or
+       actual > (*context).type_count as SemaTypeId or depth > 512 {
+        return false;
+    }
+    let expected_type = (*context).types[(expected - 1) as usize];
+    let actual_type = (*context).types[(actual - 1) as usize];
+    if expected_type.kind == SemaTypeKind.GenericParameter {
+        return sema_generic_call_bind(context, inference, expected, actual);
+    }
+    if not sema_generic_call_type_contains_parameter(
+        context as *const Sema,
+        expected,
+        depth
+    ) {
+        return sema_expression_assignable(
+            context as *const Sema,
+            expected,
+            actual,
+            source_node
+        );
+    }
+    if expected_type.kind != actual_type.kind {
+        return sema_expression_assignable(
+            context as *const Sema,
+            expected,
+            actual,
+            source_node
+        );
+    }
+    if expected_type.kind == SemaTypeKind.Named or
+       expected_type.kind == SemaTypeKind.Dyn {
+        if expected_type.symbol_id != actual_type.symbol_id or
+           expected_type.generic_argument_count != actual_type.generic_argument_count {
+            return false;
+        }
+        let mut index: usize = 0;
+        while index < expected_type.generic_argument_count {
+            if not sema_generic_call_unify_type(
+                context,
+                inference,
+                expected_type.generic_arguments[index],
+                actual_type.generic_arguments[index],
+                source_node,
+                depth + 1
+            ) { return false; }
+            set index += 1;
+        }
+        return true;
+    }
+    if expected_type.kind == SemaTypeKind.Pointer or
+       expected_type.kind == SemaTypeKind.Reference or
+       expected_type.kind == SemaTypeKind.Optional or
+       expected_type.kind == SemaTypeKind.Array or
+       expected_type.kind == SemaTypeKind.Slice {
+        if expected_type.kind == SemaTypeKind.Array and
+           expected_type.array_length != actual_type.array_length {
+            return false;
+        }
+        if expected_type.is_mutable != actual_type.is_mutable {
+            return false;
+        }
+        return sema_generic_call_unify_type(
+            context,
+            inference,
+            expected_type.element_type,
+            actual_type.element_type,
+            source_node,
+            depth + 1
+        );
+    }
+    if expected_type.kind == SemaTypeKind.Function {
+        if expected_type.function_parameter_count != actual_type.function_parameter_count {
+            return false;
+        }
+        let mut index: usize = 0;
+        while index < expected_type.function_parameter_count {
+            if not sema_generic_call_unify_type(
+                context,
+                inference,
+                expected_type.function_parameter_types[index],
+                actual_type.function_parameter_types[index],
+                source_node,
+                depth + 1
+            ) { return false; }
+            set index += 1;
+        }
+        return sema_generic_call_unify_type(
+            context,
+            inference,
+            expected_type.return_type,
+            actual_type.return_type,
+            source_node,
+            depth + 1
+        );
+    }
+    return sema_expression_assignable(
+        context as *const Sema,
+        expected,
+        actual,
+        source_node
+    );
+}
+
+proc sema_generic_call_substitute_type(
+    context: *mut Sema,
+    inference: &SemaGenericCallInference,
+    type_id: SemaTypeId,
+    depth: usize
+) -> SemaTypeId {
+    if context == null or type_id == 0 or
+       type_id > (*context).type_count as SemaTypeId or depth > 512 {
+        return 0;
+    }
+    let type_record = (*context).types[(type_id - 1) as usize];
+    if type_record.kind == SemaTypeKind.GenericParameter {
+        let mut index: usize = 0;
+        while index < inference.bindings.len() {
+            if inference.bindings[index].parameter_type == type_id {
+                return inference.bindings[index].concrete_type;
+            }
+            set index += 1;
+        }
+        return type_id;
+    }
+    if type_record.kind == SemaTypeKind.Pointer or
+       type_record.kind == SemaTypeKind.Reference or
+       type_record.kind == SemaTypeKind.Optional or
+       type_record.kind == SemaTypeKind.Array or
+       type_record.kind == SemaTypeKind.Slice {
+        let element_type = sema_generic_call_substitute_type(
+            context,
+            inference,
+            type_record.element_type,
+            depth + 1
+        );
+        if element_type == 0 { return 0; }
+        if element_type == type_record.element_type { return type_id; }
+        return sema_add_type_with_arguments(
+            context,
+            type_record.kind,
+            element_type,
+            type_record.array_length,
+            type_record.symbol_id,
+            type_record.is_mutable,
+            type_record.return_type,
+            null,
+            0,
+            null,
+            0
+        );
+    }
+    if type_record.kind == SemaTypeKind.Named or
+       type_record.kind == SemaTypeKind.Dyn {
+        if type_record.generic_argument_count == 0 { return type_id; }
+        let mut arguments: [SemaTypeId] = [];
+        let mut changed = false;
+        let mut index: usize = 0;
+        while index < type_record.generic_argument_count {
+            let original = type_record.generic_arguments[index];
+            let substituted = sema_generic_call_substitute_type(
+                context,
+                inference,
+                original,
+                depth + 1
+            );
+            if substituted == 0 or not arguments.push(substituted) { return 0; }
+            if substituted != original { set changed = true; }
+            set index += 1;
+        }
+        if not changed { return type_id; }
+        return sema_add_type_with_arguments(
+            context,
+            type_record.kind,
+            type_record.element_type,
+            type_record.array_length,
+            type_record.symbol_id,
+            type_record.is_mutable,
+            type_record.return_type,
+            null,
+            0,
+            arguments.as_ptr(),
+            arguments.len()
+        );
+    }
+    if type_record.kind == SemaTypeKind.Function {
+        let mut parameters: [SemaTypeId] = [];
+        let mut changed = false;
+        let mut index: usize = 0;
+        while index < type_record.function_parameter_count {
+            let original = type_record.function_parameter_types[index];
+            let substituted = sema_generic_call_substitute_type(
+                context,
+                inference,
+                original,
+                depth + 1
+            );
+            if substituted == 0 or not parameters.push(substituted) { return 0; }
+            if substituted != original { set changed = true; }
+            set index += 1;
+        }
+        let return_type = sema_generic_call_substitute_type(
+            context,
+            inference,
+            type_record.return_type,
+            depth + 1
+        );
+        if return_type == 0 { return 0; }
+        if return_type != type_record.return_type { set changed = true; }
+        if not changed { return type_id; }
+        return sema_add_type_with_arguments(
+            context,
+            type_record.kind,
+            type_record.element_type,
+            type_record.array_length,
+            type_record.symbol_id,
+            type_record.is_mutable,
+            return_type,
+            parameters.as_ptr(),
+            parameters.len(),
+            null,
+            0
+        );
+    }
+    return type_id;
 }
 
 proc sema_name_distance(left: string, right: string) -> usize {
@@ -856,10 +1204,59 @@ proc sema_type_alias_target(context: *mut Sema, symbol_id: SymbolId) -> ASTNodeI
     return 0;
 }
 
+proc sema_type_alias_declaration(context: *mut Sema, symbol_id: SymbolId) -> *const ASTNode {
+    if context == null or (*context).parser == null or symbol_id == 0 { return null; }
+    let parser = (*context).parser;
+    let mut index: usize = 0;
+    while index < (*parser).node_count {
+        let candidate = &(*parser).nodes[index];
+        if (*candidate).kind == ASTNodeKind.TypeDecl and
+           (*candidate).id <= (*context).node_info_count as ASTNodeId {
+            let info = &(*context).node_info[((*candidate).id - 1) as usize];
+            if info.symbol_id == symbol_id { return candidate; }
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+proc sema_opaque_declaration(context: *mut Sema, symbol_id: SymbolId) -> *const ASTNode {
+    if context == null or (*context).parser == null or symbol_id == 0 { return null; }
+    let parser = (*context).parser;
+    let mut index: usize = 0;
+    while index < (*parser).node_count {
+        let candidate = &(*parser).nodes[index];
+        if (*candidate).kind == ASTNodeKind.OpaqueDecl and
+           (*candidate).id <= (*context).node_info_count as ASTNodeId {
+            let info = &(*context).node_info[((*candidate).id - 1) as usize];
+            if info.symbol_id == symbol_id { return candidate; }
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+proc sema_generic_parameter_count(context: *mut Sema, declaration: *const ASTNode) -> usize {
+    if declaration == null { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 1;
+    while index < (*declaration).child_count {
+        let child = sema_child((*context).parser, declaration, index);
+        if child != null and (*child).kind == ASTNodeKind.GenericParam { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
 proc sema_type_from_node_depth(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId, depth: usize) -> SemaTypeId {
     if depth > 128 { return (*context).type_error; }
     let node = sema_node((*context).parser, node_id);
     if node == null { return (*context).type_error; }
+    if (*node).kind == ASTNodeKind.TypeExpr and (*node).operator_kind == TokenKind.KwProc {
+        return sema_type_with_generic_arguments(
+            context, node_id, scope_id, null, null, 0, depth + 1
+        );
+    }
     if (*node).kind == ASTNodeKind.PointerType or (*node).kind == ASTNodeKind.ReferenceType or (*node).kind == ASTNodeKind.OptionalType or (*node).kind == ASTNodeKind.ArrayType {
         let element_node = sema_child((*context).parser, node, (*node).child_count - 1);
         if element_node == null { return (*context).type_error; }
@@ -875,6 +1272,99 @@ proc sema_type_from_node_depth(context: *mut Sema, node_id: ASTNodeId, scope_id:
             set array_length = parsed_length as usize;
         }
         return sema_add_type(context, type_kind, element, array_length, 0, ((*node).node_flags & 2) != 0, 0, null, 0);
+    }
+    if (*node).kind == ASTNodeKind.TypeExpr and (*node).child_count > 1 {
+        let path = sema_child((*context).parser, node, 0);
+        let token = sema_token_name_node((*context).parser, path);
+        if token == null { return (*context).type_error; }
+        let symbol = vitte_scope_lookup_n(
+            sema_scope_ptr(context), scope_id,
+            (*token).lexeme.as_ptr() as *const u8, (*token).length
+        );
+        if symbol == 0 { return (*context).type_error; }
+        let record = vitte_scope_get_symbol(sema_scope_ptr(context), symbol);
+        if record == null { return (*context).type_error; }
+        let symbol_kind = (*record).kind;
+        if symbol_kind != SymbolKind.Type and symbol_kind != SymbolKind.Form and
+           symbol_kind != SymbolKind.Pick and symbol_kind != SymbolKind.Trait and
+           symbol_kind != SymbolKind.Opaque { return (*context).type_error; }
+        let argument_count = (*node).child_count - 1;
+        if (*record).kind == SymbolKind.Form {
+            let base_type = sema_symbol_type(context, symbol);
+            let declaration = sema_form_declaration_for_type(context, base_type);
+            let expected_count = sema_form_generic_parameter_count(context, declaration);
+            if declaration == null or expected_count != argument_count {
+                let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidType, node, 0, 0);
+                return (*context).type_error;
+            }
+        }
+        if (*record).kind == SymbolKind.Opaque {
+            let declaration = sema_opaque_declaration(context, symbol);
+            let expected_count = sema_generic_parameter_count(context, declaration);
+            if declaration == null or expected_count != argument_count {
+                let _ = sema_add_diagnostic(
+                    context,
+                    SemaDiagnosticKind.Error,
+                    SemaDiagnosticCode.InvalidType,
+                    node,
+                    0,
+                    0
+                );
+                return (*context).type_error;
+            }
+        }
+        let mut arguments: [SemaTypeId] = [];
+        let mut argument_index: usize = 0;
+        while argument_index < argument_count {
+            let argument_node = sema_child((*context).parser, node, argument_index + 1);
+            if argument_node == null { return (*context).type_error; }
+            let argument_type = sema_type_from_node_depth(
+                context, (*argument_node).id, scope_id, depth + 1
+            );
+            if argument_type == (*context).type_error or not arguments.push(argument_type) {
+                return (*context).type_error;
+            }
+            set argument_index += 1;
+        }
+        if (*record).kind == SymbolKind.Type {
+            let declaration = sema_type_alias_declaration(context, symbol);
+            if declaration != null {
+                let expected_count = sema_form_generic_parameter_count(
+                    context,
+                    declaration
+                );
+                if expected_count != argument_count {
+                    let _ = sema_add_diagnostic(
+                        context,
+                        SemaDiagnosticKind.Error,
+                        SemaDiagnosticCode.InvalidType,
+                        node,
+                        0,
+                        0
+                    );
+                    return (*context).type_error;
+                }
+                let target = sema_child(
+                    (*context).parser,
+                    declaration,
+                    (*declaration).child_count - 1
+                );
+                if target == null { return (*context).type_error; }
+                return sema_type_with_generic_arguments(
+                    context,
+                    (*target).id,
+                    scope_id,
+                    declaration,
+                    arguments.as_ptr(),
+                    arguments.len(),
+                    depth + 1
+                );
+            }
+        }
+        return sema_add_type_with_arguments(
+            context, SemaTypeKind.Named, 0, 0, symbol, false, 0,
+            null, 0, arguments.as_ptr(), arguments.len()
+        );
     }
     let token = sema_token_name_node((*context).parser, node);
     if sema_name_is(token, "void") { return (*context).type_void; }
@@ -1454,6 +1944,26 @@ proc sema_form_declaration_for_type(
     return null;
 }
 
+proc sema_form_declaration_for_type_node(
+    context: *mut Sema,
+    type_node: *const ASTNode,
+    scope_id: ScopeId
+) -> *const ASTNode {
+    if context == null or type_node == null or
+       (*type_node).kind != ASTNodeKind.TypeExpr or (*type_node).child_count == 0 {
+        return null;
+    }
+    let path = sema_child((*context).parser, type_node, 0);
+    let token = sema_token_name_node((*context).parser, path);
+    if token == null { return null; }
+    let symbol = vitte_scope_lookup_n(
+        sema_scope_ptr(context), scope_id,
+        (*token).lexeme.as_ptr() as *const u8, (*token).length
+    );
+    if symbol == 0 { return null; }
+    return sema_form_declaration_for_type(context, sema_symbol_type(context, symbol));
+}
+
 proc sema_form_generic_parameter_count(context: *mut Sema, declaration: *const ASTNode) -> usize {
     if declaration == null { return 0; }
     let mut count: usize = 0;
@@ -1497,6 +2007,185 @@ proc sema_form_generic_parameter_index(
     return usize.MAX;
 }
 
+proc sema_type_with_generic_arguments(
+    context: *mut Sema,
+    node_id: ASTNodeId,
+    scope_id: ScopeId,
+    generic_declaration: *const ASTNode,
+    actual_arguments: *const SemaTypeId,
+    actual_argument_count: usize,
+    depth: usize
+) -> SemaTypeId {
+    if depth > 128 { return (*context).type_error; }
+    let node = sema_node((*context).parser, node_id);
+    if node == null { return (*context).type_error; }
+
+    if (*node).kind == ASTNodeKind.TypeExpr and (*node).operator_kind == TokenKind.KwProc {
+        let has_return: bool = ((*node).node_flags & PARSER_AST_FLAG_FUNCTION_TYPE_HAS_RETURN) != 0;
+        if has_return and (*node).child_count == 0 { return (*context).type_error; }
+        let parameter_count = (*node).child_count - if has_return { 1 as usize } else { 0 as usize };
+        let mut parameters: [SemaTypeId] = [];
+        let mut index: usize = 0;
+        while index < parameter_count {
+            let parameter_type = sema_type_with_generic_arguments(
+                context,
+                (*node).children[index],
+                scope_id,
+                generic_declaration,
+                actual_arguments,
+                actual_argument_count,
+                depth + 1
+            );
+            if parameter_type == (*context).type_error or not parameters.push(parameter_type) {
+                return (*context).type_error;
+            }
+            set index += 1;
+        }
+        let return_type = if has_return {
+            sema_type_with_generic_arguments(
+                context,
+                (*node).children[(*node).child_count - 1],
+                scope_id,
+                generic_declaration,
+                actual_arguments,
+                actual_argument_count,
+                depth + 1
+            )
+        } else { (*context).type_void };
+        if return_type == (*context).type_error { return return_type; }
+        return sema_add_type(
+            context,
+            SemaTypeKind.Function,
+            0,
+            0,
+            0,
+            false,
+            return_type,
+            parameters.as_ptr(),
+            parameters.len()
+        );
+    }
+
+    if (*node).kind == ASTNodeKind.PointerType or (*node).kind == ASTNodeKind.ReferenceType or
+       (*node).kind == ASTNodeKind.OptionalType or (*node).kind == ASTNodeKind.ArrayType {
+        if (*node).child_count == 0 { return (*context).type_error; }
+        let element_node = sema_child((*context).parser, node, (*node).child_count - 1);
+        if element_node == null { return (*context).type_error; }
+        let element = sema_type_with_generic_arguments(
+            context, (*element_node).id, scope_id, generic_declaration,
+            actual_arguments, actual_argument_count, depth + 1
+        );
+        if element == (*context).type_error { return element; }
+        let type_kind: SemaTypeKind = if (*node).kind == ASTNodeKind.PointerType {
+            SemaTypeKind.Pointer
+        } elif (*node).kind == ASTNodeKind.ReferenceType {
+            SemaTypeKind.Reference
+        } elif (*node).kind == ASTNodeKind.OptionalType {
+            SemaTypeKind.Optional
+        } elif (*node).child_count == 1 {
+            SemaTypeKind.Slice
+        } else {
+            SemaTypeKind.Array
+        };
+        let mut array_length: usize = 0;
+        if (*node).kind == ASTNodeKind.ArrayType and (*node).child_count > 1 {
+            let length_node = sema_child((*context).parser, node, 0);
+            let mut parsed_length: u64 = 0;
+            if not sema_integer_literal_value((*context).parser, length_node, &mut parsed_length) or parsed_length > usize.MAX {
+                return (*context).type_error;
+            }
+            set array_length = parsed_length as usize;
+        }
+        return sema_add_type(
+            context, type_kind, element, array_length, 0,
+            ((*node).node_flags & 2) != 0, 0, null, 0
+        );
+    }
+
+    if (*node).kind == ASTNodeKind.TypeExpr {
+        let parameter_index = sema_form_generic_parameter_index(
+            context, generic_declaration, node
+        );
+        if parameter_index != usize.MAX {
+            if parameter_index >= actual_argument_count or actual_arguments == null {
+                return (*context).type_error;
+            }
+            return actual_arguments[parameter_index];
+        }
+        if (*node).child_count > 1 {
+            let path = sema_child((*context).parser, node, 0);
+            let token = sema_token_name_node((*context).parser, path);
+            if token == null { return (*context).type_error; }
+            let symbol = vitte_scope_lookup_n(
+                sema_scope_ptr(context), scope_id,
+                (*token).lexeme.as_ptr() as *const u8, (*token).length
+            );
+            if symbol == 0 { return (*context).type_error; }
+            let record = vitte_scope_get_symbol(sema_scope_ptr(context), symbol);
+            if record == null { return (*context).type_error; }
+            let symbol_kind = (*record).kind;
+            if symbol_kind != SymbolKind.Type and symbol_kind != SymbolKind.Form and
+               symbol_kind != SymbolKind.Pick and symbol_kind != SymbolKind.Trait and
+               symbol_kind != SymbolKind.Opaque { return (*context).type_error; }
+            let mut arguments: [SemaTypeId] = [];
+            let mut index: usize = 1;
+            while index < (*node).child_count {
+                let argument_node = sema_child((*context).parser, node, index);
+                if argument_node == null { return (*context).type_error; }
+                let argument = sema_type_with_generic_arguments(
+                    context, (*argument_node).id, scope_id,
+                    generic_declaration, actual_arguments,
+                    actual_argument_count, depth + 1
+                );
+                if argument == (*context).type_error or not arguments.push(argument) {
+                    return (*context).type_error;
+                }
+                set index += 1;
+            }
+            if symbol_kind == SymbolKind.Type {
+                let alias = sema_type_alias_declaration(context, symbol);
+                if alias != null and (*alias).child_count > 1 {
+                    let expected_count = sema_form_generic_parameter_count(
+                        context, alias
+                    );
+                    if expected_count != arguments.len() {
+                        let _ = sema_add_diagnostic(
+                            context,
+                            SemaDiagnosticKind.Error,
+                            SemaDiagnosticCode.InvalidType,
+                            node,
+                            0,
+                            0
+                        );
+                        return (*context).type_error;
+                    }
+                    let target = sema_child(
+                        (*context).parser,
+                        alias,
+                        (*alias).child_count - 1
+                    );
+                    if target == null { return (*context).type_error; }
+                    return sema_type_with_generic_arguments(
+                        context,
+                        (*target).id,
+                        scope_id,
+                        alias,
+                        arguments.as_ptr(),
+                        arguments.len(),
+                        depth + 1
+                    );
+                }
+            }
+            return sema_add_type_with_arguments(
+                context, SemaTypeKind.Named, 0, 0, symbol, false, 0,
+                null, 0, arguments.as_ptr(), arguments.len()
+            );
+        }
+    }
+
+    return sema_type_from_node_depth(context, node_id, scope_id, depth + 1);
+}
+
 proc sema_generic_form_field_type(
     context: *mut Sema,
     aggregate_type: SemaTypeId,
@@ -1509,13 +2198,22 @@ proc sema_generic_form_field_type(
     if field == null { return 0; }
     let field_type_node = sema_child((*context).parser, field, 1);
     if field_type_node == null { return 0; }
-    let parameter_index = sema_form_generic_parameter_index(context, declaration, field_type_node);
-    if parameter_index != usize.MAX {
+    let mut arguments: [SemaTypeId] = [];
+    let mut parameter_index: usize = 0;
+    let parameter_count = sema_form_generic_parameter_count(context, declaration);
+    while parameter_index < parameter_count {
         let argument_node = sema_child((*context).parser, concrete_type_node, parameter_index + 1);
         if argument_node == null { return (*context).type_error; }
-        return sema_type_from_node(context, (*argument_node).id, scope_id);
+        let argument_type = sema_type_from_node(context, (*argument_node).id, scope_id);
+        if argument_type == (*context).type_error or not arguments.push(argument_type) {
+            return (*context).type_error;
+        }
+        set parameter_index += 1;
     }
-    return sema_type_from_node(context, (*field_type_node).id, scope_id);
+    return sema_type_with_generic_arguments(
+        context, (*field_type_node).id, scope_id, declaration,
+        arguments.as_ptr(), arguments.len(), 0
+    );
 }
 
 proc sema_validate_generic_form_application(
@@ -1609,6 +2307,20 @@ proc sema_form_field_type(
     if field == null { return 0; }
     let type_node = sema_child((*context).parser, field, 1);
     if type_node == null { return 0; }
+    if aggregate_type != 0 and aggregate_type <= (*context).type_count as SemaTypeId {
+        let aggregate = &(*context).types[(aggregate_type - 1) as usize];
+        if (*aggregate).generic_argument_count != 0 {
+            return sema_type_with_generic_arguments(
+                context,
+                (*type_node).id,
+                scope_id,
+                sema_form_declaration_for_type(context, aggregate_type),
+                (*aggregate).generic_arguments,
+                (*aggregate).generic_argument_count,
+                0
+            );
+        }
+    }
     return sema_type_from_node(context, (*type_node).id, scope_id);
 }
 
@@ -2086,29 +2798,25 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 if type_ != null and (*type_).kind == SemaTypeKind.Function {
                     let function_signature: SemaType = *type_;
                     set result = function_signature.return_type;
+                    let mut generic_inference: SemaGenericCallInference = SemaGenericCallInference {};
                     if argument_count != function_signature.function_parameter_count and
                        sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidArgumentCount, node, 0, 0) {
                         sema_set_argument_count_help(context, function_signature.function_parameter_count, argument_count);
                     }
-                    let mut return_generic_id: SemaTypeId = 0;
-                    if function_signature.return_type != 0 and function_signature.return_type <= (*context).type_count as SemaTypeId {
-                        let return_type_record = &(*context).types[(function_signature.return_type - 1) as usize];
-                        if (*return_type_record).kind == SemaTypeKind.GenericParameter { set return_generic_id = function_signature.return_type; }
-                    }
-                    let mut inferred_return_type: SemaTypeId = 0;
                     let mut argument_index: usize = 0;
                     while argument_index < argument_count {
                         let argument_node = sema_child((*context).parser, node, argument_index + 1);
                         let argument_type = sema_analyze_expression(context, argument_node, scope_id);
                         if argument_index < function_signature.function_parameter_count {
                             let expected_type = function_signature.function_parameter_types[argument_index];
-                            let expected_is_generic = expected_type != 0 and expected_type <= (*context).type_count as SemaTypeId and (*context).types[(expected_type - 1) as usize].kind == SemaTypeKind.GenericParameter;
-                            if expected_is_generic {
-                                if expected_type == return_generic_id {
-                                    if inferred_return_type == 0 { set inferred_return_type = argument_type; }
-                                    else if not vitte_sema_type_assignable(context as *const Sema, inferred_return_type, argument_type) { let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidArgumentType, argument_node, inferred_return_type, argument_type); }
-                                }
-                            } else if not sema_expression_assignable(context as *const Sema, expected_type, argument_type, argument_node) {
+                            if not sema_generic_call_unify_type(
+                                context,
+                                &mut generic_inference,
+                                expected_type,
+                                argument_type,
+                                argument_node,
+                                0
+                            ) {
                                 if sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidArgumentType, argument_node, expected_type, argument_type) {
                                     sema_set_argument_diagnostic_context(context, function_signature.symbol_id, argument_index);
                                 }
@@ -2116,7 +2824,12 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                         }
                         set argument_index += 1;
                     }
-                    if return_generic_id != 0 and inferred_return_type != 0 { set result = inferred_return_type; }
+                    set result = sema_generic_call_substitute_type(
+                        context,
+                        &generic_inference,
+                        function_signature.return_type,
+                        0
+                    );
                 } else { let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.NotCallable, node, 0, callee); }
             }
         },
@@ -2195,7 +2908,19 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                     }
                 }
                 let field_type = sema_form_field_type(context, object_type, member_token, scope_id);
-                if field_type == 0 {
+                let object_type_record: *const SemaType = if object_type != 0 and object_type <= (*context).type_count as SemaTypeId {
+                    &(*context).types[(object_type - 1) as usize]
+                } else { null };
+                if object_type_record != null and
+                   (*object_type_record).kind == SemaTypeKind.Slice and
+                   sema_name_is(member_token, "length") {
+                    set result = (*context).type_u64;
+                    let member_info = sema_node_info_mut(context, (*node).id);
+                    if member_info != null {
+                        set (*member_info).type_id = result;
+                        set (*member_info).node_flags = (*member_info).node_flags | SEMA_NODE_FLAG_RESOLVED;
+                    }
+                } elif field_type == 0 {
                     let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.UnknownMember, member_node, 0, object_type);
                 } else {
                     set result = field_type;
@@ -2218,7 +2943,12 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
         case ASTNodeKind.FormExpr => {
             let type_node = sema_child((*context).parser, node, 0);
             set result = sema_analyze_expression(context, type_node, scope_id);
-            let form_declaration = sema_form_declaration_for_type(context, result);
+            let mut form_declaration = sema_form_declaration_for_type(context, result);
+            if form_declaration == null {
+                set form_declaration = sema_form_declaration_for_type_node(
+                    context, type_node, scope_id
+                );
+            }
             let is_generic_form = form_declaration != null and sema_form_generic_parameter_count(context, form_declaration) != 0;
             let mut generic_application_valid = true;
             if is_generic_form {
@@ -2306,17 +3036,38 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
             let mut index: usize = 0;
             while index < (*node).child_count { let child = sema_child((*context).parser, node, index); if child != null { let _ = sema_analyze_node(context, (*child).id, scope_id); } set index += 1; }
         },
+        case ASTNodeKind.TypeDecl => {
+            /* Alias targets are resolved lazily at each use site. This keeps
+             * generic alias parameters local to their declaration instead
+             * of treating names such as `T` as module-level expressions. */
+            if info != null and (*info).type_id != 0 {
+                set result = (*info).type_id;
+            }
+        },
         case ASTNodeKind.FormDecl => {
-            let mut index: usize = 1;
-            while index < (*node).child_count {
-                let field = sema_child((*context).parser, node, index);
-                if field != null and (*field).kind == ASTNodeKind.FieldDecl and (*field).child_count > 1 {
-                    let field_type = sema_child((*context).parser, field, 1);
-                    if field_type != null {
-                        let _ = sema_type_from_node(context, (*field_type).id, scope_id);
+            if sema_form_generic_parameter_count(context, node) == 0 {
+                let mut index: usize = 1;
+                while index < (*node).child_count {
+                    let field = sema_child((*context).parser, node, index);
+                    if field != null and (*field).kind == ASTNodeKind.FieldDecl and (*field).child_count > 1 {
+                        let field_type = sema_child((*context).parser, field, 1);
+                        if field_type != null {
+                            let _ = sema_type_from_node(context, (*field_type).id, scope_id);
+                        }
                     }
+                    set index += 1;
                 }
-                set index += 1;
+            }
+        },
+        case ASTNodeKind.OpaqueDecl => {
+            let opaque_scope = vitte_scope_create(
+                sema_scope_ptr(context), scope_id, ScopeKind.Form,
+                ScopeSpan { file_id: (*node).span.file_id, begin: (*node).span.begin, end: (*node).span.end, line: (*node).span.line, column: (*node).span.column, valid: (*node).span.valid },
+                null
+            );
+            if opaque_scope == 0 or
+               not sema_register_generic_parameters(context, node, opaque_scope, false) {
+                set (*context).last_error = SemaError.InvalidScope;
             }
         },
         case ASTNodeKind.PickDecl => {

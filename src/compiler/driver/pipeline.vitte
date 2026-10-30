@@ -1167,16 +1167,16 @@ proc native_pipeline_has_generic_form_declaration(parser: &Parser) -> bool {
     return false;
 }
 
-/// Reference operations currently use C17 AST code generation because native
-/// HIR/IR lowering does not preserve their value-versus-address behavior.
-/// Keep this separate from the legacy semantic fallback so reference programs
-/// retain native type diagnostics.
+/// References and checked optional unwraps use C17 AST code generation because
+/// native HIR/IR lowering does not preserve their address and null-check
+/// behavior. Keep this separate from the legacy semantic fallback so these
+/// programs retain native type diagnostics.
 proc native_pipeline_requires_reference_codegen(parser: &Parser) -> bool {
     if parser.nodes == null { return false; }
     let mut index: usize = 0;
     while index < parser.node_count {
         let node = &parser.nodes[index];
-        if node.kind == ASTNodeKind.ReferenceType { return true; }
+        if node.kind == ASTNodeKind.ReferenceType or node.kind == ASTNodeKind.TryExpr { return true; }
         if node.kind == ASTNodeKind.UnaryExpr and node.operator_kind == TokenKind.Amp { return true; }
         set index += 1;
     }
@@ -1192,6 +1192,68 @@ proc native_pipeline_requires_attribute_codegen(parser: &Parser) -> bool {
     while index < parser.node_count {
         if parser.nodes[index].attribute_count != 0 { return true; }
         set index += 1;
+    }
+    return false;
+}
+
+/// Generic calls that the native IR cannot specialize yet are emitted through
+/// the C17 AST monomorphizer. Restrict detection to unqualified calls whose
+/// generic declaration is in this source unit; imported and qualified calls
+/// keep their normal resolution path.
+proc native_pipeline_has_local_generic_proc_call(parser: &Parser) -> bool {
+    if parser.nodes == null { return false; }
+    let mut declaration_index: usize = 0;
+    while declaration_index < parser.node_count {
+        let declaration = &parser.nodes[declaration_index];
+        if (declaration.kind == ASTNodeKind.ProcDecl or
+            declaration.kind == ASTNodeKind.ExternProcDecl) and
+           declaration.child_count != 0 {
+            let mut has_generic_parameter = false;
+            let mut child_index: usize = 1;
+            while child_index < declaration.child_count {
+                let child = vitte_parser_get_node(
+                    parser,
+                    declaration.children[child_index]
+                );
+                if child != null and child.kind == ASTNodeKind.GenericParam {
+                    set has_generic_parameter = true;
+                    break;
+                }
+                set child_index += 1;
+            }
+            if has_generic_parameter {
+                let name = vitte_parser_get_node(parser, declaration.children[0]);
+                let name_token = if name == null { null } else {
+                    vitte_parser_node_token(parser, name)
+                };
+                if name_token != null {
+                    let mut call_index: usize = 0;
+                    while call_index < parser.node_count {
+                        let call = &parser.nodes[call_index];
+                        if call.kind == ASTNodeKind.CallExpr and call.child_count != 0 {
+                            let callee = vitte_parser_get_node(parser, call.children[0]);
+                            if callee != null and
+                               (callee.kind == ASTNodeKind.Identifier or
+                                (callee.kind == ASTNodeKind.Path and callee.child_count == 1)) {
+                                let call_name_node = if callee.kind == ASTNodeKind.Path {
+                                    vitte_parser_get_node(parser, callee.children[0])
+                                } else { callee };
+                                let call_name = if call_name_node == null { null } else {
+                                    vitte_parser_node_token(parser, call_name_node)
+                                };
+                                if call_name != null and
+                                   name_token.length == call_name.length and
+                                   name_token.lexeme == call_name.lexeme {
+                                    return true;
+                                }
+                            }
+                        }
+                        set call_index += 1;
+                    }
+                }
+            }
+        }
+        set declaration_index += 1;
     }
     return false;
 }
@@ -1531,6 +1593,8 @@ proc native_pipeline_run_with_config(
     let ast_fallback = semantic_fallback or
         native_pipeline_requires_reference_codegen(&parser) or
         native_pipeline_requires_attribute_codegen(&parser);
+    let generic_proc_c17_fallback = action == NATIVE_FRONTEND_ACTION_COMPILE and
+        native_pipeline_has_local_generic_proc_call(&parser);
 
     let mut sema: Sema = Sema {};
     if not vitte_sema_init(&mut sema, &parser) {
@@ -1674,7 +1738,8 @@ proc native_pipeline_run_with_config(
         set hir_initialized = true;
         if not vitte_hir_lower_ast(&mut hir, &parser) {
             set hir_error = hir.last_error as u32;
-            if action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback {
+            if action == NATIVE_FRONTEND_ACTION_COMPILE and
+               (ast_fallback or generic_proc_c17_fallback) {
                 set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
             } else {
                 set output = native_pipeline_emit_failure(
@@ -1686,7 +1751,8 @@ proc native_pipeline_run_with_config(
             }
         } elif not vitte_hir_is_valid(&hir) or not vitte_hir_validate(&mut hir) or hir.state != HIRState.Validated {
             set hir_error = hir.last_error as u32;
-            if action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback {
+            if action == NATIVE_FRONTEND_ACTION_COMPILE and
+               (ast_fallback or generic_proc_c17_fallback) {
                 set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
             } else {
                 set output = native_pipeline_emit_failure(
@@ -1714,7 +1780,8 @@ proc native_pipeline_run_with_config(
                 set ir_initialized = true;
                 if not vitte_ir_lower_hir(&mut ir, &hir) {
                     set ir_error = ir.last_error as u32;
-                    if action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback {
+                    if action == NATIVE_FRONTEND_ACTION_COMPILE and
+                       (ast_fallback or generic_proc_c17_fallback) {
                         set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
                     } else {
                         set output = native_pipeline_emit_failure(
@@ -1726,7 +1793,8 @@ proc native_pipeline_run_with_config(
                     }
                 } elif not vitte_ir_is_valid(&ir) or not vitte_ir_validate(&mut ir) or ir.state != IRState.Sealed {
                     set ir_error = ir.last_error as u32;
-                    if action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback {
+                    if action == NATIVE_FRONTEND_ACTION_COMPILE and
+                       (ast_fallback or generic_proc_c17_fallback) {
                         set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
                     } else {
                         set output = native_pipeline_emit_failure(

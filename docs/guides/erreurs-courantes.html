@@ -4,13 +4,13 @@ permalink: /guides/erreurs-courantes/
 section: Utiliser Vitte
 lead: Lire un diagnostic par sa phase, son code et son emplacement, corriger la cause la plus proche et distinguer une erreur du programme d’une limite du backend.
 description: "Guide des erreurs courantes Vitte : lexer, parser, imports, noms, types, appels et génération C17, avec commandes et exemples vérifiés."
-summary: "Codes reproduits E0102, E0201, E0301, E0401, E0512, E0601 et E0902, et méthode de dépannage."
-keywords: diagnostic erreur lexer parser import symbole type argument backend code E0102 E0201 E0301 E0401 E0512 E0601 E0902
+summary: "Codes reproduits E0102, E0201, E0301, E0401, E0501, E0512 et E0601, avec une méthode de diagnostic des erreurs backend E0902."
+keywords: diagnostic erreur lexer parser import symbole type argument backend code E0102 E0201 E0301 E0401 E0501 E0512 E0601 E0902
 ---
 
 <div class="reference-callout example">
   <strong>Les codes et chemins ci-dessous ont été reproduits avec Vitte 0.1.1.</strong>
-  <p>Vérification locale effectuée le 28 octobre 2026 sur les fixtures liées. Un diagnostic décrit le premier défaut rencontré sur ce cas ; après sa correction, une autre étape peut révéler une erreur suivante. Consultez toujours la sortie de votre propre version.</p>
+  <p>Vérification locale effectuée le 29 octobre 2026 sur les fixtures liées. Un diagnostic décrit le premier défaut rencontré sur ce cas ; après sa correction, une autre étape peut révéler une erreur suivante. Consultez toujours la sortie de votre propre version.</p>
 </div>
 
 <h2 id="diagnostic">Anatomie d’un diagnostic</h2>
@@ -52,9 +52,9 @@ build/bin/vitte compile chemin/vers/main.vit</code></pre>
 <tr><td><code>E0201</code></td><td>Parser</td><td>Point-virgule absent avant la fermeture du bloc.</td><td><a href="https://github.com/vitte-lang/vitte/blob/main/examples/diagnostics/syntax_missing_semicolon.vit"><code>syntax_missing_semicolon.vit</code></a></td></tr>
 <tr><td><code>E0301</code></td><td>Import</td><td>Module demandé absent des racines de résolution.</td><td><a href="https://github.com/vitte-lang/vitte/blob/main/examples/diagnostics/missing_import.vit"><code>missing_import.vit</code></a></td></tr>
 <tr><td><code>E0401</code></td><td>Résolution des noms</td><td>Nom utilisé mais non déclaré ni importé.</td><td><a href="https://github.com/vitte-lang/vitte/blob/main/examples/diagnostics/unknown_name.vit"><code>unknown_name.vit</code></a></td></tr>
+<tr><td><code>E0501</code></td><td>Vérification de type</td><td>La valeur fournie à un champ générique ne correspond pas au type substitué.</td><td><a href="https://github.com/vitte-lang/vitte/blob/main/examples/diagnostics/generic_form_multiple_parameters.vit"><code>generic_form_multiple_parameters.vit</code></a></td></tr>
 <tr><td><code>E0512</code></td><td>Vérification de type</td><td>Opérateur <code>not</code> appliqué à un entier.</td><td><a href="https://github.com/vitte-lang/vitte/blob/main/examples/diagnostics/invalid_not_operand.vit"><code>invalid_not_operand.vit</code></a></td></tr>
 <tr><td><code>E0601</code></td><td>Appel</td><td>Procédure à un paramètre appelée sans argument.</td><td><a href="https://github.com/vitte-lang/vitte/blob/main/examples/diagnostics/wrong_arity.vit"><code>wrong_arity.vit</code></a></td></tr>
-<tr><td><code>E0902</code></td><td>Backend C17</td><td>Génération bloquée par les formes génériques de cette fixture.</td><td><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/generiques-limites.vit"><code>generiques-limites.vit</code></a></td></tr>
 </tbody></table>
 <p>Les commandes reproduisent ces erreurs avec le compilateur local depuis la racine du dépôt. Les chemins et l’emplacement du soulignement sont dans la sortie ci-dessous ; ils peuvent varier si le fichier ou la version change.</p>
 
@@ -107,11 +107,14 @@ proc main() -> i64 {
   --quiet --no-color --diagnostic=terminal</code></pre>
 <p>Résultat observé : <code>E0601</code>, la procédure requiert un argument et aucun n’a été fourni. Passez la valeur attendue, par exemple <code>one(42)</code>, ou corrigez la déclaration si le paramètre n’est pas nécessaire. Si le nombre est juste mais qu’un autre code apparaît, comparez aussi l’ordre et les types des arguments (<code>E0602</code> désigne un type d’argument incompatible).</p>
 
-<h2 id="backend">Backend — distinguer une limite de génération d’une faute de syntaxe</h2>
-<p>Le fichier <code>examples/tutorials/generiques-limites.vit</code> montre une construction générique qui atteint le backend. Commande vérifiée :</p>
-<pre><code>build/bin/vitte compile examples/tutorials/generiques-limites.vit \
+<h2 id="generiques">Champs de formes génériques — vérifier le type après substitution</h2>
+<p>Une forme peut avoir plusieurs paramètres, mais chaque valeur de champ doit correspondre au type obtenu après substitution. Cette fixture donne au champ <code>second</code> le type <code>bool</code>, puis lui passe un entier. Commande vérifiée :</p>
+<pre><code>build/bin/vitte compile examples/diagnostics/generic_form_multiple_parameters.vit \
   --emit-c --quiet --no-color --diagnostic=terminal</code></pre>
-<p>Résultat observé : <code>E0902</code>, <code>C17 code generation failed</code>, avec le détail indiquant que les champs qui contiennent une autre forme générique ne sont pas encore pris en charge par le backend C17. La déclaration simple <code>Boite&lt;T&gt;</code> est compilable ; cette fixture vérifie uniquement la limite des compositions génériques.</p>
+<p>Résultat observé avec le frontend natif et le bootstrap : code de sortie <code>1</code>, diagnostic <code>E0501</code>, <code>expected bool, found i64</code>. Le diagnostic pointe vers le champ incorrect. Pour une construction valide, consultez la <a href="{{ '/reference/support/' | relative_url }}">matrice de support</a> et les tests de parité des formes multi-paramètres.</p>
+
+<h2 id="backend">Backend C17 — comprendre une génération impossible</h2>
+<p><code>E0902</code> indique qu’une construction a atteint le backend C17, mais que celui-ci n’a pas pu produire le code demandé. Ce code ne signifie pas à lui seul que la syntaxe est invalide. La génération des formes à plusieurs paramètres est maintenant vérifiée ; la fixture négative précédente porte désormais sur un champ de mauvais type et produit <code>E0501</code>. Pour les procédures génériques et les contraintes <code>where</code>, consultez la matrice de support avant de conclure que leur génération est disponible. Reproduisez l’échec avec <code>vitte compile fichier.vit --emit-c --diagnostic=terminal</code> et gardez le premier diagnostic backend ainsi que la version du compilateur.</p>
 <p>Vérifiez la <a href="{{ '/reference/support/' | relative_url }}">matrice de support</a> avant de réécrire un programme. Si une forme équivalente plus simple est disponible et vérifiée, réduisez le cas ; sinon, fournissez un reproducer minimal dans une issue. Ne présentez pas un changement de syntaxe comme un correctif si c’est le backend qui manque.</p>
 
 <h2 id="cas-proches">Autres codes de la même famille</h2>

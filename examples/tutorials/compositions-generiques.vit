@@ -1,0 +1,42 @@
+form Boite<T> {
+    valeur: T,
+}
+
+form Emballage<T> {
+    contenu: Boite<T>,
+}
+
+form Paire<T> {
+    valeurs: [2]Boite<T>,
+}
+
+form Sac<T> {
+    valeurs: [Boite<T>],
+}
+
+form PeutEtre<T> {
+    valeur: ?Boite<T>,
+}
+
+proc main() -> i64 {
+    let emballage: Emballage<Boite<i64>> = Emballage<Boite<i64>> {
+        contenu: Boite<Boite<i64>> {
+            valeur: Boite<i64> { valeur: 42 },
+        },
+    };
+    let paire: Paire<i64> = Paire<i64> {
+        valeurs: [
+            Boite<i64> { valeur: 40 },
+            Boite<i64> { valeur: 42 },
+        ],
+    };
+    let sac: Sac<i64> = Sac<i64> {
+        valeurs: [Boite<i64> { valeur: 43 }],
+    };
+    let boite_optionnelle: Boite<i64> = Boite<i64> { valeur: 43 };
+    let present: PeutEtre<i64> = PeutEtre<i64> { valeur: &boite_optionnelle };
+    if present.valeur == null { return 3; }
+    if present.valeur?.valeur != 43 { return 4; }
+    return emballage.contenu.valeur.valeur + paire.valeurs[0].valeur
+        + paire.valeurs[1].valeur - 124;
+}

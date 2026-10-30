@@ -1672,6 +1672,20 @@ proc ir_validate_instruction(context: *mut IRContext, value: *IRInstruction) -> 
             set element_index += 1;
         }
     }
+    if (*value).opcode == IROpcode.SliceMake {
+        if operands != 2 { return ir_fail(context, IRError.InvalidInstruction); }
+        let slice_type = vitte_ir_get_type(context, (*value).result_type);
+        let data = vitte_ir_get_value(context, (*value).operands[0]);
+        let data_type = if data == null { null } else { vitte_ir_get_type(context, (*data).type_) };
+        let length = vitte_ir_get_value(context, (*value).operands[1]);
+        let length_type = if length == null { null } else { vitte_ir_get_type(context, (*length).type_) };
+        let data_element = if data_type != null and ((*data_type).kind == IRTypeKind.Array or (*data_type).kind == IRTypeKind.Pointer) { (*data_type).element_type } else { 0 as IRTypeId };
+        if slice_type == null or (*slice_type).kind != IRTypeKind.Slice or
+           data_type == null or data_element != (*slice_type).element_type or
+           length_type == null or not ir_is_integer((*length_type).kind) {
+            return ir_fail(context, IRError.TypeMismatch);
+        }
+    }
     if (*value).opcode == IROpcode.PickMake {
         let result_type = vitte_ir_get_type(context, (*value).result_type);
         let tag = vitte_ir_get_value(context, (*value).operands[0]);
@@ -2199,9 +2213,18 @@ proc ir_lower_emit_value(context: *mut IRLowerContext, opcode: IROpcode, block: 
 proc ir_lower_array_expr_as(context: *mut IRLowerContext, function: IRFunctionId, block: *mut IRBlockId, node: *HIRNode, expected: IRTypeId) -> IRValueId {
     let expected_type = vitte_ir_get_type((*context).ir, expected);
     if node == null or expected_type == null or (*node).kind != HIRNodeKind.Array or
-       (*expected_type).kind != IRTypeKind.Array { return 0; }
+       ((*expected_type).kind != IRTypeKind.Array and (*expected_type).kind != IRTypeKind.Slice) { return 0; }
     let count = ir_lower_list_count(node, 0);
-    if count != (*expected_type).array_length { return ir_fail_id((*context).ir, IRError.TypeMismatch); }
+    let is_slice: bool = (*expected_type).kind == IRTypeKind.Slice;
+    if not is_slice and count != (*expected_type).array_length { return ir_fail_id((*context).ir, IRError.TypeMismatch); }
+    let array_type = if is_slice {
+        let mut description = IRTypeDesc {};
+        set description.kind = IRTypeKind.Array;
+        set description.element_type = (*expected_type).element_type;
+        set description.array_length = count;
+        vitte_ir_intern_type((*context).ir, &description)
+    } else { expected };
+    if array_type == 0 { return 0; }
     let mut bytes: usize = 0;
     if not ir_size_mul(count, sizeof(IRValueId), &mut bytes) { return ir_fail_id((*context).ir, IRError.Overflow); }
     let operands = if count == 0 { null } else { allocate(bytes) as *mut IRValueId };
@@ -2214,9 +2237,14 @@ proc ir_lower_array_expr_as(context: *mut IRLowerContext, function: IRFunctionId
         set operands[index] = value;
         set index += 1;
     }
-    let result = ir_lower_emit_value(context, IROpcode.ArrayMake, *block, expected, operands, count, &(*node).span);
+    let array = ir_lower_emit_value(context, IROpcode.ArrayMake, *block, array_type, operands, count, &(*node).span);
     deallocate(operands as *mut u8);
-    return result;
+    if array == 0 or not is_slice { return array; }
+    let length_type = ir_lower_primitive(context, IRTypeKind.U64);
+    let length = vitte_ir_const_integer((*context).ir, length_type, count as u64);
+    if length_type == 0 or length == 0 { return 0; }
+    let mut slice_operands: [IRValueId; 2] = [array, length];
+    return ir_lower_emit_value(context, IROpcode.SliceMake, *block, expected, &mut slice_operands[0], 2, &(*node).span);
 }
 
 proc ir_lower_expr_as(context: *mut IRLowerContext, function: IRFunctionId, block: *mut IRBlockId, node_id: HIRNodeId, expected: IRTypeId) -> IRValueId {

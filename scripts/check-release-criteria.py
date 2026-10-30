@@ -243,7 +243,7 @@ def check_frontend_paths() -> None:
             fail(f"frontend action has no test witness: {action} ({witness})")
 
     fallback_witnesses = {
-        "FormDecl": ("generic form composition is rejected", "form Wrapper<T>"),
+        "FormDecl": ("generic form compositions compile and run", "form Wrapper<T>"),
         "TestDecl": ("test declaration", 'test "native fallback test declaration"'),
     }
     for witness in ("array iteration through native IR", "for value in values"):

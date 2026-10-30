@@ -76,7 +76,7 @@ export const PARSER_AST_FLAG_UNSAFE: u32 = 16;
 export const PARSER_AST_FLAG_COMPTIME: u32 = 32;
 const PARSER_AST_FLAG_CONTRACT_REQUIRES: u32 = 64;
 const PARSER_AST_FLAG_CONTRACT_ENSURES: u32 = 128;
-const PARSER_AST_FLAG_FUNCTION_TYPE_HAS_RETURN: u32 = 32768;
+export const PARSER_AST_FLAG_FUNCTION_TYPE_HAS_RETURN: u32 = 32768;
 const PARSER_AST_FLAG_TYPE_ALIAS: u32 = 65536;
 const PARSER_AST_FLAG_TYPE_QUERY_TYPE_OPERAND: u32 = 131072;
 export const PARSER_AST_FLAG_PATTERN_MUTABLE: u32 = 262144;
@@ -1308,6 +1308,14 @@ proc parser_has_generic_closer(parser: *const Parser) -> bool {
             if depth == 0 {
                 return true;
             }
+        } else if (*token).kind == TokenKind.ShiftRight {
+            if depth == 0 {
+                return false;
+            }
+            if depth <= 2 {
+                return true;
+            }
+            set depth -= 2;
         } else if (*token).kind == TokenKind.LeftBrace or
                   (*token).kind == TokenKind.RightBrace or
                   (*token).kind == TokenKind.Semicolon or
@@ -1355,6 +1363,19 @@ proc parser_has_generic_form_suffix(parser: *const Parser) -> bool {
                 return after_closer != null and
                     (*after_closer).kind == TokenKind.LeftBrace;
             }
+        } else if (*token).kind == TokenKind.ShiftRight {
+            if depth == 0 {
+                return false;
+            }
+            if depth <= 2 {
+                if distance == PARSER_SIZE_MAX {
+                    return false;
+                }
+                let after_closer = parser_peek(parser, distance + 1);
+                return after_closer != null and
+                    (*after_closer).kind == TokenKind.LeftBrace;
+            }
+            set depth -= 2;
         }
         if distance == PARSER_SIZE_MAX {
             return false;
@@ -1377,15 +1398,54 @@ proc parser_recover_type_argument(
     ) == ParserListRecovery.Next;
 }
 
+proc parser_check_type_closer(
+    parser: *const Parser,
+    closing_kind: TokenKind,
+    pending_generic_closers: &usize
+) -> bool {
+    if closing_kind != TokenKind.Greater {
+        return parser_check(parser, closing_kind);
+    }
+    return *pending_generic_closers != 0 or
+        parser_check(parser, TokenKind.Greater) or
+        parser_check(parser, TokenKind.ShiftRight);
+}
+
+proc parser_consume_type_closer(
+    parser: *mut Parser,
+    closing_kind: TokenKind,
+    pending_generic_closers: &mut usize
+) -> bool {
+    if closing_kind != TokenKind.Greater {
+        return parser_expect(parser, closing_kind) != null;
+    }
+    if *pending_generic_closers != 0 {
+        set *pending_generic_closers -= 1;
+        return true;
+    }
+    if parser_check(parser, TokenKind.Greater) {
+        parser_advance(parser);
+        return true;
+    }
+    if parser_check(parser, TokenKind.ShiftRight) {
+        parser_advance(parser);
+        set *pending_generic_closers += 1;
+        return true;
+    }
+    parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Greater);
+    return false;
+}
+
 proc parser_parse_type_arguments(
     parser: *mut Parser,
     owner: ASTNodeId,
-    closing_kind: TokenKind
+    closing_kind: TokenKind,
+    pending_generic_closers: &mut usize
 ) -> bool {
-    if not parser_check(parser, closing_kind) {
+    if not parser_check_type_closer(parser, closing_kind, pending_generic_closers) {
         while not parser_at_end(parser) {
             let argument_start = parser_current(parser);
-            let argument = parser_parse_type_expression(parser);
+            let argument = parser_parse_type_expression_with_pending(parser, pending_generic_closers);
             if argument == PARSER_INVALID_NODE_ID {
                 if not (*parser).recovering {
                     return false;
@@ -1397,7 +1457,7 @@ proc parser_parse_type_arguments(
                 ) {
                     continue;
                 }
-                if parser_check(parser, closing_kind) {
+                if parser_check_type_closer(parser, closing_kind, pending_generic_closers) {
                     break;
                 }
                 return false;
@@ -1405,15 +1465,15 @@ proc parser_parse_type_arguments(
             if not parser_node_append_child(parser, owner, argument) {
                 return false;
             }
+            if parser_check_type_closer(parser, closing_kind, pending_generic_closers) {
+                break;
+            }
             if parser_check(parser, TokenKind.Comma) {
                 parser_advance(parser);
-                if parser_check(parser, closing_kind) {
+                if parser_check_type_closer(parser, closing_kind, pending_generic_closers) {
                     break;
                 }
                 continue;
-            }
-            if parser_check(parser, closing_kind) {
-                break;
             }
 
             parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
@@ -1425,14 +1485,14 @@ proc parser_parse_type_arguments(
             ) {
                 continue;
             }
-            if parser_check(parser, closing_kind) {
+            if parser_check_type_closer(parser, closing_kind, pending_generic_closers) {
                 break;
             }
             return false;
         }
     }
 
-    return parser_expect(parser, closing_kind) != null;
+    return parser_consume_type_closer(parser, closing_kind, pending_generic_closers);
 }
 
 proc parser_parse_generic_parameter(parser: *mut Parser) -> ASTNodeId {
@@ -1709,18 +1769,27 @@ proc parser_type_span(parser: *const Parser, begin_token: *const ParserToken) ->
 }
 
 proc parser_parse_type_expression(parser: *mut Parser) -> ASTNodeId {
+    let mut pending_generic_closers: usize = 0;
+    return parser_parse_type_expression_with_pending(parser, &mut pending_generic_closers);
+}
+
+proc parser_parse_type_expression_with_pending(
+    parser: *mut Parser,
+    pending_generic_closers: &mut usize
+) -> ASTNodeId {
     if not parser_enter_recursion(parser) {
         return PARSER_INVALID_NODE_ID;
     }
     let begin_token = parser_current(parser);
-    let parsed_type = parser_parse_type_expression_inner(parser, begin_token);
+    let parsed_type = parser_parse_type_expression_inner(parser, begin_token, pending_generic_closers);
     parser_leave_recursion(parser);
     return parsed_type;
 }
 
 proc parser_parse_type_expression_inner(
     parser: *mut Parser,
-    begin_token: *const ParserToken
+    begin_token: *const ParserToken,
+    pending_generic_closers: &mut usize
 ) -> ASTNodeId {
     if parser_check(parser, TokenKind.KwProc) {
         parser_advance(parser);
@@ -1746,7 +1815,7 @@ proc parser_parse_type_expression_inner(
                 parser_advance(parser);
                 parser_advance(parser);
             }
-            let parameter_type = parser_parse_type_expression(parser);
+            let parameter_type = parser_parse_type_expression_with_pending(parser, pending_generic_closers);
             if parameter_type == PARSER_INVALID_NODE_ID or
                not parser_node_append_child(parser, procedure_type, parameter_type) {
                 return PARSER_INVALID_NODE_ID;
@@ -1770,7 +1839,7 @@ proc parser_parse_type_expression_inner(
         let has_return_type = parser_check(parser, TokenKind.Arrow);
         if has_return_type {
             parser_advance(parser);
-            let return_type = parser_parse_type_expression(parser);
+            let return_type = parser_parse_type_expression_with_pending(parser, pending_generic_closers);
             if return_type == PARSER_INVALID_NODE_ID or
                not parser_node_append_child(parser, procedure_type, return_type) {
                 return PARSER_INVALID_NODE_ID;
@@ -1790,7 +1859,7 @@ proc parser_parse_type_expression_inner(
 
     if parser_check(parser, TokenKind.Question) {
         parser_advance(parser);
-        let inner_type = parser_parse_type_expression(parser);
+        let inner_type = parser_parse_type_expression_with_pending(parser, pending_generic_closers);
         if inner_type == PARSER_INVALID_NODE_ID {
             return inner_type;
         }
@@ -1812,7 +1881,7 @@ proc parser_parse_type_expression_inner(
         if mutable_reference {
             parser_advance(parser);
         }
-        let pointee_type = parser_parse_type_expression(parser);
+        let pointee_type = parser_parse_type_expression_with_pending(parser, pending_generic_closers);
         if pointee_type == PARSER_INVALID_NODE_ID {
             return pointee_type;
         }
@@ -1851,7 +1920,7 @@ proc parser_parse_type_expression_inner(
                 parser_advance(parser);
             }
         }
-        let pointee_type = parser_parse_type_expression(parser);
+        let pointee_type = parser_parse_type_expression_with_pending(parser, pending_generic_closers);
         if pointee_type == PARSER_INVALID_NODE_ID {
             return pointee_type;
         }
@@ -1878,7 +1947,7 @@ proc parser_parse_type_expression_inner(
         parser_advance(parser);
         let first_item = parser_current(parser);
         if first_item != null and (*first_item).kind != TokenKind.IntegerLiteral {
-            let element_type = parser_parse_type_expression(parser);
+            let element_type = parser_parse_type_expression_with_pending(parser, pending_generic_closers);
             if element_type == PARSER_INVALID_NODE_ID {
                 return element_type;
             }
@@ -1921,7 +1990,7 @@ proc parser_parse_type_expression_inner(
            parser_expect(parser, TokenKind.RightBracket) == null {
             return PARSER_INVALID_NODE_ID;
         }
-        let element_type = parser_parse_type_expression(parser);
+        let element_type = parser_parse_type_expression_with_pending(parser, pending_generic_closers);
         if element_type == PARSER_INVALID_NODE_ID {
             return element_type;
         }
@@ -1954,12 +2023,22 @@ proc parser_parse_type_expression_inner(
 
     if parser_check(parser, TokenKind.Less) and parser_has_generic_closer(parser) {
         parser_advance(parser);
-        if not parser_parse_type_arguments(parser, named_type, TokenKind.Greater) {
+        if not parser_parse_type_arguments(
+            parser,
+            named_type,
+            TokenKind.Greater,
+            pending_generic_closers
+        ) {
             return PARSER_INVALID_NODE_ID;
         }
     } else if parser_check(parser, TokenKind.LeftBracket) {
         parser_advance(parser);
-        if not parser_parse_type_arguments(parser, named_type, TokenKind.RightBracket) {
+        if not parser_parse_type_arguments(
+            parser,
+            named_type,
+            TokenKind.RightBracket,
+            pending_generic_closers
+        ) {
             return PARSER_INVALID_NODE_ID;
         }
     }
@@ -3406,6 +3485,7 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
     while not parser_at_end(parser) {
         if parser_check(parser, TokenKind.Less) and
            parser_has_generic_form_suffix(parser) {
+            let mut pending_generic_closers: usize = 0;
             let base_node = vitte_parser_get_node(parser, expression);
             if base_node == null {
                 return PARSER_INVALID_NODE_ID;
@@ -3419,7 +3499,12 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
             if generic_type == PARSER_INVALID_NODE_ID or
                not parser_node_append_child(parser, generic_type, expression) or
                parser_expect(parser, TokenKind.Less) == null or
-               not parser_parse_type_arguments(parser, generic_type, TokenKind.Greater) {
+               not parser_parse_type_arguments(
+                   parser,
+                   generic_type,
+                   TokenKind.Greater,
+                   &mut pending_generic_closers
+               ) {
                 return PARSER_INVALID_NODE_ID;
             }
             let generic_type_node = vitte_parser_get_node_mut(parser, generic_type);

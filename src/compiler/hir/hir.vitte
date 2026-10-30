@@ -8,6 +8,7 @@ use compiler::parser::parser::{
     ASTNodeKind,
     PARSER_AST_FLAG_ASYNC,
     PARSER_AST_FLAG_COMPTIME,
+    PARSER_AST_FLAG_FUNCTION_TYPE_HAS_RETURN,
     PARSER_AST_FLAG_MUTABLE,
     PARSER_AST_FLAG_PATTERN_HEAD,
     PARSER_AST_FLAG_PUBLIC,
@@ -1678,10 +1679,312 @@ proc hir_lower_alias_target(context: *mut HIRLowerContext, name: HIRStringId) ->
     return 0;
 }
 
+proc hir_lower_generic_alias_declaration(
+    context: *mut HIRLowerContext,
+    name: HIRStringId
+) -> *const ASTNode {
+    if context == null or (*context).parser == null or name == 0 { return null; }
+    let symbol = hir_lower_find_symbol(context, name);
+    let symbol_record = vitte_hir_get_symbol((*context).hir, symbol);
+    if symbol_record == null or (*symbol_record).kind != HIRSymbolKind.Type {
+        return null;
+    }
+    let parser = (*context).parser;
+    let mut index: usize = 0;
+    while index < (*parser).node_count {
+        let candidate = &(*parser).nodes[index];
+        if (*candidate).kind == ASTNodeKind.TypeDecl and
+           (*candidate).child_count > 1 {
+            let candidate_name = hir_lower_node_text(
+                context,
+                hir_lower_get_node(context, (*candidate).children[0])
+            );
+            if candidate_name == name { return candidate; }
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+proc hir_lower_generic_alias_parameter_index(
+    context: *mut HIRLowerContext,
+    declaration: *const ASTNode,
+    type_node: *const ASTNode
+) -> usize {
+    if context == null or declaration == null or type_node == null or
+       (*type_node).kind != ASTNodeKind.TypeExpr or
+       (*type_node).child_count != 1 {
+        return usize.MAX;
+    }
+    let path = hir_lower_get_node(context, (*type_node).children[0]);
+    let type_name = hir_lower_node_text(context, path);
+    if type_name == 0 { return usize.MAX; }
+    let mut parameter_index: usize = 0;
+    let mut child_index: usize = 1;
+    while child_index + 1 < (*declaration).child_count {
+        let parameter = hir_lower_get_node(
+            context,
+            (*declaration).children[child_index]
+        );
+        if parameter != null and (*parameter).kind == ASTNodeKind.GenericParam {
+            let name_node = hir_lower_get_node(context, (*parameter).children[0]);
+            if hir_lower_node_text(context, name_node) == type_name {
+                return parameter_index;
+            }
+            set parameter_index += 1;
+        }
+        set child_index += 1;
+    }
+    return usize.MAX;
+}
+
+proc hir_lower_generic_alias_parameter_count(
+    context: *mut HIRLowerContext,
+    declaration: *const ASTNode
+) -> usize {
+    if context == null or declaration == null { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 1;
+    while index < (*declaration).child_count {
+        let child = hir_lower_get_node(context, (*declaration).children[index]);
+        if child != null and (*child).kind == ASTNodeKind.GenericParam {
+            set count += 1;
+        }
+        set index += 1;
+    }
+    return count;
+}
+
+proc hir_lower_function_type_with_generic_arguments(
+    context: *mut HIRLowerContext,
+    node: *const ASTNode,
+    generic_declaration: *const ASTNode,
+    actual_arguments: *const HIRTypeId,
+    actual_argument_count: usize,
+    depth: usize
+) -> HIRTypeId {
+    if context == null or node == null or depth > 128 or
+       (*node).kind != ASTNodeKind.TypeExpr or
+       (*node).operator_kind != TokenKind.KwProc {
+        return 0;
+    }
+    let has_return: bool = ((*node).node_flags & PARSER_AST_FLAG_FUNCTION_TYPE_HAS_RETURN) != 0;
+    if has_return and (*node).child_count == 0 { return 0; }
+    let parameter_count = (*node).child_count - if has_return { 1 as usize } else { 0 as usize };
+    let mut parameters: [HIRTypeId] = [];
+    let mut index: usize = 0;
+    while index < parameter_count {
+        let parameter = hir_lower_type_with_generic_arguments(
+            context,
+            (*node).children[index],
+            generic_declaration,
+            actual_arguments,
+            actual_argument_count,
+            depth + 1
+        );
+        if parameter == 0 or not parameters.push(parameter) { return 0; }
+        set index += 1;
+    }
+    let return_type = if has_return {
+        hir_lower_type_with_generic_arguments(
+            context,
+            (*node).children[(*node).child_count - 1],
+            generic_declaration,
+            actual_arguments,
+            actual_argument_count,
+            depth + 1
+        )
+    } else { (*context).unit_type };
+    if return_type == 0 { return 0; }
+    let mut type_: HIRType = HIRType {};
+    set type_.kind = HIRTypeKind.Function;
+    set type_.parameters = parameters.as_ptr() as usize as *mut HIRTypeId;
+    set type_.parameter_count = parameters.len();
+    set type_.return_type = return_type;
+    return vitte_hir_add_type((*context).hir, &mut type_);
+}
+
+proc hir_lower_type_with_generic_arguments(
+    context: *mut HIRLowerContext,
+    id: ASTNodeId,
+    generic_declaration: *const ASTNode,
+    actual_arguments: *const HIRTypeId,
+    actual_argument_count: usize,
+    depth: usize
+) -> HIRTypeId {
+    if context == null or depth > 128 { return 0; }
+    let node = hir_lower_get_node(context, id);
+    if node == null { return (*context).i64_type; }
+    if (*node).kind == ASTNodeKind.TypeExpr and (*node).operator_kind == TokenKind.KwProc {
+        return hir_lower_function_type_with_generic_arguments(
+            context,
+            node,
+            generic_declaration,
+            actual_arguments,
+            actual_argument_count,
+            depth + 1
+        );
+    }
+    if (*node).kind == ASTNodeKind.TypeExpr and (*node).child_count == 1 {
+        let parameter_index = hir_lower_generic_alias_parameter_index(
+            context,
+            generic_declaration,
+            node
+        );
+        if parameter_index != usize.MAX {
+            if actual_arguments == null or parameter_index >= actual_argument_count {
+                return 0;
+            }
+            return actual_arguments[parameter_index];
+        }
+    }
+    if (*node).kind == ASTNodeKind.PointerType or
+       (*node).kind == ASTNodeKind.ReferenceType or
+       (*node).kind == ASTNodeKind.ArrayType {
+        if (*node).child_count == 0 { return 0; }
+        let mut type_: HIRType = HIRType {};
+        if (*node).kind == ASTNodeKind.PointerType {
+            set type_.kind = HIRTypeKind.Pointer;
+            set type_.element_type = hir_lower_type_with_generic_arguments(
+                context,
+                (*node).children[0],
+                generic_declaration,
+                actual_arguments,
+                actual_argument_count,
+                depth + 1
+            );
+        } elif (*node).kind == ASTNodeKind.ReferenceType {
+            set type_.kind = HIRTypeKind.Reference;
+            set type_.element_type = hir_lower_type_with_generic_arguments(
+                context,
+                (*node).children[0],
+                generic_declaration,
+                actual_arguments,
+                actual_argument_count,
+                depth + 1
+            );
+            set type_.mutable_reference =
+                ((*node).node_flags & PARSER_AST_FLAG_MUTABLE) != 0;
+        } else {
+            set type_.kind = if (*node).child_count == 1 {
+                HIRTypeKind.Slice
+            } else {
+                HIRTypeKind.Array
+            };
+            let element_index: i64 = if (*node).child_count == 1 { 0 } else { 1 };
+            set type_.element_type = hir_lower_type_with_generic_arguments(
+                context,
+                (*node).children[element_index],
+                generic_declaration,
+                actual_arguments,
+                actual_argument_count,
+                depth + 1
+            );
+            if type_.kind == HIRTypeKind.Array {
+                let length_node = hir_lower_get_node(context, (*node).children[0]);
+                let length_token = hir_lower_get_token(context, length_node);
+                let length = hir_lower_parse_integer(length_token);
+                if length_node == null or
+                   (*length_node).kind != ASTNodeKind.IntegerLiteral or
+                   length < 0 {
+                    return 0;
+                }
+                set type_.array_length = length as usize;
+            }
+        }
+        if type_.element_type == 0 { return 0; }
+        return vitte_hir_add_type((*context).hir, &mut type_);
+    }
+    if (*node).kind == ASTNodeKind.TypeExpr and (*node).child_count > 1 {
+        let path = hir_lower_get_node(context, (*node).children[0]);
+        let alias_name = hir_lower_node_text(context, path);
+        let alias = hir_lower_generic_alias_declaration(context, alias_name);
+        if alias != null {
+            let parameter_count = hir_lower_generic_alias_parameter_count(
+                context,
+                alias
+            );
+            let argument_count = (*node).child_count - 1;
+            if parameter_count != argument_count { return 0; }
+            let mut arguments: [HIRTypeId] = [];
+            let mut index: usize = 0;
+            while index < argument_count {
+                let argument_type = hir_lower_type_with_generic_arguments(
+                    context,
+                    (*node).children[index + 1],
+                    generic_declaration,
+                    actual_arguments,
+                    actual_argument_count,
+                    depth + 1
+                );
+                if argument_type == 0 or not arguments.push(argument_type) {
+                    return 0;
+                }
+                set index += 1;
+            }
+            let target_id = (*alias).children[(*alias).child_count - 1];
+            return hir_lower_type_with_generic_arguments(
+                context,
+                target_id,
+                alias,
+                arguments.as_ptr(),
+                arguments.len(),
+                depth + 1
+            );
+        }
+    }
+    return hir_lower_type_depth(context, id, depth + 1);
+}
+
 proc hir_lower_type_depth(context: *mut HIRLowerContext, id: ASTNodeId, depth: usize) -> HIRTypeId {
     if depth > 128 { return 0; }
     let node = hir_lower_get_node(context, id);
     if node == null { return (*context).i64_type; }
+    if (*node).kind == ASTNodeKind.TypeExpr and (*node).operator_kind == TokenKind.KwProc {
+        return hir_lower_function_type_with_generic_arguments(
+            context,
+            node,
+            null,
+            null,
+            0,
+            depth + 1
+        );
+    }
+    if (*node).kind == ASTNodeKind.TypeExpr and (*node).child_count > 1 {
+        let path = hir_lower_get_node(context, (*node).children[0]);
+        let alias_name = hir_lower_node_text(context, path);
+        let alias = hir_lower_generic_alias_declaration(context, alias_name);
+        if alias != null {
+            let parameter_count = hir_lower_generic_alias_parameter_count(
+                context,
+                alias
+            );
+            let argument_count = (*node).child_count - 1;
+            if parameter_count != argument_count { return 0; }
+            let mut arguments: [HIRTypeId] = [];
+            let mut index: usize = 0;
+            while index < argument_count {
+                let argument_type = hir_lower_type_depth(
+                    context,
+                    (*node).children[index + 1],
+                    depth + 1
+                );
+                if argument_type == 0 or not arguments.push(argument_type) {
+                    return 0;
+                }
+                set index += 1;
+            }
+            let target_id = (*alias).children[(*alias).child_count - 1];
+            return hir_lower_type_with_generic_arguments(
+                context,
+                target_id,
+                alias,
+                arguments.as_ptr(),
+                arguments.len(),
+                depth + 1
+            );
+        }
+    }
     if (*node).kind == ASTNodeKind.TypeExpr and (*node).child_count != 0 { return hir_lower_type_depth(context, (*node).children[0], depth + 1); }
     if (*node).kind == ASTNodeKind.PointerType or (*node).kind == ASTNodeKind.ReferenceType {
         let mut type_: HIRType = HIRType {};
@@ -2550,14 +2853,22 @@ proc hir_lower_expr(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNodeId {
             set result.kind = HIRNodeKind.Call;
             let callee_name = hir_lower_node_text(context, callee);
             let return_type = hir_lower_find_proc_return(context, callee_name);
-            if return_type != 0 { set result.type_ = return_type; }
+            set result.payload[0] = hir_lower_expr(context, (*node).children[0]);
+            if result.payload[0] == 0 { return 0; }
+            let lowered_callee = vitte_hir_get_node((*context).hir, result.payload[0]);
+            let lowered_callee_type = if lowered_callee == null { null } else {
+                vitte_hir_get_type((*context).hir, (*lowered_callee).type_)
+            };
+            if lowered_callee_type != null and (*lowered_callee_type).kind == HIRTypeKind.Function {
+                set result.type_ = (*lowered_callee_type).return_type;
+            } elif return_type != 0 {
+                set result.type_ = return_type;
+            }
             if callee != null and (*callee).kind == ASTNodeKind.MemberExpr and (*callee).child_count >= 2 {
                 let member_token = hir_lower_get_token(context, hir_lower_get_node(context, (*callee).children[1]));
                 if member_token != null and hir_lower_bytes_equal((*member_token).lexeme as *const u8, (*member_token).length, "len" as *const u8, 3) { set result.type_ = (*context).u64_type; }
                 else if member_token != null and hir_lower_bytes_equal((*member_token).lexeme as *const u8, (*member_token).length, "slice" as *const u8, 5) { set result.type_ = (*context).string_type; }
             }
-            set result.payload[0] = hir_lower_expr(context, (*node).children[0]);
-            if result.payload[0] == 0 { return 0; }
             let mut index: usize = 1;
             while index < (*node).child_count {
                 let argument = hir_lower_expr(context, (*node).children[index]);

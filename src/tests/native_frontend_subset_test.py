@@ -11,6 +11,58 @@ from pathlib import Path
 
 
 VALID_CASES = {
+    "generic procedure scalar specialization": """\
+proc identity<T>(value: T) -> T { return value; }
+proc first<T, U>(left: T, right: U) -> T { return left; }
+proc main() -> i64 {
+    let value = identity(40);
+    return first(value + 2, 7) - 42;
+}
+""",
+    "generic procedure specializes a nested form parameter": """\
+form Box<T> { value: T }
+proc select_box<T, U>(first: Box<T>, second: Box<U>) -> Box<T> { return first; }
+proc main() -> i64 {
+    let result: Box<i64> = select_box(
+        Box<i64> { value: 42 },
+        Box<bool> { value: true }
+    );
+    return result.value - 42;
+}
+""",
+    "generic procedure C17 specializations cover bool and multiple parameters": """\
+proc identity<T>(value: T) -> T { return value; }
+proc first<T, U>(left: T, right: U) -> T { return left; }
+proc same<T>(left: T, right: T) -> T { return left; }
+#[cold] proc main() -> i64 {
+    if not identity(true) { return 1; }
+    if identity(40) != 40 { return 2; }
+    if first(42, false) != 42 { return 3; }
+    return same(42, 40) - 42;
+}
+""",
+    "generic procedure falls back when native IR cannot specialize": """\
+proc identity<T>(value: T) -> T { return value; }
+proc first<T, U>(left: T, right: U) -> T { return left; }
+proc same<T>(left: T, right: T) -> T { return left; }
+proc is_vitte(text: string) -> bool { return text == "vitte"; }
+proc main() -> i64 {
+    if not identity(true) { return 1; }
+    if identity(40) != 40 { return 2; }
+    if identity(1.5) != 1.5 { return 3; }
+    if identity('x') != 'x' { return 4; }
+    if not is_vitte(identity("vitte")) { return 6; }
+    if first(42, false) != 42 { return 7; }
+    return same(42, 40) - 42;
+}
+""",
+    "postfix optional unwrap returns its payload": """\
+static VALUE: i64 = 42;
+proc main() -> i64 {
+    let present: ?i64 = &VALUE;
+    return present? - 42;
+}
+""",
     "scalar operators and compound assignment": """\
 proc main() -> i64 {
     let mut value: i64 = 1;
@@ -259,6 +311,27 @@ INVALID_CASES = {
         'proc main() -> i64 { let boxed: Box<i64> = Box<i64> { value: "wrong" }; return 0; }\n',
         "VITTE_TYPE_E_MISMATCH",
     ),
+    "generic procedure rejects conflicting nested type arguments": (
+        "form Box<T> { value: T }\n"
+        "proc same_box<T>(first: Box<T>, second: Box<T>) -> Box<T> { return first; }\n"
+        "proc main() -> i64 {\n"
+        "    let result: Box<i64> = same_box(\n"
+        "        Box<i64> { value: 42 }, Box<bool> { value: true }\n"
+        "    );\n"
+        "    return result.value;\n"
+        "}\n",
+        "VITTE_CALL_E_ARGUMENT_TYPE",
+    ),
+    "generic form first parameter checks field type": (
+        "form Pair<T, U> { first: T, second: U }\n"
+        "proc main() -> i64 { let pair: Pair<i64, bool> = Pair<i64, bool> { first: true, second: false }; return 0; }\n",
+        "VITTE_TYPE_E_MISMATCH",
+    ),
+    "generic form second parameter checks field type": (
+        "form Pair<T, U> { first: T, second: U }\n"
+        "proc main() -> i64 { let pair: Pair<i64, bool> = Pair<i64, bool> { first: 42, second: 7 }; return 0; }\n",
+        "VITTE_TYPE_E_MISMATCH",
+    ),
     "generic form requires every field": (
         "form Box<T> { value: T }\n"
         "proc main() -> i64 { let boxed: Box<i64> = Box<i64> {}; return 0; }\n",
@@ -268,6 +341,17 @@ INVALID_CASES = {
         "form Box<T> { value: T }\n"
         "proc main() -> i64 { let boxed: Box<Missing> = Box<Missing> { value: 42 }; return 0; }\n",
         "VITTE_TYPE_E_UNKNOWN_TYPE",
+    ),
+    "nested generic arguments preserve field types": (
+        "form Box<T> { value: T }\n"
+        "form Outer<T> { wrapped: Box<T> }\n"
+        "proc main() -> i64 {\n"
+        "    let wrong: Outer<Box<i64>> = Outer<Box<i64>> {\n"
+        "        wrapped: Box<Box<bool>> { value: Box<bool> { value: true } },\n"
+        "    };\n"
+        "    return 0;\n"
+        "}\n",
+        "VITTE_TYPE_E_MISMATCH",
     ),
     "unknown scalar pick variant is rejected": (
         "pick State { Ready, Done }\nproc main() -> i64 { let state: State = State::Missing; return state; }\n",
@@ -316,16 +400,41 @@ AST_FALLBACK_CASES = {
         "}\n",
         "accept",
     ),
-    "generic form composition is rejected": (
+    "generic form with multiple parameters compiles and runs": (
+        "form Pair<T, U> { first: T, second: U }\n"
+        "proc main() -> i64 {\n"
+        "    let pair: Pair<i64, bool> = Pair<i64, bool> { first: 42, second: true };\n"
+        "    if pair.first != 42 { return 1; }\n"
+        "    if not pair.second { return 2; }\n"
+        "    return 0;\n"
+        "}\n",
+        "accept-runtime",
+    ),
+    "generic form compositions compile and run": (
         "form Box<T> { value: T }\n"
         "form Wrapper<T> { inner: Box<T> }\n"
+        "form Outer<T> { wrapped: Wrapper<T> }\n"
+        "form Link<T> { value: T, next: *Link<T> }\n"
         "proc main() -> i64 {\n"
         "    let wrapped: Wrapper<i64> = Wrapper<i64> {\n"
         "        inner: Box<i64> { value: 42 },\n"
         "    };\n"
-        "    return wrapped.inner.value - 42;\n"
+        "    if wrapped.inner.value != 42 { return 1; }\n"
+        "    let enabled: Outer<bool> = Outer<bool> {\n"
+        "        wrapped: Wrapper<bool> { inner: Box<bool> { value: true } },\n"
+        "    };\n"
+        "    if not enabled.wrapped.inner.value { return 2; }\n"
+        "    let nested: Outer<Box<i64>> = Outer<Box<i64>> {\n"
+        "        wrapped: Wrapper<Box<i64>> {\n"
+        "            inner: Box<Box<i64>> { value: Box<i64> { value: 42 } },\n"
+        "        },\n"
+        "    };\n"
+        "    if nested.wrapped.inner.value.value != 42 { return 3; }\n"
+        "    let link: Link<i64> = Link<i64> { value: 42, next: null };\n"
+        "    if link.value != 42 { return 4; }\n"
+        "    return 0;\n"
         "}\n",
-        "reject",
+        "accept-runtime",
     ),
     "test declaration": (
         'test "native fallback test declaration" { }\n'
@@ -371,7 +480,7 @@ def assert_ast_fallback(binary: Path, directory: Path, name: str, source: str, e
         text=True,
         timeout=60,
     )
-    if expectation == "accept":
+    if expectation in ("accept", "accept-runtime"):
         if result.returncode != 0:
             raise AssertionError(
                 f"{name}: expected compatibility emitter success, got {result.returncode}; "
@@ -379,6 +488,13 @@ def assert_ast_fallback(binary: Path, directory: Path, name: str, source: str, e
             )
         if "Generated by the native Vitte C17 AST emitter" not in result.stdout:
             raise AssertionError(f"{name}: compatibility emitter did not produce C output")
+        if expectation == "accept-runtime":
+            executed = invoke(binary, "run", source_path)
+            if executed.returncode != 0:
+                raise AssertionError(
+                    f"{name}: generated program should compile and run; "
+                    f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
+                )
         return
 
     if result.returncode != 1:
@@ -391,16 +507,6 @@ def assert_ast_fallback(binary: Path, directory: Path, name: str, source: str, e
         item.get("internal_code") for item in diagnostics
     }:
         raise AssertionError(f"{name}: expected owned backend codegen diagnostic, got {diagnostics!r}")
-    if name == "generic form composition is rejected":
-        if result.stdout.strip():
-            raise AssertionError(f"{name}: failed code generation must not emit C source")
-        if not any(
-            "generic form field compositions are not supported" in item.get("details", "")
-            for item in diagnostics
-        ):
-            raise AssertionError(f"{name}: expected an explicit unsupported-composition detail, got {diagnostics!r}")
-
-
 def assert_generic_form_runtime(binary: Path):
     source_path = (
         Path(__file__).resolve().parents[2]
@@ -464,6 +570,58 @@ def main() -> int:
                 if executed.returncode != 0:
                     raise AssertionError(
                         f"{name}: run returned {executed.returncode}; "
+                        f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
+                    )
+            if name == "generic procedure scalar specialization":
+                executed = invoke(binary, "run", source_path)
+                if executed.returncode != 0:
+                    raise AssertionError(
+                        f"{name}: generic procedure runtime failed; "
+                        f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
+                    )
+            if name == "generic procedure specializes a nested form parameter":
+                executed = invoke(binary, "run", source_path)
+                if executed.returncode != 0:
+                    raise AssertionError(
+                        f"nested generic procedure runtime failed; "
+                        f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
+                    )
+            if name == "generic procedure C17 specializations cover bool and multiple parameters":
+                executed = invoke(binary, "run", source_path)
+                if executed.returncode != 0:
+                    raise AssertionError(
+                        f"{name}: specialized C17 runtime failed; "
+                        f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
+                    )
+            if name == "generic procedure falls back when native IR cannot specialize":
+                executed = invoke(binary, "run", source_path)
+                if executed.returncode != 0:
+                    raise AssertionError(
+                        f"{name}: native fallback runtime failed; "
+                        f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
+                    )
+            if name == "postfix optional unwrap returns its payload":
+                output_path = directory / "optional_unwrap.c"
+                emitted = subprocess.run(
+                    [
+                        str(binary), "compile", str(source_path), "--emit-c",
+                        "--quiet", "--no-color", "-o", str(output_path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                generated = output_path.read_text(encoding="utf-8") if output_path.exists() else ""
+                if emitted.returncode != 0 or "vitte_optional_require" not in generated:
+                    raise AssertionError(
+                        "C17 must emit a checked optional unwrap; "
+                        f"return={emitted.returncode}; stderr={emitted.stderr!r}; "
+                        f"generated={generated[-1000:]!r}"
+                    )
+                executed = invoke(binary, "run", source_path)
+                if executed.returncode != 0:
+                    raise AssertionError(
+                        f"{name}: present optional should unwrap successfully; "
                         f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
                     )
             if name == "array iteration through native IR":
@@ -659,6 +817,26 @@ def main() -> int:
                         f"{name}: compile expected {expected_code}, got "
                         f"{compile_diagnostics!r}"
                     )
+
+        missing_optional = directory / "null_optional_unwrap.vit"
+        missing_optional.write_text(
+            "proc main() -> i64 { let missing: ?i64 = null; return missing?; }\n",
+            encoding="utf-8",
+        )
+        null_run = invoke(binary, "run", missing_optional)
+        null_diagnostics = diagnostics_for(null_run, "null optional unwrap")
+        if null_run.returncode != 1 or not any(
+            item.get("phase") == "runtime"
+            and item.get("internal_code")
+            in {"VITTE_BACKEND_E_EXECUTION", "VITTE_BACKEND_E_RUNTIME"}
+            for item in null_diagnostics
+        ):
+            raise AssertionError(
+                "unwrapping null must compile and fail at runtime; "
+                f"return={null_run.returncode}; diagnostics={null_diagnostics!r}; "
+                f"stdout={null_run.stdout!r}; "
+                f"stderr={null_run.stderr!r}"
+            )
 
         for name, (source, expectation) in AST_FALLBACK_CASES.items():
             assert_ast_fallback(binary, directory, name, source, expectation)
