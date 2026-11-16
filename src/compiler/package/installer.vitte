@@ -10,7 +10,7 @@ use compiler::filesystem::filesystem::{
     FilesystemMetadata,
     FilesystemResult,
     vitte_filesystem_buffer_destroy,
-    vitte_filesystem_create_directories,
+    compiler_filesystem_create_directories,
     vitte_filesystem_directory_list_destroy,
     vitte_filesystem_exists,
     vitte_filesystem_join,
@@ -441,7 +441,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
         vitte_filesystem_join(current_directory, ".vitte/modules")
     };
     if modules_root.len() == 0 or
-       vitte_filesystem_create_directories(modules_root).error != FilesystemError.None {
+       compiler_filesystem_create_directories(modules_root).error != FilesystemError.None {
         package_report("vitte install: cannot create the module directory");
         return 1;
     }
@@ -496,7 +496,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
     let backup_path = vitte_filesystem_join(modules_root, backup_name);
     let target_path = vitte_filesystem_join(modules_root, release.name);
     package_discard_bool(package_remove_tree(stage_path));
-    if vitte_filesystem_create_directories(stage_path).error != FilesystemError.None {
+    if compiler_filesystem_create_directories(stage_path).error != FilesystemError.None {
         package_report("vitte install: cannot create package staging directory");
         package_discard_filesystem_result(vitte_filesystem_remove_file(registry_path));
         package_discard_filesystem_result(vitte_filesystem_remove_file(archive_path));
@@ -516,7 +516,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
     }
     if not archive_extracted {
         package_discard_bool(package_remove_tree(stage_path));
-        if vitte_filesystem_create_directories(stage_path).error != FilesystemError.None or
+        if compiler_filesystem_create_directories(stage_path).error != FilesystemError.None or
            not package_extract_with_pax(archive_path, stage_path) {
             package_report("vitte install: archive layout or package metadata is invalid");
             package_discard_bool(package_remove_tree(stage_path));

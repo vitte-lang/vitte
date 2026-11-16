@@ -170,6 +170,134 @@ vitte_sema_reference_resolve_place(vitte_sema_reference_state_t *state,
     return result;
 }
 
+typedef struct vitte_sema_reference_call_return {
+    size_t parameter_index;
+    bool found;
+    bool valid;
+} vitte_sema_reference_call_return_t;
+
+static vitte_sema_reference_origin_t
+vitte_sema_reference_resolve_value(vitte_sema_reference_state_t *state,
+                                   const vitte_ast_node_t *node,
+                                   size_t depth);
+
+static size_t
+vitte_sema_reference_parameter_index(vitte_sema_reference_state_t *state,
+                                     const vitte_ast_node_t *declaration,
+                                     vitte_symbol_id_t symbol_id)
+{
+    size_t child_index;
+    size_t parameter_index = 0u;
+    if (declaration == NULL || symbol_id == VITTE_SCOPE_INVALID_SYMBOL_ID)
+        return SIZE_MAX;
+    for (child_index = 1u; child_index < declaration->child_count; ++child_index) {
+        const vitte_ast_node_t *parameter = vitte_sema_node(state->context,
+            declaration->children[child_index]);
+        const vitte_ast_node_t *name;
+        const vitte_ast_node_t *binding;
+        const vitte_sema_node_info_t *info;
+        const vitte_sema_type_t *type;
+        if (parameter == NULL || parameter->kind != VITTE_AST_NODE_PARAMETER) continue;
+        name = parameter->child_count != 0u
+            ? vitte_sema_node(state->context, parameter->children[0]) : NULL;
+        binding = name;
+        while (binding != NULL && binding->kind == VITTE_AST_NODE_PATH &&
+               binding->child_count == 1u)
+            binding = vitte_sema_node(state->context, binding->children[0]);
+        info = binding != NULL
+            ? vitte_sema_node_info_private(state->context, binding->id) : NULL;
+        if (info == NULL || info->symbol_id != symbol_id)
+            info = vitte_sema_node_info_private(state->context, parameter->id);
+        type = vitte_sema_reference_type(state, parameter);
+        if (info != NULL && info->symbol_id == symbol_id && type != NULL &&
+            type->kind == VITTE_SEMA_TYPE_REFERENCE)
+            return parameter_index;
+        ++parameter_index;
+    }
+    return SIZE_MAX;
+}
+
+static void
+vitte_sema_reference_collect_call_return(vitte_sema_reference_state_t *state,
+                                         const vitte_ast_node_t *declaration,
+                                         const vitte_ast_node_t *node,
+                                         size_t depth,
+                                         vitte_sema_reference_call_return_t *result)
+{
+    size_t index;
+    if (node == NULL || result == NULL || depth >= 64u || !result->valid) return;
+    if (node->id != declaration->id &&
+        (node->kind == VITTE_AST_NODE_PROC_DECL ||
+         node->kind == VITTE_AST_NODE_EXTERN_PROC_DECL)) return;
+    if (node->kind == VITTE_AST_NODE_RETURN_STMT) {
+        const vitte_ast_node_t *value = node->child_count != 0u
+            ? vitte_sema_node(state->context, node->children[0]) : NULL;
+        size_t unwrap_depth = 0u;
+        size_t parameter_index;
+        const vitte_sema_node_info_t *info;
+        while (value != NULL && unwrap_depth < 64u && value->child_count == 1u &&
+            (value->kind == VITTE_AST_NODE_GROUP_EXPR ||
+             (value->kind == VITTE_AST_NODE_UNARY_EXPR &&
+              value->operator_kind == VITTE_TOKEN_KW_MOVE))) {
+            value = vitte_sema_node(state->context, value->children[0]);
+            ++unwrap_depth;
+        }
+        if (value == NULL || (value->kind != VITTE_AST_NODE_IDENTIFIER &&
+                              value->kind != VITTE_AST_NODE_PATH)) {
+            result->valid = false;
+            return;
+        }
+        info = vitte_sema_node_info_private(state->context, value->id);
+        parameter_index = info != NULL
+            ? vitte_sema_reference_parameter_index(state, declaration, info->symbol_id)
+            : SIZE_MAX;
+        if (parameter_index == SIZE_MAX ||
+            (result->found && result->parameter_index != parameter_index)) {
+            result->valid = false;
+            return;
+        }
+        result->found = true;
+        result->parameter_index = parameter_index;
+        return;
+    }
+    for (index = 0u; index < node->child_count && result->valid; ++index)
+        vitte_sema_reference_collect_call_return(state, declaration,
+            vitte_sema_node(state->context, node->children[index]), depth + 1u, result);
+}
+
+static vitte_sema_reference_origin_t
+vitte_sema_reference_resolve_call(vitte_sema_reference_state_t *state,
+                                  const vitte_ast_node_t *node,
+                                  size_t depth)
+{
+    vitte_sema_reference_origin_t unknown;
+    const vitte_ast_node_t *callee;
+    const vitte_sema_node_info_t *callee_info;
+    const vitte_symbol_t *symbol;
+    const vitte_ast_node_t *declaration;
+    vitte_sema_reference_call_return_t returned;
+    memset(&unknown, 0, sizeof(unknown));
+    unknown.root = VITTE_SCOPE_INVALID_SYMBOL_ID;
+    unknown.through_borrower = VITTE_SCOPE_INVALID_SYMBOL_ID;
+    unknown.owner_scope = VITTE_SCOPE_INVALID_SCOPE_ID;
+    if (node == NULL || node->child_count < 2u || depth >= 64u) return unknown;
+    callee = vitte_sema_node(state->context, node->children[0]);
+    callee_info = callee != NULL
+        ? vitte_sema_node_info_private(state->context, callee->id) : NULL;
+    symbol = callee_info != NULL
+        ? vitte_scope_get_symbol(&state->context->scopes, callee_info->symbol_id) : NULL;
+    declaration = symbol != NULL ? (const vitte_ast_node_t *)symbol->payload : NULL;
+    if (declaration == NULL || declaration->kind != VITTE_AST_NODE_PROC_DECL) return unknown;
+    returned.parameter_index = 0u;
+    returned.found = false;
+    returned.valid = true;
+    vitte_sema_reference_collect_call_return(state, declaration, declaration, 0u, &returned);
+    if (!returned.valid || !returned.found || returned.parameter_index + 1u >= node->child_count)
+        return unknown;
+    return vitte_sema_reference_resolve_value(state,
+        vitte_sema_node(state->context, node->children[returned.parameter_index + 1u]), depth + 1u);
+}
+
 static vitte_sema_reference_origin_t
 vitte_sema_reference_resolve_value(vitte_sema_reference_state_t *state,
                                    const vitte_ast_node_t *node,
@@ -184,6 +312,8 @@ vitte_sema_reference_resolve_value(vitte_sema_reference_state_t *state,
     if (node->kind == VITTE_AST_NODE_GROUP_EXPR && node->child_count == 1u)
         return vitte_sema_reference_resolve_value(state,
             vitte_sema_node(state->context, node->children[0]), depth + 1u);
+    if (node->kind == VITTE_AST_NODE_CALL_EXPR)
+        return vitte_sema_reference_resolve_call(state, node, depth + 1u);
     if (node->kind == VITTE_AST_NODE_UNARY_EXPR && node->operator_kind == VITTE_TOKEN_KW_MOVE &&
         node->child_count == 1u)
         return vitte_sema_reference_resolve_value(state,

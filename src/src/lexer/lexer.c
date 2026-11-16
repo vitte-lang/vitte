@@ -29,6 +29,7 @@
  */
 
 #include "lexer.h"
+#include "../unicode/unicode.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -431,49 +432,13 @@ vitte_lexer_utf8_decode(
 static bool
 vitte_lexer_unicode_identifier_start(uint32_t cp)
 {
-    /*
-     * ASCII uses exact XID-like rules above.
-     *
-     * For non-ASCII source, the lexer accepts valid Unicode scalar values
-     * except whitespace/control ranges. Full Unicode XID classification may
-     * later be delegated to Vitte's Unicode subsystem without changing the
-     * lexer API.
-     */
-
-    if (cp < UINT32_C(0x80)) {
-        return vitte_lexer_is_ascii_identifier_start(
-            (unsigned char)cp);
-    }
-
-    if (cp >= UINT32_C(0x80) &&
-        cp <= UINT32_C(0x9f)) {
-        return false;
-    }
-
-    if (cp == UINT32_C(0x00a0) ||
-        cp == UINT32_C(0x1680) ||
-        (cp >= UINT32_C(0x2000) &&
-         cp <= UINT32_C(0x200a)) ||
-        cp == UINT32_C(0x2028) ||
-        cp == UINT32_C(0x2029) ||
-        cp == UINT32_C(0x202f) ||
-        cp == UINT32_C(0x205f) ||
-        cp == UINT32_C(0x3000)) {
-        return false;
-    }
-
-    return true;
+    return vitte_unicode_is_identifier_start(cp);
 }
 
 static bool
 vitte_lexer_unicode_identifier_continue(uint32_t cp)
 {
-    if (cp < UINT32_C(0x80)) {
-        return vitte_lexer_is_ascii_identifier_continue(
-            (unsigned char)cp);
-    }
-
-    return vitte_lexer_unicode_identifier_start(cp);
+    return vitte_unicode_is_identifier_continue(cp);
 }
 
 /* ========================================================================= */
@@ -1108,6 +1073,61 @@ vitte_lexer_scan_digit_sequence(
 }
 
 static bool
+vitte_lexer_integer_fits_u64(
+    const vitte_lexer_t *lexer,
+    size_t begin,
+    size_t end,
+    unsigned int base)
+{
+    size_t index;
+    uint64_t value;
+
+    if (lexer == NULL || lexer->source == NULL || begin > end ||
+        end > lexer->source_length || base < 2u || base > 16u) {
+        return false;
+    }
+
+    index = begin;
+    if (base != 10u) {
+        if (end - begin < 2u) {
+            return false;
+        }
+        index += 2u;
+    }
+
+    value = UINT64_C(0);
+    for (; index < end; ++index) {
+        unsigned int digit;
+        unsigned char character;
+
+        character = (unsigned char)lexer->source[index];
+        if (character == (unsigned char)'_') {
+            continue;
+        }
+        if (character >= (unsigned char)'0' &&
+            character <= (unsigned char)'9') {
+            digit = (unsigned int)(character - (unsigned char)'0');
+        } else if (character >= (unsigned char)'a' &&
+                   character <= (unsigned char)'f') {
+            digit = (unsigned int)(character - (unsigned char)'a') + 10u;
+        } else if (character >= (unsigned char)'A' &&
+                   character <= (unsigned char)'F') {
+            digit = (unsigned int)(character - (unsigned char)'A') + 10u;
+        } else {
+            return false;
+        }
+
+        if (digit >= base ||
+            value > (UINT64_MAX - (uint64_t)digit) / (uint64_t)base) {
+            return false;
+        }
+        value = value * (uint64_t)base + (uint64_t)digit;
+    }
+
+    return true;
+}
+
+static bool
 vitte_lexer_scan_number(vitte_lexer_t *lexer)
 {
     size_t begin;
@@ -1355,6 +1375,19 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                 begin,
                 lexer->offset + 1u);
         }
+    }
+
+    if (!is_float &&
+        !vitte_lexer_integer_fits_u64(
+            lexer,
+            begin,
+            lexer->offset,
+            (unsigned int)base)) {
+        return vitte_lexer_fail(
+            lexer,
+            VITTE_LEXER_ERROR_NUMBER_OVERFLOW,
+            begin,
+            lexer->offset);
     }
 
     if (!vitte_lexer_emit(
@@ -1956,6 +1989,8 @@ vitte_lexer_error_name(vitte_lexer_error_t error)
         case VITTE_LEXER_ERROR_OUT_OF_MEMORY: return "out_of_memory";
         case VITTE_LEXER_ERROR_VALIDATION: return "validation";
         case VITTE_LEXER_ERROR_INTERNAL: return "internal";
+        case VITTE_LEXER_ERROR_INVALID_IDENTIFIER: return "invalid_identifier";
+        case VITTE_LEXER_ERROR_NUMBER_OVERFLOW: return "number_overflow";
         case VITTE_LEXER_ERROR_COUNT: return "count";
     }
 
@@ -2031,7 +2066,7 @@ vitte_lexer_scan_one(vitte_lexer_t *lexer)
             if (!vitte_lexer_unicode_identifier_start(cp)) {
                 return vitte_lexer_fail(
                     lexer,
-                    VITTE_LEXER_ERROR_INVALID_TOKEN,
+                    VITTE_LEXER_ERROR_INVALID_IDENTIFIER,
                     lexer->offset,
                     lexer->offset + consumed);
             }
@@ -2089,7 +2124,9 @@ vitte_lexer_init(
     lexer->source_length = source_length;
     lexer->file_id = file_id;
 
-    lexer->offset = 0u;
+    lexer->offset = vitte_unicode_skip_utf8_bom(
+        source,
+        source_length);
     lexer->line = 1u;
     lexer->column = 1u;
 
@@ -2165,7 +2202,9 @@ vitte_lexer_reset(
     lexer->source_length = source_length;
     lexer->file_id = file_id;
 
-    lexer->offset = 0u;
+    lexer->offset = vitte_unicode_skip_utf8_bom(
+        source,
+        source_length);
     lexer->line = 1u;
     lexer->column = 1u;
 

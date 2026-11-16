@@ -586,6 +586,29 @@ SEMANTIC_CASES = {
         "proc main() -> i64 { return same(41, true); }\n",
         False,
     ),
+    "generic procedure rejects uninferred parameter": (
+        "proc ignore<T, U>(value: T) {}\n"
+        "proc main() -> i64 { ignore(42); return 0; }\n",
+        False,
+    ),
+    "trait implementation requires declared methods": (
+        "trait Readable { proc read(value: i64) -> i64; }\n"
+        "impl Readable for i64 {}\n"
+        "proc main() -> i64 { return 0; }\n",
+        False,
+    ),
+    "trait implementation may inherit default methods": (
+        "trait Readable { proc read(value: i64) -> i64 { return value; } }\n"
+        "impl Readable for i64 {}\n"
+        "proc main() -> i64 { return 0; }\n",
+        True,
+    ),
+    "trait implementation accepts all required methods": (
+        "trait Readable { proc read(value: i64) -> i64; }\n"
+        "impl Readable for i64 { proc read(value: i64) -> i64 { return value; } }\n"
+        "proc main() -> i64 { return 0; }\n",
+        True,
+    ),
     "generic procedure infers composed nominal parameters": (
         "form Box<T> { value: T }\n"
         "proc select_box<T, U>(first: Box<T>, second: Box<U>) -> Box<T> { return first; }\n"
@@ -884,9 +907,17 @@ def main() -> int:
     native = Path(sys.argv[1]).resolve()
     bootstrap = Path(sys.argv[2]).resolve()
     parser_parity = Path(sys.argv[3]).resolve()
+    canonical_grammar_fixture = (
+        Path(__file__).resolve().parent
+        / "grammar_alignment"
+        / "canonical_productions.vit"
+    )
 
     parser_result = subprocess.run(
-        [str(parser_parity)], capture_output=True, text=True, timeout=60
+        [str(parser_parity), str(canonical_grammar_fixture)],
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     if parser_result.returncode != 0:
         raise AssertionError(

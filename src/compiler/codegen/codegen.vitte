@@ -52,7 +52,7 @@ export pick CodegenState {
 export pick CodegenBackendKind { Invalid, C17, Native, Bytecode, Count }
 export pick CodegenArch { Invalid, X8664, Aarch64, Riscv64, Wasm32, Host, Count }
 export pick CodegenOs { Invalid, Linux, Macos, Windows, Freebsd, None, Host, Count }
-export pick CodegenAbi { Invalid, Sysv, Win64, Aapcs64, Wasm, Freestanding, Host, Count }
+export pick CodegenAbi { Invalid, Sysv, Win64, Aapcs64, Wasm, Freestanding, Host, Riscv64, WinArm64, Count }
 export pick CodegenEndian { Invalid, Little, Big, Count }
 export pick CodegenOptimization { Invalid, None, Debug, Balanced, Speed, Size, Aggressive, Count }
 export pick CodegenSeverity { Invalid, Note, Warning, Error, Count }
@@ -290,9 +290,31 @@ export proc vitte_codegen_abi_name(abi: CodegenAbi) -> string {
         case CodegenAbi.Wasm => return "wasm";
         case CodegenAbi.Freestanding => return "freestanding";
         case CodegenAbi.Host => return "host";
+        case CodegenAbi.Riscv64 => return "riscv64";
+        case CodegenAbi.WinArm64 => return "win-arm64";
         case CodegenAbi.Count => return "count"
     }
     return "invalid";
+}
+
+export proc vitte_codegen_abi_for_target(architecture: CodegenArch, operating_system: CodegenOs) -> CodegenAbi {
+    if architecture <= CodegenArch.Invalid or architecture >= CodegenArch.Count or
+       operating_system <= CodegenOs.Invalid or operating_system >= CodegenOs.Count {
+        return CodegenAbi.Invalid;
+    }
+    if architecture == CodegenArch.Host or operating_system == CodegenOs.Host {
+        return CodegenAbi.Host;
+    }
+    if operating_system == CodegenOs.Windows {
+        if architecture == CodegenArch.X8664 { return CodegenAbi.Win64; }
+        if architecture == CodegenArch.Aarch64 { return CodegenAbi.WinArm64; }
+        return CodegenAbi.Invalid;
+    }
+    if architecture == CodegenArch.X8664 { return CodegenAbi.Sysv; }
+    if architecture == CodegenArch.Aarch64 { return CodegenAbi.Aapcs64; }
+    if architecture == CodegenArch.Riscv64 { return CodegenAbi.Riscv64; }
+    if architecture == CodegenArch.Wasm32 { return CodegenAbi.Wasm; }
+    return CodegenAbi.Invalid;
 }
 
 export proc vitte_codegen_config_default() -> CodegenConfig {
@@ -346,16 +368,7 @@ export proc vitte_codegen_target_default() -> CodegenTarget {
     if architecture == CodegenArch.Invalid { set architecture = CodegenArch.Host; }
     if operating_system == CodegenOs.None { set operating_system = CodegenOs.Host; }
 
-    let mut abi: CodegenAbi = CodegenAbi.Host;
-    if architecture == CodegenArch.X8664 {
-        set abi = CodegenAbi.Sysv;
-    } elif architecture == CodegenArch.Aarch64 {
-        set abi = CodegenAbi.Aapcs64;
-    } elif operating_system == CodegenOs.Windows {
-        set abi = CodegenAbi.Win64;
-    } elif architecture == CodegenArch.Wasm32 {
-        set abi = CodegenAbi.Wasm;
-    }
+    let abi: CodegenAbi = vitte_codegen_abi_for_target(architecture, operating_system);
 
     let probe: u16 = 258;
     let probe_bytes = (&probe) as *const u16 as *const u8;
@@ -383,13 +396,20 @@ export proc vitte_codegen_config_validate(config: *const CodegenConfig) -> bool 
 
 export proc vitte_codegen_target_validate(target: *const CodegenTarget) -> bool {
     if target == null { return false; }
-    return (*target).architecture > CodegenArch.Invalid and
+    if not ((*target).architecture > CodegenArch.Invalid and
         (*target).architecture < CodegenArch.Count and
         (*target).operating_system > CodegenOs.Invalid and
         (*target).operating_system < CodegenOs.Count and
         (*target).abi > CodegenAbi.Invalid and (*target).abi < CodegenAbi.Count and
         (*target).endian > CodegenEndian.Invalid and (*target).endian < CodegenEndian.Count and
-        (*target).pointer_bits != 0 and (*target).size_bits != 0 and (*target).char_bits != 0;
+        (*target).pointer_bits != 0 and (*target).size_bits != 0 and (*target).char_bits != 0) {
+        return false;
+    }
+    if (*target).abi == CodegenAbi.Freestanding {
+        return not (*target).hosted and (*target).operating_system == CodegenOs.None and
+            (*target).architecture != CodegenArch.Host;
+    }
+    return (*target).abi == vitte_codegen_abi_for_target((*target).architecture, (*target).operating_system);
 }
 
 export proc vitte_codegen_is_valid(codegen: *const Codegen) -> bool {

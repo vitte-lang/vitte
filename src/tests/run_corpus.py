@@ -43,7 +43,7 @@ def main():
         "--exclude",
         action="append",
         default=[],
-        help="fixture checked separately by another compiler",
+        help="fixture validated separately by a dedicated test",
     )
     parser.add_argument("--include-unavailable", action="store_true")
     args = parser.parse_args()
@@ -71,7 +71,7 @@ def main():
     unavailable_missing = sorted(missing - stale)
     skipped = len(unavailable_missing) + len(excluded)
     for path in sorted(excluded):
-        print(f"[SKIP] {path}: checked separately by the native compiler")
+        print(f"[SKIP] {path}: validated separately by a dedicated test")
     for path in unavailable_missing:
         _, reason = expectations[path]
         print(
@@ -149,7 +149,8 @@ def main():
             if result.stderr:
                 print(result.stderr.rstrip())
     print(
-        f"\nChecked: {checked}  Negative: {negative}  "
+        f"\nChecked: {checked}  Positive: {checked - negative - known_gaps}  "
+        f"Negative: {negative}  "
         f"Known gaps: {known_gaps}  Obsolete: {obsolete_present}  "
         f"Skipped: {skipped}  Failed: {failed}"
     )

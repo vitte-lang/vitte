@@ -152,6 +152,21 @@ the path is `NULL`.
 `build` emits a sibling generated C file named `<output>.c` and invokes the
 configured C compiler with strict C17 flags.
 
+## LLVM IR bridge
+
+The compiler does not currently have a native LLVM IR lowering backend. When
+Clang is available, the host-tools layer can convert already generated C17 to
+textual LLVM IR with `vitte_native_driver_emit_llvm_ir`. It invokes Clang with
+`-std=c17 -S -emit-llvm`; this supports the same language subset as the C17
+emitter and leaves optimization/linking to later toolchain steps.
+The `.ll` output is written to a temporary file and replaces the destination
+only after Clang succeeds.
+
+Set `VITTE_LLVM_CC` to select the Clang-compatible executable, or use `CLANG`;
+the default is `clang`. Set `VITTE_LLVM_TARGET` to pass one target triple using
+Clang's `--target` option. A failed or missing toolchain is reported at the
+`LLVMEmit` host-tool stage. Ordinary C17 compilation continues to use `CC`.
+
 ## Minimal Example
 
 ```c

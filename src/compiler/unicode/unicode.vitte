@@ -1,6 +1,8 @@
 /// Unicode implementation for the Vitte compiler, ported from the C bootstrap.
 space compiler::unicode::unicode;
 
+use compiler::unicode::unicode_xid_table::{vitte_unicode_xid_start, vitte_unicode_xid_continue, vitte_unicode_xid_data_version};
+
 proc unicode_in_range(codepoint: u64, first: u64, last: u64) -> bool {
     return codepoint >= first  and  codepoint <= last;
 }
@@ -422,41 +424,16 @@ export proc vitte_unicode_is_decimal_digit(codepoint: u64) -> bool {
 }
 
 export proc vitte_unicode_is_identifier_start(codepoint: u64) -> bool {
-    if codepoint == 95  or  vitte_unicode_is_ascii_alpha(codepoint) { return true; }
-    if not vitte_unicode_is_scalar(codepoint)  or 
-       vitte_unicode_is_whitespace(codepoint)  or 
-       vitte_unicode_is_decimal_digit(codepoint)  or 
-       vitte_unicode_is_combining_mark(codepoint) {
-        return false;
-    }
-    return unicode_in_range(codepoint, 0x00c0, 0x02ff)  or 
-           unicode_in_range(codepoint, 0x0370, 0x052f)  or 
-           unicode_in_range(codepoint, 0x0531, 0x08ff)  or 
-           unicode_in_range(codepoint, 0x0900, 0x1cff)  or 
-           unicode_in_range(codepoint, 0x1e00, 0x2cff)  or 
-           unicode_in_range(codepoint, 0x3040, 0x30ff)  or 
-           unicode_in_range(codepoint, 0x3100, 0x312f)  or 
-           unicode_in_range(codepoint, 0x3130, 0x318f)  or 
-           unicode_in_range(codepoint, 0x31a0, 0x31bf)  or 
-           unicode_in_range(codepoint, 0x3400, 0x4dbf)  or 
-           unicode_in_range(codepoint, 0x4e00, 0x9fff)  or 
-           unicode_in_range(codepoint, 0xac00, 0xd7a3)  or 
-           unicode_in_range(codepoint, 0xf900, 0xfaff)  or 
-           unicode_in_range(codepoint, 0xff21, 0xff3a)  or 
-           unicode_in_range(codepoint, 0xff41, 0xff5a)  or 
-           unicode_in_range(codepoint, 0x10000, 0x1d7ff)  or 
-           unicode_in_range(codepoint, 0x20000, 0x3134f);
+    return vitte_unicode_xid_start(codepoint);
 }
 
 export proc vitte_unicode_is_identifier_continue(codepoint: u64) -> bool {
-    return vitte_unicode_is_identifier_start(codepoint)  or 
-           vitte_unicode_is_decimal_digit(codepoint)  or 
-           vitte_unicode_is_combining_mark(codepoint)  or 
-           codepoint == 0x200c  or  codepoint == 0x200d  or 
-           codepoint == 0x203f  or  codepoint == 0x2040  or 
-           codepoint == 0x2054  or  codepoint == 0xff3f  or 
-           unicode_in_range(codepoint, 0xfe33, 0xfe34)  or 
-           unicode_in_range(codepoint, 0xfe4d, 0xfe4f);
+    return vitte_unicode_xid_continue(codepoint);
+}
+
+/// Unicode XID data version used for identifier classification.
+export proc vitte_unicode_data_version() -> string {
+    return vitte_unicode_xid_data_version();
 }
 
 export proc vitte_unicode_validate_identifier(input: string, length: usize) -> UnicodeScanResult {
@@ -564,9 +541,9 @@ export proc vitte_unicode_utf8_display_width(
 }
 
 export proc vitte_unicode_has_utf8_bom(input: string, length: usize) -> bool {
-    return length >= 3  and  len(input) >= 3  and 
-           (input[0] as u64) == 0xef  and 
-           (input[1] as u64) == 0xbb  and 
+    return length >= 3  and  length <= len(input) as u64  and  len(input) >= 3  and
+           (input[0] as u64) == 0xef  and
+           (input[1] as u64) == 0xbb  and
            (input[2] as u64) == 0xbf;
 }
 

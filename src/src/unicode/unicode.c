@@ -26,6 +26,7 @@
  */
 
 #include "unicode.h"
+#include "../../bootstrap/unicode/unicode_xid_table.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -76,6 +77,37 @@ vitte_unicode_in_range(
 {
     return codepoint >= first &&
            codepoint <= last;
+}
+
+static bool
+vitte_unicode_xid_contains(
+    const vitte_unicode_xid_range_t *ranges,
+    size_t count,
+    uint32_t codepoint)
+{
+    size_t first = 0u;
+    size_t last = count;
+
+    while (first < last) {
+        size_t middle = first + (last - first) / 2u;
+        const vitte_unicode_xid_range_t *range = &ranges[middle];
+
+        if (codepoint < range->first) {
+            last = middle;
+        } else if (codepoint > range->last) {
+            first = middle + 1u;
+        } else {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+const char *
+vitte_unicode_data_version(void)
+{
+    return VITTE_UNICODE_GENERATED_DATA_VERSION_STRING;
 }
 
 /* ========================================================================= */
@@ -1200,194 +1232,22 @@ bool
 vitte_unicode_is_identifier_start(
     uint32_t codepoint)
 {
-    /*
-     * Vitte accepts '_' explicitly.
-     */
-    if (codepoint == (uint32_t)'_') {
-        return true;
-    }
-
-    if (vitte_unicode_is_ascii_alpha(codepoint)) {
-        return true;
-    }
-
-    if (!vitte_unicode_is_scalar(codepoint)) {
-        return false;
-    }
-
-    /*
-     * Exclude obvious non-letter classes before accepting the major Unicode
-     * letter/script ranges.
-     */
-    if (vitte_unicode_is_whitespace(codepoint) ||
-        vitte_unicode_is_decimal_digit(codepoint) ||
-        vitte_unicode_is_combining_mark(codepoint)) {
-        return false;
-    }
-
-    /*
-     * Latin / IPA / Greek / Cyrillic.
-     */
-    if (vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x00c0),
-            UINT32_C(0x02ff)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x0370),
-            UINT32_C(0x052f))) {
-        return true;
-    }
-
-    /*
-     * Armenian, Hebrew, Arabic, Syriac, Thaana, NKo and neighboring scripts.
-     */
-    if (vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x0531),
-            UINT32_C(0x08ff))) {
-        return true;
-    }
-
-    /*
-     * Indic scripts.
-     */
-    if (vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x0900),
-            UINT32_C(0x1cff))) {
-        return true;
-    }
-
-    /*
-     * Latin/Greek extensions and alphabetic presentation.
-     */
-    if (vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x1e00),
-            UINT32_C(0x2cff))) {
-        return true;
-    }
-
-    /*
-     * CJK, Hiragana, Katakana, Hangul and compatibility ideographs.
-     */
-    if (vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x3040),
-            UINT32_C(0x30ff)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x3100),
-            UINT32_C(0x312f)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x3130),
-            UINT32_C(0x318f)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x31a0),
-            UINT32_C(0x31bf)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x3400),
-            UINT32_C(0x4dbf)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x4e00),
-            UINT32_C(0x9fff)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0xac00),
-            UINT32_C(0xd7a3)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0xf900),
-            UINT32_C(0xfaff))) {
-        return true;
-    }
-
-    /*
-     * Full-width Latin letters.
-     */
-    if (vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0xff21),
-            UINT32_C(0xff3a)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0xff41),
-            UINT32_C(0xff5a))) {
-        return true;
-    }
-
-    /*
-     * Supplementary-plane historic/modern scripts and CJK extensions.
-     *
-     * This intentionally rejects emoji/symbol planes rather than accepting
-     * every non-ASCII scalar indiscriminately.
-     */
-    if (vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x10000),
-            UINT32_C(0x1d7ff)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0x20000),
-            UINT32_C(0x3134f))) {
-        return true;
-    }
-
-    return false;
+    return codepoint <= VITTE_UNICODE_MAX_CODEPOINT &&
+           vitte_unicode_xid_contains(
+               vitte_unicode_xid_start_ranges,
+               VITTE_UNICODE_XID_START_RANGE_COUNT,
+               codepoint);
 }
 
 bool
 vitte_unicode_is_identifier_continue(
     uint32_t codepoint)
 {
-    if (vitte_unicode_is_identifier_start(
-            codepoint)) {
-        return true;
-    }
-
-    if (vitte_unicode_is_decimal_digit(
-            codepoint)) {
-        return true;
-    }
-
-    if (vitte_unicode_is_combining_mark(
-            codepoint)) {
-        return true;
-    }
-
-    /*
-     * U+200C ZERO WIDTH NON-JOINER and U+200D ZERO WIDTH JOINER are used by
-     * several writing systems in identifiers.
-     */
-    if (codepoint == UINT32_C(0x200c) ||
-        codepoint == UINT32_C(0x200d)) {
-        return true;
-    }
-
-    /*
-     * Connector punctuation commonly accepted in identifier continuation.
-     */
-    if (codepoint == UINT32_C(0x203f) ||
-        codepoint == UINT32_C(0x2040) ||
-        codepoint == UINT32_C(0x2054) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0xfe33),
-            UINT32_C(0xfe34)) ||
-        vitte_unicode_in_range(
-            codepoint,
-            UINT32_C(0xfe4d),
-            UINT32_C(0xfe4f)) ||
-        codepoint == UINT32_C(0xff3f)) {
-        return true;
-    }
-
-    return false;
+    return codepoint <= VITTE_UNICODE_MAX_CODEPOINT &&
+           vitte_unicode_xid_contains(
+               vitte_unicode_xid_continue_ranges,
+               VITTE_UNICODE_XID_CONTINUE_RANGE_COUNT,
+               codepoint);
 }
 
 bool

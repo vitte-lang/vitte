@@ -579,7 +579,30 @@ WIN64
 AAPCS64
 WASM
 FREESTANDING
+HOST
+RISCV64
+WIN_ARM64
 ```
+
+Target validation also checks architecture and operating-system compatibility:
+
+| Architecture | Operating system | ABI family |
+| --- | --- | --- |
+| x86_64 | Linux, macOS, FreeBSD, `none` | SYSV |
+| x86_64 | Windows | WIN64 |
+| AArch64 | Linux, macOS, FreeBSD, `none` | AAPCS64 |
+| AArch64 | Windows | WIN_ARM64 |
+| RISC-V64 | Linux, macOS, FreeBSD, `none` | RISCV64 |
+| wasm32 | `none`, Linux, macOS, FreeBSD | WASM |
+| unknown or host-delegated target | host/unknown | HOST |
+| any supported architecture | OS `none`, `hosted == false` | FREESTANDING |
+
+Invalid architecture/OS/ABI combinations are rejected, and
+`vitte_codegen_abi_for_target` returns `invalid` for unsupported pairings.
+`RISCV64` identifies the ABI family but does not encode a floating-point ABI
+variant. Generic
+codegen records the ABI family; detailed argument classification remains a
+backend or target C compiler responsibility.
 
 ABI-specific classification and lowering should remain outside the generic codegen orchestrator.
 

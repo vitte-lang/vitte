@@ -10,6 +10,10 @@ offsets and line/column spans.
 - Input is a caller-owned source buffer plus an optional source name.
 - Tokens keep pointers into the original source buffer.
 - Offsets are byte offsets.
+- A leading UTF-8 BOM is skipped while byte offsets remain anchored to the
+  original source; the first token starts at byte 3, line 1, column 1.
+- Non-ASCII identifiers use the Unicode 16.0.0 XID_Start and XID_Continue
+  properties.
 - Lines and columns are 1-based.
 - Whitespace and comments are skipped by default.
 - The lexer can emit whitespace and comment tokens when enabled in options.

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Check EBNF terminal coverage against the Vitte and C lexer tables."""
+"""Check canonical EBNF terminal coverage against lexer and parser tables."""
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -22,6 +23,7 @@ C_FRONTENDS = (
     ),
 )
 NATIVE_LEXER = ROOT / "src" / "compiler" / "lexer" / "lexer.vitte"
+TOKEN_TEST = ROOT / "src" / "tests" / "frontend_token_test.c"
 
 
 def without_comments(text: str) -> str:
@@ -51,9 +53,62 @@ def native_lexer_entries(source: str) -> tuple[list[str], list[str]]:
     return keywords, operator_texts
 
 
+def grammar_keyword_entries(grammar: str) -> set[str]:
+    production = re.search(
+        r"(?ms)^vitte_keyword_token\s*::=\s*(.*?);",
+        grammar,
+    )
+    if production is None:
+        raise ValueError("could not locate vitte_keyword_token production")
+    return set(re.findall(r'"([^"\\]+)"', production.group(1)))
+
+
+def grammar_syntax_terminals(grammar: str, grammar_keywords: set[str]) -> set[str]:
+    syntax = grammar.split("EOF ::=", 1)[0]
+    terminals = set(re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', syntax))
+    return terminals - grammar_keywords
+
+
+def tested_keyword_entries(source: str) -> set[tuple[str, str]]:
+    cases = re.search(
+        r"(?s)static const keyword_case_t keywords\[\] = \{(.*?)\n    \};",
+        source,
+    )
+    if cases is None:
+        raise ValueError("could not locate complete lexer keyword test table")
+    return set(
+        re.findall(
+            r'\{\s*"([^"\\]+)"\s*,\s*(VITTE_TOKEN_[A-Z0-9_]+)\s*\}',
+            cases.group(1),
+        )
+    )
+
+
+def tested_operator_spellings(source: str) -> set[str]:
+    function = re.search(
+        r"(?s)static void\s+test_maximal_munch_operators\(void\)\s*\{(.*?)\n\}",
+        source,
+    )
+    if function is None:
+        raise ValueError("could not locate maximal-munch lexer test")
+    initializer = re.search(
+        r'(?s)static const char source\[\]\s*=\s*((?:"(?:\\.|[^"\\])*"\s*)+);',
+        function.group(1),
+    )
+    if initializer is None:
+        raise ValueError("could not locate maximal-munch lexer input")
+    literals = re.findall(r'"(?:\\.|[^"\\])*"', initializer.group(1))
+    return set("".join(ast.literal_eval(literal) for literal in literals).split())
+
+
 def main() -> int:
     grammar = without_comments(GRAMMAR.read_text(encoding="utf-8"))
     native_lexer = NATIVE_LEXER.read_text(encoding="utf-8")
+    token_test = TOKEN_TEST.read_text(encoding="utf-8")
+    grammar_keywords = grammar_keyword_entries(grammar)
+    grammar_syntax_tokens = grammar_syntax_terminals(grammar, grammar_keywords)
+    tested_keywords = tested_keyword_entries(token_test)
+    tested_operators = tested_operator_spellings(token_test)
 
     terminals = set(re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', grammar))
     errors: list[str] = []
@@ -91,6 +146,38 @@ def main() -> int:
                     f"{token_kind} ({text})"
                 )
 
+        # src/bootstrap is the C compatibility frontend for the canonical
+        # grammar. src/src is an older lexer with a smaller vocabulary.
+        if label == "src/bootstrap":
+            missing_keywords = sorted(grammar_keywords - {text for text, _ in keywords})
+            errors.extend(
+                f"{label} lexer is missing canonical grammar keyword: {text}"
+                for text in missing_keywords
+            )
+            missing_operators = sorted(grammar_syntax_tokens - {text for text, _ in operators})
+            errors.extend(
+                f"{label} lexer is missing canonical grammar syntax token: {text}"
+                for text in missing_operators
+            )
+            tested_keyword_map = dict(tested_keywords)
+            lexer_keyword_map = dict(keywords)
+            errors.extend(
+                f"lexer token test is missing canonical keyword: {text}"
+                for text in sorted(grammar_keywords - set(tested_keyword_map))
+            )
+            errors.extend(
+                f"lexer token test expects the wrong kind for {text}: "
+                f"expected {lexer_keyword_map.get(text)}, got {kind}"
+                for text, kind in sorted(tested_keywords)
+                if text in lexer_keyword_map and lexer_keyword_map[text] != kind
+            )
+            errors.extend(
+                f"lexer token test is missing operator/delimiter: {text}"
+                for text in sorted(
+                    {text for text, _ in operators} - tested_operators
+                )
+            )
+
     native_keywords, native_operators = native_lexer_entries(native_lexer)
     for label, values in (
         ("keyword", native_keywords),
@@ -104,6 +191,15 @@ def main() -> int:
     all_keywords.update(native_keywords)
     all_operators.update(native_operators)
 
+    errors.extend(
+        f"native lexer is missing canonical grammar keyword: {text}"
+        for text in sorted(grammar_keywords - set(native_keywords))
+    )
+    errors.extend(
+        f"native lexer is missing canonical grammar syntax token: {text}"
+        for text in sorted(grammar_syntax_tokens - set(native_operators))
+    )
+
     if errors:
         print("[ebnf-sync] FAILED")
         for error in errors:
@@ -111,8 +207,10 @@ def main() -> int:
         return 1
 
     print(
-        f"[ebnf-sync] OK: {len(all_keywords)} keyword spellings, "
-        f"{len(all_operators)} operator spellings covered across 3 lexers; "
+        f"[ebnf-sync] OK: {len(grammar_keywords)} canonical keywords and "
+        f"{len(grammar_syntax_tokens)} syntax tokens are covered by native/bootstrap; "
+        f"all {len(grammar_keywords)} keyword-token mappings have lexer tests; "
+        f"{len(all_operators)} operator/delimiter spellings checked across 3 lexers; "
         "legacy C parser token references verified"
     )
     return 0

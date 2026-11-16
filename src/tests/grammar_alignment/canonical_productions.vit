@@ -1,0 +1,285 @@
+#![feature("canonical_grammar", mode, level = "all", 1, 1.0, true, false, null, 'v')]
+
+space grammar::canonical;
+space nested::module {
+    const NESTED_VALUE: i64 = 1;
+}
+space empty_module;
+
+use core/io as io;
+use core::collections::*;
+use core::diagnostic::{compiler::Context as Context, Error,};
+use core::diagnostic::{};
+
+export *;
+export grammar::canonical::Widget as PublicWidget;
+export {core::Result, core::Option as Maybe,};
+export proc exported_declaration() {}
+
+const DECIMAL: i64 = 1_000_000;
+const BINARY: i64 = 0b1010_0101;
+const OCTAL: i64 = 0o755;
+const HEX: i64 = 0xDEAD_BEEF;
+const DECIMAL_FLOAT: f64 = 1_2.3_4e-5;
+const DECIMAL_FLOAT_FRACTION: f64 = 3.14;
+const DECIMAL_FLOAT_EXPONENT: f64 = 1e2;
+const DECIMAL_FLOAT_UPPER_EXPONENT: f64 = 1E+3;
+const HEX_FLOAT: f64 = 0x1.fp+2;
+const HEX_FLOAT_INTEGER: f64 = 0x1p2;
+const HEX_FLOAT_EMPTY_FRACTION: f64 = 0x1.p2;
+const HEX_FLOAT_UPPER_MARKERS: f64 = 0X1.Ap-2;
+const STRING: string = "tab:\t quote:\" slash:\\ unicode: λ";
+const ALL_ESCAPES: string = "\\\'\"\0\a\b\f\n\r\t\v\x41\u03bb\U0001F600";
+const CHARACTER: char = '\u03bb';
+static mut COUNTER: i64 = 0;
+static IMMUTABLE_COUNTER: i64 = 1;
+const INFERRED_CONSTANT = 1;
+static mut INFERRED_COUNTER = 0;
+
+type Alias<T: Copy + Clone> where T: Copy + Clone = ?&mut T;
+type TypeBounds<T>: Copy + Clone = T;
+type MultiplePredicates<T, U> where T: Copy + Clone, U: Copy;
+type BareGeneric<T> = T;
+type EmptyContainer = Container<>;
+type EmptyBracketContainer = Container[];
+type RawPointer = *i64;
+type ConstPointer = *const i64;
+type Callback = proc(i64);
+type EmptyCallback = proc();
+const EMPTY_ARRAY: [i64] = [];
+type RelEq<T> where T == 1;
+type RelNe<T> where T != 1;
+type RelLt<T> where T < 1;
+type RelLe<T> where T <= 1;
+type RelGt<T> where T > 1;
+type RelGe<T> where T >= 1;
+opaque type Handle<T> where T: Copy = *const volatile T;
+opaque OpaqueHandle;
+
+form EmptyForm {}
+form Widget<T> where T: Copy {
+    value: T,
+    items: [T; 4];
+}
+
+pick Choice<T> where T: Copy {
+    Empty,
+    ExplicitEmpty(),
+    One(T),
+    Pair(T, ?T),
+    Triple(T, ?T,),
+}
+pick EmptyPick {}
+
+trait Convert<T> where T: Copy {
+    type Output: Copy;
+    const FLAG: bool = true;
+    proc convert<U: Copy>(value: U) -> T where U: Copy;
+}
+trait Marker { proc mark(); }
+
+impl<T> Convert<T> for Widget<T> where T: Copy {
+    type Output = T;
+    proc convert<U: Copy>(value: U) -> T where U: Copy {
+        return value;
+    }
+}
+impl i64 { proc inherent() {} }
+
+extern "C" proc write_bytes(pointer: *const u8, length: usize) -> isize;
+extern proc no_library();
+intrinsic unreachable();
+intrinsic intrinsic_value() -> i64;
+
+proc contracted(value: i64) -> i64
+    requires value > 0;
+    ensures value > 0;
+{
+    return value;
+}
+proc return_without_semicolon() { return 1 }
+
+macro identity(value: i64) {
+    return value;
+}
+macro marker {}
+proc no_generic_parameters<>() {}
+
+test "canonical grammar productions" {
+    assert(true);
+}
+test smoke {}
+test {}
+#[empty()]
+macro no_parameters() {}
+
+#[space::use::pub::const::static::type::opaque::form::pick::trait::impl::where::proc::extern::intrinsic::macro::comptime::test::let::mut::set::return::defer::requires::ensures::export::if::else::elif::while::loop::for::in::break::continue::match::as::async::await::unsafe::asm::move::ref::self::and::or::not::true::false::null::assert::sizeof::alignof::print::share::region::compiler::diagnostic::bench::entry::select::when::case::critical::owned::borrow::volatile::is::kernel::class::flags]
+pub async unsafe comptime proc exercise<T: Copy + Clone, const N: usize>(
+    mut mutable_value: i64,
+    move moved_value: i64,
+    owned owned_value: i64,
+    borrow borrowed_value: i64,
+    reference: &T,
+    mutable_reference: ref mut T,
+    mutable_pointer: *mut T,
+    const_pointer: *const volatile T,
+    slice: [T],
+    fixed_array: [T; N],
+    prefix_array: [4]T,
+    optional: ?T,
+    callback: proc(input: T, named: i64,) -> ?T,
+    nested: core::collections::Map<T, core::Option<T>,>,
+    bracketed: core::collections::Map[T, T,],
+) -> T where T: Copy + Clone, Choice<T>: Clone {
+    let uninitialized: i64;
+    let immutable: i64 = 7;
+    let mut inferred = 8;
+    let ref alias = borrowed_value;
+    let ref mut mutable_alias = borrowed_value;
+    let (left, right,) = pair_value;
+    let [first, second,] = [3, 4];
+    let 1..=9 = immutable;
+    let Choice::One(payload) = optional;
+    let Widget { value, items: mut values, .. } = nested;
+    let self.field = borrowed_value;
+    let assignment = mutable_value = 9;
+
+    set mutable_value = immutable;
+    set mutable_value += inferred;
+    set mutable_value -= inferred;
+    set mutable_value *= inferred;
+    set mutable_value /= inferred;
+    set mutable_value %= inferred;
+    set mutable_value &= inferred;
+    set mutable_value |= inferred;
+    set mutable_value ^= inferred;
+    set mutable_value <<= inferred;
+    set mutable_value >>= inferred;
+
+    defer { set mutable_value = 0; }
+    defer consume(moved_value);
+    assert(mutable_value != 0);
+
+    if ready { consume(left); }
+    elif alternate { consume(right); }
+    elif fallback { consume(first); }
+    else if final_case { consume(second); }
+    else { consume(inferred); }
+
+    while ready { set inferred += 1; }
+    loop { break; continue; }
+    for item in items { consume(item); }
+
+    match optional {
+        case Choice<T>::One(value) | Choice::Empty if ready => { consume(value); },
+        case Widget { value, items: _, .. } => consume(value),
+        case 1..=9 => consume(immutable),
+        case 1.0..=2.0 => consume(immutable),
+        case 'a'..='z' => consume(immutable),
+        case 'x' => consume(immutable),
+        case "text" => consume(immutable),
+        case true => consume(immutable),
+        case false => consume(immutable),
+        case null => consume(immutable),
+        else => consume(immutable),
+    }
+
+    unsafe { consume(mutable_pointer); }
+    asm("nop");
+    asm("mov", "r0",);
+    { consume(owned_value); }
+
+    consume(+mutable_value - -moved_value * 2 / 1 % 1);
+    consume(~mutable_value | moved_value ^ 1 & 2);
+    consume(mutable_value == moved_value != 0);
+    consume(mutable_value < moved_value <= 9 > 0 >= 0);
+    consume(mutable_value << 1 >> 1);
+    consume(mutable_value and ready or alternate && ready || fallback);
+    consume(mutable_value ?? moved_value ?? borrowed_value);
+    consume(&mutable_value);
+    consume(&mut mutable_value);
+    consume(*mutable_pointer);
+    consume(not ready);
+    consume(ref borrowed_value);
+    consume(move owned_value);
+    consume(await callback);
+    consume(mutable_value as i64 as usize);
+    consume(self);
+    consume(print);
+
+    let chained = callback(immutable, 2).field?[0](first);
+    let generic_variant = Choice<i64>::One(immutable);
+    let generic_form = Widget<i64> { value: immutable, items: [1, 2, 3, 4], };
+    let direct_form = Widget { value: immutable, };
+    let null_call = null(immutable,);
+    let output_size = sizeof(T);
+    let expression_size = sizeof(immutable);
+    let alignment = alignof(T);
+    let grouped = (immutable);
+    let array = [immutable, moved_value,];
+    let empty_array = [];
+    let empty_form = EmptyForm {};
+    let empty_call = null();
+    let conditional = if ready { immutable } elif alternate { moved_value } else { 0 };
+    let block_value = {
+        let mut inner = immutable;
+        set inner = inner + 1;
+        assert(ready);
+        defer consume(inner);
+        if ready { consume(inner); }
+        while alternate { continue; }
+        loop { break; }
+        for item in items { consume(item); }
+        consume(inner);
+        inner + moved_value
+    };
+    let empty_block = {};
+    let range = 1..=N;
+    let open_range = 1..N;
+
+    return conditional;
+}
+
+proc pattern_coverage(value: Choice<i64>) {
+    match value {
+        (first, second) => consume(first, second),
+        [first, second,] => consume(first, second),
+        mut mutable_name => consume(mutable_name),
+        ref reference_name => consume(reference_name),
+        self.member => consume(member),
+        core::Option::Some(inner) => consume(inner),
+        else => return;,
+    }
+    let return_block = { return; 1 };
+    return;
+}
+
+proc match_comma_omission(value: Choice<i64>) {
+    match value {
+        case Choice<i64>::One(item) => consume(item)
+        case Choice::Empty => consume(0)
+        else => return;,
+    }
+}
+
+proc match_without_arms(value: i64) {
+    match value {}
+}
+
+proc match_form_subject(value: i64) {
+    match (Widget<i64> { value: value, items: [1, 2, 3, 4] }) {
+        else => consume(value),
+    }
+}
+
+proc expression_tail() {
+    trailing_expression
+}
+
+proc else_if_expression() {
+    let result = if ready { 1 } else if alternate { 2 } else { 3 };
+    return result;
+}
+
+const Δelta_2: i64 = 1;
+const café: string = "unicode identifier";

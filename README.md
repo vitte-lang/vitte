@@ -135,18 +135,55 @@ Bootstrap seed checks passed.
 
 ### Stages 0 à 3 du gate self-host
 
-Le gate part du `build/bin/vitte` construit ci-dessus comme stage 0. Le stage 0
-génère le C de l’API du stage 1 ; le stage 1 régénère cette API pour le stage 2,
-puis le stage 2 la régénère pour le stage 3. Chaque stage est construit dans
-son propre sous-dossier de `build/selfhost/` et passe les corpus de grammaire,
-frontend natif et parité.
+Le cycle part du seed C17, qui compile l’API Vitte pour produire le frontend
+natif `build/bin/vitte` (stage 0). Chaque compilateur natif suivant régénère le
+C de cette même API ; le compilateur C de l’hôte lie ce C dans un nouvel
+exécutable isolé :
+
+```text
+sources C17 ──> vitte-bootstrap ──> API C ──> vitte (stage 0)
+vitte       ──> stage1-api.c   ──> C17 ──> stage 1
+stage 1     ──> stage2-api.c   ──> C17 ──> stage 2
+stage 2     ──> stage3-api.c   ──> C17 ──> stage 3
+stage 3     ──> Bootstrap Validation ──> Self-Hosting Ready
+```
+
+Les noms de fichiers et exécutables permettent d’identifier l’outil qui a
+produit chaque artefact :
+
+| Étape / compilateur | C généré | Binaire produit |
+| --- | --- | --- |
+| Sources C17 du seed | — | `build/bin/vitte-bootstrap` |
+| Seed `vitte-bootstrap` | `build/native-frontend/api-implementation.c` | `build/bin/vitte` (stage 0) |
+| Stage 0 (`build/bin/vitte`) | `build/selfhost/stage1-api.c` | `build/selfhost/stage1-build/bin/vitte` |
+| Stage 1 | `build/selfhost/stage2-api.c` | `build/selfhost/stage2-build/bin/vitte` |
+| Stage 2 | `build/selfhost/stage3-api.c` | `build/selfhost/stage3-build/bin/vitte` |
+
+Une première construction complète peut se lancer directement avec :
 
 ```sh
 make MODE=release bootstrap-selfhost
 ```
 
-Le gate compare les sorties C des compilateurs successifs. Les messages de
-réussite attendus incluent :
+Cette cible construit automatiquement le seed et le frontend natif si besoin,
+puis exécute les stages 0 à 3. Pour suivre ou reprendre le cycle par étape,
+utilisez les cibles suivantes avec le même `MODE` :
+
+```sh
+make MODE=release bootstrap
+make MODE=release
+make MODE=release bootstrap-stage1
+make MODE=release bootstrap-stage2
+make MODE=release bootstrap-stage3
+```
+
+Le stage 0 vérifie le seed et le frontend natif avec les tests de grammaire,
+le sous-ensemble du frontend et la parité seed/native. Chaque stage natif
+repasse ces vérifications avant d’être marqué comme validé. Les comparaisons
+`cmp` exigent que `stage1-api.c` et `stage2-api.c`, puis `stage2-api.c` et
+`stage3-api.c`, soient identiques octet par octet. La validation finale
+confirme ainsi que le compilateur reconstruit fonctionne jusqu’au stage 3. Les
+messages de réussite attendus incluent :
 
 ```text
 [SELFHOST] stage0 and stage1 API output match
@@ -257,10 +294,12 @@ les autres compilateurs, sources C, marques de validation et journaux.
 ### Gate CI avant publication
 
 La CI appelle le workflow self-host réutilisable sur Linux, macOS et Windows.
-Les vérifications d’installation des paquets attendent la réussite de ce gate,
-et le job agrégé `Release readiness` échoue si les tests compilateur, self-host
-paquets ou portabilité POSIX échouent ou sont ignorés. Les preuves self-host
-sont publiées comme artefacts Actions par système.
+Dans chaque lane, `make MODE=release bootstrap-check` valide d’abord le seed C17 ;
+le workflow exécute ensuite les tests de parité et le gate complet des stages 0
+à 3. Les paquets natifs attendent la réussite du self-host, et le job agrégé
+`Release readiness` échoue si les tests compilateur, self-host, paquets ou
+portabilité POSIX échouent ou sont ignorés. Les preuves self-host sont publiées
+comme artefacts Actions par système.
 
 #### Machines virtuelles BSD, Solaris et illumos
 
@@ -335,18 +374,27 @@ extension/DAP et le gate agrégé `Release readiness`. Le statut s’applique au
 commit `f460997` et à ce run CI ; il ne constitue pas à lui seul une déclaration
 d’autonomie complète du compilateur.
 
-L’audit des symboles du binaire principal, effectué sur le build release ARM64
-macOS, a identifié une dépendance résiduelle : l’objet filesystem de
-`src/bootstrap` ajoute 27 symboles C publics au lien. Le frontend généré depuis
-Vitte en appelle directement 8 : `stat`,
-`create_directories`, `current_directory`, `list_directory`, les opérations de
-suppression et de renommage, et la libération des listes. Les 19 autres symboles
-de cet objet ne sont pas référencés par le frontend, mais restent inclus parce
-que l’objet est lié directement. Le nouveau gate `compiler-binary-ownership`
-vérifie cet inventaire et bloque toute nouvelle dépendance ou modification
-inattendue ; les tests runtime et filesystem couvrent les chemins actifs. Le
-portage Vitte de ces huit fonctions puis le retrait de l’objet C restent
-nécessaires avant de qualifier le binaire d’autonome.
+Le dépôt contient une seule unité C++ :
+`editors/tree-sitter/bindings/node/binding.cc`, liée à la liaison Node de
+Tree-sitter pour l’éditeur, hors du binaire du compilateur. Les sources C
+restantes du lien natif assurent le seed bootstrap, le système de fichiers
+et les frontières OS/processus/stdio.
+
+L’audit des symboles du binaire principal a identifié l’objet filesystem C de
+`src/bootstrap` comme dépendance résiduelle. La politique de création récursive
+des répertoires utilisée par le frontend natif est implémentée dans
+`src/compiler/filesystem/filesystem.vitte`. L’entrée C historique reste disponible
+pour le bootstrap et la compatibilité ABI ; la frontière native conserve l’appel
+système de création d’un répertoire et l’information sur le séparateur de
+plateforme. Le frontend utilise toujours sept opérations filesystem C pour les
+métadonnées, le répertoire courant, le listing,
+la suppression, le renommage et la libération des listes. Le module exporte
+27 symboles : 20 autres ne sont pas référencés par le frontend, mais restent
+inclus parce que l’objet est lié directement. Le gate
+`compiler-binary-ownership` vérifie cet inventaire et les imports actifs, y
+compris les deux dépendances de frontière filesystem. Le portage des opérations
+filesystem restantes et le retrait de l’objet C sont nécessaires avant de
+qualifier le binaire d’autonome.
 
 La branche `main` exige le statut `Release readiness`, avec les vérifications à
 jour et sans contournement administrateur. Les règles de protection GitHub sont

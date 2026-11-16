@@ -24,6 +24,8 @@
 
 space compiler::api::error;
 
+use vitte::core::memory::{deallocate as error_deallocate};
+
 
 /// =========================================================================
 /// Configuration
@@ -113,6 +115,12 @@ proc string_is_empty(
     return text.length == 0;
 }
 
+/// `string.from` is a borrowed conversion in the native frontend. Use an
+/// explicit slice when an Error field must own storage that can be released.
+proc error_owned_string(text: str) -> string {
+    return string.from_slice(text, 0, text.length);
+}
+
 proc bounded_length(
     text: ?str,
     maximum: usize
@@ -133,7 +141,7 @@ proc bounded_string(
     maximum: usize
 ) -> string {
     if text.length <= maximum {
-        return string.from(text);
+        return error_owned_string(text);
     }
 
     return string.from_slice(
@@ -301,10 +309,10 @@ proc normalize_code(
     code: ?str
 ) -> string {
     if not string_is_empty(code) {
-        return string.from(code);
+        return error_owned_string(code?);
     }
 
-    return string.from(
+    return error_owned_string(
         status_name(status)
     );
 }
@@ -314,10 +322,10 @@ proc normalize_message(
     message: ?str
 ) -> string {
     if not string_is_empty(message) {
-        return string.from(message);
+        return error_owned_string(message?);
     }
 
-    return string.from(
+    return error_owned_string(
         status_message(status)
     );
 }
@@ -351,12 +359,12 @@ export proc error_ok() -> Error {
         status: Status.Ok,
 
         code:
-            string.from(
+            error_owned_string(
                 ERROR_CODE_OK
             ),
 
         message:
-            string.from(
+            error_owned_string(
                 ERROR_MESSAGE_OK
             ),
 
@@ -371,17 +379,32 @@ proc initialize_ok_raw(
         Status.Ok;
 
     set error.code =
-        string.from(
+        error_owned_string(
             ERROR_CODE_OK
         );
 
     set error.message =
-        string.from(
+        error_owned_string(
             ERROR_MESSAGE_OK
         );
 
     set error.details =
         null;
+}
+
+proc release_owned_raw(error: &mut Error) {
+    if error.code.length != 0 {
+        error_deallocate(error.code.as_ptr() as *mut u8);
+    }
+    if error.message.length != 0 {
+        error_deallocate(error.message.as_ptr() as *mut u8);
+    }
+    if error.details != null {
+        error_deallocate(error.details?.as_ptr() as *mut u8);
+    }
+    set error.code = "";
+    set error.message = "";
+    set error.details = null;
 }
 
 
@@ -444,6 +467,7 @@ proc error_copy_raw(
     source: ?&Error
 ) {
     if source == null {
+        release_owned_raw(destination);
         initialize_ok_raw(
             destination
         );
@@ -474,6 +498,8 @@ proc error_copy_raw(
         normalize_details(
             source.details
         );
+
+    release_owned_raw(destination);
 
     set destination.status =
         status;
@@ -527,9 +553,18 @@ export proc error_init(
 export proc error_reset(
     error: &mut Error
 ) {
+    release_owned_raw(error);
     initialize_ok_raw(
         error
     );
+}
+
+export proc error_destroy(error: &mut Error) {
+    release_owned_raw(error);
+    set error.status = Status.Ok;
+    set error.code = "";
+    set error.message = "";
+    set error.details = null;
 }
 
 
@@ -595,6 +630,8 @@ export proc error_set_details(
             details
         );
 
+    release_owned_raw(error);
+
     set error.status =
         status;
 
@@ -643,7 +680,7 @@ export proc error_set_last(
     initialize_tls();
 
     if error == null {
-        initialize_ok_raw(
+        error_reset(
             &mut last_error_value
         );
 
@@ -669,7 +706,7 @@ export proc error_last() -> &Error {
 export proc error_clear_last() {
     initialize_tls();
 
-    initialize_ok_raw(
+    error_reset(
         &mut last_error_value
     );
 }
@@ -843,7 +880,7 @@ export proc error_invalid_argument(
             Status.ErrorInvalidArgument,
 
         code:
-            "VITTE_ERROR_INVALID_ARGUMENT",
+            error_owned_string("VITTE_ERROR_INVALID_ARGUMENT"),
 
         message:
             normalize_message(
@@ -863,7 +900,7 @@ export proc error_invalid_state(
             Status.ErrorInvalidState,
 
         code:
-            "VITTE_ERROR_INVALID_STATE",
+            error_owned_string("VITTE_ERROR_INVALID_STATE"),
 
         message:
             normalize_message(
@@ -881,10 +918,10 @@ export proc error_out_of_memory() -> Error {
             Status.ErrorOutOfMemory,
 
         code:
-            "VITTE_ERROR_OUT_OF_MEMORY",
+            error_owned_string("VITTE_ERROR_OUT_OF_MEMORY"),
 
         message:
-            "out of memory",
+            error_owned_string("out of memory"),
 
         details: null,
     };
@@ -899,7 +936,7 @@ export proc error_io(
             Status.ErrorIo,
 
         code:
-            "VITTE_ERROR_IO",
+            error_owned_string("VITTE_ERROR_IO"),
 
         message:
             normalize_message(
@@ -922,7 +959,7 @@ export proc error_parse(
             Status.ErrorParse,
 
         code:
-            "VITTE_ERROR_PARSE",
+            error_owned_string("VITTE_ERROR_PARSE"),
 
         message:
             normalize_message(
@@ -942,7 +979,7 @@ export proc error_unsupported(
             Status.ErrorUnsupported,
 
         code:
-            "VITTE_ERROR_UNSUPPORTED",
+            error_owned_string("VITTE_ERROR_UNSUPPORTED"),
 
         message:
             normalize_message(
@@ -962,7 +999,7 @@ export proc error_backend(
             Status.ErrorBackend,
 
         code:
-            "VITTE_ERROR_BACKEND",
+            error_owned_string("VITTE_ERROR_BACKEND"),
 
         message:
             normalize_message(
@@ -982,7 +1019,7 @@ export proc error_internal(
             Status.ErrorInternal,
 
         code:
-            "VITTE_ERROR_INTERNAL",
+            error_owned_string("VITTE_ERROR_INTERNAL"),
 
         message:
             normalize_message(

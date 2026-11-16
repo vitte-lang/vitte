@@ -46,19 +46,9 @@
  *   - never reads beyond the supplied input length.
  *
  * Identifier policy:
- *   - '_' is explicitly accepted;
- *   - ASCII letters are accepted as identifier starts;
- *   - Unicode script ranges are accepted;
- *   - decimal digits are continuation characters;
- *   - combining marks are continuation characters;
- *   - U+200C/U+200D are continuation characters;
- *   - selected connector punctuation is accepted in continuation.
- *
- * NOTE:
- *   The current identifier implementation is a deterministic compiler policy
- *   and is not yet a generated, Unicode-version-pinned UAX #31 XID_Start /
- *   XID_Continue database. A future generated Unicode table may replace the
- *   classification implementation without changing this public API.
+ *   - Unicode 16.0.0 XID_Start and XID_Continue properties;
+ *   - '_' is included in the language's identifier-start policy;
+ *   - source spelling is compared as UTF-8 bytes without normalization.
  *
  * Display-width policy:
  *   - invalid scalar: -1;
@@ -99,11 +89,9 @@ extern "C" {
 /* ========================================================================= */
 
 /*
- * Classification tables are currently implemented as deterministic explicit
- * ranges rather than a generated complete Unicode Character Database.
- *
- * These values therefore describe the subsystem API's Unicode ceiling rather
- * than claiming complete UCD coverage for every property.
+ * Identifier classification uses the generated, version-pinned XID tables.
+ * Other helpers use explicit deterministic ranges and do not claim complete
+ * Unicode Character Database coverage for every property.
  */
 #define VITTE_UNICODE_MAX_CODEPOINT \
     UINT32_C(0x10ffff)
@@ -596,7 +584,7 @@ vitte_unicode_is_decimal_digit(
 /* ========================================================================= */
 
 /*
- * Vitte identifier-start policy.
+ * Unicode 16.0.0 XID_Start with Vitte's underscore rule.
  *
  * Examples accepted:
  *
@@ -614,12 +602,15 @@ vitte_unicode_is_identifier_start(
 /*
  * Vitte identifier-continue policy.
  *
- * In addition to identifier-start characters, this accepts decimal digits,
- * combining marks and selected joiner/connector characters.
+ * Unicode 16.0.0 XID_Continue, including the start characters.
  */
 bool
 vitte_unicode_is_identifier_continue(
     uint32_t codepoint);
+
+/* Unicode data version used by the identifier predicates. */
+const char *
+vitte_unicode_data_version(void);
 
 /*
  * Validate one complete UTF-8 Vitte identifier.

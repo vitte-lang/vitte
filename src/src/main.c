@@ -3025,6 +3025,7 @@ vitte_main_render_lexer_diagnostic(
     vitte_parser_span_t source_span;
     const vitte_parser_span_t *source_span_pointer;
     const char *code;
+    const char *details;
 
     if (context == NULL ||
         !context->lexer_initialized) {
@@ -3032,30 +3033,47 @@ vitte_main_render_lexer_diagnostic(
     }
 
     error = vitte_lexer_last_error(&context->lexer);
+    details = NULL;
     switch (error) {
         case VITTE_LEXER_ERROR_INVALID_UTF8:
             code = "VITTE_LEXER_E_INVALID_UNICODE";
+            details = "source contains a malformed UTF-8 sequence";
+            break;
+
+        case VITTE_LEXER_ERROR_INVALID_IDENTIFIER:
+            code = "VITTE_LEXER_E_INVALID_IDENTIFIER";
+            details = "this character is not permitted at the start of an identifier";
             break;
 
         case VITTE_LEXER_ERROR_INVALID_NUMBER:
             code = "VITTE_LEXER_E_INVALID_NUMBER";
+            details = "check the digits, base prefix, and separators in this literal";
             break;
 
         case VITTE_LEXER_ERROR_INVALID_ESCAPE:
             code = "VITTE_LEXER_E_INVALID_ESCAPE";
+            details = "the escape is not supported in this literal";
             break;
 
         case VITTE_LEXER_ERROR_UNTERMINATED_STRING:
             code = "VITTE_LEXER_E_UNTERMINATED_STRING";
+            details = "string literal is missing its closing quote";
             break;
 
         case VITTE_LEXER_ERROR_UNTERMINATED_COMMENT:
             code = "VITTE_LEXER_E_UNTERMINATED_COMMENT";
+            details = "block comment is missing its matching `*/` terminator";
             break;
 
         case VITTE_LEXER_ERROR_INVALID_CHARACTER:
         case VITTE_LEXER_ERROR_INVALID_TOKEN:
             code = "VITTE_LEXER_E_INVALID_CHARACTER";
+            details = "remove this character or place it inside a quoted literal";
+            break;
+
+        case VITTE_LEXER_ERROR_NUMBER_OVERFLOW:
+            code = "VITTE_LEXER_E_NUMBER_OVERFLOW";
+            details = "integer literal exceeds the supported 64-bit range";
             break;
 
         case VITTE_LEXER_ERROR_COMMENT_DEPTH:
@@ -3100,7 +3118,7 @@ vitte_main_render_lexer_diagnostic(
         VITTE_CLI_DIAGNOSTIC_ERROR,
         code,
         NULL,
-        NULL,
+        details,
         source_span_pointer,
         NULL,
         "lexing");

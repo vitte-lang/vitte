@@ -44,6 +44,7 @@ use compiler::api::error::{
     Status,
     error_clear_last,
     error_copy,
+    error_destroy,
     error_ok,
     error_init,
     error_is_set,
@@ -74,6 +75,7 @@ use compiler::diagnostic::diagnostic::{
     diagnostic_default,
     diagnostic_error_count,
     diagnostic_format_one,
+    diagnostic_add_help,
     diagnostic_warning_count
 };
 use compiler::diagnostic::cli_bridge::{
@@ -84,6 +86,9 @@ use compiler::diagnostic::cli_bridge::{
 };
 use compiler::diagnostic::registry::{
     vitte_diagnostic_registry_find_internal
+};
+use compiler::diagnostic::help::{
+    diagnostic_help_for_code
 };
 use compiler::filesystem::filesystem::{
     vitte_filesystem_is_file,
@@ -126,7 +131,7 @@ use compiler::parser::parser::{
     vitte_parser_node_count,
     vitte_parser_run
 };
-use vitte::core::memory::{cstring_length};
+use vitte::core::memory::{cstring_length, deallocate as api_deallocate};
 use vitte::core::pointer::{add_bytes};
 
 /// =========================================================================
@@ -161,6 +166,7 @@ extern proc vitte_native_write_stdout(data: *const char, length: usize);
 extern proc vitte_native_write_stderr(data: *const char, length: usize);
 extern proc vitte_native_write_stdout_bytes(data: *const u8, length: usize);
 extern proc vitte_native_write_stderr_bytes(data: *const u8, length: usize);
+extern proc vitte_native_render_cli_diagnostics(source_name: *const char, source: *const char, source_length: usize, source_id: u64, diagnostics: *const u8, diagnostic_count: usize, color: bool, format: u32) -> bool;
 extern proc vitte_native_write_file(path: string, data: *const u8, length: usize) -> i32;
 
 
@@ -365,12 +371,8 @@ proc set_last_error(
     message: str
 ) {
     let mut error: Error = error_ok();
-    set error.status = status;
-    set error.code = code;
-    set error.message = message;
-    set error.details = "";
-
-    error_set_last(&error);
+    error_set(&mut error, status, code, message);
+    error_destroy(&mut error);
 }
 
 
@@ -544,8 +546,8 @@ proc api_module_normalize_path(path: str) -> ?string {
 
 proc api_module_try_root(root: str, relative: str) -> ?string {
     let root_bytes = root.as_bytes();
-    let mut base = relative;
     let mut root_end: usize = root_bytes.len();
+    let mut relative_start: usize = 0;
     while root_end > 0 and
           (root_bytes[root_end - 1] == 47 or root_bytes[root_end - 1] == 92) {
         set root_end -= 1;
@@ -562,7 +564,10 @@ proc api_module_try_root(root: str, relative: str) -> ?string {
           root_bytes[source_component_start - 1] != 92 {
         set source_component_start -= 1;
     }
-    if root.slice(source_component_start, root_end) == "src" and
+    if root_end - source_component_start == 3 and
+       root_bytes[source_component_start] == 115 and
+       root_bytes[source_component_start + 1] == 114 and
+       root_bytes[source_component_start + 2] == 99 and
        source_component_start > 0 {
         let mut package_end: usize = source_component_start - 1;
         let mut package_start = package_end;
@@ -570,55 +575,112 @@ proc api_module_try_root(root: str, relative: str) -> ?string {
               root_bytes[package_start - 1] != 92 {
             set package_start -= 1;
         }
-        let package_name: str = root.slice(package_start, package_end);
-        let package_prefix: str = package_name + "/";
-        if package_name.len() != 0 and relative.len() > package_prefix.len() and
-           relative.slice(0, package_prefix.len()) == package_prefix {
-            set base = relative.slice(package_prefix.len(), relative.len());
+        let package_length: usize = package_end - package_start;
+        let relative_bytes = relative.as_bytes();
+        if package_length != 0 and relative_bytes.len() > package_length and
+           relative_bytes[package_length] == 47 {
+            let mut matches_package = true;
+            let mut package_index: usize = 0;
+            while package_index < package_length {
+                if relative_bytes[package_index] != root_bytes[package_start + package_index] {
+                    set matches_package = false;
+                    break;
+                }
+                set package_index += 1;
+            }
+            if matches_package {
+                set relative_start = package_length + 1;
+            }
         }
     }
 
+    let mut base_buffer: ApiBuffer = ApiBuffer { data: [], length: 0, capacity: 0 };
+    buffer_init(&mut base_buffer);
     if root.len() != 0 and root != "." {
-        if root_bytes[root_bytes.len() - 1] == 47 or
-           root_bytes[root_bytes.len() - 1] == 92 {
-            set base = root + base;
-        } else {
-            set base = root + "/" + base;
+        if not buffer_append_range(&mut base_buffer, root, 0, root.len()) {
+            buffer_destroy(&mut base_buffer);
+            return null;
+        }
+        if root_bytes[root_bytes.len() - 1] != 47 and
+           root_bytes[root_bytes.len() - 1] != 92 and
+           not buffer_append_byte(&mut base_buffer, 47) {
+            buffer_destroy(&mut base_buffer);
+            return null;
         }
     }
+    if relative_start < relative.len() and
+       not buffer_append_range(&mut base_buffer, relative, relative_start, relative.len()) {
+        buffer_destroy(&mut base_buffer);
+        return null;
+    }
+    if base_buffer.length == 0 {
+        buffer_destroy(&mut base_buffer);
+        return null;
+    }
+    let base_text = vitte_native_api_bytes_to_string(
+        base_buffer.data.as_ptr() as *mut u8,
+        base_buffer.length
+    );
+    buffer_destroy(&mut base_buffer);
+    if base_text == null { return null; }
+    let base: string = base_text?;
 
     let candidate_a = base + ".vitte";
     if vitte_filesystem_is_file(candidate_a) {
-        return api_module_normalize_path(candidate_a);
+        let normalized = api_module_normalize_path(candidate_a);
+        vitte_native_api_deallocate(candidate_a.as_ptr() as *mut u8);
+        vitte_native_api_deallocate(base.as_ptr() as *mut u8);
+        return normalized;
     }
+    vitte_native_api_deallocate(candidate_a.as_ptr() as *mut u8);
     let candidate_b = base + ".vit";
     if vitte_filesystem_is_file(candidate_b) {
-        return api_module_normalize_path(candidate_b);
+        let normalized = api_module_normalize_path(candidate_b);
+        vitte_native_api_deallocate(candidate_b.as_ptr() as *mut u8);
+        vitte_native_api_deallocate(base.as_ptr() as *mut u8);
+        return normalized;
     }
+    vitte_native_api_deallocate(candidate_b.as_ptr() as *mut u8);
     let candidate_c = base + "/mod.vitte";
     if vitte_filesystem_is_file(candidate_c) {
-        return api_module_normalize_path(candidate_c);
+        let normalized = api_module_normalize_path(candidate_c);
+        vitte_native_api_deallocate(candidate_c.as_ptr() as *mut u8);
+        vitte_native_api_deallocate(base.as_ptr() as *mut u8);
+        return normalized;
     }
+    vitte_native_api_deallocate(candidate_c.as_ptr() as *mut u8);
     let candidate_d = base + "/mod.vit";
     if vitte_filesystem_is_file(candidate_d) {
-        return api_module_normalize_path(candidate_d);
+        let normalized = api_module_normalize_path(candidate_d);
+        vitte_native_api_deallocate(candidate_d.as_ptr() as *mut u8);
+        vitte_native_api_deallocate(base.as_ptr() as *mut u8);
+        return normalized;
     }
+    vitte_native_api_deallocate(candidate_d.as_ptr() as *mut u8);
+    vitte_native_api_deallocate(base.as_ptr() as *mut u8);
     return null;
 }
 
 proc api_module_import_path(name: str) -> string {
     let bytes = name.as_bytes();
-    let mut path: string = "";
+    let output: *mut u8 = vitte_native_api_allocate(bytes.len() + 1);
+    if output == null { return ""; }
     let mut index: usize = 0;
+    let mut length: usize = 0;
     while index < bytes.len() {
         if index + 1 < bytes.len() and bytes[index] == 58 and bytes[index + 1] == 58 {
-            set path += "/";
+            set output[length] = 47;
+            set length += 1;
             set index += 2;
         } else {
-            set path += string.from_byte(bytes[index]);
+            set output[length] = bytes[index];
+            set length += 1;
             set index += 1;
         }
     }
+    set output[length] = 0;
+    let path: string = string.from_bytes(output, length);
+    vitte_native_api_deallocate(output);
     return path;
 }
 
@@ -640,8 +702,13 @@ proc api_module_directory(path: str) -> string {
 
 proc api_module_resolve_path(importer: str, name: str) -> ?string {
     let relative = api_module_import_path(name);
-    let local = api_module_try_root(api_module_directory(importer), relative);
+    let importer_directory = api_module_directory(importer);
+    let local = api_module_try_root(importer_directory, relative);
+    if importer_directory != "." {
+        vitte_native_api_deallocate(importer_directory.as_ptr() as *mut u8);
+    }
     if local != null {
+        vitte_native_api_deallocate(relative.as_ptr() as *mut u8);
         return local?;
     }
 
@@ -661,7 +728,9 @@ proc api_module_resolve_path(importer: str, name: str) -> ?string {
                 if index > root_start {
                     let root: str = roots.slice(root_start, index);
                     let candidate = api_module_try_root(root, relative);
+                    vitte_native_api_deallocate(root.as_ptr() as *mut u8);
                     if candidate != null {
+                        vitte_native_api_deallocate(relative.as_ptr() as *mut u8);
                         return candidate?;
                     }
                 }
@@ -676,10 +745,12 @@ proc api_module_resolve_path(importer: str, name: str) -> ?string {
     while root_index < fallback_roots.len() {
         let candidate = api_module_try_root(fallback_roots[root_index], relative);
         if candidate != null {
+            vitte_native_api_deallocate(relative.as_ptr() as *mut u8);
             return candidate?;
         }
         set root_index += 1;
     }
+    vitte_native_api_deallocate(relative.as_ptr() as *mut u8);
     return null;
 }
 
@@ -973,22 +1044,32 @@ proc api_module_expand_source(
         }
         let import_name = api_module_use_name(source, offset, line_end);
         if import_name != null {
+            let import_name_value = import_name?;
             let mut directive_end = offset;
             while directive_end < bytes.len() and bytes[directive_end] != 59 {
                 set directive_end += 1;
             }
             if directive_end == bytes.len() {
+                vitte_native_api_deallocate(import_name_value.as_ptr() as *mut u8);
                 vitte_native_api_deallocate(source.as_ptr() as *mut u8);
                 return false;
             }
-            let imported_path = api_module_resolve_path(path, import_name?);
-            if imported_path == null or not api_module_expand_source(
+            let imported_path = api_module_resolve_path(path, import_name_value);
+            if imported_path == null {
+                vitte_native_api_deallocate(import_name_value.as_ptr() as *mut u8);
+                vitte_native_api_deallocate(source.as_ptr() as *mut u8);
+                return false;
+            }
+            let imported_path_value = imported_path?;
+            let imported = api_module_expand_source(
                 api,
                 expansion,
-                imported_path?,
-                import_name,
+                imported_path_value,
+                import_name_value,
                 depth + 1
-            ) {
+            );
+            vitte_native_api_deallocate(import_name_value.as_ptr() as *mut u8);
+            if not imported {
                 vitte_native_api_deallocate(source.as_ptr() as *mut u8);
                 return false;
             }
@@ -1022,6 +1103,8 @@ proc api_module_expand_source(
             }
             let import_name = api_module_use_name(source, offset, line_end);
             if import_name != null {
+                let import_name_value = import_name?;
+                vitte_native_api_deallocate(import_name_value.as_ptr() as *mut u8);
                 let mut directive_end = offset;
                 while directive_end < bytes.len() and bytes[directive_end] != 59 {
                     set directive_end += 1;
@@ -1687,8 +1770,14 @@ proc capture_diagnostics(
             let rendered_bytes: [u8] = rendered.bytes();
             if not buffer_append(&mut buffer, rendered_bytes, rendered_bytes.length) or
                not buffer_append_byte(&mut buffer, '\n' as u8) {
+                if rendered.length != 0 {
+                    api_deallocate(rendered.as_ptr() as *mut u8);
+                }
                 buffer_destroy(&mut buffer);
                 return api_out_of_memory(api);
+            }
+            if rendered.length != 0 {
+                api_deallocate(rendered.as_ptr() as *mut u8);
             }
         }
 
@@ -1720,6 +1809,7 @@ proc append_pipeline_diagnostic(
     code: string,
     message: string,
     details: string,
+    help: string,
     origin: DiagnosticOrigin
 ) {
     let bag: ?&mut DiagnosticBag = context_diagnostics_mut(&mut api.context);
@@ -1729,13 +1819,14 @@ proc append_pipeline_diagnostic(
     let bag_value = bag?;
 
     let mut item: Diagnostic = diagnostic_default();
-    set item.severity = DiagnosticSeverity.Error;
+    set item.severity = if code == "VITTE_IR_E_VERIFY" { DiagnosticSeverity.Fatal } else { DiagnosticSeverity.Error };
     set item.origin = origin;
     set item.code = code;
     set item.message = message;
     set item.details = details;
     set item.source_name = source_name;
     set item.is_primary = true;
+    if help.length != 0 { let _ = diagnostic_add_help(&mut item, help, null); }
 
     diagnostic_add(bag_value, item);
 }
@@ -1828,6 +1919,19 @@ proc api_render_pipeline_diagnostics_json(
         );
         let registry_entry = vitte_diagnostic_registry_find_internal(internal_code);
         let public_code = if registry_entry != null { (*registry_entry).public_code } else { "E0000" };
+        let mut help_text: string = "";
+        if (*diagnostic_entry).help != null {
+            let help_length = cstring_length((*diagnostic_entry).help as *const u8);
+            if help_length != 0 {
+                set help_text = string.from_bytes(
+                    (*diagnostic_entry).help as *const u8,
+                    help_length
+                );
+            }
+        }
+        if help_text.length == 0 {
+            set help_text = diagnostic_help_for_code(public_code);
+        }
         let severity = vitte_cli_diagnostic_severity_name((*diagnostic_entry).severity);
         if not api_module_append_text(&mut buffer, "{\"code\":\"") or
            not api_module_append_text(&mut buffer, public_code) or
@@ -1844,10 +1948,9 @@ proc api_render_pipeline_diagnostics_json(
             buffer_destroy(&mut buffer);
             return false;
         }
-        if (*diagnostic_entry).help != null and
-           cstring_length((*diagnostic_entry).help as *const u8) != 0 {
+        if help_text.length != 0 {
             if not api_module_append_text(&mut buffer, ",\"help\":") or
-               not api_append_json_cstring(&mut buffer, (*diagnostic_entry).help) {
+               not api_append_json_cstring(&mut buffer, help_text.as_ptr() as *const char) {
                 buffer_destroy(&mut buffer);
                 return false;
             }
@@ -1904,12 +2007,15 @@ proc api_render_pipeline_diagnostics_json(
     return true;
 }
 
-proc api_replace_pipeline_diagnostics_with_json(
+proc api_replace_pipeline_diagnostics_with_format(
+    api: *mut Api,
     result: &mut ApiResult,
     action: u32,
     source_name: string,
     source: str,
-    source_id: u64
+    source_id: u64,
+    diagnostic_format: u32,
+    diagnostic_color: bool
 ) {
     let mut generated_source: *mut u8 = null;
     let mut generated_source_length: usize = 0;
@@ -1928,7 +2034,28 @@ proc api_replace_pipeline_diagnostics_with_json(
         &mut diagnostic_count
     );
     if status == 3 and diagnostic_count != 0 {
-        let _ = api_render_pipeline_diagnostics_json(result, diagnostics, diagnostic_count);
+        let mut rendered = false;
+        if diagnostic_format != 3 and api != null {
+            set rendered = vitte_native_render_cli_diagnostics(
+                source_name.as_ptr() as *const char,
+                source.as_ptr() as *const char,
+                source.length,
+                source_id,
+                diagnostics as *const u8,
+                diagnostic_count,
+                diagnostic_color,
+                if diagnostic_format == 4 { 2 as u32 } else if diagnostic_format == 5 { 3 as u32 } else { 0 as u32 }
+            );
+        }
+        if rendered {
+            if result.diagnostics.capacity != 0 {
+                vitte_native_api_deallocate(result.diagnostics.as_ptr() as *mut u8);
+            }
+            set result.diagnostics = [];
+            set result.diagnostics_size = 0;
+        } else {
+            let _ = api_render_pipeline_diagnostics_json(result, diagnostics, diagnostic_count);
+        }
     }
     if generated_source != null { vitte_native_frontend_release_output(generated_source); }
     if diagnostics != null { vitte_cli_diagnostic_transport_destroy(diagnostics); }
@@ -1945,6 +2072,8 @@ proc compile_internal(
     source: ?str,
     source_length: usize,
     action: u32,
+    diagnostic_format: u32,
+    diagnostic_color: bool,
     out_result: &mut ApiResult
 ) -> Status {
     if not api_context_is_valid(api) {
@@ -2073,10 +2202,12 @@ proc compile_internal(
                 }
             } else if pipeline.hir_error != 0 {
                 "VITTE_HIR_LOWERING_ERROR"
-            } else if pipeline.ir_error != 0 {
-                "VITTE_IR_LOWERING_ERROR"
+            } else if pipeline.ir_error != 0 and pipeline.ir_diagnostic_code.length != 0 {
+                pipeline.ir_diagnostic_code
             } else if pipeline.codegen_error != 0 {
                 "VITTE_CODEGEN_ERROR"
+            } else if pipeline.ir_error != 0 {
+                "VITTE_IR_E_LOWERING"
             } else if pipeline.status == Status.ErrorParse {
                 "VITTE_LEXER_ERROR"
             } else {
@@ -2096,11 +2227,11 @@ proc compile_internal(
                 } else {
                     "HIR lowering rejected the parsed source"
                 }
-            } else if pipeline.ir_error != 0 {
-                if pipeline.codegen_detail.length != 0 {
-                    pipeline.codegen_detail
+            } else if pipeline.ir_error != 0 and pipeline.ir_diagnostic_code.length != 0 {
+                if pipeline.ir_diagnostic_code == "VITTE_IR_E_VERIFY" {
+                    "IR verification failed"
                 } else {
-                    "IR lowering rejected the HIR"
+                    "IR lowering failed"
                 }
             } else if pipeline.codegen_error != 0 {
                 if pipeline.codegen_detail.length != 0 {
@@ -2148,10 +2279,12 @@ proc compile_internal(
                 DiagnosticOrigin.Parser
             } else if pipeline.hir_error != 0 {
                 DiagnosticOrigin.Hir
-            } else if pipeline.ir_error != 0 {
+            } else if pipeline.ir_error != 0 and pipeline.ir_diagnostic_code.length != 0 {
                 DiagnosticOrigin.Ir
             } else if pipeline.codegen_error != 0 {
                 DiagnosticOrigin.Codegen
+            } else if pipeline.ir_error != 0 {
+                DiagnosticOrigin.Ir
             } else {
                 DiagnosticOrigin.Lexer
             };
@@ -2169,6 +2302,7 @@ proc compile_internal(
                 code,
                 message,
                 details,
+                pipeline.codegen_help,
                 origin
             );
 
@@ -2193,6 +2327,7 @@ proc compile_internal(
                 "VITTE_API_FRONTEND_INCOMPLETE",
                 "front-end stopped before parsing completed",
                 vitte_parser_error_name(pipeline.parser_error as ParserError),
+                "",
                 DiagnosticOrigin.Driver
             );
 
@@ -2267,12 +2402,15 @@ proc compile_internal(
         result.error_count == 0;
 
     if not result.succeeded and source_id != 0 {
-        api_replace_pipeline_diagnostics_with_json(
+        api_replace_pipeline_diagnostics_with_format(
+            api,
             &mut result,
             action,
             result.source_name,
             source_text,
-            source_id
+            source_id,
+            diagnostic_format,
+            diagnostic_color
         );
     }
 
@@ -2309,10 +2447,6 @@ export proc api_create() -> Api {
         last_error: error_ok(),
     };
 
-    error_init(
-        &mut api.last_error
-    );
-
     let status: Status =
         context_init(
             &mut api.context
@@ -2336,12 +2470,14 @@ export proc api_create() -> Api {
 
 /// Native CLI check operation implemented in Vitte while other commands are
 /// still served by the compatibility driver.
-export proc vitte_api_check_path(path: string) -> i32 {
+export proc vitte_api_check_path(path: string, diagnostic_format: u32, diagnostic_color: bool) -> i32 {
     let mut api: Api = api_create();
-    let mut result: ApiResult = api_compile_file_with_action(
+    let mut result: ApiResult = api_compile_file_with_action_and_diagnostics(
         &mut api,
         path,
-        NATIVE_FRONTEND_ACTION_CHECK
+        NATIVE_FRONTEND_ACTION_CHECK,
+        diagnostic_format,
+        diagnostic_color
     );
     let diagnostics = api_result_diagnostics(&result);
     if diagnostics != null {
@@ -2361,12 +2497,14 @@ export proc vitte_api_check_path(path: string) -> i32 {
     return 1;
 }
 
-export proc vitte_api_emit_ir_path(path: string) -> i32 {
+export proc vitte_api_emit_ir_path(path: string, diagnostic_format: u32, diagnostic_color: bool) -> i32 {
     let mut api: Api = api_create();
-    let mut result: ApiResult = api_compile_file_with_action(
+    let mut result: ApiResult = api_compile_file_with_action_and_diagnostics(
         &mut api,
         path,
-        NATIVE_FRONTEND_ACTION_EMIT_IR
+        NATIVE_FRONTEND_ACTION_EMIT_IR,
+        diagnostic_format,
+        diagnostic_color
     );
     let diagnostics = api_result_diagnostics(&result);
     if diagnostics != null {
@@ -2398,9 +2536,15 @@ export proc vitte_api_emit_ir_path(path: string) -> i32 {
 /// Compile one source file through the Vitte API and write generated C17 to
 /// stdout or the requested path. Filesystem output stays behind the small
 /// native process boundary.
-export proc vitte_api_compile_path(source_path: string, output_path: string) -> i32 {
+export proc vitte_api_compile_path(source_path: string, output_path: string, diagnostic_format: u32, diagnostic_color: bool) -> i32 {
     let mut api: Api = api_create();
-    let mut result: ApiResult = api_compile_file(&mut api, source_path);
+    let mut result: ApiResult = api_compile_file_with_action_and_diagnostics(
+        &mut api,
+        source_path,
+        0,
+        diagnostic_format,
+        diagnostic_color
+    );
     let succeeded = api_result_succeeded(&result);
 
     if not succeeded {
@@ -2449,12 +2593,19 @@ export proc vitte_api_build_path(
     source_path: string,
     output_path: ?string,
     run_program: bool,
-    diagnostic_json: bool,
+    diagnostic_format: u32,
+    diagnostic_color: bool,
     run_argc: i32,
     run_argv: *mut *mut u8
 ) -> i32 {
     let mut api: Api = api_create();
-    let mut result: ApiResult = api_compile_file(&mut api, source_path);
+    let mut result: ApiResult = api_compile_file_with_action_and_diagnostics(
+        &mut api,
+        source_path,
+        0,
+        diagnostic_format,
+        diagnostic_color
+    );
     if not api_result_succeeded(&result) {
         let diagnostics = api_result_diagnostics(&result);
         if diagnostics != null {
@@ -2507,7 +2658,7 @@ export proc vitte_api_build_path(
         vitte_native_write_stderr("vitte: generated C compilation failed\n".as_ptr() as *const char, 38);
     } else if failed_stage == 3 {
         vitte_native_write_stderr("vitte: linking generated program failed\n".as_ptr() as *const char, 40);
-    } else if failed_stage == 4 and diagnostic_json {
+    } else if failed_stage == 4 and diagnostic_format == 3 {
         let diagnostic_text = "{\"diagnostics\":[{\"internal_code\":\"VITTE_BACKEND_E_EXECUTION\",\"phase\":\"runtime\",\"message\":\"generated program returned failure\"}]}\n";
             vitte_native_write_stderr(
             diagnostic_text.as_ptr() as *const char,
@@ -2544,7 +2695,7 @@ export proc api_destroy(
         &mut api.context
     );
 
-    error_reset(
+    error_destroy(
         &mut api.last_error
     );
 
@@ -2556,12 +2707,14 @@ export proc api_destroy(
 /// Public compilation
 /// =========================================================================
 
-proc api_compile_source_with_action(
+proc api_compile_source_with_action_and_diagnostics(
     api: &mut Api,
     source_name: ?str,
     source: ?str,
     source_length: usize,
-    action: u32
+    action: u32,
+    diagnostic_format: u32,
+    diagnostic_color: bool
 ) -> ApiResult {
     let mut result: ApiResult = result_create();
 
@@ -2572,6 +2725,8 @@ proc api_compile_source_with_action(
             source,
             source_length,
             action,
+            diagnostic_format,
+            diagnostic_color,
             &mut result
         );
     if result.status == Status.Ok and status != Status.Ok {
@@ -2584,6 +2739,24 @@ proc api_compile_source_with_action(
         }
     }
     return result;
+}
+
+proc api_compile_source_with_action(
+    api: &mut Api,
+    source_name: ?str,
+    source: ?str,
+    source_length: usize,
+    action: u32
+) -> ApiResult {
+    return api_compile_source_with_action_and_diagnostics(
+        api,
+        source_name,
+        source,
+        source_length,
+        action,
+        3,
+        false
+    );
 }
 
 export proc api_compile_source(
@@ -2622,10 +2795,12 @@ export proc api_compile_string(
     );
 }
 
-proc api_compile_file_with_action(
+proc api_compile_file_with_action_and_diagnostics(
     api: &mut Api,
     path: str,
-    action: u32
+    action: u32,
+    diagnostic_format: u32,
+    diagnostic_color: bool
 ) -> ApiResult {
     if not api_context_is_valid(api) {
         set_last_error(
@@ -2744,15 +2919,31 @@ proc api_compile_file_with_action(
     }
     let source_text: string = source_text_value?;
 
-    let result: ApiResult = api_compile_source_with_action(
+    let result: ApiResult = api_compile_source_with_action_and_diagnostics(
         api,
         path,
         source_text,
         source_text.length,
-        action
+        action,
+        diagnostic_format,
+        diagnostic_color
     );
     vitte_native_api_deallocate(source_text.as_ptr() as *mut u8);
     return result;
+}
+
+proc api_compile_file_with_action(
+    api: &mut Api,
+    path: string,
+    action: u32
+) -> ApiResult {
+    return api_compile_file_with_action_and_diagnostics(
+        api,
+        path,
+        action,
+        3,
+        false
+    );
 }
 
 export proc api_compile_file(

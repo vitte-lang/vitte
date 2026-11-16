@@ -137,7 +137,7 @@ proc naming_kind_index(kind: NameKind) -> usize {
         case NameKind.Enumerator => 10,
         case NameKind.Runtime => 11,
         case NameKind.Internal => 12,
-        case NameKind.Count => NAME_KIND_COUNT,
+        case NameKind.Count => NameKind.Count as usize,
     }
 }
 
@@ -208,7 +208,7 @@ export form NamingStats {
 
     maximum_generated_length: usize,
 
-    by_kind: [usize; NAME_KIND_COUNT],
+    by_kind: [usize; 13],
 }
 
 export form Naming {
@@ -305,15 +305,21 @@ pub proc naming_hash_bytes(data: &[u8]) -> u64 {
 }
 
 pub proc naming_hash_string(text: str) -> u64 {
-    return naming_hash_bytes(text.as_bytes());
+    let mut hash: u64 = FNV_OFFSET;
+    let mut index: usize = 0;
+    while index < text.len() {
+        set hash = fnv_step(hash, text[index] as u8);
+        set index += 1;
+    }
+    return hash;
 }
 
-proc hash_combine(hash: u64, data: &[u8]) -> u64 {
+proc hash_combine(hash: u64, data: str) -> u64 {
     let mut result: u64 = hash;
     let mut index: usize = 0;
 
     while index < data.len() {
-        set result = fnv_step(result, data[index]);
+        set result = fnv_step(result, data[index] as u8);
         set index += 1;
     }
 
@@ -379,7 +385,7 @@ proc naming_symbol_hash(
     set hash = hash_u64_le(hash, module_id);
     set hash = hash_u64_le(hash, source_id);
 
-    set hash = hash_combine(hash, source.as_bytes());
+    set hash = hash_combine(hash, source);
 
     return hash;
 }
@@ -390,55 +396,28 @@ proc naming_symbol_hash(
 
 pub proc naming_is_keyword(identifier: str) -> bool {
     if identifier.len() == 0 { return false; }
-    match identifier {
-        case "_Alignas" => true,
-        case "_Alignof" => true,
-        case "_Atomic" => true,
-        case "_Bool" => true,
-        case "_Complex" => true,
-        case "_Generic" => true,
-        case "_Imaginary" => true,
-        case "_Noreturn" => true,
-        case "_Static_assert" => true,
-        case "_Thread_local" => true,
-
-        case "auto" => true,
-        case "break" => true,
-        case "case" => true,
-        case "char" => true,
-        case "const" => true,
-        case "continue" => true,
-        case "default" => true,
-        case "do" => true,
-        case "double" => true,
-        case "else" => true,
-        case "enum" => true,
-        case "extern" => true,
-        case "float" => true,
-        case "for" => true,
-        case "goto" => true,
-        case "if" => true,
-        case "inline" => true,
-        case "int" => true,
-        case "long" => true,
-        case "register" => true,
-        case "restrict" => true,
-        case "return" => true,
-        case "short" => true,
-        case "signed" => true,
-        case "sizeof" => true,
-        case "static" => true,
-        case "struct" => true,
-        case "switch" => true,
-        case "typedef" => true,
-        case "union" => true,
-        case "unsigned" => true,
-        case "void" => true,
-        case "volatile" => true,
-        case "while" => true,
-
-        case _ => false,
-    }
+    return identifier == "_Alignas" or identifier == "_Alignof" or
+        identifier == "_Atomic" or identifier == "_Bool" or
+        identifier == "_Complex" or identifier == "_Generic" or
+        identifier == "_Imaginary" or identifier == "_Noreturn" or
+        identifier == "_Static_assert" or identifier == "_Thread_local" or
+        identifier == "auto" or identifier == "break" or
+        identifier == "case" or identifier == "char" or
+        identifier == "const" or identifier == "continue" or
+        identifier == "default" or identifier == "do" or
+        identifier == "double" or identifier == "else" or
+        identifier == "enum" or identifier == "extern" or
+        identifier == "float" or identifier == "for" or
+        identifier == "goto" or identifier == "if" or
+        identifier == "inline" or identifier == "int" or
+        identifier == "long" or identifier == "register" or
+        identifier == "restrict" or identifier == "return" or
+        identifier == "short" or identifier == "signed" or
+        identifier == "sizeof" or identifier == "static" or
+        identifier == "struct" or identifier == "switch" or
+        identifier == "typedef" or identifier == "union" or
+        identifier == "unsigned" or identifier == "void" or
+        identifier == "volatile" or identifier == "while";
 }
 
 /* ================================================================ */
@@ -613,7 +592,7 @@ pub proc naming_is_valid(naming: &Naming) -> bool {
         return false;
     }
 
-    if naming.entry_count != naming.entries.len() or naming.entries.capacity() < naming.entry_count {
+    if naming.entry_count != naming.entries.len() or naming.entries.capacity < naming.entry_count {
         return false;
     }
 
@@ -708,11 +687,11 @@ pub proc naming_clear_error(naming: &mut Naming) {
 proc naming_find_generated_index(
     naming: &Naming,
     generated: str,
-) -> ?usize {
+) -> usize {
     let mut index: usize = 0;
 
     while index < naming.entry_count {
-        let name_entry = &naming.entries[index];
+        let name_entry: &NameEntry = &naming.entries[index];
 
         if name_entry.generated == generated {
             return index;
@@ -721,7 +700,7 @@ proc naming_find_generated_index(
         set index += 1;
     }
 
-    return null;
+    return usize.MAX;
 }
 
 proc naming_find_source_index(
@@ -730,11 +709,11 @@ proc naming_find_source_index(
     module_id: u64,
     source_id: u64,
     source: str,
-) -> ?usize {
+) -> usize {
     let mut index: usize = 0;
 
     while index < naming.entry_count {
-        let name_entry = &naming.entries[index];
+        let name_entry: &NameEntry = &naming.entries[index];
 
         if name_entry.kind == kind  and 
            name_entry.module_id == module_id  and 
@@ -746,7 +725,7 @@ proc naming_find_source_index(
         set index += 1;
     }
 
-    return null;
+    return usize.MAX;
 }
 
 pub proc naming_find_generated(
@@ -762,11 +741,11 @@ pub proc naming_find_generated(
         generated,
     );
 
-    if index == null {
+    if index == usize.MAX {
         return null;
     }
 
-    return &naming.entries[index?];
+    return &naming.entries[index];
 }
 
 pub proc naming_find_source(
@@ -788,11 +767,11 @@ pub proc naming_find_source(
         source,
     );
 
-    if index == null {
+    if index == usize.MAX {
         return null;
     }
 
-    return &naming.entries[index?];
+    return &naming.entries[index];
 }
 
 /* ================================================================ */
@@ -897,8 +876,8 @@ proc naming_register(
         source,
     );
 
-    if existing_source != null {
-        return &naming.entries[existing_source?];
+    if existing_source != usize.MAX {
+        return &naming.entries[existing_source];
     }
 
     let existing_generated = naming_find_generated_index(
@@ -906,7 +885,7 @@ proc naming_register(
         generated,
     );
 
-    if existing_generated != null {
+    if existing_generated != usize.MAX {
         set naming.collision_count = naming_saturating_add(
             naming.collision_count,
             1,
@@ -922,7 +901,7 @@ proc naming_register(
          * Same behavior as the C implementation:
          * return the existing symbol without inserting an alias.
          */
-        return &naming.entries[existing_generated?];
+        return &naming.entries[existing_generated];
     }
 
     if naming.entry_count == usize.MAX {
@@ -934,16 +913,16 @@ proc naming_register(
         return null;
     }
 
-    let name_entry = NameEntry {
+    let name_entry: NameEntry = NameEntry {
         kind: kind,
 
         module_id: module_id,
         source_id: source_id,
 
-        source: source.to_string(),
+        source: source,
         source_length: source.len(),
 
-        generated: generated.to_string(),
+        generated: generated,
         generated_length: generated.len(),
 
         hash: naming_hash_string(generated),
@@ -1003,9 +982,9 @@ pub proc naming_mangle(
         source,
     );
 
-    if existing != null {
+    if existing != usize.MAX {
         set naming.last_error = NamingError.None;
-        return &naming.entries[existing?];
+        return &naming.entries[existing];
     }
 
     let generated = naming_build_name(
@@ -1287,7 +1266,7 @@ pub proc naming_at(
 /* ================================================================ */
 
 pub proc naming_stats(naming: &Naming) -> NamingStats {
-    let mut stats = NamingStats {
+    let mut stats: NamingStats = NamingStats {
         entry_count: 0,
         entry_capacity: 0,
 
@@ -1315,7 +1294,7 @@ pub proc naming_stats(naming: &Naming) -> NamingStats {
     let mut index: usize = 0;
 
     while index < naming.entry_count {
-        let name_entry = &naming.entries[index];
+        let name_entry: &NameEntry = &naming.entries[index];
 
         set stats.source_bytes = naming_saturating_add(
             stats.source_bytes,
@@ -1336,7 +1315,7 @@ pub proc naming_stats(naming: &Naming) -> NamingStats {
         let kind_index: usize =
             naming_kind_index(name_entry.kind);
 
-        if kind_index > 0  and  kind_index < NAME_KIND_COUNT {
+        if kind_index > 0  and  kind_index < NameKind.Count as usize {
             set stats.by_kind[kind_index] =
                 naming_saturating_add(
                     stats.by_kind[kind_index],
@@ -1366,7 +1345,7 @@ pub proc naming_validate(naming: &Naming) -> bool {
     let mut index: usize = 0;
 
     while index < naming.entry_count {
-        let name_entry = &naming.entries[index];
+        let name_entry: &NameEntry = &naming.entries[index];
 
         if name_entry.kind <= NameKind.Invalid or name_entry.kind >= NameKind.Count {
             return false;
@@ -1502,7 +1481,10 @@ pub proc vitte_c17_naming_hash_bytes(data: *const u8, length: usize) -> u64 {
 
 pub proc vitte_c17_naming_hash_string(text: string, length: usize) -> u64 {
     if length > text.len() { return FNV_OFFSET; }
-    return naming_hash_bytes(text.slice(0, length).as_bytes());
+    return vitte_c17_naming_hash_bytes(
+        text.as_ptr() as *const u8,
+        length
+    );
 }
 
 pub proc vitte_c17_naming_mangle(

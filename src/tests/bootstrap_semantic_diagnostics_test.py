@@ -41,6 +41,9 @@ INVALID = (
     ("match_guard_type", "proc f(x: bool) -> int { match x { true if 1 => { return 1; }, _ => { return 0; }, } }", ("E0515",)),
     ("match_implicit_return_type", 'proc f(x: bool) -> int { match x { true => "bad", false => 0, } }', ("E0605",)),
     ("contract_await_effect", "async proc ready() -> bool { return true; } async proc f() -> int requires await ready(); { return 0; }", ("E0710",)),
+    ("reference_return_local", "proc bad() -> &int { let value = 1; return &value; }", ("E1205",)),
+    ("reference_return_local_via_identity", "proc identity(value: &int) -> &int { return value; } proc bad() -> &int { let local = 1; return identity(&local); }", ("E1205",)),
+    ("reference_rebind_shorter_owner", "proc bad() { let outer = 1; let mut reference = &outer; { let inner = 2; set reference = &inner; } }", ("E1205",)),
 )
 
 VALID = (
@@ -67,6 +70,10 @@ VALID = (
     ("bool_match_guard_fallback", "proc f(x: bool) -> int { match x { true if x => { return 1; }, _ => { return 0; }, } }"),
     ("unknown_precondition", "proc positive(x: int) -> int requires x > 0; { return x; } proc f(x: int) -> int { return positive(x); }"),
     ("mutable_value_not_folded", "proc positive(x: int) -> int requires x > 0; { return x; } proc f() -> int { let mut x = -1; set x = 1; return positive(x); }"),
+    ("reference_return_parameter", "proc identity(value: &int) -> &int { return value; }"),
+    ("reference_return_static", "static VALUE: int = 1; proc get() -> &int { return &VALUE; }"),
+    ("reference_alias_same_scope", "proc f() -> int { let value = 1; let first = &value; let second = first; return *second; }"),
+    ("reference_call_parameter", "proc identity(value: &int) -> &int { return value; } proc f() -> int { let value = 1; let reference = identity(&value); return *reference; }"),
 )
 
 RUNTIME = (

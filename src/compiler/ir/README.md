@@ -1,16 +1,20 @@
 # compiler/src/ir
 
-The compiler module in `ir.vitte` now owns the native IR lifecycle, storage,
-construction, validation, sealing, fingerprinting, and the supported HIR to IR
-lowering. The C17 driver passes the sealed `IRContext` directly to
-`backend/c17/ir_emitter.vitte` for programs represented by that lowering.
+The compiler module in `ir.vitte` owns the native IR lifecycle, storage,
+construction, validation, sealing, fingerprinting, and HIR to IR (the current
+middle-level representation) lowering. The C17 driver passes the sealed
+`IRContext` directly to `backend/c17/ir_emitter.vitte` for programs represented
+by that lowering.
 Nongeneric forms whose fields use scalar or other supported form/pick types now
 lower through HIR and IR, including named initialization, nested field reads,
 and mutable field writes. Generic or otherwise unsupported form layouts and
-test declarations still use the AST emitter. Fixed-array and integer range
-loops with a simple name or wildcard binding, value-producing `if` expressions,
-and statement matches also use the native IR path. Other `for` iterable types
-remain unsupported by native HIR/IR lowering.
+test declarations still use the AST emitter. Fixed-array and slice loops,
+integer range loops, tuple/form/pick pattern bindings, value-producing `if`
+expressions, fixed-array length queries, and statement matches use the native
+IR path. Short-circuit boolean operators, optional coalescing and `try`,
+assertions, and deferred statements are represented in the generated IR.
+String and raw pointer iteration, async `await`, inline assembly, and `offsetof`
+still require IR or target support that this layer does not yet provide.
 
 IR is the lower-level compiler intermediate representation used after HIR and
 before optimization/backend-specific lowering.
@@ -114,8 +118,14 @@ vitte_ir_emit_return(&builder, zero, NULL);
 - value-producing if as branch-local stores and a merge load
 - exclusive and inclusive integer range loops with break/continue targets
 - fixed-array loops with one-time iterable evaluation and break/continue targets
+- slice loops with one-time iterable evaluation and break/continue targets
 - nested value-producing `if` expressions whose merge block continues into
   enclosing expressions and statements
+- short-circuit `and` / `or` expressions with branch-local right operands
+- optional values, `??` coalescing, and `try` propagation through optional returns
+- `defer` bodies on normal scope exit, return, break, and continue
+- assertion failure branches ending in the backend's aborting unreachable operation
+- tuple construction and nested tuple/form/pick pattern tests and bindings
 - integer and string literals
 - variable as local load, global const reference, builtin const, or function reference
 - binary expression
@@ -127,22 +137,36 @@ vitte_ir_emit_return(&builder, zero, NULL);
 
 Global constant initializers are resolved recursively. Cycles are rejected.
 Unsupported declarations or nodes return an error status instead of creating
-partial silent IR.
+partial silent IR. The native driver may choose its AST fallback for constructs
+outside this IR model, including async tasks, inline assembly, type reflection,
+and target-layout queries (`sizeof`, `alignof`, and `offsetof`). These queries
+must use a target-aware lowering path instead of guessed host sizes.
 
 ## Validation
 
 `vitte_ir_validate` checks:
 
-- initialized IR and module
-- globals have names, types, and resolved initializers
-- functions have ids, names, return types, entry blocks
-- function, global, and parameter names are unique within their owner
-- blocks have ids, names, coherent instruction counts, and terminators
-- instruction opcodes and operand counts
-- branch targets stay inside the current function
-- constants, stores, loads, casts, binary operations, calls, and returns satisfy
-  their structural and type contracts
-- global function/block/instruction counters
+- context buffers, capacities, configured limits, string ids, content hashes,
+  and byte accounting are coherent
+- type descriptors have kind-appropriate fields and valid element, parameter,
+  return, and aggregate field types
+- values have valid types and references, and parameter, instruction, function,
+  global, and constant values agree with their owners
+- globals have valid types and supported constant initializers
+- instructions have valid result ownership, operand storage, opcode-specific
+  operand counts and types, and valid aggregate, call, cast, and memory operands
+- every instruction belongs to exactly one block, every produced result points
+  back to its defining instruction, and recorded use counts match operands and
+  phi incoming values
+- instruction values and parameters are used only within their function, with
+  instruction definitions preceding same-block uses and dominating reachable
+  cross-block uses
+- phi nodes appear before non-phi instructions and have one correctly typed
+  incoming value for each predecessor
+- blocks have coherent terminators and CFG edges; branch targets remain within
+  their function, while predecessor and successor lists are unique and reciprocal
+- functions have valid signatures and parameters, an entry block first in the
+  block list, and blocks that belong to exactly one function
 
 ## Debug
 

@@ -1248,8 +1248,11 @@ vitte_main_lexer_format_details(
     size_t capacity)
 {
     const char *prefix;
+    const char *suffix;
+    const char *fixed;
     size_t length;
     size_t index;
+    size_t fixed_length;
 
     if (context == NULL || span == NULL || storage == NULL ||
         capacity == 0u || span->begin > display_end ||
@@ -1257,16 +1260,38 @@ vitte_main_lexer_format_details(
         return false;
     }
 
-    if (error == VITTE_LEXER_ERROR_INVALID_ESCAPE) {
+    fixed = NULL;
+    suffix = "";
+    if (error == VITTE_LEXER_ERROR_UNTERMINATED_STRING) {
+        fixed = "string literal is missing its closing quote";
+    } else if (error == VITTE_LEXER_ERROR_UNTERMINATED_COMMENT) {
+        fixed = "block comment is missing its matching `*/` terminator";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_ESCAPE) {
         prefix = "invalid escape sequence `";
     } else if (error == VITTE_LEXER_ERROR_INVALID_UTF8) {
         prefix = "invalid Unicode sequence `";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_IDENTIFIER) {
+        prefix = "character `";
+        suffix = " cannot start an identifier";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_NUMBER) {
+        prefix = "invalid numeric literal `";
+    } else if (error == VITTE_LEXER_ERROR_NUMBER_OVERFLOW) {
+        prefix = "integer literal `";
+        suffix = " exceeds the supported 64-bit range";
     } else {
         prefix = "invalid character `";
     }
 
     length = 0u;
     storage[0] = '\0';
+    if (fixed != NULL) {
+        fixed_length = strlen(fixed);
+        if (fixed_length >= capacity) {
+            return false;
+        }
+        memcpy(storage, fixed, fixed_length + 1u);
+        return true;
+    }
     if (strlen(prefix) >= capacity) {
         return false;
     }
@@ -1296,6 +1321,13 @@ vitte_main_lexer_format_details(
         return false;
     }
     storage[length++] = '`';
+    if (strlen(suffix) >= capacity - length) {
+        return false;
+    }
+    if (suffix[0] != '\0') {
+        memcpy(storage + length, suffix, strlen(suffix));
+        length += strlen(suffix);
+    }
     storage[length] = '\0';
     return true;
 }
@@ -1460,6 +1492,10 @@ vitte_main_render_lexer_diagnostic(
             code = "VITTE_LEXER_E_INVALID_UNICODE";
             break;
 
+        case VITTE_LEXER_ERROR_INVALID_IDENTIFIER:
+            code = "VITTE_LEXER_E_INVALID_IDENTIFIER";
+            break;
+
         case VITTE_LEXER_ERROR_INVALID_NUMBER:
             code = "VITTE_LEXER_E_INVALID_NUMBER";
             break;
@@ -1481,8 +1517,12 @@ vitte_main_render_lexer_diagnostic(
             code = "VITTE_LEXER_E_INVALID_CHARACTER";
             break;
 
-        case VITTE_LEXER_ERROR_OVERFLOW:
+        case VITTE_LEXER_ERROR_NUMBER_OVERFLOW:
             code = "VITTE_LEXER_E_NUMBER_OVERFLOW";
+            break;
+
+        case VITTE_LEXER_ERROR_OVERFLOW:
+            code = "VITTE_INFRA_E_LIMIT";
             break;
 
         case VITTE_LEXER_ERROR_COMMENT_DEPTH:
@@ -1550,7 +1590,12 @@ vitte_main_render_lexer_diagnostic(
         (error == VITTE_LEXER_ERROR_INVALID_CHARACTER ||
          error == VITTE_LEXER_ERROR_INVALID_TOKEN ||
          error == VITTE_LEXER_ERROR_INVALID_ESCAPE ||
-         error == VITTE_LEXER_ERROR_INVALID_UTF8)) {
+         error == VITTE_LEXER_ERROR_INVALID_UTF8 ||
+         error == VITTE_LEXER_ERROR_INVALID_IDENTIFIER ||
+         error == VITTE_LEXER_ERROR_INVALID_NUMBER ||
+         error == VITTE_LEXER_ERROR_NUMBER_OVERFLOW ||
+         error == VITTE_LEXER_ERROR_UNTERMINATED_STRING ||
+         error == VITTE_LEXER_ERROR_UNTERMINATED_COMMENT)) {
         has_details = vitte_main_lexer_format_details(
             context,
             error,

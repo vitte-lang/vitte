@@ -11,6 +11,8 @@ use compiler::ast::ast::{    AstSpan,
 use compiler::api::error::{    Status,
     Error
 };
+use vitte::core::memory::{allocate as diagnostic_allocate, copy_string_bytes, deallocate as diagnostic_deallocate};
+use vitte::core::pointer::{add_bytes as diagnostic_add_bytes};
 
 export type SourceManager = SourceContext;
 
@@ -1591,7 +1593,7 @@ export proc bag_effective_limit(
 export proc diagnostic_bag_reset(
     bag: &mut DiagnosticBag
 ) {
-    set bag.storage = [];
+    bag.storage.clear();
     set bag.counts = diagnostic_counts_default();
     set bag.next_diagnostic_id = 1;
     set bag.limit_reached = false;
@@ -2136,27 +2138,94 @@ export proc diagnostic_format_one(
             "diagnostic"
         };
 
-    if diagnostic_value.has_span and
-       diagnostic_value.source_name != "" {
+    let has_location: bool = diagnostic_value.has_span and
+        diagnostic_value.source_name != "";
+    let line: u64 = diagnostic_value.start_line + 1;
+    let column: u64 = diagnostic_value.start_column + 1;
+    let mut length: usize = severity.length + 1 + code.length + 3 + message.length;
 
-        return diagnostic_value.source_name +
-            ":" +
-            diagnostic_u64_to_string(diagnostic_value.start_line + 1) +
-            ":" +
-            diagnostic_u64_to_string(diagnostic_value.start_column + 1) +
-            ": " +
-            severity +
-            "[" +
-            code +
-            "]: " +
-            message;
+    if has_location {
+        length = diagnostic_value.source_name.length + 1 +
+            diagnostic_decimal_length(line) + 1 +
+            diagnostic_decimal_length(column) + 2 + length;
     }
 
-    return severity +
-        "[" +
-        code +
-        "]: " +
-        message;
+    let output: *mut u8 = diagnostic_allocate(length + 1);
+    if output == null {
+        return "";
+    }
+
+    let mut offset: usize = 0;
+    if has_location {
+        diagnostic_append_text(output, &mut offset, diagnostic_value.source_name);
+        diagnostic_append_byte(output, &mut offset, ':' as u8);
+        diagnostic_append_u64(output, &mut offset, line);
+        diagnostic_append_byte(output, &mut offset, ':' as u8);
+        diagnostic_append_u64(output, &mut offset, column);
+        diagnostic_append_text(output, &mut offset, ": ");
+    }
+    diagnostic_append_text(output, &mut offset, severity);
+    diagnostic_append_byte(output, &mut offset, '[' as u8);
+    diagnostic_append_text(output, &mut offset, code);
+    diagnostic_append_text(output, &mut offset, "]: ");
+    diagnostic_append_text(output, &mut offset, message);
+    set output[offset] = 0;
+
+    let rendered: string = string.from_bytes(output, length);
+    diagnostic_deallocate(output);
+    return rendered;
+}
+
+proc diagnostic_decimal_length(value: u64) -> usize {
+    let mut length: usize = 1;
+    let mut remaining: u64 = value;
+    while remaining >= 10 {
+        set remaining = remaining / 10;
+        set length = length + 1;
+    }
+    return length;
+}
+
+proc diagnostic_append_text(
+    output: *mut u8,
+    offset: &mut usize,
+    text: string
+) {
+    if text.length == 0 { return; }
+    copy_string_bytes(
+        diagnostic_add_bytes(output, *offset),
+        text,
+        text.length
+    );
+    set *offset = *offset + text.length;
+}
+
+proc diagnostic_append_byte(
+    output: *mut u8,
+    offset: &mut usize,
+    value: u8
+) {
+    set output[*offset] = value;
+    set *offset = *offset + 1;
+}
+
+proc diagnostic_append_u64(
+    output: *mut u8,
+    offset: &mut usize,
+    value: u64
+) {
+    let mut divisor: u64 = 1;
+    while value / divisor >= 10 {
+        set divisor = divisor * 10;
+    }
+
+    let mut remaining: u64 = value;
+    while divisor != 0 {
+        let digit: u8 = (48 + (remaining / divisor)) as u8;
+        diagnostic_append_byte(output, offset, digit);
+        set remaining = remaining % divisor;
+        set divisor = divisor / 10;
+    }
 }
 
 export proc diagnostic_format_one_ex(

@@ -1,10 +1,13 @@
 (*
   Canonical syntax target for the full Vitte language.
-  The C bootstrap compiler is required to implement this grammar end-to-end.
+  The native Vitte parser is the active implementation of this grammar; the C
+  bootstrap parser remains a compatibility reference.
   ::= production, | choice, [...] optional, {...} repetition.
   This grammar describes syntax, not type checking, name resolution, or recovery.
-  check-ebnf-frontend-sync.py checks lexer vocabulary and C-parser token
-  references, not production equivalence or successful compilation.
+  check-ebnf-frontend-sync.py checks terminal coverage for the native and
+  bootstrap lexers plus legacy C-parser token references. `make test-grammar`
+  parses the canonical production fixture with both active parsers and validates
+  the resulting ASTs; it does not imply successful semantic compilation.
 *)
 
 translation_unit ::= { declaration } EOF ;
@@ -167,7 +170,7 @@ pointer_type ::= "*" ( "mut" | [ "const" ] [ "volatile" ] ) type ;
 
 array_or_slice_type ::= "[" type "]"
                       | "[" type ";" expression "]"
-                      | "[" expression "]" type ;
+                      | "[" integer_literal "]" type ;
 
 optional_type ::= "?" type ;
 
@@ -227,6 +230,8 @@ loop_statement ::= "loop" block ;
 
 for_statement ::= "for" pattern "in" expression block ;
 
+(* Parenthesize a form initializer in a match subject so the outermost `{`
+   is unambiguously the match body. *)
 match_statement ::= "match" expression "{"
                     [ match_arm { "," match_arm } [ "," ] ]
                     "}" ;
@@ -439,7 +444,8 @@ vitte_keyword_token ::= "space" | "use" | "pub" | "const" | "static"
                       | "sizeof" | "alignof" | "print" | "share" | "region"
                       | "compiler" | "diagnostic" | "bench" | "entry"
                       | "select" | "when" | "case" | "critical" | "owned"
-                      | "borrow" | "is" | "kernel" | "class" | "flags" ;
+                      | "borrow" | "volatile" | "is" | "kernel" | "class"
+                      | "flags" ;
 
 (* `give` is emitted only by an older C lexer; it is not native syntax. *)
 legacy_lexer_keyword ::= "give" ;
@@ -508,13 +514,17 @@ non_ascii_identifier_start ::= codepoint accepted by
 non_ascii_identifier_continue ::= codepoint accepted by
                                   vitte_unicode_is_identifier_continue ;
 
-(* Trivia is ASCII space, tab, LF, CR, form feed, or vertical tab.
+(* A single leading UTF-8 BOM is ignored. Trivia is ASCII space, tab, LF, CR,
+   form feed, or vertical tab.
    Line comments start with // and end before LF. Block comments /* ... */
-   nest and must be balanced. Identifiers use the compiler's explicit Unicode
-   predicates, not the full Unicode XID properties. Numeric digit separators
+   nest and must be balanced. Identifiers use Unicode 16.0.0 XID_Start and
+   XID_Continue properties; underscore is accepted as a start, and no implicit
+   normalization is performed.
+   Numeric digit separators
    are single underscores between digits. Hexadecimal floats require p/P.
-   The `[expression] type` array form requires an integer literal as its first
-   token; the parser uses that token to distinguish it from a slice type.
+   The `[integer_literal] type` array form keeps its length as a literal; use
+   `[type; expression]` for constant or computed array lengths. This prefix
+   form also lets the parser distinguish it from a slice type.
    Match arms may omit a comma only when the following arm starts with `case`
    or the `else` wildcard.
    `return expr` may omit its semicolon only immediately before `}` or EOF. *)

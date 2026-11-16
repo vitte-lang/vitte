@@ -478,11 +478,259 @@ check_invalid_syntax(void)
                 "[GRAMMAR] invalid syntax case %zu was accepted\n",
                 i + 1u);
             ok = 0;
+        } else {
+            size_t diagnostic_index;
+            size_t source_length = strlen(invalid_sources[i]);
+
+            if (vitte_parser_diagnostic_count(&parser) == 0u ||
+                vitte_parser_last_error(&parser) == VITTE_PARSER_ERROR_NONE ||
+                !vitte_parser_has_failed(&parser) ||
+                !vitte_parser_validate(&parser)) {
+                (void)fprintf(
+                    stderr,
+                    "[GRAMMAR] invalid syntax case %zu lost error/AST state\n",
+                    i + 1u);
+                ok = 0;
+            }
+            for (diagnostic_index = 0u;
+                 diagnostic_index < vitte_parser_diagnostic_count(&parser);
+                 ++diagnostic_index) {
+                const vitte_parser_diagnostic_t *diagnostic =
+                    vitte_parser_diagnostic_at(&parser, diagnostic_index);
+                if (diagnostic == NULL ||
+                    diagnostic->kind != VITTE_PARSER_DIAGNOSTIC_ERROR ||
+                    !diagnostic->span.valid ||
+                    diagnostic->span.file_id != UINT32_C(1) ||
+                    diagnostic->span.begin > diagnostic->span.end ||
+                    diagnostic->span.end > source_length ||
+                    diagnostic->span.line == 0u ||
+                    diagnostic->span.column == 0u) {
+                    (void)fprintf(
+                        stderr,
+                        "[GRAMMAR] invalid syntax case %zu has a malformed diagnostic\n",
+                        i + 1u);
+                    ok = 0;
+                    break;
+                }
+            }
         }
 
         destroy_frontend(&lexer, &parser);
     }
 
+    return ok;
+}
+
+static int
+check_parser_limits_and_reset(void)
+{
+    static const char first_source[] = "proc first() {}";
+    static const char second_source[] = "proc second() { return 1; }";
+    static const char node_limit_source[] = "proc limited() {}";
+    static const char recursion_limit_source[] =
+        "proc nested() { return (((1))); }";
+    static const char diagnostic_limit_source[] =
+        "proc broken() { let first = ; let second = ; }";
+    vitte_lexer_t first_lexer;
+    vitte_lexer_t second_lexer;
+    vitte_lexer_t limited_lexer;
+    vitte_parser_t parser;
+    uint64_t generation;
+    vitte_parser_error_t parser_error;
+    int ok = 1;
+
+    if (!parse_source(first_source, &first_lexer, &parser) ||
+        !vitte_parser_run(&parser) ||
+        !vitte_parser_validate(&parser) ||
+        !vitte_lexer_init(
+            &second_lexer, second_source, sizeof(second_source) - 1u, 2u) ||
+        !vitte_lexer_run(&second_lexer)) {
+        (void)fprintf(stderr, "[GRAMMAR] parser reset setup failed\n");
+        return 0;
+    }
+    generation = vitte_parser_generation(&parser);
+    if (!vitte_parser_reset(
+            &parser, second_lexer.tokens, second_lexer.token_count) ||
+        vitte_parser_generation(&parser) != generation + UINT64_C(1) ||
+        !vitte_parser_is_ready(&parser) ||
+        !vitte_parser_run(&parser) ||
+        !vitte_parser_validate(&parser) ||
+        vitte_parser_diagnostic_count(&parser) != 0u) {
+        (void)fprintf(stderr, "[GRAMMAR] parser reset did not clear and rerun cleanly\n");
+        ok = 0;
+    }
+    destroy_frontend(&second_lexer, &parser);
+    vitte_lexer_destroy(&first_lexer);
+
+    if (!vitte_lexer_init(
+            &limited_lexer,
+            node_limit_source,
+            sizeof(node_limit_source) - 1u,
+            3u) ||
+        !vitte_lexer_run(&limited_lexer) ||
+        !vitte_parser_init(
+            &parser, limited_lexer.tokens, limited_lexer.token_count) ||
+        !vitte_parser_set_limits(&parser, 1u, 8u, 32u, 32u)) {
+        (void)fprintf(stderr, "[GRAMMAR] node-limit setup failed\n");
+        vitte_lexer_destroy(&limited_lexer);
+        return 0;
+    }
+    {
+        int parse_ok = vitte_parser_run(&parser);
+        parser_error = vitte_parser_last_error(&parser);
+        if (parse_ok ||
+            parser_error != VITTE_PARSER_ERROR_NODE_LIMIT ||
+            !vitte_parser_has_failed(&parser)) {
+            (void)fprintf(
+                stderr,
+                "[GRAMMAR] parser node limit was not enforced cleanly "
+                "(parsed=%d, error=%d, state=%d, nodes=%zu)\n",
+                parse_ok,
+                (int)parser_error,
+                (int)parser.state,
+                vitte_parser_node_count(&parser));
+            ok = 0;
+        }
+    }
+    destroy_frontend(&limited_lexer, &parser);
+
+    if (!vitte_lexer_init(
+            &limited_lexer,
+            recursion_limit_source,
+            sizeof(recursion_limit_source) - 1u,
+            4u) ||
+        !vitte_lexer_run(&limited_lexer) ||
+        !vitte_parser_init(
+            &parser, limited_lexer.tokens, limited_lexer.token_count) ||
+        !vitte_parser_set_limits(&parser, 256u, 8u, 1u, 32u)) {
+        (void)fprintf(stderr, "[GRAMMAR] recursion-limit setup failed\n");
+        vitte_lexer_destroy(&limited_lexer);
+        return 0;
+    }
+    if (vitte_parser_run(&parser) ||
+        vitte_parser_last_error(&parser) != VITTE_PARSER_ERROR_RECURSION_LIMIT ||
+        !vitte_parser_has_failed(&parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] parser recursion limit was not enforced cleanly\n");
+        ok = 0;
+    }
+    destroy_frontend(&limited_lexer, &parser);
+
+    if (!vitte_lexer_init(
+            &limited_lexer,
+            diagnostic_limit_source,
+            sizeof(diagnostic_limit_source) - 1u,
+            5u) ||
+        !vitte_lexer_run(&limited_lexer) ||
+        !vitte_parser_init(
+            &parser, limited_lexer.tokens, limited_lexer.token_count) ||
+        !vitte_parser_set_limits(&parser, 256u, 1u, 32u, 32u)) {
+        (void)fprintf(stderr, "[GRAMMAR] diagnostic-limit setup failed\n");
+        vitte_lexer_destroy(&limited_lexer);
+        return 0;
+    }
+    if (vitte_parser_run(&parser) ||
+        vitte_parser_last_error(&parser) != VITTE_PARSER_ERROR_DIAGNOSTIC_LIMIT ||
+        vitte_parser_diagnostic_count(&parser) > 1u ||
+        !vitte_parser_has_failed(&parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] parser diagnostic limit was not enforced cleanly\n");
+        ok = 0;
+    }
+    destroy_frontend(&limited_lexer, &parser);
+    return ok;
+}
+
+static int
+check_parser_diagnostic_details(void)
+{
+    typedef struct diagnostic_case {
+        const char *source;
+        vitte_parser_error_t error;
+        vitte_token_kind_t expected;
+        vitte_token_kind_t found;
+    } diagnostic_case_t;
+    static const diagnostic_case_t cases[] = {
+        {
+            "proc broken() { let value = ; }",
+            VITTE_PARSER_ERROR_EXPECTED_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc broken(value: ) {}",
+            VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_RIGHT_PAREN
+        },
+        {
+            "form Broken { field int }",
+            VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+            VITTE_TOKEN_COLON,
+            VITTE_TOKEN_IDENTIFIER
+        }
+    };
+    size_t case_index;
+    int ok = 1;
+
+    for (case_index = 0u;
+         case_index < sizeof(cases) / sizeof(cases[0]);
+         ++case_index) {
+        vitte_lexer_t lexer;
+        vitte_parser_t parser;
+        size_t diagnostic_index;
+        int matched = 0;
+
+        if (!parse_source(cases[case_index].source, &lexer, &parser)) {
+            (void)fprintf(
+                stderr,
+                "[GRAMMAR] diagnostic case %zu setup failed\n",
+                case_index + 1u);
+            ok = 0;
+            continue;
+        }
+        if (vitte_parser_run(&parser)) {
+            (void)fprintf(
+                stderr,
+                "[GRAMMAR] diagnostic case %zu was accepted\n",
+                case_index + 1u);
+            ok = 0;
+        }
+        for (diagnostic_index = 0u;
+             diagnostic_index < vitte_parser_diagnostic_count(&parser);
+             ++diagnostic_index) {
+            const vitte_parser_diagnostic_t *diagnostic =
+                vitte_parser_diagnostic_at(&parser, diagnostic_index);
+
+            if (diagnostic != NULL &&
+                diagnostic->error == cases[case_index].error &&
+                diagnostic->expected == cases[case_index].expected &&
+                diagnostic->found == cases[case_index].found) {
+                matched = 1;
+                break;
+            }
+        }
+        if (!matched) {
+            const vitte_parser_diagnostic_t *diagnostic =
+                vitte_parser_diagnostic_count(&parser) != 0u
+                    ? vitte_parser_diagnostic_at(&parser, 0u)
+                    : NULL;
+            (void)fprintf(
+                stderr,
+                "[GRAMMAR] diagnostic case %zu reported the wrong error/token "
+                "(actual=%s expected=%s found=%s)\n",
+                case_index + 1u,
+                diagnostic != NULL
+                    ? vitte_parser_error_name(diagnostic->error)
+                    : "none",
+                diagnostic != NULL
+                    ? vitte_token_kind_name(diagnostic->expected)
+                    : "none",
+                diagnostic != NULL
+                    ? vitte_token_kind_name(diagnostic->found)
+                    : "none");
+            ok = 0;
+        }
+        destroy_frontend(&lexer, &parser);
+    }
     return ok;
 }
 
@@ -1026,11 +1274,19 @@ check_fixture(const char *path)
         }
         parsed = 0;
     } else {
-        (void)printf(
-            "[GRAMMAR] %s: %s\n",
-            path,
-            expected_negative ? "expected rejection" : "parsed");
-        parsed = 1;
+        if (!expected_negative && !vitte_parser_validate(&parser)) {
+            (void)fprintf(
+                stderr,
+                "[GRAMMAR] %s: parser accepted an invalid AST\n",
+                path);
+            parsed = 0;
+        } else {
+            (void)printf(
+                "[GRAMMAR] %s: %s\n",
+                path,
+                expected_negative ? "expected rejection" : "parsed");
+            parsed = 1;
+        }
     }
 
     destroy_frontend(&lexer, &parser);
@@ -1055,6 +1311,12 @@ main(int argc, char **argv)
         ok = 0;
     }
     if (!check_invalid_syntax()) {
+        ok = 0;
+    }
+    if (!check_parser_limits_and_reset()) {
+        ok = 0;
+    }
+    if (!check_parser_diagnostic_details()) {
         ok = 0;
     }
     if (!check_recovery()) {

@@ -5,6 +5,7 @@ use vitte::core::memory::{allocate, deallocate};
 
 const FILESYSTEM_FNV_OFFSET: u64 = 14695981039346656037;
 const FILESYSTEM_FNV_PRIME: u64 = 1099511628211;
+const FILESYSTEM_MAX_PATH_BYTES: usize = 1048576;
 
 export pick FilesystemError {
     None,
@@ -277,6 +278,79 @@ export proc vitte_filesystem_write_file_atomic(path: string, data: *u8, length: 
 export extern proc vitte_filesystem_create_directory(path: string) -> FilesystemResult;
 
 export extern proc vitte_filesystem_create_directories(path: string) -> FilesystemResult;
+
+extern proc vitte_platform_path_list_separator() -> u8;
+extern proc vitte_native_fs_create_directory(path: *const u8) -> FilesystemResult;
+
+proc filesystem_create_directory_at(path: *mut u8) -> FilesystemResult {
+    return vitte_native_fs_create_directory(path as *const u8);
+}
+
+/// Create each missing directory component using the native single-directory
+/// operation for host filesystem effects and Vitte for path traversal policy.
+export proc compiler_filesystem_create_directories(path: string) -> FilesystemResult {
+    let source = path.as_bytes();
+    let length: usize = source.len();
+    if length == 0 or length > FILESYSTEM_MAX_PATH_BYTES {
+        return FilesystemResult { error: FilesystemError.InvalidPath, system_error: 0 };
+    }
+
+    let copy = allocate(length + 1) as *mut u8;
+    if copy == null {
+        return FilesystemResult { error: FilesystemError.OutOfMemory, system_error: 0 };
+    }
+
+    let mut index: usize = 0;
+    while index < length {
+        let byte: u8 = source[index];
+        set copy[index] = if byte == 92 { 47 as u8 } else { byte };
+        set index += 1;
+    }
+    set copy[length] = 0;
+
+    set index = if copy[0] == 47 { 1 as usize } else { 0 as usize };
+    if length >= 3 and
+       ((copy[0] >= 65 and copy[0] <= 90) or
+        (copy[0] >= 97 and copy[0] <= 122)) and
+       copy[1] == 58 and copy[2] == 47 {
+        set index = 3 as usize;
+    }
+
+    if vitte_platform_path_list_separator() == 59 and
+       length >= 2 and copy[0] == 47 and copy[1] == 47 {
+        set index = 2 as usize;
+        let mut components: usize = 0;
+        while index < length and components < 2 {
+            while index < length and copy[index] != 47 { set index += 1; }
+            while index < length and copy[index] == 47 { set index += 1; }
+            set components += 1;
+        }
+    }
+
+    while index < length {
+        if copy[index] != 47 {
+            set index += 1;
+            continue;
+        }
+        if index == 0 or copy[index - 1] == 47 {
+            set index += 1;
+            continue;
+        }
+
+        set copy[index] = 0;
+        let result = filesystem_create_directory_at(copy);
+        set copy[index] = 47;
+        if result.error != FilesystemError.None {
+            deallocate(copy);
+            return result;
+        }
+        set index += 1;
+    }
+
+    let result = filesystem_create_directory_at(copy);
+    deallocate(copy);
+    return result;
+}
 
 export extern proc vitte_filesystem_remove_file(path: string) -> FilesystemResult;
 

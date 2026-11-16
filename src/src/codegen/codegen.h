@@ -124,6 +124,7 @@ typedef enum vitte_codegen_arch {
     VITTE_CODEGEN_ARCH_AARCH64,
     VITTE_CODEGEN_ARCH_RISCV64,
     VITTE_CODEGEN_ARCH_WASM32,
+    VITTE_CODEGEN_ARCH_HOST,
 
     VITTE_CODEGEN_ARCH_COUNT
 } vitte_codegen_arch_t;
@@ -140,6 +141,7 @@ typedef enum vitte_codegen_os {
     VITTE_CODEGEN_OS_WINDOWS,
     VITTE_CODEGEN_OS_FREEBSD,
     VITTE_CODEGEN_OS_NONE,
+    VITTE_CODEGEN_OS_HOST,
 
     VITTE_CODEGEN_OS_COUNT
 } vitte_codegen_os_t;
@@ -156,6 +158,9 @@ typedef enum vitte_codegen_abi {
     VITTE_CODEGEN_ABI_AAPCS64,
     VITTE_CODEGEN_ABI_WASM,
     VITTE_CODEGEN_ABI_FREESTANDING,
+    VITTE_CODEGEN_ABI_HOST,
+    VITTE_CODEGEN_ABI_RISCV64,
+    VITTE_CODEGEN_ABI_WIN_ARM64,
 
     VITTE_CODEGEN_ABI_COUNT
 } vitte_codegen_abi_t;
@@ -447,6 +452,11 @@ vitte_codegen_os_name(
 const char *
 vitte_codegen_abi_name(
     vitte_codegen_abi_t abi);
+
+vitte_codegen_abi_t
+vitte_codegen_abi_for_target(
+    vitte_codegen_arch_t architecture,
+    vitte_codegen_os_t operating_system);
 
 /* ========================================================================= */
 /* Defaults                                                                  */

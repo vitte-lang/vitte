@@ -47,6 +47,11 @@
  *     [begin, end)
  *
  * line/column values are 1-based.
+ *
+ * A leading UTF-8 BOM is skipped. Source offsets still include its three
+ * bytes, so the first token begins at offset 3 and line/column 1:1.
+ * Non-ASCII identifier characters use Unicode 16.0.0 XID_Start and
+ * XID_Continue properties.
  */
 
 #include <stdbool.h>
@@ -123,6 +128,10 @@ typedef enum vitte_lexer_error {
 
     VITTE_LEXER_ERROR_VALIDATION,
     VITTE_LEXER_ERROR_INTERNAL,
+
+    /* Appended to preserve the numeric values of the existing error codes. */
+    VITTE_LEXER_ERROR_INVALID_IDENTIFIER,
+    VITTE_LEXER_ERROR_NUMBER_OVERFLOW,
 
     VITTE_LEXER_ERROR_COUNT
 } vitte_lexer_error_t;
@@ -1281,7 +1290,7 @@ VITTE_LEXER_STATIC_ASSERT(
 
 VITTE_LEXER_STATIC_ASSERT(
     VITTE_LEXER_ERROR_COUNT >
-        VITTE_LEXER_ERROR_INTERNAL,
+        VITTE_LEXER_ERROR_NUMBER_OVERFLOW,
     "lexer error enum invariant");
 
 VITTE_LEXER_STATIC_ASSERT(

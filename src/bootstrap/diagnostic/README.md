@@ -37,6 +37,9 @@ Infrastructure codes (`E0000`–`E0099` are reserved):
   are accepted by the emission API. Unregistered identifiers retain their
   symbolic code and receive `E????`, `W????`, `N????`, or `H????` as a display
   fallback; register a code to give it a stable public identity.
+- Once published, a public ID and its meaning are append-only: do not renumber
+  or reuse an ID for a different diagnostic. Add new entries to the registry
+  and keep the native Vitte registry synchronized with this one.
 - Set `VITTE_BACKTRACE=1` to append a best-effort native backtrace to `E0001`,
   `E0002`, `E0003`, and `E0013` on macOS/Linux.
 

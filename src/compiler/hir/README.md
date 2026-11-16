@@ -79,26 +79,21 @@ overflow. The owning `vitte_hir_t` records the last error.
 
 `vitte_hir_lower_ast` lowers the current compiler AST model:
 
-- AST module to HIR module
-- proc declaration to function
-- const declaration to const declaration
-- block statement to block
-- `return` statement
-- let statement to let
-- expression statement to expression statement
-- if statement to if
-- value-producing if expression and block-expression value
-- exclusive and inclusive integer range expressions for `for`
-- fixed-array `for` iterables with their element type
-- `for` binding and body with a simple name or wildcard pattern
-- while and infinite-loop statements
-- match statements and supported patterns
-- integer and string literals
-- identifier to variable
-- binary expression
-- call expression
-- type name
-- error node
+- module, use, constant, static, type, opaque, form, pick, trait, impl,
+  procedure, external procedure, macro, and test declarations
+- generic parameter symbols and generic arguments on named types
+- unit, never, boolean, character, signed and unsigned integer, float, string,
+  pointer, reference, array, slice, optional, function, named, generic, and
+  trait types
+- blocks, let bindings and destructuring patterns, returns, defer, assertions,
+  unsafe blocks, and assembly statements
+- if statements and expressions, exclusive and inclusive ranges, while, loop,
+  for, break, continue, and match statements
+- literal, identifier, path, self, unary, reference, dereference, move, await,
+  try, binary, assignment, call, member, index, cast, array, and form-init
+  expressions
+- wildcard, binding, literal, range, tuple, pick, form, and alternative
+  patterns
 
 ## Validation
 

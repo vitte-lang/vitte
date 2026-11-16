@@ -1123,6 +1123,8 @@ vitte_api_lexer_diagnostic_code(vitte_lexer_error_t error)
     switch (error) {
         case VITTE_LEXER_ERROR_INVALID_UTF8:
             return "VITTE_LEXER_E_INVALID_UNICODE";
+        case VITTE_LEXER_ERROR_INVALID_IDENTIFIER:
+            return "VITTE_LEXER_E_INVALID_IDENTIFIER";
         case VITTE_LEXER_ERROR_INVALID_NUMBER:
             return "VITTE_LEXER_E_INVALID_NUMBER";
         case VITTE_LEXER_ERROR_INVALID_ESCAPE:
@@ -1134,8 +1136,10 @@ vitte_api_lexer_diagnostic_code(vitte_lexer_error_t error)
         case VITTE_LEXER_ERROR_INVALID_CHARACTER:
         case VITTE_LEXER_ERROR_INVALID_TOKEN:
             return "VITTE_LEXER_E_INVALID_CHARACTER";
-        case VITTE_LEXER_ERROR_OVERFLOW:
+        case VITTE_LEXER_ERROR_NUMBER_OVERFLOW:
             return "VITTE_LEXER_E_NUMBER_OVERFLOW";
+        case VITTE_LEXER_ERROR_OVERFLOW:
+            return "VITTE_INFRA_E_LIMIT";
         case VITTE_LEXER_ERROR_COMMENT_DEPTH:
         case VITTE_LEXER_ERROR_TOKEN_LIMIT:
         case VITTE_LEXER_ERROR_SOURCE_TOO_LARGE:

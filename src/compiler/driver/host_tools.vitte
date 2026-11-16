@@ -1,4 +1,4 @@
-/// Vitte-owned orchestration for compiling generated C with the host toolchain.
+/// Vitte-owned orchestration for compiling generated C with host C/LLVM tools.
 /// The C boundary is limited to OS temporary-path creation and process launch.
 space compiler::driver::host_tools;
 
@@ -10,6 +10,7 @@ export pick DriverHostToolStage {
     CCompile,
     Link,
     Execute,
+    LLVMEmit,
     Count
 }
 
@@ -40,6 +41,7 @@ extern proc vitte_native_fs_file_open(path: *const u8, mode: *const u8) -> *mut 
 extern proc vitte_native_fs_file_write(data: *const u8, length: usize, file: *mut u8) -> usize;
 extern proc vitte_native_fs_file_close(file: *mut u8) -> i32;
 extern proc vitte_native_fs_remove(path: *const u8) -> i32;
+extern proc vitte_native_fs_rename_replace(source: *const u8, destination: *const u8) -> i32;
 
 const HOST_TEMP_PATH_CAPACITY: usize = 4096;
 
@@ -83,11 +85,12 @@ proc host_tools_run_arguments(
 /// Compile, link, and optionally execute one generated C17 translation unit.
 /// Return values are DriverHostToolStatus; `failed_stage` identifies the
 /// operation that produced the failure.
-export proc vitte_driver_run_host_toolchain(
+proc host_tools_run_toolchain(
     source: *const u8,
     source_length: usize,
     output_path: *const u8,
     emit_object: bool,
+    emit_llvm_ir: bool,
     run_program: bool,
     debug_info: bool,
     debug_runtime: bool,
@@ -99,22 +102,23 @@ export proc vitte_driver_run_host_toolchain(
         return DriverHostToolStatus.InvalidArgument as u32;
     }
     set *failed_stage = DriverHostToolStage.None as u32;
-    if source == null or (emit_object and run_program) or run_argc < 0 or
+    if source == null or (emit_object and run_program) or
+       (emit_llvm_ir and (emit_object or run_program)) or run_argc < 0 or
        (run_argc > 0 and run_argv == null) {
         set *failed_stage = DriverHostToolStage.Prepare as u32;
         return DriverHostToolStatus.InvalidArgument as u32;
     }
-    if emit_object and (output_path == null or output_path[0] == 0) {
+    if (emit_object or emit_llvm_ir) and (output_path == null or output_path[0] == 0) {
         set *failed_stage = DriverHostToolStage.Prepare as u32;
         return DriverHostToolStatus.InvalidArgument as u32;
     }
 
     let source_buffer = allocate(HOST_TEMP_PATH_CAPACITY);
     let mut executable_buffer: *mut u8 = null;
-    if run_program {
+    if run_program or emit_llvm_ir {
         set executable_buffer = allocate(HOST_TEMP_PATH_CAPACITY);
     }
-    if source_buffer == null or (run_program and executable_buffer == null) {
+    if source_buffer == null or ((run_program or emit_llvm_ir) and executable_buffer == null) {
         if source_buffer != null { deallocate(source_buffer); }
         if executable_buffer != null { deallocate(executable_buffer); }
         set *failed_stage = DriverHostToolStage.Prepare as u32;
@@ -123,13 +127,24 @@ export proc vitte_driver_run_host_toolchain(
 
     let mut source_created = false;
     let mut executable_created = false;
-    let mut compiler_program: string = "cc";
-    let configured_compiler = vitte_native_environment_value("CC");
+    let mut compiler_program: string = if emit_llvm_ir { "clang" } else { "cc" };
+    let mut configured_compiler: ?string = vitte_native_environment_value("CC");
+    if emit_llvm_ir {
+        set configured_compiler = vitte_native_environment_value("VITTE_LLVM_CC");
+        if configured_compiler == null or configured_compiler? == "" {
+            set configured_compiler = vitte_native_environment_value("CLANG");
+        }
+    }
     if configured_compiler != null {
         let selected_compiler = configured_compiler?;
         if selected_compiler != "" {
             set compiler_program = selected_compiler;
         }
+    }
+    let llvm_target: ?string = if emit_llvm_ir { vitte_native_environment_value("VITTE_LLVM_TARGET") } else { null };
+    let mut llvm_target_argument: ?string = null;
+    if llvm_target != null and llvm_target? != "" {
+        set llvm_target_argument = "--target=" + llvm_target?;
     }
 
     if vitte_native_host_temp_path(0, source_buffer, HOST_TEMP_PATH_CAPACITY) == 0 {
@@ -142,8 +157,9 @@ export proc vitte_driver_run_host_toolchain(
     }
     set source_created = true;
 
-    if run_program {
-        if vitte_native_host_temp_path(2, executable_buffer, HOST_TEMP_PATH_CAPACITY) == 0 {
+    if run_program or emit_llvm_ir {
+        let temporary_kind: u32 = if run_program { 2 as u32 } else { 1 as u32 };
+        if vitte_native_host_temp_path(temporary_kind, executable_buffer, HOST_TEMP_PATH_CAPACITY) == 0 {
             host_tools_cleanup(
                 source_buffer, executable_buffer,
                 source_created, executable_created
@@ -152,15 +168,17 @@ export proc vitte_driver_run_host_toolchain(
             return DriverHostToolStatus.IoFailure as u32;
         }
         set executable_created = true;
-        // The OS primitive reserves a unique name. Remove its placeholder so
-        // linkers that require a new output file can use the path.
-        if vitte_native_fs_remove(executable_buffer as *const u8) != 0 {
-            host_tools_cleanup(
-                source_buffer, executable_buffer,
-                source_created, executable_created
-            );
-            set *failed_stage = DriverHostToolStage.Prepare as u32;
-            return DriverHostToolStatus.IoFailure as u32;
+        if run_program {
+            // The OS primitive reserves a unique name. Remove its placeholder
+            // so linkers that require a new output file can use the path.
+            if vitte_native_fs_remove(executable_buffer as *const u8) != 0 {
+                host_tools_cleanup(
+                    source_buffer, executable_buffer,
+                    source_created, executable_created
+                );
+                set *failed_stage = DriverHostToolStage.Prepare as u32;
+                return DriverHostToolStatus.IoFailure as u32;
+            }
         }
     }
 
@@ -173,14 +191,14 @@ export proc vitte_driver_run_host_toolchain(
         return DriverHostToolStatus.IoFailure as u32;
     }
 
-    let compile_output = if run_program {
+    let compile_output = if run_program or emit_llvm_ir {
         executable_buffer as *const u8
     } else if output_path == null or output_path[0] == 0 {
         "a.out".as_ptr() as *const u8
     } else {
         output_path
     };
-    let compile_arguments = allocate(12 * sizeof(*mut u8)) as *mut *mut u8;
+    let compile_arguments = allocate(16 * sizeof(*mut u8)) as *mut *mut u8;
     if compile_arguments == null {
         host_tools_cleanup(
             source_buffer, executable_buffer,
@@ -214,6 +232,16 @@ export proc vitte_driver_run_host_toolchain(
         set compile_arguments[compile_argument_count] = "-c".as_ptr() as *mut u8;
         set compile_argument_count += 1;
     }
+    if emit_llvm_ir {
+        set compile_arguments[compile_argument_count] = "-S".as_ptr() as *mut u8;
+        set compile_argument_count += 1;
+        set compile_arguments[compile_argument_count] = "-emit-llvm".as_ptr() as *mut u8;
+        set compile_argument_count += 1;
+        if llvm_target_argument != null {
+            set compile_arguments[compile_argument_count] = llvm_target_argument?.as_ptr() as *mut u8;
+            set compile_argument_count += 1;
+        }
+    }
     set compile_arguments[compile_argument_count] = source_buffer;
     set compile_argument_count += 1;
     set compile_arguments[compile_argument_count] = "-o".as_ptr() as *mut u8;
@@ -233,12 +261,31 @@ export proc vitte_driver_run_host_toolchain(
             source_buffer, executable_buffer,
             source_created, executable_created
         );
-        set *failed_stage = DriverHostToolStage.CCompile as u32;
+        set *failed_stage = if emit_llvm_ir {
+            DriverHostToolStage.LLVMEmit as u32
+        } else {
+            DriverHostToolStage.CCompile as u32
+        };
         return if compile_status < 0 {
             DriverHostToolStatus.OutOfMemory as u32
         } else {
             DriverHostToolStatus.ProcessFailure as u32
         };
+    }
+
+    if emit_llvm_ir {
+        if vitte_native_fs_rename_replace(
+            executable_buffer as *const u8,
+            output_path
+        ) != 0 {
+            host_tools_cleanup(
+                source_buffer, executable_buffer,
+                source_created, executable_created
+            );
+            set *failed_stage = DriverHostToolStage.LLVMEmit as u32;
+            return DriverHostToolStatus.IoFailure as u32;
+        }
+        set executable_created = false;
     }
 
     if run_program {
@@ -266,4 +313,41 @@ export proc vitte_driver_run_host_toolchain(
         source_created, executable_created
     );
     return DriverHostToolStatus.Success as u32;
+}
+
+/// Compile generated C17 to an LLVM textual IR module through Clang.
+///
+/// This bridge intentionally lowers the same supported C17 subset as the
+/// normal emitter; it is not a native Vitte-IR-to-LLVM lowering pass. Set
+/// `VITTE_LLVM_CC` (or `CLANG`) to select Clang and `VITTE_LLVM_TARGET` to pass
+/// one target triple to Clang's `--target` option.
+export proc vitte_driver_emit_llvm_ir(
+    source: *const u8,
+    source_length: usize,
+    output_path: *const u8,
+    debug_info: bool,
+    failed_stage: *mut u32
+) -> u32 {
+    return host_tools_run_toolchain(
+        source, source_length, output_path, false, true, false,
+        debug_info, false, 0, null, failed_stage
+    );
+}
+
+export proc vitte_driver_run_host_toolchain(
+    source: *const u8,
+    source_length: usize,
+    output_path: *const u8,
+    emit_object: bool,
+    run_program: bool,
+    debug_info: bool,
+    debug_runtime: bool,
+    run_argc: i32,
+    run_argv: *mut *mut u8,
+    failed_stage: *mut u32
+) -> u32 {
+    return host_tools_run_toolchain(
+        source, source_length, output_path, emit_object, false, run_program,
+        debug_info, debug_runtime, run_argc, run_argv, failed_stage
+    );
 }
