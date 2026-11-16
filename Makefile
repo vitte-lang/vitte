@@ -370,7 +370,7 @@ $(NATIVE_MAIN_OBJECT): $(VITTE_ROOT)/compiler/driver/native_main.c $(BUILD_CONFI
 	$(CC) $(CPPFLAGS) $(CFLAGS) -DVITTE_NATIVE_FRONTEND_LINKED \
 		-MMD -MP -c "$<" -o "$@"
 
-$(NATIVE_IO_OBJECT): $(VITTE_ROOT)/compiler/driver/native_io.c $(BUILD_CONFIG_STAMP)
+$(NATIVE_IO_OBJECT): $(VITTE_ROOT)/compiler/driver/native_io.c $(SRC_ROOT)/diagnostic/cli_bridge.h $(SRC_ROOT)/source/source.h $(BUILD_CONFIG_STAMP)
 	@mkdir -p $(NATIVE_FRONTEND_DIR)
 	@printf '[CC-NATIVE-IO] %s\n' "$<"
 	$(CC) $(CPPFLAGS) $(CFLAGS) -DVITTE_NATIVE_FRONTEND_LINKED \
@@ -402,12 +402,13 @@ $(BOOTSTRAP_ARCHIVE): $(LIB_OBJECTS)
 	$(AR) rcs "$@" $(LIB_OBJECTS)
 	$(RANLIB) "$@"
 
-$(TARGET_BIN): $(NATIVE_LINK_OBJECTS) $(NATIVE_FRONTEND_LIBRARY) $(BUILD_CONFIG_STAMP)
+$(TARGET_BIN): $(NATIVE_LINK_OBJECTS) $(NATIVE_FRONTEND_LIBRARY) $(BOOTSTRAP_ARCHIVE) $(BUILD_CONFIG_STAMP)
 	@mkdir -p $(dir $@)
 	@printf '\n[LD] %s\n' "$@"
 	$(CC) \
 		$(NATIVE_LINK_OBJECTS) \
 		$(NATIVE_FRONTEND_LIBRARY) \
+		$(BOOTSTRAP_ARCHIVE) \
 		$(LDFLAGS) \
 		$(LDLIBS) \
 		-o $@
@@ -587,6 +588,37 @@ test-source: check-toolchain
 		$(LDLIBS) \
 		-o $(SOURCE_TEST_BIN)
 	$(SOURCE_TEST_BIN)
+
+IR_COMPONENT_TEST_BIN := $(BIN_DIR)/ir_component_test
+
+$(IR_COMPONENT_TEST_BIN): $(TEST_DIR)/ir_component_test.c $(SRC_ROOT)/ir/ir.c $(SRC_ROOT)/ir/ir.h
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] ir_component_test\n'
+	$(CC) $(CPPFLAGS) $(TEST_CFLAGS) \
+		$(TEST_DIR)/ir_component_test.c $(SRC_ROOT)/ir/ir.c \
+		$(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: test-ir-component
+test-ir-component: $(IR_COMPONENT_TEST_BIN)
+	$(IR_COMPONENT_TEST_BIN)
+
+.PHONY: test-unit
+test-unit: test-source test-frontend-tokens test-grammar test-ir-component test-api-error-component
+
+API_ERROR_COMPONENT_TEST_BIN := $(BIN_DIR)/native_api_error_lifecycle_test
+
+$(API_ERROR_COMPONENT_TEST_BIN): $(TEST_DIR)/native_api_error_lifecycle_test.c $(NATIVE_FRONTEND_C) $(NATIVE_LINK_OBJECTS) $(NATIVE_FRONTEND_LIBRARY) $(BOOTSTRAP_ARCHIVE) Makefile
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] native_api_error_lifecycle_test\n'
+	$(CC) $(CPPFLAGS) $(TEST_CFLAGS) -include "$(NATIVE_FRONTEND_C)" \
+		$(TEST_DIR)/native_api_error_lifecycle_test.c \
+		$(filter-out $(NATIVE_MAIN_OBJECT),$(NATIVE_LINK_OBJECTS)) \
+		$(NATIVE_FRONTEND_LIBRARY) $(BOOTSTRAP_ARCHIVE) \
+		$(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: test-api-error-component
+test-api-error-component: $(API_ERROR_COMPONENT_TEST_BIN)
+	$(API_ERROR_COMPONENT_TEST_BIN)
 
 # -----------------------------------------------------------------------------
 # Diagnostic rendering
@@ -836,8 +868,8 @@ test-corpus: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
 		$(TEST_DIR)/run_corpus.py \
 		--compiler $(BOOTSTRAP_TARGET_BIN) \
 		--exclude src/tests/expression_literals_parse.vit \
-		--exclude src/tests/grammar_alignment/ref_param_type_marker_ok.vit
-	$(TARGET_BIN) check $(TEST_DIR)/expression_literals_parse.vit --quiet --no-color
+		--exclude src/tests/grammar_alignment/ref_param_type_marker_ok.vit \
+		--exclude src/tests/grammar_alignment/canonical_productions.vit
 	$(TARGET_BIN) check $(TEST_DIR)/grammar_alignment/ref_param_type_marker_ok.vit --quiet --no-color
 
 .PHONY: test-unavailable
@@ -852,6 +884,9 @@ test-unavailable: $(TARGET_BIN)
 # -----------------------------------------------------------------------------
 
 GRAMMAR_TEST_BIN := $(BIN_DIR)/grammar_parser_test
+NATIVE_GRAMMAR_TEST_BIN := $(BIN_DIR)/native_canonical_grammar_test
+NATIVE_GRAMMAR_PARSER_C := $(NATIVE_FRONTEND_DIR)/canonical-parser.c
+NATIVE_GRAMMAR_PARSER_OBJECT := $(NATIVE_FRONTEND_DIR)/canonical-parser.o
 GRAMMAR_FIXTURES := \
 	$(TEST_DIR)/grammar_alignment/let_mut_ok.vit \
 	$(TEST_DIR)/grammar_alignment/ref_param_type_marker_ok.vit \
@@ -859,7 +894,8 @@ GRAMMAR_FIXTURES := \
 	$(TEST_DIR)/form_parse.vit \
 	$(TEST_DIR)/pick_parse.vit \
 	$(TEST_DIR)/nested_generic_type_arguments_parse.vit \
-	$(TEST_DIR)/sema_const_generic_declaration_ok.vit
+	$(TEST_DIR)/sema_const_generic_declaration_ok.vit \
+	$(TEST_DIR)/grammar_alignment/canonical_productions.vit
 
 $(GRAMMAR_TEST_BIN): $(TEST_DIR)/grammar_parser_test.c $(LIB_OBJECTS)
 	@mkdir -p $(BIN_DIR)
@@ -873,8 +909,30 @@ $(GRAMMAR_TEST_BIN): $(TEST_DIR)/grammar_parser_test.c $(LIB_OBJECTS)
 		$(LDLIBS) \
 		-o $@
 
+.PHONY: test-native-grammar
+$(NATIVE_GRAMMAR_PARSER_C): $(BOOTSTRAP_TARGET_BIN) $(NATIVE_FRONTEND_SOURCES) $(NATIVE_MODULE_SOURCES)
+	@mkdir -p $(NATIVE_FRONTEND_DIR)
+	@printf '[VITTE-C] %s\n' "$(VITTE_ROOT)/compiler/parser/parser.vitte"
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" \
+		$(NATIVE_FRONTEND_COMPILER) compile "$(VITTE_ROOT)/compiler/parser/parser.vitte" \
+		--emit-c --verbose --no-color -o "$@"
+
+$(NATIVE_GRAMMAR_PARSER_OBJECT): $(NATIVE_GRAMMAR_PARSER_C) $(BUILD_CONFIG_STAMP)
+	@printf '[CC] %s\n' "$<"
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c "$<" -o "$@"
+
+$(NATIVE_GRAMMAR_TEST_BIN): $(TEST_DIR)/native_canonical_grammar_test.c $(NATIVE_GRAMMAR_PARSER_OBJECT) Makefile
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] native_canonical_grammar_test\n'
+	$(CC) $(CPPFLAGS) $(TEST_CFLAGS) \
+		$(TEST_DIR)/native_canonical_grammar_test.c \
+		$(NATIVE_GRAMMAR_PARSER_OBJECT) $(LDFLAGS) $(LDLIBS) -o $@
+
+test-native-grammar: $(NATIVE_GRAMMAR_TEST_BIN)
+	$(NATIVE_GRAMMAR_TEST_BIN) $(TEST_DIR)/grammar_alignment/canonical_productions.vit
+
 .PHONY: test-grammar
-test-grammar: check-ebnf-frontend-sync $(GRAMMAR_TEST_BIN)
+test-grammar: check-ebnf-frontend-sync $(GRAMMAR_TEST_BIN) test-native-grammar
 	$(GRAMMAR_TEST_BIN) $(GRAMMAR_FIXTURES)
 
 # -----------------------------------------------------------------------------
@@ -1044,7 +1102,7 @@ test-sema: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
 	output=`$(TARGET_BIN) compile \
 		$(TEST_DIR)/sema_calls/local_param_mismatch.vit \
 		--stop-after-sema \
-		--no-color 2>&1`; \
+		--no-color --diagnostic=json 2>&1`; \
 	rc=$$?; \
 	set -e; \
 	test "$$rc" -eq 1 && \
@@ -1056,7 +1114,7 @@ test-sema: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
 	output=`$(TARGET_BIN) compile \
 		$(TEST_DIR)/sema_calls/signed_variable_to_u64_mismatch.vit \
 		--stop-after-sema \
-		--no-color 2>&1`; \
+		--no-color --diagnostic=json 2>&1`; \
 	rc=$$?; \
 	set -e; \
 	test "$$rc" -eq 1 && \
@@ -1305,6 +1363,57 @@ test-declaration-features: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
 test-ir-backend: $(TARGET_BIN)
 	$(TARGET_BIN) run $(TEST_DIR)/ir_declaration_runtime.vit
 
+.PHONY: test-compiler-integration
+test-compiler-integration: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+	VITTE_C17_CC="$(CC)" $(PYTHON) $(TEST_DIR)/compiler_pipeline_integration_test.py \
+		$(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+
+.PHONY: test-compiler-regressions
+test-compiler-regressions: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+	VITTE_C17_CC="$(CC)" $(PYTHON) $(TEST_DIR)/compiler_regression_test.py \
+		$(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+
+.PHONY: test-integration
+test-integration: test-compiler-integration
+
+.PHONY: test-regressions
+test-regressions: test-compiler-regressions test-bootstrap-regressions test-bootstrap-semantics test-diagnostic-golden test-diagnostic-parity
+
+# The standalone bootstrap and native codegen copies must agree on target ABI
+# enum ordinals, host defaults, and architecture/OS compatibility checks.
+CODEGEN_TARGET_ABI_BOOTSTRAP_TEST := $(BIN_DIR)/codegen_target_abi_bootstrap_test
+CODEGEN_TARGET_ABI_NATIVE_TEST := $(BIN_DIR)/codegen_target_abi_native_test
+
+$(CODEGEN_TARGET_ABI_BOOTSTRAP_TEST): $(TEST_DIR)/codegen_target_abi_test.c src/bootstrap/codegen/codegen.c src/bootstrap/codegen/codegen.h Makefile
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] codegen_target_abi_test (bootstrap)\n'
+	$(CC) $(CPPFLAGS) -Isrc/bootstrap/codegen $(TEST_CFLAGS) \
+		$(TEST_DIR)/codegen_target_abi_test.c src/bootstrap/codegen/codegen.c \
+		$(LDFLAGS) $(LDLIBS) -o $@
+
+$(CODEGEN_TARGET_ABI_NATIVE_TEST): $(TEST_DIR)/codegen_target_abi_test.c src/src/codegen/codegen.c src/src/codegen/codegen.h Makefile
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] codegen_target_abi_test (native)\n'
+	$(CC) $(CPPFLAGS) -Isrc/src/codegen $(TEST_CFLAGS) \
+		$(TEST_DIR)/codegen_target_abi_test.c src/src/codegen/codegen.c \
+		$(LDFLAGS) $(LDLIBS) -o $@
+
+.PHONY: test-target-abi
+test-target-abi: $(CODEGEN_TARGET_ABI_BOOTSTRAP_TEST) $(CODEGEN_TARGET_ABI_NATIVE_TEST) $(BOOTSTRAP_TARGET_BIN)
+	$(CODEGEN_TARGET_ABI_BOOTSTRAP_TEST)
+	$(CODEGEN_TARGET_ABI_NATIVE_TEST)
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" \
+		$(BOOTSTRAP_TARGET_BIN) check $(VITTE_ROOT)/compiler/codegen/codegen.vitte --quiet --no-color
+
+.PHONY: test-symbol-linking
+test-symbol-linking: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+	VITTE_C17_CC="$(CC)" $(PYTHON) $(TEST_DIR)/symbol_linking_test.py \
+		$(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+
+# Executable/object linking, target ABI, and HIR/IR-to-C17 runtime regressions.
+.PHONY: test-backend-regressions
+test-backend-regressions: test-symbol-linking test-target-abi test-ir-backend
+
 .PHONY: test-mir-control-flow
 test-mir-control-flow: $(TARGET_BIN)
 	$(TARGET_BIN) run $(TEST_DIR)/mir_loop_targets_runtime.vit
@@ -1336,6 +1445,9 @@ compiler-binary-ownership: $(TARGET_BIN)
 
 .PHONY: compiler-power-gate
 compiler-power-gate: \
+	test-unit \
+	test-integration \
+	test-regressions \
 	test-core \
 	test-cli-driver \
 	test-diagnostic \
@@ -1346,6 +1458,7 @@ compiler-power-gate: \
 	test-diagnostic-contract \
 	test-bootstrap-regressions \
 	test-bootstrap-semantics \
+	test-backend-regressions \
 	test-grammar \
 	test-sema \
 	test-import-collisions \
@@ -1355,7 +1468,6 @@ compiler-power-gate: \
 	test-native-bootstrap-parity \
 	test-runtime \
 	test-robustness \
-	test-ir-backend \
 	test-mir-control-flow \
 	test-build-invalidation \
 	test-packaging-matrix \
@@ -1564,6 +1676,9 @@ bootstrap-selfhost: compiler-selfhost-gate
 
 .PHONY: test
 test: \
+	test-unit \
+	test-integration \
+	test-regressions \
 	test-core \
 	test-core-native \
 	test-cli-driver \
@@ -1584,6 +1699,7 @@ test: \
 	test-config-fuzz \
 	test-robustness \
 	test-sema \
+	test-backend-regressions \
 	test-import-collisions \
 	test-native-frontend-subset \
 	test-imports \
@@ -1604,6 +1720,7 @@ test-sanitizers:
 	$(MAKE) MODE=asan -j4 all
 	$(MAKE) MODE=asan \
 		test-source \
+		test-api-error-component \
 		test-import-fuzz \
 		test-concurrent \
 		test-diagnostic \
@@ -1612,7 +1729,10 @@ test-sanitizers:
 		test-frontend-fuzz \
 		test-config-fuzz \
 		test-robustness \
+		test-runtime \
 		test-diagnostic-golden
+	$(MAKE) MODE=asan VITTE_C17_CFLAGS="-fsanitize=address,undefined" \
+		test-compiler-integration test-compiler-regressions
 	@printf '\nASan/UBSan tests completed successfully.\n'
 
 # -----------------------------------------------------------------------------
@@ -1886,6 +2006,9 @@ help:
 		'  make docs-site-check         Check generated site audits and metadata' \
 		'  make check                   Syntax-check every C source' \
 		'  make test                    Run complete test suite' \
+		'  make test-unit               Run compiler component unit tests' \
+		'  make test-integration        Compile and run end-to-end tests' \
+		'  make test-regressions        Run targeted compiler regression tests' \
 		'  make test-core               Run the Vitte core library tests' \
 		'  make test-corpus             Run corpus tests' \
 		'  make test-grammar            Run grammar tests' \

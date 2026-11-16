@@ -717,6 +717,7 @@ static const vitte_lexer_keyword_entry_t vitte_lexer_keywords[] = {
     VITTE_KW("critical", VITTE_TOKEN_KW_RESERVED),
     VITTE_KW("owned", VITTE_TOKEN_KW_RESERVED),
     VITTE_KW("borrow", VITTE_TOKEN_KW_RESERVED),
+    VITTE_KW("volatile", VITTE_TOKEN_KW_RESERVED),
     VITTE_KW("is", VITTE_TOKEN_KW_RESERVED),
     VITTE_KW("kernel", VITTE_TOKEN_KW_RESERVED),
     VITTE_KW("class", VITTE_TOKEN_KW_RESERVED),
@@ -1408,7 +1409,7 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
             (unsigned int)base)) {
         return vitte_lexer_fail(
             lexer,
-            VITTE_LEXER_ERROR_OVERFLOW,
+            VITTE_LEXER_ERROR_NUMBER_OVERFLOW,
             begin,
             lexer->offset);
     }
@@ -2014,6 +2015,8 @@ vitte_lexer_error_name(vitte_lexer_error_t error)
         case VITTE_LEXER_ERROR_OUT_OF_MEMORY: return "out_of_memory";
         case VITTE_LEXER_ERROR_VALIDATION: return "validation";
         case VITTE_LEXER_ERROR_INTERNAL: return "internal";
+        case VITTE_LEXER_ERROR_INVALID_IDENTIFIER: return "invalid_identifier";
+        case VITTE_LEXER_ERROR_NUMBER_OVERFLOW: return "number_overflow";
         case VITTE_LEXER_ERROR_COUNT: return "count";
     }
 
@@ -2089,7 +2092,7 @@ vitte_lexer_scan_one(vitte_lexer_t *lexer)
             if (!vitte_lexer_unicode_identifier_start(cp)) {
                 return vitte_lexer_fail(
                     lexer,
-                    VITTE_LEXER_ERROR_INVALID_TOKEN,
+                    VITTE_LEXER_ERROR_INVALID_IDENTIFIER,
                     lexer->offset,
                     lexer->offset + consumed);
             }
@@ -2147,7 +2150,9 @@ vitte_lexer_init(
     lexer->source_length = source_length;
     lexer->file_id = file_id;
 
-    lexer->offset = 0u;
+    lexer->offset = vitte_unicode_skip_utf8_bom(
+        source,
+        source_length);
     lexer->line = 1u;
     lexer->column = 1u;
 
@@ -2223,7 +2228,9 @@ vitte_lexer_reset(
     lexer->source_length = source_length;
     lexer->file_id = file_id;
 
-    lexer->offset = 0u;
+    lexer->offset = vitte_unicode_skip_utf8_bom(
+        source,
+        source_length);
     lexer->line = 1u;
     lexer->column = 1u;
 

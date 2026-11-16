@@ -563,13 +563,13 @@ def assert_ast_fallback_path(binary: Path, source_path: Path, name: str, expecta
     if codegen_diagnostic is None:
         raise AssertionError(f"{name}: expected owned backend codegen diagnostic, got {diagnostics!r}")
     if expectation == "unsupported-construct":
-        position = codegen_diagnostic.get("position", {})
+        location = codegen_diagnostic.get("location", {})
+        start = location.get("start", {})
         if (
             "macro declaration" not in codegen_diagnostic.get("message", "")
             or "expand or remove" not in codegen_diagnostic.get("details", "")
-            or not position.get("has_span")
-            or position.get("start_line") != 0
-            or position.get("start_column") != 0
+            or start.get("line") != 0
+            or start.get("column") != 0
         ):
             raise AssertionError(
                 f"{name}: expected a construct-specific diagnostic at the macro span, "

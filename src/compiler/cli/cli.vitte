@@ -233,8 +233,7 @@ export form Cli {
 export type CliSeenFlag = u64;
 
 proc cli_string_has_suffix(text: string, suffix: string) -> bool {
-    return suffix.len() <= text.len() and
-        text.slice(text.len() - suffix.len(), text.len()) == suffix;
+    return ends_with(text, suffix);
 }
 
 proc cli_fail(cli: *mut Cli, error: CliError, argument_index: i32, argument: ?string, detail: ?string) -> bool {
@@ -341,7 +340,8 @@ proc cli_mark_boolean(cli: *mut Cli, flag: u64, conflict: u64, index: i32, argum
 }
 
 proc cli_option_value(argument: string, option: string) -> ?string {
-    if argument.len() <= option.len() or argument.slice(0, option.len()) != option or argument.slice(option.len(), option.len() + 1) != "=" { return null; }
+    if argument.len() <= option.len() or not starts_with(argument, option) or
+       argument[option.len() as i64] != '=' { return null; }
     return argument.slice(option.len() + 1, argument.len());
 }
 
@@ -665,14 +665,17 @@ proc cli_parse_color(value: string, color: &mut CliColorMode) -> bool {
 
 proc cli_looks_like_path(value: string) -> bool {
     if value.len() == 0 { return false; }
-    if value.slice(0, 1) == "." or value.slice(0, 1) == "~" { return true; }
+    if value[0] == '.' or value[0] == '~' { return true; }
     let bytes = value.as_bytes();
     let mut index: usize = 0;
     while index < bytes.len() { if bytes[index] == '/' as u8 or bytes[index] == '\\' as u8 { return true; } set index += 1; }
     return cli_string_has_suffix(value, ".vit") or cli_string_has_suffix(value, ".vitl") or cli_string_has_suffix(value, ".vitte");
 }
 
-proc cli_is_option(value: string) -> bool { return value.len() > 1 and value.slice(0, 1) == "-"; }
+proc cli_is_option(value: string) -> bool {
+    if value.len() <= 1 { return false; }
+    return value[0] == '-';
+}
 
 proc cli_has_project_target(cli: *Cli) -> bool {
     return (*cli).input_count != 0 or (*cli).config.manifest_path != null or (*cli).config.package != null;
@@ -1111,11 +1114,14 @@ export proc vitte_cli_parse(cli: *mut Cli, argc: i32, argv: *const string) -> bo
     while index < argc as usize {
         let argument: string = pointer.read(cli_argv_slot(argv, index));
         if not arguments.push(argument) {
+            deallocate(arguments.as_ptr() as *mut u8);
             return cli_fail(cli, CliError.OutOfMemory, index as i32, argument, "unable to adapt C argv to a Vitte argument slice");
         }
         set index += 1;
     }
 
-    return vitte_cli_parse_slice(cli, arguments);
+    let parsed = vitte_cli_parse_slice(cli, arguments);
+    deallocate(arguments.as_ptr() as *mut u8);
+    return parsed;
 }
 

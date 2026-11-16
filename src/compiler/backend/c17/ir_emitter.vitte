@@ -1,10 +1,14 @@
 /// C17 source emission for the compiler's validated SSA IR.
 space compiler::backend::c17::ir_emitter;
 
+const C17_IR_U64_MAX: u64 = 18446744073709551615;
+
 use compiler::ir::ir::{
-    IRBlock, IRContext, IRFunction, IRInstruction, IRLinkage, IROpcode,
-    IRState, IRString, IRType, IRTypeKind, IRValue, IRValueKind,
+    IRBlock, IRCallingConvention, IRContext, IRFunction, IRInstruction,
+    IRLinkage, IROpcode, IRState, IRString, IRType, IRTypeKind, IRValue,
+    IRValueKind,
 };
+use compiler::backend::c17::naming::{naming_is_c_identifier, naming_is_keyword};
 
 export form C17IREmitOptions {
     emit_banner: bool,
@@ -30,6 +34,13 @@ proc ir_string(context: &IRContext, id: u64) -> ?string {
 proc ir_type(context: &IRContext, id: u64) -> ?&IRType {
     if id == 0 or id > context.type_count as u64 { return null; }
     return &context.types[id as usize - 1];
+}
+
+proc ir_type_is_c_complete_value(context: &IRContext, id: u64) -> bool {
+    let ty = ir_type(context, id);
+    if ty == null { return false; }
+    return ty?.kind != IRTypeKind.Void and ty?.kind != IRTypeKind.ForwardOpaque and
+        ty?.kind != IRTypeKind.Invalid and ty?.kind != IRTypeKind.Count;
 }
 
 proc ir_value(context: &IRContext, id: u64) -> ?&IRValue {
@@ -66,6 +77,43 @@ proc ir_u64(value: u64) -> string { return value.to_string(); }
 proc ir_i64(value: i64) -> string {
     if value < 0 { return "-" + ir_u64((-value) as u64); }
     return ir_u64(value as u64);
+}
+
+proc ir_signed_integer_literal(value: u64, kind: IRTypeKind) -> ?string {
+    let mut width: usize = 0;
+    match kind {
+        case IRTypeKind.I8 => set width = 8;
+        case IRTypeKind.I16 => set width = 16;
+        case IRTypeKind.I32 => set width = 32;
+        case IRTypeKind.I64 => set width = 64;
+        case _ => return null;
+    }
+    let mask: u64 = if width == 64 { C17_IR_U64_MAX } else { (1 as u64 << width) - 1 };
+    let bits = value & mask;
+    let sign_bit: u64 = 1 as u64 << (width - 1);
+    if bits < sign_bit { return ir_u64(bits); }
+
+    let magnitude = (mask ^ bits) + 1;
+    if magnitude == sign_bit {
+        if kind == IRTypeKind.I8 { return "INT8_MIN"; }
+        if kind == IRTypeKind.I16 { return "INT16_MIN"; }
+        if kind == IRTypeKind.I32 { return "INT32_MIN"; }
+        if kind == IRTypeKind.I64 { return "INT64_MIN"; }
+        return null;
+    }
+    return "(-" + ir_u64(magnitude) + ")";
+}
+
+proc ir_integer_constant_text(context: &IRContext, value: &IRValue) -> ?string {
+    let ty = ir_type(context, value.type_);
+    if ty == null { return null; }
+    match ty?.kind {
+        case IRTypeKind.I8 | IRTypeKind.I16 | IRTypeKind.I32 | IRTypeKind.I64 =>
+            return ir_signed_integer_literal(value.integer_value, ty?.kind);
+        case IRTypeKind.U8 | IRTypeKind.U16 | IRTypeKind.U32 | IRTypeKind.U64 |
+             IRTypeKind.Char => return ir_u64(value.integer_value);
+        case _ => return null;
+    }
 }
 
 /// Emit a round-trip-sized decimal C literal without depending on host
@@ -244,11 +292,15 @@ proc ir_value_text(context: &IRContext, value_id: u64) -> ?string {
     if value == null { return null; }
     match value?.kind {
         case IRValueKind.ConstantBool => return if value?.bool_value { "1" } else { "0" };
-        case IRValueKind.ConstantInteger => return value?.integer_value.to_string();
+        case IRValueKind.ConstantInteger => return ir_integer_constant_text(context, value?);
         case IRValueKind.ConstantFloat => return ir_f64_literal(value?.float_value);
         case IRValueKind.ConstantString => return ir_string_literal(context, value?.string_value);
         case IRValueKind.Null => return "NULL";
-        case IRValueKind.Undef | IRValueKind.Poison => return "0";
+        case IRValueKind.Undef | IRValueKind.Poison => {
+            let type_name = ir_type_text(context, value?.type_, 0);
+            if type_name == null { return null; }
+            return "(" + type_name? + "){0}";
+        }
         case IRValueKind.Parameter | IRValueKind.Instruction | IRValueKind.Global => return ir_value_name(value?);
         case IRValueKind.Function => {
             let function: ?&IRFunction = ir_function(context, value?.function);
@@ -437,6 +489,9 @@ proc ir_instruction_text(context: &IRContext, instruction: &IRInstruction) -> ?s
         let type_name = ir_type_text(context, instruction.result_type, 0);
         if aggregate == null or aggregate?.kind != IRTypeKind.Struct or aggregate?.field_count != instruction.operand_count or type_name == null { return null; }
         let mut text: string = name? + " = (" + type_name? + "){ ";
+        if instruction.operand_count == 0 {
+            return text + "._vitte_placeholder = 0 };";
+        }
         let mut index: usize = 0;
         while index < instruction.operand_count {
             let value = ir_value_text(context, instruction.operands[index]);
@@ -582,6 +637,21 @@ proc ir_instruction_text(context: &IRContext, instruction: &IRInstruction) -> ?s
         if left == null or right == null { return null; }
         return name? + " = fmod(" + left? + ", " + right? + ");";
     }
+    if opcode == IROpcode.Bitcast {
+        if instruction.operand_count != 1 { return null; }
+        let operand_value = ir_value(context, instruction.operands[0]);
+        if operand_value == null { return null; }
+        let source_type = ir_type_text(context, operand_value?.type_, 0);
+        let target_type = ir_type_text(context, instruction.result_type, 0);
+        let operand = ir_value_text(context, instruction.operands[0]);
+        if source_type == null or target_type == null or operand == null { return null; }
+        let temporary = "vitte_bitcast_tmp_" + ir_u64(instruction.result);
+        let mut text: string = "{ " + source_type? + " " + temporary + " = " + operand? + "; ";
+        set text += "_Static_assert(sizeof(" + source_type? + ") == sizeof(" + target_type? + "), ";
+        set text += "\"Vitte bitcast requires equal-sized types\"); ";
+        set text += "memcpy(&(" + name? + "), &" + temporary + ", sizeof(" + name? + ")); }";
+        return text;
+    }
     let operator = ir_binary_operator(opcode);
     if operator.len() != 0 {
         if instruction.operand_count < 2 { return null; }
@@ -592,7 +662,7 @@ proc ir_instruction_text(context: &IRContext, instruction: &IRInstruction) -> ?s
     if opcode == IROpcode.Trunc or opcode == IROpcode.Zext or opcode == IROpcode.Sext or
        opcode == IROpcode.FpTrunc or opcode == IROpcode.FpExt or opcode == IROpcode.SiToFp or
        opcode == IROpcode.UiToFp or opcode == IROpcode.FpToSi or opcode == IROpcode.FpToUi or
-       opcode == IROpcode.PtrToInt or opcode == IROpcode.IntToPtr or opcode == IROpcode.Bitcast {
+       opcode == IROpcode.PtrToInt or opcode == IROpcode.IntToPtr {
         if instruction.operand_count == 0 { return null; }
         let cast_type = ir_type_text(context, instruction.result_type, 0); let operand = ir_value_text(context, instruction.operands[0]);
         if cast_type == null or operand == null { return null; }
@@ -603,7 +673,11 @@ proc ir_instruction_text(context: &IRContext, instruction: &IRInstruction) -> ?s
 
 proc ir_emit_function_name(context: &IRContext, function: &IRFunction) -> ?string {
     if function.linkage == IRLinkage.External {
-        return ir_string(context, function.name);
+        let name = ir_string(context, function.name);
+        if name == null or not naming_is_c_identifier(name?) or naming_is_keyword(name?) {
+            return null;
+        }
+        return name?;
     }
     return ir_symbol(context, function.name, "vitte_fn_");
 }
@@ -641,7 +715,10 @@ proc ir_emit_signature(context: &IRContext, function: &IRFunction) -> ?string {
         set output += type_name? + " " + ir_value_name(value?);
         set index += 1;
     }
-    if function.parameter_count == 0 { set output += "void"; }
+    if function.is_variadic {
+        if function.parameter_count == 0 { return null; }
+        set output += ", ...";
+    } elif function.parameter_count == 0 { set output += "void"; }
     set output += ")";
     return output;
 }
@@ -752,6 +829,101 @@ export proc c17_ir_emit_options_default() -> C17IREmitOptions {
 
 export proc c17_emit_ir_with_options(context: &IRContext, options: &C17IREmitOptions) -> C17IRResult {
     if context.state != IRState.Sealed { return C17IRResult { success: false, source: "", error: "IR context is not sealed" }; }
+    if ir_has_opcode(context, IROpcode.Switch) {
+        return C17IRResult { success: false, source: "", error: "C17 switch emission requires case-table metadata in the IR" };
+    }
+    let mut index: usize = 0;
+    while index < context.function_count {
+        let function: &IRFunction = &context.functions[index];
+        if function.calling_convention != IRCallingConvention.Default and
+           function.calling_convention != IRCallingConvention.C {
+            return C17IRResult { success: false, source: "", error: "C17 backend does not support the requested non-C calling convention" };
+        }
+        if function.linkage == IRLinkage.Weak {
+            return C17IRResult { success: false, source: "", error: "weak function linkage is not expressible in portable C17" };
+        }
+        if function.is_variadic and function.parameter_count == 0 {
+            return C17IRResult { success: false, source: "", error: "C17 variadic functions require at least one named parameter" };
+        }
+        let function_name = ir_emit_function_name(context, function);
+        if function_name == null {
+            return C17IRResult { success: false, source: "", error: "external IR function name is not a valid C identifier" };
+        }
+        set index += 1;
+    }
+    index = 0;
+    while index < context.type_count {
+        let ty = &context.types[index];
+        if ty.kind == IRTypeKind.Function and ty.is_variadic and ty.parameter_count == 0 {
+            return C17IRResult { success: false, source: "", error: "C17 variadic function types require at least one named parameter" };
+        }
+        if ty.kind == IRTypeKind.Function {
+            let return_type = ir_type(context, ty.return_type);
+            if return_type == null or (return_type?.kind != IRTypeKind.Void and
+               not ir_type_is_c_complete_value(context, ty.return_type)) {
+                return C17IRResult { success: false, source: "", error: "C17 function type has an incomplete return type" };
+            }
+            let mut parameter_index: usize = 0;
+            while parameter_index < ty.parameter_count {
+                if not ir_type_is_c_complete_value(context, ty.parameter_types[parameter_index]) {
+                    return C17IRResult { success: false, source: "", error: "C17 function type has an incomplete parameter type" };
+                }
+                set parameter_index += 1;
+            }
+        }
+        if ty.kind == IRTypeKind.Struct {
+            let mut field_index: usize = 0;
+            while field_index < ty.field_count {
+                if not ir_type_is_c_complete_value(context, ty.field_types[field_index]) {
+                    return C17IRResult { success: false, source: "", error: "C17 struct field has an incomplete by-value type" };
+                }
+                set field_index += 1;
+            }
+        }
+        set index += 1;
+    }
+    index = 0;
+    while index < context.global_count {
+        if not ir_type_is_c_complete_value(context, context.globals[index].type_) {
+            return C17IRResult { success: false, source: "", error: "C17 global has an incomplete object type" };
+        }
+        set index += 1;
+    }
+    index = 0;
+    while index < context.instruction_count {
+        let instruction = &context.instructions[index];
+        if instruction.result != 0 {
+            let result_type = ir_type(context, instruction.result_type);
+            if result_type == null or (result_type?.kind == IRTypeKind.Void and
+               instruction.opcode != IROpcode.Call) or
+               (result_type?.kind != IRTypeKind.Void and
+                not ir_type_is_c_complete_value(context, instruction.result_type)) {
+                return C17IRResult { success: false, source: "", error: "C17 instruction produces an incomplete value type" };
+            }
+        }
+        if instruction.opcode == IROpcode.Alloca {
+            let pointer_type = ir_type(context, instruction.result_type);
+            if pointer_type == null or pointer_type?.kind != IRTypeKind.Pointer or
+               not ir_type_is_c_complete_value(context, pointer_type?.element_type) {
+                return C17IRResult { success: false, source: "", error: "C17 alloca requires a complete object type" };
+            }
+        }
+        if instruction.opcode == IROpcode.ArrayMake {
+            let array_type = ir_type(context, instruction.result_type);
+            if array_type == null or array_type?.kind != IRTypeKind.Array or
+               not ir_type_is_c_complete_value(context, array_type?.element_type) {
+                return C17IRResult { success: false, source: "", error: "C17 array construction requires a complete element type" };
+            }
+        }
+        if instruction.opcode == IROpcode.SliceMake {
+            let slice_type = ir_type(context, instruction.result_type);
+            if slice_type == null or slice_type?.kind != IRTypeKind.Slice or
+               not ir_type_is_c_complete_value(context, slice_type?.element_type) {
+                return C17IRResult { success: false, source: "", error: "C17 slice construction requires a complete element type" };
+            }
+        }
+        set index += 1;
+    }
     let mut source: string = "";
     if options.emit_banner { set source += "/* Generated by the native Vitte C17 backend. */\n"; }
     if options.emit_debug_comments and options.source_path != null {
@@ -779,7 +951,21 @@ export proc c17_emit_ir_with_options(context: &IRContext, options: &C17IREmitOpt
     set source += "#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <math.h>\n#include <stdlib.h>\n#include <string.h>\n\n";
     if ir_has_opcode(context, IROpcode.StringSlice) { set source += ir_string_slice_helper(); }
     if ir_has_opcode(context, IROpcode.StringConcat) { set source += ir_string_concat_helper(); }
-    let mut index: usize = 0;
+    index = 0;
+    while index < context.type_count {
+        let ty = &context.types[index];
+        if ty.kind == IRTypeKind.Struct or ty.kind == IRTypeKind.Opaque or
+           ty.kind == IRTypeKind.ForwardOpaque or ty.kind == IRTypeKind.Pick or
+           ty.kind == IRTypeKind.Slice {
+            let prefix: string = if ty.kind == IRTypeKind.Slice { "vitte_slice_" } else { "vitte_type_" };
+            let name = ir_type_symbol(context, ty, prefix);
+            if name == null { return C17IRResult { success: false, source: "", error: "invalid named IR type" }; }
+            set source += "struct " + name? + ";\n";
+        }
+        set index += 1;
+    }
+    set source += "\n";
+    index = 0;
     while index < context.type_count {
         let ty = &context.types[index];
         if ty.kind == IRTypeKind.Struct or ty.kind == IRTypeKind.Opaque {
@@ -856,7 +1042,9 @@ export proc c17_emit_ir_with_options(context: &IRContext, options: &C17IREmitOpt
     index = 0;
     while index < context.function_count {
         let function: &IRFunction = &context.functions[index];
-        if function.is_declaration { let declaration = ir_emit_function(context, function); if declaration == null { return C17IRResult { success: false, source: "", error: "unsupported IR function declaration" }; } set source += declaration?; }
+        let declaration = ir_emit_signature(context, function);
+        if declaration == null { return C17IRResult { success: false, source: "", error: "unsupported IR function signature" }; }
+        set source += declaration? + ";\n";
         set index += 1;
     }
     set source += "\n";
@@ -871,15 +1059,25 @@ export proc c17_emit_ir_with_options(context: &IRContext, options: &C17IREmitOpt
         while index < context.function_count {
             let function: &IRFunction = &context.functions[index];
             let source_name = ir_string(context, function.name);
-            if source_name != null and source_name? == "main" {
+            if source_name != null and source_name? == "main" and function.linkage != IRLinkage.External {
                 let function_type = ir_type(context, function.type_);
                 if function_type == null or function_type?.kind != IRTypeKind.Function or function_type?.parameter_count != 0 {
                     return C17IRResult { success: false, source: "", error: "entry function must have no parameters" };
                 }
                 let return_type = ir_type(context, function_type?.return_type);
                 let generated_name = ir_symbol(context, function.name, "vitte_fn_");
+                let integer_return = return_type != null and (
+                    return_type?.kind == IRTypeKind.Bool or return_type?.kind == IRTypeKind.I8 or
+                    return_type?.kind == IRTypeKind.I16 or return_type?.kind == IRTypeKind.I32 or
+                    return_type?.kind == IRTypeKind.I64 or return_type?.kind == IRTypeKind.U8 or
+                    return_type?.kind == IRTypeKind.U16 or return_type?.kind == IRTypeKind.U32 or
+                    return_type?.kind == IRTypeKind.U64 or return_type?.kind == IRTypeKind.Char
+                );
                 if return_type == null or generated_name == null or function.is_declaration {
                     return C17IRResult { success: false, source: "", error: "entry function is not defined" };
+                }
+                if return_type?.kind != IRTypeKind.Void and not integer_return {
+                    return C17IRResult { success: false, source: "", error: "entry function must return void or an integer type" };
                 }
                 if return_type?.kind == IRTypeKind.Void {
                     set source += "int main(void) { " + generated_name? + "(); return 0; }\n";

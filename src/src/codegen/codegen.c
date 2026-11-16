@@ -221,6 +221,8 @@ typedef enum vitte_codegen_arch {
 
     VITTE_CODEGEN_ARCH_WASM32,
 
+    VITTE_CODEGEN_ARCH_HOST,
+
     VITTE_CODEGEN_ARCH_COUNT
 
 } vitte_codegen_arch_t;
@@ -245,6 +247,8 @@ typedef enum vitte_codegen_os {
 
     VITTE_CODEGEN_OS_NONE,
 
+    VITTE_CODEGEN_OS_HOST,
+
     VITTE_CODEGEN_OS_COUNT
 
 } vitte_codegen_os_t;
@@ -268,6 +272,12 @@ typedef enum vitte_codegen_abi {
     VITTE_CODEGEN_ABI_WASM,
 
     VITTE_CODEGEN_ABI_FREESTANDING,
+
+    VITTE_CODEGEN_ABI_HOST,
+
+    VITTE_CODEGEN_ABI_RISCV64,
+
+    VITTE_CODEGEN_ABI_WIN_ARM64,
 
     VITTE_CODEGEN_ABI_COUNT
 
@@ -1011,6 +1021,10 @@ vitte_codegen_arch_name(
 
             return "wasm32";
 
+        case VITTE_CODEGEN_ARCH_HOST:
+
+            return "host";
+
         case VITTE_CODEGEN_ARCH_COUNT:
 
             return "count";
@@ -1054,6 +1068,10 @@ vitte_codegen_os_name(
         case VITTE_CODEGEN_OS_NONE:
 
             return "none";
+
+        case VITTE_CODEGEN_OS_HOST:
+
+            return "host";
 
         case VITTE_CODEGEN_OS_COUNT:
 
@@ -1099,6 +1117,18 @@ vitte_codegen_abi_name(
 
             return "freestanding";
 
+        case VITTE_CODEGEN_ABI_HOST:
+
+            return "host";
+
+        case VITTE_CODEGEN_ABI_RISCV64:
+
+            return "riscv64";
+
+        case VITTE_CODEGEN_ABI_WIN_ARM64:
+
+            return "win-arm64";
+
         case VITTE_CODEGEN_ABI_COUNT:
 
             return "count";
@@ -1114,6 +1144,51 @@ vitte_codegen_abi_name(
 /* Defaults                                                                  */
 
 /* ========================================================================= */
+
+vitte_codegen_abi_t
+vitte_codegen_abi_for_target(
+    vitte_codegen_arch_t architecture,
+    vitte_codegen_os_t operating_system)
+{
+    if (architecture <= VITTE_CODEGEN_ARCH_INVALID ||
+        architecture >= VITTE_CODEGEN_ARCH_COUNT ||
+        operating_system <= VITTE_CODEGEN_OS_INVALID ||
+        operating_system >= VITTE_CODEGEN_OS_COUNT) {
+        return VITTE_CODEGEN_ABI_INVALID;
+    }
+
+    if (architecture == VITTE_CODEGEN_ARCH_HOST ||
+        operating_system == VITTE_CODEGEN_OS_HOST) {
+        return VITTE_CODEGEN_ABI_HOST;
+    }
+
+    if (operating_system == VITTE_CODEGEN_OS_WINDOWS) {
+        if (architecture == VITTE_CODEGEN_ARCH_X86_64) {
+            return VITTE_CODEGEN_ABI_WIN64;
+        }
+        if (architecture == VITTE_CODEGEN_ARCH_AARCH64) {
+            return VITTE_CODEGEN_ABI_WIN_ARM64;
+        }
+        return VITTE_CODEGEN_ABI_INVALID;
+    }
+
+    switch (architecture) {
+        case VITTE_CODEGEN_ARCH_X86_64:
+            return VITTE_CODEGEN_ABI_SYSV;
+        case VITTE_CODEGEN_ARCH_AARCH64:
+            return VITTE_CODEGEN_ABI_AAPCS64;
+        case VITTE_CODEGEN_ARCH_RISCV64:
+            return VITTE_CODEGEN_ABI_RISCV64;
+        case VITTE_CODEGEN_ARCH_WASM32:
+            return VITTE_CODEGEN_ABI_WASM;
+        case VITTE_CODEGEN_ARCH_INVALID:
+        case VITTE_CODEGEN_ARCH_HOST:
+        case VITTE_CODEGEN_ARCH_COUNT:
+            return VITTE_CODEGEN_ABI_INVALID;
+    }
+
+    return VITTE_CODEGEN_ABI_INVALID;
+}
 
 vitte_codegen_config_t
 
@@ -1251,37 +1326,9 @@ vitte_codegen_target_default(void)
 
 #endif
 
-    if (target.architecture ==
-
-            VITTE_CODEGEN_ARCH_AARCH64) {
-
-        target.abi =
-
-            VITTE_CODEGEN_ABI_AAPCS64;
-
-    } else if (target.operating_system ==
-
-               VITTE_CODEGEN_OS_WINDOWS) {
-
-        target.abi =
-
-            VITTE_CODEGEN_ABI_WIN64;
-
-    } else if (target.architecture ==
-
-               VITTE_CODEGEN_ARCH_WASM32) {
-
-        target.abi =
-
-            VITTE_CODEGEN_ABI_WASM;
-
-    } else {
-
-        target.abi =
-
-            VITTE_CODEGEN_ABI_SYSV;
-
-    }
+    target.abi = vitte_codegen_abi_for_target(
+        target.architecture,
+        target.operating_system);
 
     target.endian =
 
@@ -1426,16 +1473,20 @@ vitte_codegen_target_validate(
     }
 
     if (target->pointer_bits == 0u ||
-
         target->size_bits == 0u ||
-
         target->char_bits == 0u) {
-
         return false;
-
     }
 
-    return true;
+    if (target->abi == VITTE_CODEGEN_ABI_FREESTANDING) {
+        return !target->hosted &&
+            target->operating_system == VITTE_CODEGEN_OS_NONE &&
+            target->architecture != VITTE_CODEGEN_ARCH_HOST;
+    }
+
+    return target->abi == vitte_codegen_abi_for_target(
+        target->architecture,
+        target->operating_system);
 
 }
 

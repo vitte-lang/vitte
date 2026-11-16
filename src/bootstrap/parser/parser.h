@@ -520,6 +520,9 @@ typedef struct vitte_parser {
      */
     size_t recursion_depth;
 
+    /* Expression depth at which a match subject ends before its body brace. */
+    size_t match_subject_depth;
+
     /*
      * Suppress cascading syntax errors until synchronization resumes at a
      * separator (`;`, `,`) or an enclosing delimiter (`)`, `]`, `}`).

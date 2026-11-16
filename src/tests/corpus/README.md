@@ -24,6 +24,12 @@ target.
 Each compiler invocation has a 15-second limit so a resolver regression cannot
 hang the corpus indefinitely.
 
+Parser-only fixtures such as `expression_literals_parse.vit` and
+`grammar_alignment/canonical_productions.vit` are validated by
+`make test-grammar`. They contain grammar productions that are not intended to
+form semantically valid programs, so they are excluded from the compiler
+acceptance corpus.
+
 Fixtures classified as `obsolete` are listed for historical context only and
 are skipped even by `make test-unavailable`; they are not compiler acceptance
 tests for the current language/runtime.

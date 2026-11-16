@@ -3640,6 +3640,11 @@ vitte_c17_ast_expression_is_string(
     const vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *expression);
 
+static bool
+vitte_c17_ast_expression_is_lvalue(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *expression);
+
 static const vitte_ast_node_t *
 vitte_c17_ast_function_return_type(
     const vitte_c17_ast_emitter_t *emitter,
@@ -8040,6 +8045,7 @@ vitte_c17_ast_emit_expression(
                 const vitte_ast_node_t *operand =
                     vitte_c17_ast_child(emitter, node, 0u);
                 bool visible_value = false;
+                bool generic_type_parameter = false;
                 const vitte_ast_node_t *type_declaration = NULL;
                 size_t parameter_index;
 
@@ -8069,7 +8075,40 @@ vitte_c17_ast_emit_expression(
                             visible_value = true;
                         }
                     }
-                    if (!visible_value) {
+                    if (!visible_value &&
+                        operand->kind == VITTE_AST_NODE_PATH &&
+                        operand->child_count == 1u) {
+                        const vitte_ast_node_t *generic_parameter_name =
+                            vitte_c17_ast_child(emitter, operand, 0u);
+                        parameter_index = emitter->generic_substitution_count;
+                        while (parameter_index != 0u) {
+                            --parameter_index;
+                            if (vitte_c17_ast_token_equal(
+                                    emitter,
+                                    generic_parameter_name,
+                                    emitter->generic_parameter_names[
+                                        parameter_index])) {
+                                if (emitter->generic_c_type_names[
+                                        parameter_index] != NULL) {
+                                    vitte_c17_ast_write(
+                                        emitter,
+                                        emitter->generic_c_type_names[
+                                            parameter_index]);
+                                } else if (emitter->generic_arguments[
+                                               parameter_index] != NULL) {
+                                    vitte_c17_ast_emit_type(
+                                        emitter,
+                                        emitter->generic_arguments[
+                                            parameter_index]);
+                                } else {
+                                    emitter->failed = true;
+                                }
+                                generic_type_parameter = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!visible_value && !generic_type_parameter) {
                         type_declaration =
                             vitte_c17_ast_find_path_declaration(
                                 emitter,
@@ -8086,7 +8125,9 @@ vitte_c17_ast_emit_expression(
                         }
                     }
                 }
-                if (type_declaration != NULL) {
+                if (generic_type_parameter) {
+                    /* The concrete type argument was emitted above. */
+                } else if (type_declaration != NULL) {
                     vitte_c17_ast_emit_type(emitter, operand);
                 } else {
                     vitte_c17_ast_emit_expression(emitter, operand);
@@ -9486,6 +9527,11 @@ vitte_c17_ast_emit_expression(
                     node->child_count == 2u) {
                     const vitte_ast_node_t *argument;
                     const vitte_ast_node_t *argument_type;
+                    const vitte_ast_node_t *receiver;
+                    const vitte_ast_node_t *receiver_type;
+                    const vitte_ast_node_t *element_type;
+                    const vitte_ast_node_t *root;
+                    size_t alias_depth;
 
                     argument =
                         vitte_c17_ast_child(emitter, node, 1u);
@@ -9493,38 +9539,106 @@ vitte_c17_ast_emit_expression(
                         vitte_c17_ast_expression_type(
                             emitter,
                             argument);
+                    receiver = vitte_c17_ast_child(emitter, callee, 0u);
+                    receiver_type = vitte_c17_ast_expression_type(
+                        emitter,
+                        receiver);
+                    root = emitter->parser != NULL
+                        ? vitte_c17_ast_node(
+                              emitter,
+                              vitte_parser_root(emitter->parser))
+                        : NULL;
+                    for (alias_depth = 0u;
+                         receiver_type != NULL && alias_depth < 32u;
+                         ++alias_depth) {
+                        if (receiver_type->kind ==
+                                VITTE_AST_NODE_REFERENCE_TYPE ||
+                            receiver_type->kind ==
+                                VITTE_AST_NODE_POINTER_TYPE) {
+                            receiver_type = receiver_type->child_count != 0u
+                                ? vitte_c17_ast_child(
+                                      emitter,
+                                      receiver_type,
+                                      0u)
+                                : NULL;
+                            continue;
+                        }
+                        if (receiver_type->kind == VITTE_AST_NODE_TYPE_EXPR &&
+                            receiver_type->child_count == 1u && root != NULL) {
+                            const vitte_ast_node_t *path =
+                                vitte_c17_ast_child(
+                                    emitter,
+                                    receiver_type,
+                                    0u);
+                            const vitte_ast_node_t *name =
+                                path != NULL &&
+                                        path->kind == VITTE_AST_NODE_PATH &&
+                                        path->child_count != 0u
+                                    ? vitte_c17_ast_child(
+                                          emitter,
+                                          path,
+                                          path->child_count - 1u)
+                                    : path;
+                            const vitte_ast_node_t *target =
+                                vitte_c17_ast_find_type_alias_target(
+                                    emitter,
+                                    root,
+                                    name);
+                            if (target != NULL && target != receiver_type) {
+                                receiver_type = target;
+                                continue;
+                            }
+                        }
+                        break;
+                    }
+                    if (receiver_type == NULL ||
+                        receiver_type->kind != VITTE_AST_NODE_ARRAY_TYPE ||
+                        receiver_type->child_count != 1u) {
+                        emitter->failed = true;
+                        return;
+                    }
+                    element_type = vitte_c17_ast_child(
+                        emitter,
+                        receiver_type,
+                        0u);
+                    if (element_type == NULL) {
+                        emitter->failed = true;
+                        return;
+                    }
                     vitte_c17_ast_write(
                         emitter,
                         "vitte_array_push(&(");
                     vitte_c17_ast_emit_expression(
                         emitter,
-                        vitte_c17_ast_child(emitter, callee, 0u));
+                        receiver);
                     vitte_c17_ast_write(emitter, "), ");
-                    if (argument_type != NULL) {
-                        vitte_c17_ast_write(emitter, "(");
-                        vitte_c17_ast_emit_type(
+                    if (argument_type != NULL &&
+                        vitte_c17_ast_expression_is_lvalue(
                             emitter,
-                            argument_type);
-                        vitte_c17_ast_write(emitter, "[]){");
-                        vitte_c17_ast_emit_expression(
+                            argument) &&
+                        vitte_c17_ast_type_syntax_equal(
                             emitter,
-                            argument);
-                        vitte_c17_ast_write(emitter, "}");
-                    } else {
+                            argument_type,
+                            element_type,
+                            0u)) {
                         vitte_c17_ast_write(emitter, "&(");
                         vitte_c17_ast_emit_expression(
                             emitter,
                             argument);
                         vitte_c17_ast_write(emitter, ")");
-                    }
-                    vitte_c17_ast_write(emitter, ", sizeof(");
-                    if (argument_type != NULL) {
+                    } else {
+                        vitte_c17_ast_write(emitter, "(");
                         vitte_c17_ast_emit_type(
                             emitter,
-                            argument_type);
-                    } else {
-                        vitte_c17_ast_write(emitter, "int");
+                            element_type);
+                        vitte_c17_ast_write(emitter, "[]){");
+                        vitte_c17_ast_emit_expression(
+                            emitter,
+                            argument);
+                        vitte_c17_ast_write(emitter, "}");
                     }
+                    vitte_c17_ast_write(emitter, ", sizeof(");
+                    vitte_c17_ast_emit_type(emitter, element_type);
                     vitte_c17_ast_write(emitter, "))");
                     return;
                 }
@@ -10067,6 +10181,87 @@ vitte_c17_ast_indent(
 }
 
 static void
+vitte_c17_ast_restore_generic_substitutions(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t saved_count)
+{
+    if (emitter == NULL) {
+        return;
+    }
+    while (emitter->generic_substitution_count > saved_count) {
+        --emitter->generic_substitution_count;
+        emitter->generic_parameter_names[
+            emitter->generic_substitution_count] = NULL;
+        emitter->generic_arguments[
+            emitter->generic_substitution_count] = NULL;
+        emitter->generic_c_type_names[
+            emitter->generic_substitution_count] = NULL;
+    }
+}
+
+static bool
+vitte_c17_ast_push_owner_form_substitutions(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *owner_expression,
+    size_t *saved_count)
+{
+    const vitte_ast_node_t *owner_type;
+    const vitte_ast_node_t *path;
+    const vitte_ast_node_t *form;
+    size_t parameter_count;
+    size_t index;
+
+    if (emitter == NULL || owner_expression == NULL || saved_count == NULL) {
+        return false;
+    }
+    owner_type = vitte_c17_ast_expression_type(emitter, owner_expression);
+    if (owner_type == NULL || owner_type->kind != VITTE_AST_NODE_TYPE_EXPR ||
+        owner_type->child_count < 2u) {
+        return false;
+    }
+    path = vitte_c17_ast_child(emitter, owner_type, 0u);
+    form = vitte_c17_ast_find_path_declaration(
+        emitter,
+        path,
+        VITTE_AST_NODE_FORM_DECL,
+        VITTE_AST_NODE_FORM_DECL);
+    if (form == NULL) {
+        return false;
+    }
+    parameter_count = vitte_c17_ast_generic_form_parameter_count(
+        emitter, form, NULL);
+    if (parameter_count == 0u ||
+        parameter_count != owner_type->child_count - 1u) {
+        return false;
+    }
+    *saved_count = emitter->generic_substitution_count;
+    if (*saved_count > emitter->generic_substitution_capacity ||
+        parameter_count > emitter->generic_substitution_capacity - *saved_count) {
+        emitter->failed = true;
+        return false;
+    }
+    for (index = 0u; index < parameter_count; ++index) {
+        const vitte_ast_node_t *parameter_name =
+            vitte_c17_ast_generic_form_parameter_name(
+                emitter, form, index);
+        const vitte_ast_node_t *argument =
+            vitte_c17_ast_child(emitter, owner_type, index + 1u);
+        if (parameter_name == NULL || argument == NULL) {
+            vitte_c17_ast_restore_generic_substitutions(
+                emitter, *saved_count);
+            emitter->failed = true;
+            return false;
+        }
+        emitter->generic_parameter_names[*saved_count + index] =
+            parameter_name;
+        emitter->generic_arguments[*saved_count + index] = argument;
+        emitter->generic_c_type_names[*saved_count + index] = NULL;
+    }
+    emitter->generic_substitution_count = *saved_count + parameter_count;
+    return true;
+}
+
+static void
 vitte_c17_ast_emit_coalesce_temporaries(
     vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *node,
@@ -10090,13 +10285,31 @@ vitte_c17_ast_emit_coalesce_temporaries(
             vitte_c17_ast_expression_type(
                 emitter,
                 vitte_c17_ast_child(emitter, node, 0u));
+        const vitte_ast_node_t *operand =
+            vitte_c17_ast_child(emitter, node, 0u);
+        const vitte_ast_node_t *owner_expression =
+            operand != NULL && operand->kind == VITTE_AST_NODE_MEMBER_EXPR
+                ? vitte_c17_ast_child(emitter, operand, 0u)
+                : NULL;
+        size_t saved_substitution_count = 0u;
+        bool pushed_substitutions =
+            vitte_c17_ast_push_owner_form_substitutions(
+                emitter, owner_expression, &saved_substitution_count);
 
         if (operand_type == NULL) {
+            if (pushed_substitutions) {
+                vitte_c17_ast_restore_generic_substitutions(
+                    emitter, saved_substitution_count);
+            }
             emitter->failed = true;
             return;
         }
         vitte_c17_ast_indent(emitter, 1u);
         vitte_c17_ast_emit_type(emitter, operand_type);
+        if (pushed_substitutions) {
+            vitte_c17_ast_restore_generic_substitutions(
+                emitter, saved_substitution_count);
+        }
         if (fprintf(
                 emitter->output,
                 " vitte_internal_coalesce_%llu = NULL;\n",
@@ -10111,13 +10324,31 @@ vitte_c17_ast_emit_coalesce_temporaries(
             vitte_c17_ast_expression_type(
                 emitter,
                 vitte_c17_ast_child(emitter, node, 0u));
+        const vitte_ast_node_t *operand =
+            vitte_c17_ast_child(emitter, node, 0u);
+        const vitte_ast_node_t *owner_expression =
+            operand != NULL && operand->kind == VITTE_AST_NODE_MEMBER_EXPR
+                ? vitte_c17_ast_child(emitter, operand, 0u)
+                : NULL;
+        size_t saved_substitution_count = 0u;
+        bool pushed_substitutions =
+            vitte_c17_ast_push_owner_form_substitutions(
+                emitter, owner_expression, &saved_substitution_count);
 
         if (operand_type == NULL) {
+            if (pushed_substitutions) {
+                vitte_c17_ast_restore_generic_substitutions(
+                    emitter, saved_substitution_count);
+            }
             emitter->failed = true;
             return;
         }
         vitte_c17_ast_indent(emitter, 1u);
         vitte_c17_ast_emit_type(emitter, operand_type);
+        if (pushed_substitutions) {
+            vitte_c17_ast_restore_generic_substitutions(
+                emitter, saved_substitution_count);
+        }
         if (fprintf(
                 emitter->output,
                 " vitte_internal_optional_require_%llu;\n",
@@ -14594,6 +14825,9 @@ vitte_c17_ast_is_intrinsic(
     return vitte_c17_ast_token_is(emitter, name, "io_print") ||
            vitte_c17_ast_token_is(emitter, name, "io_print_i64") ||
            vitte_c17_ast_token_is(emitter, name, "io_read_i64") ||
+           vitte_c17_ast_token_is(emitter, name, "trap") ||
+           vitte_c17_ast_token_is(emitter, name, "native_allocate") ||
+           vitte_c17_ast_token_is(emitter, name, "native_deallocate") ||
            vitte_c17_ast_token_is(emitter, name, "random_i64") ||
            vitte_c17_ast_token_is(emitter, name, "malloc") ||
            vitte_c17_ast_token_is(emitter, name, "free") ||
@@ -15908,10 +16142,10 @@ vitte_c17_emit_ast_with_options(
         "           value == (unsigned char)'\\f' ||\n"
         "           value == (unsigned char)'\\v';\n"
         "}\n"
-        "size_t vitte_string_length(const char *value) {\n"
+        "static inline VITTE_C17_AST_UNUSED size_t vitte_string_length(const char *value) {\n"
         "    return value == NULL ? 0u : strlen(value);\n"
         "}\n"
-        "const char *vitte_string_trim(const char *value) {\n"
+        "static inline VITTE_C17_AST_UNUSED const char *vitte_string_trim(const char *value) {\n"
         "    const char *begin;\n"
         "    const char *end;\n"
         "    char *copy;\n"
@@ -15934,7 +16168,7 @@ vitte_c17_emit_ast_with_options(
         "    copy[length] = '\\0';\n"
         "    return copy;\n"
         "}\n"
-        "bool vitte_string_starts_with(\n"
+        "static inline VITTE_C17_AST_UNUSED bool vitte_string_starts_with(\n"
         "    const char *value,\n"
         "    const char *prefix) {\n"
         "    size_t prefix_length;\n"
@@ -15943,7 +16177,7 @@ vitte_c17_emit_ast_with_options(
         "    return strlen(value) >= prefix_length &&\n"
         "           memcmp(value, prefix, prefix_length) == 0;\n"
         "}\n"
-        "bool vitte_string_ends_with(\n"
+        "static inline VITTE_C17_AST_UNUSED bool vitte_string_ends_with(\n"
         "    const char *value,\n"
         "    const char *suffix) {\n"
         "    size_t value_length;\n"
@@ -15955,19 +16189,25 @@ vitte_c17_emit_ast_with_options(
         "           memcmp(value + value_length - suffix_length,\n"
         "                  suffix, suffix_length) == 0;\n"
         "}\n"
-        "void io_print(const char *text) {\n"
+        "static inline VITTE_C17_AST_UNUSED uint8_t *native_allocate(size_t size) {\n"
+        "    return (uint8_t *)malloc(size == 0u ? 1u : size);\n"
+        "}\n"
+        "static inline VITTE_C17_AST_UNUSED void native_deallocate(uint8_t *pointer) {\n"
+        "    free(pointer);\n"
+        "}\n"
+        "static inline VITTE_C17_AST_UNUSED void io_print(const char *text) {\n"
         "    if (text != NULL) { (void)fputs(text, stdout); }\n"
         "}\n"
-        "void io_print_i64(int64_t value) {\n"
+        "static inline VITTE_C17_AST_UNUSED void io_print_i64(int64_t value) {\n"
         "    (void)printf(\"%\" PRId64, value);\n"
         "}\n"
-        "void trap(void) { abort(); }\n"
-        "int64_t io_read_i64(void) {\n"
+        "static inline VITTE_C17_AST_UNUSED void trap(void) { abort(); }\n"
+        "static inline VITTE_C17_AST_UNUSED int64_t io_read_i64(void) {\n"
         "    int64_t value = 0;\n"
         "    if (scanf(\"%\" SCNd64, &value) != 1) { return 0; }\n"
         "    return value;\n"
         "}\n"
-        "int64_t random_i64(int64_t minimum, int64_t maximum) {\n"
+        "static inline VITTE_C17_AST_UNUSED int64_t random_i64(int64_t minimum, int64_t maximum) {\n"
         "    uint64_t width;\n"
         "    uint64_t offset;\n"
         "    if (maximum < minimum) { return minimum; }\n"
@@ -15980,22 +16220,22 @@ vitte_c17_emit_ast_with_options(
     if (has_terminal_api) {
         vitte_c17_ast_write(
             &emitter,
-        "void terminal_clear(void) {\n"
+        "static inline VITTE_C17_AST_UNUSED void terminal_clear(void) {\n"
         "    (void)fputs(\"\\x1b[2J\\x1b[H\", stdout);\n"
         "    (void)fflush(stdout);\n"
         "}\n"
-        "void terminal_print(const char *text) {\n"
+        "static inline VITTE_C17_AST_UNUSED void terminal_print(const char *text) {\n"
         "    if (text != NULL) { (void)fputs(text, stdout); }\n"
         "    (void)fflush(stdout);\n"
         "}\n"
-        "void terminal_print_i64(int64_t value) {\n"
+        "static inline VITTE_C17_AST_UNUSED void terminal_print_i64(int64_t value) {\n"
         "    (void)printf(\"%\" PRId64, value);\n"
         "    (void)fflush(stdout);\n"
         "}\n"
         "#if defined(__APPLE__) || defined(__unix__)\n"
         "static struct termios vitte_terminal_original;\n"
         "static bool vitte_terminal_original_valid;\n"
-        "void terminal_hide_cursor(void) {\n"
+        "static inline VITTE_C17_AST_UNUSED void terminal_hide_cursor(void) {\n"
         "    struct termios raw;\n"
         "    if (!vitte_terminal_original_valid &&\n"
         "        isatty(STDIN_FILENO) != 0 &&\n"
@@ -16011,7 +16251,7 @@ vitte_c17_emit_ast_with_options(
         "    (void)fputs(\"\\x1b[?25l\", stdout);\n"
         "    (void)fflush(stdout);\n"
         "}\n"
-        "void terminal_show_cursor(void) {\n"
+        "static inline VITTE_C17_AST_UNUSED void terminal_show_cursor(void) {\n"
         "    if (vitte_terminal_original_valid) {\n"
         "        (void)tcsetattr(STDIN_FILENO, TCSAFLUSH,\n"
         "                        &vitte_terminal_original);\n"
@@ -16020,7 +16260,7 @@ vitte_c17_emit_ast_with_options(
         "    (void)fputs(\"\\x1b[?25h\", stdout);\n"
         "    (void)fflush(stdout);\n"
         "}\n"
-        "bool terminal_key_pressed(void) {\n"
+        "static inline VITTE_C17_AST_UNUSED bool terminal_key_pressed(void) {\n"
         "    fd_set read_set;\n"
         "    struct timeval timeout = { 0, 0 };\n"
         "    int result;\n"
@@ -16030,11 +16270,11 @@ vitte_c17_emit_ast_with_options(
         "                    &timeout);\n"
         "    return result > 0 && FD_ISSET(STDIN_FILENO, &read_set);\n"
         "}\n"
-        "char terminal_read_key(void) {\n"
+        "static inline VITTE_C17_AST_UNUSED char terminal_read_key(void) {\n"
         "    unsigned char key;\n"
         "    return read(STDIN_FILENO, &key, 1u) == 1 ? (char)key : '\\0';\n"
         "}\n"
-        "void terminal_sleep_ms(int64_t milliseconds) {\n"
+        "static inline VITTE_C17_AST_UNUSED void terminal_sleep_ms(int64_t milliseconds) {\n"
         "    struct timespec delay;\n"
         "    struct timespec remaining;\n"
         "    if (milliseconds <= 0) { return; }\n"
@@ -16046,11 +16286,11 @@ vitte_c17_emit_ast_with_options(
         "    }\n"
         "}\n"
         "#else\n"
-        "void terminal_hide_cursor(void) { }\n"
-        "void terminal_show_cursor(void) { }\n"
-        "bool terminal_key_pressed(void) { return false; }\n"
-        "char terminal_read_key(void) { return '\\0'; }\n"
-        "void terminal_sleep_ms(int64_t milliseconds) {\n"
+        "static inline VITTE_C17_AST_UNUSED void terminal_hide_cursor(void) { }\n"
+        "static inline VITTE_C17_AST_UNUSED void terminal_show_cursor(void) { }\n"
+        "static inline VITTE_C17_AST_UNUSED bool terminal_key_pressed(void) { return false; }\n"
+        "static inline VITTE_C17_AST_UNUSED char terminal_read_key(void) { return '\\0'; }\n"
+        "static inline VITTE_C17_AST_UNUSED void terminal_sleep_ms(int64_t milliseconds) {\n"
         "    clock_t start = clock();\n"
         "    clock_t ticks = (clock_t)((double)milliseconds *\n"
         "                              (double)CLOCKS_PER_SEC / 1000.0);\n"

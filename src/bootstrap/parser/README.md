@@ -117,7 +117,11 @@ After a syntax error, the parser keeps scanning and synchronizes on:
 
 Nested delimiters are skipped before selecting a recovery point. Malformed
 list items are omitted from the AST; later valid items and declarations remain
-available even though the parse reports failure.
+available even though the parse reports failure. At clear follow points, a
+missing semicolon or closing delimiter is treated as inserted and reported,
+so the completed statement or block remains available. `>>` is tracked as two
+generic closers, and match-arm recovery leaves the next `case` or `else` arm
+untouched.
 
 ## Frontend Synchronisation
 

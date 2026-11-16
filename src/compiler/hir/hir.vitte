@@ -11,7 +11,13 @@ use compiler::parser::parser::{
     PARSER_AST_FLAG_FUNCTION_TYPE_HAS_RETURN,
     PARSER_AST_FLAG_MUTABLE,
     PARSER_AST_FLAG_PATTERN_HEAD,
+    PARSER_AST_FLAG_PATTERN_MUTABLE,
+    PARSER_AST_FLAG_PATTERN_OR,
+    PARSER_AST_FLAG_PATTERN_RANGE,
+    PARSER_AST_FLAG_PATTERN_REFERENCE,
+    PARSER_AST_FLAG_PATTERN_STRUCT,
     PARSER_AST_FLAG_PUBLIC,
+    PARSER_AST_FLAG_TYPE_ALIAS,
     PARSER_AST_FLAG_UNSAFE,
     Parser,
     ParserSpan,
@@ -116,6 +122,8 @@ export pick HIRTypeKind {
     Named,
     GenericParameter,
     DynTrait,
+    Optional,
+    Task,
     Count
 }
 
@@ -136,6 +144,7 @@ export pick HIRNodeKind {
     TestDecl,
     Block,
     Let,
+    LetPattern,
     Assign,
     ExprStmt,
     Return,
@@ -178,8 +187,11 @@ export pick HIRNodeKind {
     PatternBinding,
     PatternTuple,
     PatternPick,
+    PatternForm,
+    PatternOr,
     VariantDecl,
     PickConstruct,
+    Try,
     Count
 }
 
@@ -212,6 +224,7 @@ export pick HIRBinaryOperator {
     GreaterEqual,
     And,
     Or,
+    Coalesce,
     Count
 }
 
@@ -377,7 +390,8 @@ form HIRLowerSymbol {
 
 form HIRLowerProcReturn {
     name: HIRStringId,
-    type_: HIRTypeId
+    type_: HIRTypeId,
+    is_async: bool
 }
 
 form HIRLowerContext {
@@ -483,6 +497,8 @@ export proc vitte_hir_type_kind_name(kind: HIRTypeKind) -> string {
         case HIRTypeKind.Named => return "named";
         case HIRTypeKind.GenericParameter => return "generic-parameter";
         case HIRTypeKind.DynTrait => return "dyn-trait";
+        case HIRTypeKind.Optional => return "optional";
+        case HIRTypeKind.Task => return "task";
         case HIRTypeKind.Count => return "count";
     }
     return "unknown";
@@ -506,6 +522,7 @@ export proc vitte_hir_node_kind_name(kind: HIRNodeKind) -> string {
         case HIRNodeKind.TestDecl => return "test-decl";
         case HIRNodeKind.Block => return "block";
         case HIRNodeKind.Let => return "let";
+        case HIRNodeKind.LetPattern => return "let-pattern";
         case HIRNodeKind.Assign => return "assign";
         case HIRNodeKind.ExprStmt => return "expr-stmt";
         case HIRNodeKind.Return => return "return";
@@ -548,8 +565,11 @@ export proc vitte_hir_node_kind_name(kind: HIRNodeKind) -> string {
         case HIRNodeKind.PatternBinding => return "pattern-binding";
         case HIRNodeKind.PatternTuple => return "pattern-tuple";
         case HIRNodeKind.PatternPick => return "pattern-pick";
+        case HIRNodeKind.PatternForm => return "pattern-form";
+        case HIRNodeKind.PatternOr => return "pattern-or";
         case HIRNodeKind.VariantDecl => return "variant-decl";
         case HIRNodeKind.PickConstruct => return "pick-construct";
+        case HIRNodeKind.Try => return "try";
         case HIRNodeKind.Count => return "count";
     }
     return "unknown";
@@ -799,6 +819,8 @@ proc hir_node_release_storage(node: *mut HIRNode) {
         case HIRNodeKind.ProcDecl => hir_release_node_list_payload(node, 1);
         case HIRNodeKind.ExternProcDecl => hir_release_node_list_payload(node, 1);
         case HIRNodeKind.TestDecl => hir_release_node_list_payload(node, 1);
+        case HIRNodeKind.MacroDecl => hir_release_node_list_payload(node, 1);
+        case HIRNodeKind.Asm => hir_release_node_list_payload(node, 0);
         case HIRNodeKind.Block => hir_release_node_list_payload(node, 0);
         case HIRNodeKind.Match => {
             deallocate((*node).payload[1] as usize as *mut u8);
@@ -810,6 +832,8 @@ proc hir_node_release_storage(node: *mut HIRNode) {
         case HIRNodeKind.FormInit => hir_release_node_list_payload(node, 1);
         case HIRNodeKind.PatternTuple => hir_release_node_list_payload(node, 0);
         case HIRNodeKind.PatternPick => hir_release_node_list_payload(node, 1);
+        case HIRNodeKind.PatternForm => hir_release_node_list_payload(node, 1);
+        case HIRNodeKind.PatternOr => hir_release_node_list_payload(node, 0);
         case HIRNodeKind.PickConstruct => hir_release_node_list_payload(node, 1);
         case _ => { }
     }
@@ -826,6 +850,8 @@ proc hir_node_clone_storage(hir: *mut HIR, destination: *mut HIRNode, source: *c
         case HIRNodeKind.ProcDecl => return hir_clone_node_list_payload(hir, destination, source, 1);
         case HIRNodeKind.ExternProcDecl => return hir_clone_node_list_payload(hir, destination, source, 1);
         case HIRNodeKind.TestDecl => return hir_clone_node_list_payload(hir, destination, source, 1);
+        case HIRNodeKind.MacroDecl => return hir_clone_node_list_payload(hir, destination, source, 1);
+        case HIRNodeKind.Asm => return hir_clone_node_list_payload(hir, destination, source, 0);
         case HIRNodeKind.Block => return hir_clone_node_list_payload(hir, destination, source, 0);
         case HIRNodeKind.Match => return hir_clone_match_arm_list_payload(hir, destination, source);
         case HIRNodeKind.Call => return hir_clone_node_list_payload(hir, destination, source, 1);
@@ -834,6 +860,8 @@ proc hir_node_clone_storage(hir: *mut HIR, destination: *mut HIRNode, source: *c
         case HIRNodeKind.FormInit => return hir_clone_node_list_payload(hir, destination, source, 1);
         case HIRNodeKind.PatternTuple => return hir_clone_node_list_payload(hir, destination, source, 0);
         case HIRNodeKind.PatternPick => return hir_clone_node_list_payload(hir, destination, source, 1);
+        case HIRNodeKind.PatternForm => return hir_clone_node_list_payload(hir, destination, source, 1);
+        case HIRNodeKind.PatternOr => return hir_clone_node_list_payload(hir, destination, source, 0);
         case HIRNodeKind.PickConstruct => return hir_clone_node_list_payload(hir, destination, source, 1);
         case _ => return true;
     }
@@ -969,6 +997,12 @@ proc hir_validate_type(hir: *HIR, type_: *HIRType) -> bool {
         if not hir_validate_type_id(hir, (*type_).parameters[index], false) { return false; }
         set index += 1;
     }
+    if ((*type_).kind == HIRTypeKind.Pointer or
+        (*type_).kind == HIRTypeKind.Reference or
+        (*type_).kind == HIRTypeKind.Array or
+        (*type_).kind == HIRTypeKind.Slice or
+        (*type_).kind == HIRTypeKind.Optional or
+        (*type_).kind == HIRTypeKind.Task) and (*type_).element_type == 0 { return false; }
     return true;
 }
 
@@ -1008,11 +1042,12 @@ proc hir_validate_node(hir: *HIR, node: *HIRNode) -> bool {
         case HIRNodeKind.PickDecl => return hir_validate_symbol_id(hir, (*node).payload[0], false) and hir_validate_node_list(hir, node, 1);
         case HIRNodeKind.TraitDecl => return hir_validate_symbol_id(hir, (*node).payload[0], false) and hir_validate_node_list(hir, node, 1);
         case HIRNodeKind.ImplDecl => return hir_validate_type_id(hir, (*node).payload[0], false) and hir_validate_symbol_id(hir, (*node).payload[1], true) and hir_validate_node_list(hir, node, 2);
-        case HIRNodeKind.ProcDecl => return hir_validate_symbol_id(hir, (*node).payload[0], false) and hir_validate_node_list(hir, node, 1) and hir_validate_type_id(hir, (*node).payload[4], true) and hir_validate_node_id(hir, (*node).payload[5], false);
+        case HIRNodeKind.ProcDecl => return hir_validate_symbol_id(hir, (*node).payload[0], false) and hir_validate_node_list(hir, node, 1) and hir_validate_type_id(hir, (*node).payload[4], true) and hir_validate_node_id(hir, (*node).payload[5], true);
         case HIRNodeKind.ExternProcDecl => return hir_validate_symbol_id(hir, (*node).payload[0], false) and hir_validate_node_list(hir, node, 1) and hir_validate_type_id(hir, (*node).payload[4], true) and hir_validate_node_id(hir, (*node).payload[5], true);
         case HIRNodeKind.TestDecl => return hir_validate_symbol_id(hir, (*node).payload[0], false) and hir_validate_node_list(hir, node, 1) and hir_validate_type_id(hir, (*node).payload[4], true) and hir_validate_node_id(hir, (*node).payload[5], false);
         case HIRNodeKind.Block => return hir_validate_node_list(hir, node, 0) and hir_validate_node_id(hir, (*node).payload[3], true);
         case HIRNodeKind.Let => return hir_validate_symbol_id(hir, (*node).payload[0], false) and hir_validate_type_id(hir, (*node).payload[1], true) and hir_validate_node_id(hir, (*node).payload[2], true);
+        case HIRNodeKind.LetPattern => return hir_validate_node_id(hir, (*node).payload[0], false) and hir_validate_type_id(hir, (*node).payload[1], true) and hir_validate_node_id(hir, (*node).payload[2], true);
         case HIRNodeKind.Assign => return hir_validate_node_id(hir, (*node).payload[0], false) and hir_validate_node_id(hir, (*node).payload[1], false);
         case HIRNodeKind.ExprStmt => return hir_validate_node_id(hir, (*node).payload[0], false);
         case HIRNodeKind.Return => return hir_validate_node_id(hir, (*node).payload[0], true);
@@ -1059,6 +1094,7 @@ proc hir_validate_node(hir: *HIR, node: *HIRNode) -> bool {
         case HIRNodeKind.Deref => return hir_validate_node_id(hir, (*node).payload[0], false);
         case HIRNodeKind.Move => return hir_validate_node_id(hir, (*node).payload[0], false);
         case HIRNodeKind.Await => return hir_validate_node_id(hir, (*node).payload[0], false);
+        case HIRNodeKind.Try => return hir_validate_node_id(hir, (*node).payload[0], false);
         case HIRNodeKind.Sizeof => return hir_validate_type_id(hir, (*node).payload[0], false);
         case HIRNodeKind.Alignof => return hir_validate_type_id(hir, (*node).payload[0], false);
         case HIRNodeKind.Typeof => return hir_validate_type_id(hir, (*node).payload[0], false);
@@ -1068,11 +1104,19 @@ proc hir_validate_node(hir: *HIR, node: *HIRNode) -> bool {
         case HIRNodeKind.PatternBinding => return hir_validate_symbol_id(hir, (*node).payload[0], false);
         case HIRNodeKind.PatternTuple => return hir_validate_node_list(hir, node, 0);
         case HIRNodeKind.PatternPick => return hir_validate_symbol_id(hir, (*node).payload[0], false) and hir_validate_node_list(hir, node, 1);
+        case HIRNodeKind.PatternForm => {
+            let type_ = vitte_hir_get_type(hir, (*node).payload[0]);
+            let symbol = if type_ == null { null } else { vitte_hir_get_symbol(hir, (*type_).symbol) };
+            return type_ != null and (*type_).kind == HIRTypeKind.Named and
+                symbol != null and (*symbol).kind == HIRSymbolKind.Form and
+                hir_validate_node_list(hir, node, 1);
+        }
+        case HIRNodeKind.PatternOr => return hir_validate_node_list(hir, node, 0);
         case HIRNodeKind.VariantDecl => return hir_validate_symbol_id(hir, (*node).payload[0], false);
         case HIRNodeKind.PickConstruct => return hir_validate_symbol_id(hir, (*node).payload[0], false) and hir_validate_node_list(hir, node, 1);
-        case HIRNodeKind.Unsafe => return true;
-        case HIRNodeKind.Asm => return true;
-        case HIRNodeKind.MacroDecl => return true;
+        case HIRNodeKind.Unsafe => return hir_validate_node_id(hir, (*node).payload[0], false);
+        case HIRNodeKind.Asm => return hir_validate_node_list(hir, node, 0);
+        case HIRNodeKind.MacroDecl => return vitte_hir_get_string(hir, (*node).payload[0]) != null and hir_validate_node_list(hir, node, 1) and hir_validate_node_id(hir, (*node).payload[5], false);
         case HIRNodeKind.Invalid => return false;
         case HIRNodeKind.Count => return false;
     }
@@ -1657,7 +1701,20 @@ proc hir_lower_append_nodes(node: *mut HIRNode, offset: usize, node_id: HIRNodeI
 
 proc hir_lower_add_node(context: *mut HIRLowerContext, node: *mut HIRNode) -> HIRNodeId {
     if context == null or node == null { return 0; }
+    let kind = (*node).kind;
+    let mut symbol: HIRSymbolId = 0;
+    if kind == HIRNodeKind.ConstDecl or kind == HIRNodeKind.StaticDecl or kind == HIRNodeKind.TypeDecl or
+       kind == HIRNodeKind.FormDecl or kind == HIRNodeKind.PickDecl or kind == HIRNodeKind.TraitDecl or
+       kind == HIRNodeKind.ProcDecl or kind == HIRNodeKind.ExternProcDecl or kind == HIRNodeKind.TestDecl or
+       kind == HIRNodeKind.FieldDecl or kind == HIRNodeKind.VariantDecl or kind == HIRNodeKind.PatternBinding or
+       kind == HIRNodeKind.Let {
+        set symbol = (*node).payload[0];
+    }
     let id = vitte_hir_add_node((*context).hir, node);
+    if id != 0 and symbol != 0 {
+        let symbol_record = vitte_hir_get_symbol((*context).hir, symbol);
+        if symbol_record != null { set (*(symbol_record as *mut HIRSymbol)).declaration = id; }
+    }
     hir_node_release_storage(node);
     return id;
 }
@@ -1674,7 +1731,9 @@ proc hir_lower_alias_target(context: *mut HIRLowerContext, name: HIRStringId) ->
     let mut index: usize = 0;
     while index < (*parser).node_count {
         let candidate = &(*parser).nodes[index];
-        if (*candidate).kind == ASTNodeKind.TypeDecl and (*candidate).child_count >= 2 {
+        if (*candidate).kind == ASTNodeKind.TypeDecl and
+           ((*candidate).node_flags & PARSER_AST_FLAG_TYPE_ALIAS) != 0 and
+           (*candidate).child_count >= 2 {
             let candidate_name = hir_lower_node_text(context, hir_lower_get_node(context, (*candidate).children[0]));
             if candidate_name == name {
                 let mut child_index: usize = 1;
@@ -1707,6 +1766,7 @@ proc hir_lower_generic_alias_declaration(
     while index < (*parser).node_count {
         let candidate = &(*parser).nodes[index];
         if (*candidate).kind == ASTNodeKind.TypeDecl and
+           ((*candidate).node_flags & PARSER_AST_FLAG_TYPE_ALIAS) != 0 and
            (*candidate).child_count > 1 {
             let candidate_name = hir_lower_node_text(
                 context,
@@ -1827,7 +1887,7 @@ proc hir_lower_type_with_generic_arguments(
 ) -> HIRTypeId {
     if context == null or depth > 128 { return 0; }
     let node = hir_lower_get_node(context, id);
-    if node == null { return (*context).i64_type; }
+    if node == null { return 0; }
     if (*node).kind == ASTNodeKind.TypeExpr and (*node).operator_kind == TokenKind.KwProc {
         return hir_lower_function_type_with_generic_arguments(
             context,
@@ -1839,7 +1899,7 @@ proc hir_lower_type_with_generic_arguments(
         );
     }
     if (*node).kind == ASTNodeKind.TypeExpr and (*node).child_count == 1 {
-        let parameter_index = hir_lower_generic_alias_parameter_index(
+        let parameter_index: usize = hir_lower_generic_alias_parameter_index(
             context,
             generic_declaration,
             node
@@ -1853,6 +1913,7 @@ proc hir_lower_type_with_generic_arguments(
     }
     if (*node).kind == ASTNodeKind.PointerType or
        (*node).kind == ASTNodeKind.ReferenceType or
+       (*node).kind == ASTNodeKind.OptionalType or
        (*node).kind == ASTNodeKind.ArrayType {
         if (*node).child_count == 0 { return 0; }
         let mut type_: HIRType = HIRType {};
@@ -1878,6 +1939,16 @@ proc hir_lower_type_with_generic_arguments(
             );
             set type_.mutable_reference =
                 ((*node).node_flags & PARSER_AST_FLAG_MUTABLE) != 0;
+        } elif (*node).kind == ASTNodeKind.OptionalType {
+            set type_.kind = HIRTypeKind.Optional;
+            set type_.element_type = hir_lower_type_with_generic_arguments(
+                context,
+                (*node).children[0],
+                generic_declaration,
+                actual_arguments,
+                actual_argument_count,
+                depth + 1
+            );
         } else {
             set type_.kind = if (*node).child_count == 1 {
                 HIRTypeKind.Slice
@@ -1945,6 +2016,51 @@ proc hir_lower_type_with_generic_arguments(
                 depth + 1
             );
         }
+        let mut generic_symbol = hir_lower_find_symbol(context, alias_name);
+        if generic_symbol == 0 {
+            let named_path = hir_lower_get_node(context, (*node).children[0]);
+            if named_path != null and (*named_path).kind == ASTNodeKind.Path and (*named_path).child_count == 1 {
+                set generic_symbol = hir_lower_find_symbol(
+                    context,
+                    hir_lower_node_text(context, hir_lower_get_node(context, (*named_path).children[0]))
+                );
+            }
+        }
+        let mut named_record = vitte_hir_get_symbol((*context).hir, generic_symbol);
+        if named_record == null {
+            let named_path = hir_lower_get_node(context, (*node).children[0]);
+            if named_path == null { return 0; }
+            set generic_symbol = hir_lower_symbol(context, (*named_path).id, HIRSymbolKind.Type, 0, HIRVisibility.Private, HIRMutability.Immutable);
+            if generic_symbol == 0 { return 0; }
+            set named_record = vitte_hir_get_symbol((*context).hir, generic_symbol);
+        }
+        if named_record != null and (*named_record).kind == HIRSymbolKind.GenericParameter { return 0; }
+        if named_record != null and ((*named_record).kind == HIRSymbolKind.Form or
+            (*named_record).kind == HIRSymbolKind.Pick or
+            (*named_record).kind == HIRSymbolKind.Opaque or
+            (*named_record).kind == HIRSymbolKind.Trait or
+            (*named_record).kind == HIRSymbolKind.Type) {
+            let mut arguments: [HIRTypeId] = [];
+            let mut index: usize = 1;
+            while index < (*node).child_count {
+                let argument = hir_lower_type_with_generic_arguments(
+                    context,
+                    (*node).children[index],
+                    generic_declaration,
+                    actual_arguments,
+                    actual_argument_count,
+                    depth + 1
+                );
+                if argument == 0 or not arguments.push(argument) { return 0; }
+                set index += 1;
+            }
+            let mut named_type: HIRType = HIRType {};
+            set named_type.kind = if (*named_record).kind == HIRSymbolKind.Trait { HIRTypeKind.DynTrait } else { HIRTypeKind.Named };
+            set named_type.symbol = generic_symbol;
+            set named_type.parameters = arguments.as_ptr() as usize as *mut HIRTypeId;
+            set named_type.parameter_count = arguments.len();
+            return vitte_hir_add_type((*context).hir, &mut named_type);
+        }
     }
     return hir_lower_type_depth(context, id, depth + 1);
 }
@@ -1952,7 +2068,7 @@ proc hir_lower_type_with_generic_arguments(
 proc hir_lower_type_depth(context: *mut HIRLowerContext, id: ASTNodeId, depth: usize) -> HIRTypeId {
     if depth > 128 { return 0; }
     let node = hir_lower_get_node(context, id);
-    if node == null { return (*context).i64_type; }
+    if node == null { return 0; }
     if (*node).kind == ASTNodeKind.TypeExpr and (*node).operator_kind == TokenKind.KwProc {
         return hir_lower_function_type_with_generic_arguments(
             context,
@@ -1997,17 +2113,46 @@ proc hir_lower_type_depth(context: *mut HIRLowerContext, id: ASTNodeId, depth: u
                 depth + 1
             );
         }
+        let mut named_symbol = hir_lower_find_symbol(context, alias_name);
+        let mut named_record = vitte_hir_get_symbol((*context).hir, named_symbol);
+        if named_record == null {
+            let named_path = hir_lower_get_node(context, (*node).children[0]);
+            if named_path == null { return 0; }
+            set named_symbol = hir_lower_symbol(context, (*named_path).id, HIRSymbolKind.Type, 0, HIRVisibility.Private, HIRMutability.Immutable);
+            if named_symbol == 0 { return 0; }
+            set named_record = vitte_hir_get_symbol((*context).hir, named_symbol);
+        }
+        if named_record == null or not ((*named_record).kind == HIRSymbolKind.Form or
+            (*named_record).kind == HIRSymbolKind.Pick or
+            (*named_record).kind == HIRSymbolKind.Opaque or
+            (*named_record).kind == HIRSymbolKind.Trait or
+            (*named_record).kind == HIRSymbolKind.Type) { return 0; }
+        let mut arguments: [HIRTypeId] = [];
+        let mut index: usize = 1;
+        while index < (*node).child_count {
+            let argument = hir_lower_type_depth(context, (*node).children[index], depth + 1);
+            if argument == 0 or not arguments.push(argument) { return 0; }
+            set index += 1;
+        }
+        let mut named_type: HIRType = HIRType {};
+        set named_type.kind = if (*named_record).kind == HIRSymbolKind.Trait { HIRTypeKind.DynTrait } else { HIRTypeKind.Named };
+        set named_type.symbol = named_symbol;
+        set named_type.parameters = arguments.as_ptr() as usize as *mut HIRTypeId;
+        set named_type.parameter_count = arguments.len();
+        return vitte_hir_add_type((*context).hir, &mut named_type);
     }
     if (*node).kind == ASTNodeKind.TypeExpr and (*node).child_count != 0 { return hir_lower_type_depth(context, (*node).children[0], depth + 1); }
-    if (*node).kind == ASTNodeKind.PointerType or (*node).kind == ASTNodeKind.ReferenceType {
+    if (*node).kind == ASTNodeKind.PointerType or (*node).kind == ASTNodeKind.ReferenceType or (*node).kind == ASTNodeKind.OptionalType {
+        if (*node).child_count != 1 { return 0; }
         let mut type_: HIRType = HIRType {};
-        set type_.kind = if (*node).kind == ASTNodeKind.PointerType { HIRTypeKind.Pointer } else { HIRTypeKind.Reference };
-        set type_.element_type = if (*node).child_count == 0 { (*context).i64_type } else { hir_lower_type_depth(context, (*node).children[0], depth + 1) };
+        set type_.kind = if (*node).kind == ASTNodeKind.PointerType { HIRTypeKind.Pointer } else if (*node).kind == ASTNodeKind.ReferenceType { HIRTypeKind.Reference } else { HIRTypeKind.Optional };
+        set type_.element_type = hir_lower_type_depth(context, (*node).children[0], depth + 1);
         set type_.mutable_reference = ((*node).node_flags & PARSER_AST_FLAG_MUTABLE) != 0;
+        if type_.element_type == 0 { return 0; }
         return vitte_hir_add_type((*context).hir, &mut type_);
     }
     if (*node).kind == ASTNodeKind.ArrayType {
-        if (*node).child_count == 0 { return (*context).i64_type; }
+        if (*node).child_count == 0 { return 0; }
         let mut type_: HIRType = HIRType {};
         set type_.kind = if (*node).child_count == 1 { HIRTypeKind.Slice } else { HIRTypeKind.Array };
         let element_index: i64 = if (*node).child_count == 1 { 0 } else { 1 };
@@ -2029,27 +2174,49 @@ proc hir_lower_type_depth(context: *mut HIRLowerContext, id: ASTNodeId, depth: u
     if hir_lower_name_equal(context, name, "never") { return (*context).never_type; }
     if hir_lower_name_equal(context, name, "void") or hir_lower_name_equal(context, name, "unit") { return (*context).unit_type; }
     if hir_lower_name_equal(context, name, "bool") { return (*context).bool_type; }
+    if hir_lower_name_equal(context, name, "char") { return hir_lower_primitive(context, HIRTypeKind.Char); }
+    if hir_lower_name_equal(context, name, "i8") { return hir_lower_primitive(context, HIRTypeKind.I8); }
+    if hir_lower_name_equal(context, name, "i16") { return hir_lower_primitive(context, HIRTypeKind.I16); }
+    if hir_lower_name_equal(context, name, "i32") { return hir_lower_primitive(context, HIRTypeKind.I32); }
+    if hir_lower_name_equal(context, name, "i64") { return (*context).i64_type; }
     if hir_lower_name_equal(context, name, "u8") { return hir_lower_primitive(context, HIRTypeKind.U8); }
     if hir_lower_name_equal(context, name, "u16") { return hir_lower_primitive(context, HIRTypeKind.U16); }
     if hir_lower_name_equal(context, name, "u32") { return hir_lower_primitive(context, HIRTypeKind.U32); }
     if hir_lower_name_equal(context, name, "u64") { return (*context).u64_type; }
     if hir_lower_name_equal(context, name, "usize") { return (*context).u64_type; }
+    if hir_lower_name_equal(context, name, "f32") { return hir_lower_primitive(context, HIRTypeKind.F32); }
     if hir_lower_name_equal(context, name, "f64") or hir_lower_name_equal(context, name, "double") { return (*context).f64_type; }
     if hir_lower_name_equal(context, name, "string") or hir_lower_name_equal(context, name, "str") { return (*context).string_type; }
-    if hir_lower_name_equal(context, name, "i32") or hir_lower_name_equal(context, name, "int") { return (*context).i64_type; }
-    let named_symbol = hir_lower_find_symbol(context, name);
-    let named_record = vitte_hir_get_symbol((*context).hir, named_symbol);
+    if hir_lower_name_equal(context, name, "int") { return (*context).i64_type; }
+    let mut named_symbol = hir_lower_find_symbol(context, name);
+    let mut named_record = vitte_hir_get_symbol((*context).hir, named_symbol);
+    if named_record != null and (*named_record).kind == HIRSymbolKind.GenericParameter {
+        let mut generic_type: HIRType = HIRType {};
+        set generic_type.kind = HIRTypeKind.GenericParameter;
+        set generic_type.symbol = named_symbol;
+        return vitte_hir_add_type((*context).hir, &mut generic_type);
+    }
     if named_record != null and (*named_record).kind == HIRSymbolKind.Type {
         let alias_target = hir_lower_alias_target(context, name);
         if alias_target != 0 { return hir_lower_type_depth(context, alias_target, depth + 1); }
     }
-    if named_record != null and ((*named_record).kind == HIRSymbolKind.Pick or (*named_record).kind == HIRSymbolKind.Form or (*named_record).kind == HIRSymbolKind.Opaque) {
+    if named_record != null and ((*named_record).kind == HIRSymbolKind.Pick or (*named_record).kind == HIRSymbolKind.Form or (*named_record).kind == HIRSymbolKind.Opaque or (*named_record).kind == HIRSymbolKind.Trait) {
+        let mut named_type: HIRType = HIRType {};
+        set named_type.kind = if (*named_record).kind == HIRSymbolKind.Trait { HIRTypeKind.DynTrait } else { HIRTypeKind.Named };
+        set named_type.symbol = named_symbol;
+        return vitte_hir_add_type((*context).hir, &mut named_type);
+    }
+    if named_record == null and ((*node).kind == ASTNodeKind.Identifier or (*node).kind == ASTNodeKind.Path) {
+        set named_symbol = hir_lower_symbol(context, (*node).id, HIRSymbolKind.Type, 0, HIRVisibility.Private, HIRMutability.Immutable);
+        named_record = vitte_hir_get_symbol((*context).hir, named_symbol);
+    }
+    if named_record != null and (*named_record).kind == HIRSymbolKind.Type {
         let mut named_type: HIRType = HIRType {};
         set named_type.kind = HIRTypeKind.Named;
         set named_type.symbol = named_symbol;
         return vitte_hir_add_type((*context).hir, &mut named_type);
     }
-    return (*context).i64_type;
+    return 0;
 }
 
 proc hir_lower_type(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRTypeId {
@@ -2074,6 +2241,16 @@ proc hir_lower_find_proc_return(context: *mut HIRLowerContext, name: HIRStringId
         if (*context).proc_returns[index].name == name { return (*context).proc_returns[index].type_; }
     }
     return 0;
+}
+
+proc hir_lower_find_proc_async(context: *mut HIRLowerContext, name: HIRStringId) -> bool {
+    if context == null or name == 0 { return false; }
+    let mut index = (*context).proc_return_count;
+    while index != 0 {
+        set index -= 1;
+        if (*context).proc_returns[index].name == name { return (*context).proc_returns[index].is_async; }
+    }
+    return false;
 }
 
 proc hir_lower_reserve_symbols(context: *mut HIRLowerContext, required: usize) -> bool {
@@ -2114,15 +2291,19 @@ proc hir_lower_reserve_proc_returns(context: *mut HIRLowerContext, required: usi
     return true;
 }
 
-proc hir_lower_set_proc_return(context: *mut HIRLowerContext, name: HIRStringId, type_: HIRTypeId) -> bool {
+proc hir_lower_set_proc_return(context: *mut HIRLowerContext, name: HIRStringId, type_: HIRTypeId, is_async: bool) -> bool {
     if context == null or name == 0 or type_ == 0 { return false; }
     let mut index: usize = 0;
     while index < (*context).proc_return_count {
-        if (*context).proc_returns[index].name == name { set (*context).proc_returns[index].type_ = type_; return true; }
+        if (*context).proc_returns[index].name == name {
+            set (*context).proc_returns[index].type_ = type_;
+            set (*context).proc_returns[index].is_async = is_async;
+            return true;
+        }
         set index += 1;
     }
     if not hir_lower_reserve_proc_returns(context, (*context).proc_return_count + 1) { return false; }
-    set (*context).proc_returns[(*context).proc_return_count] = HIRLowerProcReturn { name: name, type_: type_ };
+    set (*context).proc_returns[(*context).proc_return_count] = HIRLowerProcReturn { name: name, type_: type_, is_async: is_async };
     set (*context).proc_return_count += 1;
     return true;
 }
@@ -2140,7 +2321,7 @@ proc hir_lower_symbol(context: *mut HIRLowerContext, name_id: ASTNodeId, kind: H
     if name_node == null { return 0; }
     let name = hir_lower_node_text(context, name_node);
     if name == 0 { return 0; }
-    if kind != HIRSymbolKind.Local and kind != HIRSymbolKind.Parameter {
+    if kind != HIRSymbolKind.Local and kind != HIRSymbolKind.Parameter and kind != HIRSymbolKind.GenericParameter {
         let existing = hir_lower_find_symbol(context, name);
         if existing != 0 { return existing; }
     }
@@ -2154,6 +2335,38 @@ proc hir_lower_symbol(context: *mut HIRLowerContext, name_id: ASTNodeId, kind: H
     let id = vitte_hir_add_symbol((*context).hir, &mut symbol);
     if id == 0 or not hir_lower_add_symbol_map(context, name, id) { return 0; }
     return id;
+}
+
+proc hir_lower_register_generic_parameters(
+    context: *mut HIRLowerContext,
+    declaration: *const ASTNode
+) -> bool {
+    if context == null or declaration == null { return false; }
+    let mut index: usize = if (*declaration).kind == ASTNodeKind.ImplDecl { 0 as usize } else { 1 as usize };
+    while index < (*declaration).child_count {
+        let parameter = hir_lower_get_node(context, (*declaration).children[index]);
+        if parameter != null and (*parameter).kind == ASTNodeKind.GenericParam {
+            if (*parameter).child_count == 0 { return false; }
+            let symbol = hir_lower_symbol(
+                context,
+                (*parameter).children[0],
+                HIRSymbolKind.GenericParameter,
+                0,
+                HIRVisibility.Private,
+                HIRMutability.Immutable
+            );
+            if symbol == 0 { return false; }
+            let mut generic_type: HIRType = HIRType {};
+            set generic_type.kind = HIRTypeKind.GenericParameter;
+            set generic_type.symbol = symbol;
+            let type_id = vitte_hir_add_type((*context).hir, &mut generic_type);
+            let symbol_record = vitte_hir_get_symbol((*context).hir, symbol);
+            if type_id == 0 or symbol_record == null { return false; }
+            set (*(symbol_record as *mut HIRSymbol)).type_ = type_id;
+        }
+        set index += 1;
+    }
+    return true;
 }
 
 proc hir_lower_form_field_info(
@@ -2181,15 +2394,24 @@ proc hir_lower_form_field_info(
                 let mut child_index: usize = 1;
                 while child_index < (*declaration).child_count {
                     let candidate = hir_lower_get_node(context, (*declaration).children[child_index]);
-                    if candidate == null or (*candidate).kind == ASTNodeKind.GenericParam or (*candidate).kind == ASTNodeKind.WhereClause { return false; }
+                    if candidate == null { return false; }
                     if (*candidate).kind == ASTNodeKind.FieldDecl and (*candidate).child_count == 2 {
                         let candidate_field_name = hir_lower_node_text(context, hir_lower_get_node(context, (*candidate).children[0]));
                         if candidate_field_name == field_name {
                             set *field_index = candidate_index;
-                            set *field_type = hir_lower_type(context, (*candidate).children[1]);
+                            set *field_type = hir_lower_type_with_generic_arguments(
+                                context,
+                                (*candidate).children[1],
+                                declaration,
+                                (*form_type).parameters,
+                                (*form_type).parameter_count,
+                                0
+                            );
                             return *field_type != 0;
                         }
                         set candidate_index += 1;
+                    } elif (*candidate).kind != ASTNodeKind.GenericParam and (*candidate).kind != ASTNodeKind.WhereClause {
+                        return false;
                     }
                     set child_index += 1;
                 }
@@ -2214,7 +2436,7 @@ proc hir_lower_member_symbol(context: *mut HIRLowerContext, name_id: ASTNodeId, 
 }
 
 proc hir_ast_kind_is_type(kind: ASTNodeKind) -> bool {
-    return kind == ASTNodeKind.TypeExpr or kind == ASTNodeKind.PointerType or kind == ASTNodeKind.ReferenceType or kind == ASTNodeKind.ArrayType;
+    return kind == ASTNodeKind.TypeExpr or kind == ASTNodeKind.PointerType or kind == ASTNodeKind.ReferenceType or kind == ASTNodeKind.OptionalType or kind == ASTNodeKind.ArrayType;
 }
 
 proc hir_ast_kind_is_expression(kind: ASTNodeKind) -> bool {
@@ -2267,6 +2489,7 @@ proc hir_lower_binary_operator(kind: TokenKind) -> HIRBinaryOperator {
         case TokenKind.AmpAmp => return HIRBinaryOperator.And;
         case TokenKind.KwOr => return HIRBinaryOperator.Or;
         case TokenKind.PipePipe => return HIRBinaryOperator.Or;
+        case TokenKind.QuestionQuestion => return HIRBinaryOperator.Coalesce;
         case _ => return HIRBinaryOperator.Invalid;
     }
 }
@@ -2395,6 +2618,50 @@ proc hir_lower_string_literal(context: *mut HIRLowerContext, token: *const Parse
     return id;
 }
 
+proc hir_lower_character_value(token: *const ParserToken) -> u64 {
+    if token == null or (*token).length < 3 { return 0; }
+    let bytes = (*token).lexeme as *const u8;
+    if bytes == null { return 0; }
+    let mut position: usize = 1;
+    let end = (*token).length - 1;
+    if position >= end { return 0; }
+    if bytes[position] == 92 {
+        if position + 1 >= end { return 0; }
+        set position += 1;
+        let escaped = bytes[position];
+        if escaped == 110 { return 10; }
+        if escaped == 114 { return 13; }
+        if escaped == 116 { return 9; }
+        if escaped == 48 { return 0; }
+        if escaped == 92 or escaped == 39 or escaped == 34 { return escaped as u64; }
+        if escaped == 120 or escaped == 117 or escaped == 85 {
+            let digits: usize = if escaped == 120 { 2 as usize } else if escaped == 117 { 4 as usize } else { 8 as usize };
+            if position + digits >= end { return 0; }
+            let mut value: u64 = 0;
+            let mut index: usize = 0;
+            while index < digits {
+                let digit = hir_lower_digit(bytes[position + 1 + index]);
+                if digit >= 16 { return 0; }
+                set value = value * 16 + digit as u64;
+                set index += 1;
+            }
+            return value;
+        }
+        return escaped as u64;
+    }
+    let first = bytes[position];
+    if first < 128 { return first as u64; }
+    let width: usize = if first < 224 { 2 as usize } else if first < 240 { 3 as usize } else { 4 as usize };
+    let mut value: u64 = if width == 2 { (first & 31) as u64 } else if width == 3 { (first & 15) as u64 } else { (first & 7) as u64 };
+    let mut index: usize = 1;
+    while index < width and position + index < end {
+        set value = (value << 6) | (bytes[position + index] & 63) as u64;
+        set index += 1;
+    }
+    if index != width { return 0; }
+    return value;
+}
+
 /// Resolve a nongeneric pick variant, its tag, and its first payload type.
 proc hir_lower_pick_variant(
     context: *mut HIRLowerContext,
@@ -2498,12 +2765,44 @@ proc hir_lower_pick_payload_type(context: *mut HIRLowerContext, node: *const AST
     return 0;
 }
 
-proc hir_lower_match_pattern(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNodeId {
+proc hir_lower_match_pattern(context: *mut HIRLowerContext, id: ASTNodeId, expected_type: HIRTypeId, mutable_binding: bool) -> HIRNodeId {
     let node = hir_lower_get_node(context, id);
     if node == null { return 0; }
     let mut result: HIRNode = HIRNode {};
     set result.span = hir_lower_copy_span(&(*node).span);
-    set result.type_ = (*context).i64_type;
+    set result.type_ = if expected_type == 0 { (*context).i64_type } else { expected_type };
+
+    if (*node).kind == ASTNodeKind.Pattern and
+       ((*node).node_flags & PARSER_AST_FLAG_PATTERN_RANGE) != 0 and
+       (*node).child_count == 2 {
+        let lower = hir_lower_expr(context, (*node).children[0]);
+        let upper = hir_lower_expr(context, (*node).children[1]);
+        if lower == 0 or upper == 0 { return 0; }
+        set result.kind = HIRNodeKind.Range;
+        set result.payload[0] = lower;
+        set result.payload[1] = upper;
+        set result.payload[2] = if (*node).operator_kind == TokenKind.DotDotEqual { 1 as u64 } else { 0 as u64 };
+        return hir_lower_add_node(context, &mut result);
+    }
+    if (*node).kind == ASTNodeKind.Pattern and
+       ((*node).node_flags & PARSER_AST_FLAG_PATTERN_OR) != 0 {
+        set result.kind = HIRNodeKind.PatternOr;
+        let mut alternative_index: usize = 0;
+        while alternative_index < (*node).child_count {
+            let alternative = hir_lower_match_pattern(
+                context,
+                (*node).children[alternative_index],
+                expected_type,
+                mutable_binding
+            );
+            if alternative == 0 or not hir_lower_append_nodes(&mut result, 0, alternative) {
+                hir_node_release_storage(&mut result);
+                return 0;
+            }
+            set alternative_index += 1;
+        }
+        return hir_lower_add_node(context, &mut result);
+    }
 
     if (*node).kind == ASTNodeKind.Pattern {
         if (*node).child_count == 0 {
@@ -2567,12 +2866,115 @@ proc hir_lower_match_pattern(context: *mut HIRLowerContext, id: ASTNodeId) -> HI
             }
         }
         if (*node).child_count == 1 {
-            return hir_lower_match_pattern(context, (*node).children[0]);
+            let mut binding_type = expected_type;
+            if ((*node).node_flags & PARSER_AST_FLAG_PATTERN_REFERENCE) != 0 {
+                let mut reference_type: HIRType = HIRType {};
+                set reference_type.kind = HIRTypeKind.Reference;
+                set reference_type.element_type = expected_type;
+                set reference_type.mutable_reference = ((*node).node_flags & PARSER_AST_FLAG_PATTERN_MUTABLE) != 0;
+                set binding_type = vitte_hir_add_type((*context).hir, &mut reference_type);
+                if binding_type == 0 { return 0; }
+            }
+            return hir_lower_match_pattern(
+                context,
+                (*node).children[0],
+                binding_type,
+                mutable_binding or ((*node).node_flags & PARSER_AST_FLAG_PATTERN_MUTABLE) != 0
+            );
+        }
+        if ((*node).node_flags & PARSER_AST_FLAG_PATTERN_STRUCT) != 0 {
+            if (*node).child_count == 0 { return 0; }
+            let head = hir_lower_get_node(context, (*node).children[0]);
+            let form_name = hir_lower_node_text(context, head);
+            let form_symbol = hir_lower_find_symbol(context, form_name);
+            let form_record = vitte_hir_get_symbol((*context).hir, form_symbol);
+            if head == null or form_record == null or (*form_record).kind != HIRSymbolKind.Form { return 0; }
+            let mut form_type: HIRType = HIRType {};
+            set form_type.kind = HIRTypeKind.Named;
+            set form_type.symbol = form_symbol;
+            let form_type_id = vitte_hir_add_type((*context).hir, &mut form_type);
+            if form_type_id == 0 { return 0; }
+            set result.kind = HIRNodeKind.PatternForm;
+            set result.type_ = form_type_id;
+            set result.payload[0] = form_type_id;
+            let mut field_index_in_pattern: usize = 1;
+            while field_index_in_pattern < (*node).child_count {
+                let field_pattern = hir_lower_get_node(context, (*node).children[field_index_in_pattern]);
+                if field_pattern == null { hir_node_release_storage(&mut result); return 0; }
+                let mut field_name_id: ASTNodeId = (*field_pattern).id;
+                let mut nested_pattern_id: ASTNodeId = (*field_pattern).id;
+                if (*field_pattern).kind == ASTNodeKind.Pattern and
+                   ((*field_pattern).node_flags & PARSER_AST_FLAG_PATTERN_HEAD) != 0 and
+                   (*field_pattern).child_count == 2 {
+                    set field_name_id = (*field_pattern).children[0];
+                    set nested_pattern_id = (*field_pattern).children[1];
+                }
+                let mut field_index: u64 = 0;
+                let mut field_type: HIRTypeId = 0;
+                if not hir_lower_form_field_info(context, form_type_id, field_name_id, &mut field_index, &mut field_type) {
+                    hir_node_release_storage(&mut result);
+                    return 0;
+                }
+                let field_symbol = hir_lower_member_symbol(context, field_name_id, field_type);
+                let lowered_pattern = hir_lower_match_pattern(context, nested_pattern_id, field_type, mutable_binding);
+                if field_symbol == 0 or lowered_pattern == 0 {
+                    hir_node_release_storage(&mut result);
+                    return 0;
+                }
+                let mut lowered_field: HIRNode = HIRNode {};
+                set lowered_field.kind = HIRNodeKind.FieldInit;
+                set lowered_field.span = hir_lower_copy_span(&(*field_pattern).span);
+                set lowered_field.type_ = field_type;
+                set lowered_field.payload[0] = field_symbol;
+                set lowered_field.payload[1] = lowered_pattern;
+                set lowered_field.payload[2] = field_index;
+                let field_id = hir_lower_add_node(context, &mut lowered_field);
+                if field_id == 0 or not hir_lower_append_nodes(&mut result, 1, field_id) {
+                    hir_node_release_storage(&mut result);
+                    return 0;
+                }
+                set field_index_in_pattern += 1;
+            }
+            return hir_lower_add_node(context, &mut result);
+        }
+        if (*node).child_count > 1 {
+            set result.kind = HIRNodeKind.PatternTuple;
+            let tuple_type = vitte_hir_get_type((*context).hir, result.type_);
+            let mut child_index: usize = 0;
+            while child_index < (*node).child_count {
+                let element_type: HIRTypeId = if tuple_type != null and
+                    (*tuple_type).kind == HIRTypeKind.Tuple and
+                    child_index < (*tuple_type).parameter_count {
+                    (*tuple_type).parameters[child_index]
+                } else { (*context).i64_type };
+                let element_pattern = hir_lower_match_pattern(context, (*node).children[child_index], element_type, mutable_binding);
+                if element_pattern == 0 or not hir_lower_append_nodes(&mut result, 0, element_pattern) {
+                    hir_node_release_storage(&mut result);
+                    return 0;
+                }
+                set child_index += 1;
+            }
+            return hir_lower_add_node(context, &mut result);
         }
         return 0;
     }
 
+    if (*node).kind == ASTNodeKind.Identifier or (*node).kind == ASTNodeKind.SelfExpr {
+        let name = hir_lower_node_text(context, node);
+        if name == 0 { return 0; }
+        if hir_lower_name_equal(context, name, "_") {
+            set result.kind = HIRNodeKind.PatternWildcard;
+            return hir_lower_add_node(context, &mut result);
+        }
+        let symbol = hir_lower_symbol(context, id, HIRSymbolKind.Local, result.type_, HIRVisibility.Private, if mutable_binding { HIRMutability.Mutable } else { HIRMutability.Immutable });
+        if symbol == 0 { return 0; }
+        set result.kind = HIRNodeKind.PatternBinding;
+        set result.payload[0] = symbol;
+        return hir_lower_add_node(context, &mut result);
+    }
+
     if (*node).kind == ASTNodeKind.Path {
+        if (*node).child_count == 1 { return hir_lower_match_pattern(context, (*node).children[0], expected_type, mutable_binding); }
         let mut tag: u64 = 0; let mut pick_symbol: HIRSymbolId = 0;
         let mut pick_type: HIRTypeId = 0; let mut payload_type: HIRTypeId = 0; let mut payload_count: usize = 0;
         if not hir_lower_pick_variant(context, node, &mut tag, &mut pick_symbol, &mut pick_type, &mut payload_type, &mut payload_count) or payload_count != 0 { return 0; }
@@ -2587,8 +2989,7 @@ proc hir_lower_match_pattern(context: *mut HIRLowerContext, id: ASTNodeId) -> HI
     let expression_node = vitte_hir_get_node((*context).hir, expression);
     if expression_node == null or (*expression_node).kind != HIRNodeKind.Literal { return 0; }
     let literal_kind = (*expression_node).payload[0] as HIRLiteralKind;
-    if literal_kind != HIRLiteralKind.SignedInteger and literal_kind != HIRLiteralKind.UnsignedInteger and
-       literal_kind != HIRLiteralKind.Bool { return 0; }
+    if literal_kind <= HIRLiteralKind.Invalid or literal_kind >= HIRLiteralKind.Count { return 0; }
     set result.kind = HIRNodeKind.PatternLiteral;
     set result.payload[0] = literal_kind as u64;
     set result.payload[1] = (*expression_node).payload[1];
@@ -2625,39 +3026,7 @@ proc hir_lower_append_match_arm(node: *mut HIRNode, arm: HIRMatchArm) -> bool {
 }
 
 proc hir_lower_for_binding(context: *mut HIRLowerContext, id: ASTNodeId, type_: HIRTypeId) -> HIRNodeId {
-    let node = hir_lower_get_node(context, id);
-    if node == null or type_ == 0 { return 0; }
-    if (*node).kind == ASTNodeKind.Pattern or (*node).kind == ASTNodeKind.Path {
-        if (*node).kind == ASTNodeKind.Pattern and (*node).child_count == 0 {
-            let mut wildcard: HIRNode = HIRNode {};
-            set wildcard.kind = HIRNodeKind.PatternWildcard;
-            set wildcard.type_ = type_;
-            set wildcard.span = hir_lower_copy_span(&(*node).span);
-            return hir_lower_add_node(context, &mut wildcard);
-        }
-        if (*node).child_count == 1 {
-            return hir_lower_for_binding(context, (*node).children[0], type_);
-        }
-        return 0;
-    }
-    if (*node).kind != ASTNodeKind.Identifier { return 0; }
-    let name = hir_lower_node_text(context, node);
-    if name == 0 { return 0; }
-    if hir_lower_name_equal(context, name, "_") {
-        let mut wildcard: HIRNode = HIRNode {};
-        set wildcard.kind = HIRNodeKind.PatternWildcard;
-        set wildcard.type_ = type_;
-        set wildcard.span = hir_lower_copy_span(&(*node).span);
-        return hir_lower_add_node(context, &mut wildcard);
-    }
-    let symbol = hir_lower_symbol(context, id, HIRSymbolKind.Local, type_, HIRVisibility.Private, HIRMutability.Immutable);
-    if symbol == 0 { return 0; }
-    let mut binding: HIRNode = HIRNode {};
-    set binding.kind = HIRNodeKind.PatternBinding;
-    set binding.type_ = type_;
-    set binding.span = hir_lower_copy_span(&(*node).span);
-    set binding.payload[0] = symbol;
-    return hir_lower_add_node(context, &mut binding);
+    return hir_lower_match_pattern(context, id, type_, false);
 }
 
 proc hir_lower_expr(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNodeId {
@@ -2669,8 +3038,30 @@ proc hir_lower_expr(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNodeId {
     set result.type_ = (*context).i64_type;
     match (*node).kind {
         case ASTNodeKind.BlockExpr => {
-            if (*node).child_count != 1 { return 0; }
-            return hir_lower_expr(context, (*node).children[0]);
+            set result.kind = HIRNodeKind.Block;
+            set result.type_ = (*context).unit_type;
+            let saved_symbol_count = (*context).symbol_count;
+            let mut index: usize = 0;
+            while index < (*node).child_count {
+                let item = hir_lower_get_node(context, (*node).children[index]);
+                if item == null { set (*context).symbol_count = saved_symbol_count; hir_node_release_storage(&mut result); return 0; }
+                if index + 1 == (*node).child_count and hir_ast_kind_is_expression((*item).kind) {
+                    set result.payload[3] = hir_lower_expr(context, (*item).id);
+                    let tail = vitte_hir_get_node((*context).hir, result.payload[3]);
+                    if tail == null { set (*context).symbol_count = saved_symbol_count; hir_node_release_storage(&mut result); return 0; }
+                    set result.type_ = (*tail).type_;
+                } else {
+                    let statement = hir_lower_statement(context, (*item).id);
+                    if statement == 0 or not hir_lower_append_nodes(&mut result, 0, statement) {
+                        set (*context).symbol_count = saved_symbol_count;
+                        hir_node_release_storage(&mut result);
+                        return 0;
+                    }
+                }
+                set index += 1;
+            }
+            set (*context).symbol_count = saved_symbol_count;
+            return hir_lower_add_node(context, &mut result);
         }
         case ASTNodeKind.IfExpr => {
             if (*node).child_count != 3 { return 0; }
@@ -2704,20 +3095,10 @@ proc hir_lower_expr(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNodeId {
             return hir_lower_add_node(context, &mut result);
         }
         case ASTNodeKind.CharacterLiteral => {
-            set result.kind = HIRNodeKind.Literal;
-            set result.payload[0] = HIRLiteralKind.SignedInteger as u64;
-            if token != null and (*token).length >= 3 {
-                let bytes = (*token).lexeme as *const u8;
-                let mut position: usize = 1;
-                let mut character: u8 = bytes[position];
-                if character == 92 and position + 1 < (*token).length - 1 {
-                    set position += 1; set character = bytes[position];
-                    if character == 110 { set character = 10; }
-                    else if character == 114 { set character = 13; }
-                    else if character == 116 { set character = 9; }
-                }
-                set result.payload[1] = character as u64;
-            }
+            set result.kind = HIRNodeKind.Literal; set result.type_ = hir_lower_primitive(context, HIRTypeKind.Char);
+            set result.payload[0] = HIRLiteralKind.Char as u64;
+            set result.payload[1] = hir_lower_character_value(token);
+            if result.type_ == 0 { return 0; }
             return hir_lower_add_node(context, &mut result);
         }
         case ASTNodeKind.BoolLiteral => {
@@ -2727,10 +3108,10 @@ proc hir_lower_expr(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNodeId {
             return hir_lower_add_node(context, &mut result);
         }
         case ASTNodeKind.NullLiteral => {
-            set result.kind = HIRNodeKind.Literal; set result.payload[0] = HIRLiteralKind.Null as u64;
+            set result.kind = HIRNodeKind.Literal; set result.type_ = 0; set result.payload[0] = HIRLiteralKind.Null as u64;
             return hir_lower_add_node(context, &mut result);
         }
-        case ASTNodeKind.Identifier | ASTNodeKind.Path => {
+        case ASTNodeKind.Identifier | ASTNodeKind.Path | ASTNodeKind.SelfExpr => {
             if (*node).kind == ASTNodeKind.Path {
                 let mut tag: u64 = 0; let mut pick_symbol: HIRSymbolId = 0;
                 let mut pick_type: HIRTypeId = 0; let mut payload_type: HIRTypeId = 0; let mut payload_count: usize = 0;
@@ -2776,10 +3157,47 @@ proc hir_lower_expr(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNodeId {
             if result.payload[0] == 0 { return 0; }
             return hir_lower_add_node(context, &mut result);
         }
+        case ASTNodeKind.AwaitExpr | ASTNodeKind.TryExpr => {
+            if (*node).child_count != 1 { return 0; }
+            let operand_id = hir_lower_expr(context, (*node).children[0]);
+            let operand = vitte_hir_get_node((*context).hir, operand_id);
+            if operand_id == 0 or operand == null { return 0; }
+            set result.kind = if (*node).kind == ASTNodeKind.AwaitExpr { HIRNodeKind.Await } else { HIRNodeKind.Try };
+            set result.payload[0] = operand_id;
+            set result.type_ = (*operand).type_;
+            let operand_type = vitte_hir_get_type((*context).hir, (*operand).type_);
+            if (*node).kind == ASTNodeKind.AwaitExpr and operand_type != null and (*operand_type).kind == HIRTypeKind.Task {
+                set result.type_ = (*operand_type).element_type;
+            } elif (*node).kind == ASTNodeKind.TryExpr and operand_type != null and (*operand_type).kind == HIRTypeKind.Optional {
+                set result.type_ = (*operand_type).element_type;
+            }
+            return hir_lower_add_node(context, &mut result);
+        }
         case ASTNodeKind.UnaryExpr => {
             if (*node).child_count == 0 or token == null { return 0; }
             let operand_id = hir_lower_expr(context, (*node).children[0]);
             if operand_id == 0 { return 0; }
+            if (*node).operator_kind == TokenKind.Amp or (*node).operator_kind == TokenKind.KwRef {
+                let operand = vitte_hir_get_node((*context).hir, operand_id);
+                if operand == null or (*operand).type_ == 0 { return 0; }
+                let mut reference_type: HIRType = HIRType {};
+                set reference_type.kind = HIRTypeKind.Reference;
+                set reference_type.element_type = (*operand).type_;
+                set reference_type.mutable_reference = ((*node).node_flags & PARSER_AST_FLAG_MUTABLE) != 0;
+                set result.kind = HIRNodeKind.Ref;
+                set result.payload[0] = operand_id;
+                set result.type_ = vitte_hir_add_type((*context).hir, &mut reference_type);
+                if result.type_ == 0 { return 0; }
+                return hir_lower_add_node(context, &mut result);
+            }
+            if (*node).operator_kind == TokenKind.KwMove {
+                let operand = vitte_hir_get_node((*context).hir, operand_id);
+                if operand == null { return 0; }
+                set result.kind = HIRNodeKind.Move;
+                set result.payload[0] = operand_id;
+                set result.type_ = (*operand).type_;
+                return hir_lower_add_node(context, &mut result);
+            }
             if (*node).operator_kind == TokenKind.Star {
                 let operand = vitte_hir_get_node((*context).hir, operand_id);
                 let operand_type: *HIRType = if operand == null { null } else { vitte_hir_get_type((*context).hir, (*operand).type_) };
@@ -2842,6 +3260,14 @@ proc hir_lower_expr(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNodeId {
                 let right_type: *HIRType = if right_node == null { null } else { vitte_hir_get_type((*context).hir, (*right_node).type_) };
                 if left_type != null and right_type != null and (*left_type).kind == HIRTypeKind.String and (*right_type).kind == HIRTypeKind.String { set result.type_ = (*context).string_type; }
             }
+            if op == HIRBinaryOperator.Coalesce {
+                let left_type = vitte_hir_get_type((*context).hir, (*left_node).type_);
+                if left_type != null and (*left_type).kind == HIRTypeKind.Optional { set result.type_ = (*left_type).element_type; }
+                else {
+                    let right_node = vitte_hir_get_node((*context).hir, right);
+                    if right_node != null { set result.type_ = (*right_node).type_; }
+                }
+            }
             return hir_lower_add_node(context, &mut result);
         }
         case ASTNodeKind.CallExpr => {
@@ -2878,6 +3304,13 @@ proc hir_lower_expr(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNodeId {
                 set result.type_ = (*lowered_callee_type).return_type;
             } elif return_type != 0 {
                 set result.type_ = return_type;
+            }
+            if hir_lower_find_proc_async(context, callee_name) {
+                let mut task_type: HIRType = HIRType {};
+                set task_type.kind = HIRTypeKind.Task;
+                set task_type.element_type = result.type_;
+                set result.type_ = vitte_hir_add_type((*context).hir, &mut task_type);
+                if result.type_ == 0 { return 0; }
             }
             if callee != null and (*callee).kind == ASTNodeKind.MemberExpr and (*callee).child_count >= 2 {
                 let member_token = hir_lower_get_token(context, hir_lower_get_node(context, (*callee).children[1]));
@@ -2998,7 +3431,7 @@ proc hir_lower_statement(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNod
     let mut result: HIRNode = HIRNode {};
     set result.span = hir_lower_copy_span(&(*node).span);
     match (*node).kind {
-        case ASTNodeKind.Block | ASTNodeKind.BlockExpr => {
+        case ASTNodeKind.Block => {
             set result.kind = HIRNodeKind.Block;
             let saved_symbol_count = (*context).symbol_count;
             let mut index: usize = 0;
@@ -3036,16 +3469,83 @@ proc hir_lower_statement(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNod
                 if initializer_node == null or (*initializer_node).type_ == 0 { return 0; }
                 set type_ = (*initializer_node).type_;
             }
-            let mutability: HIRMutability = if ((*node).node_flags & PARSER_AST_FLAG_MUTABLE) != 0 { HIRMutability.Mutable } else { HIRMutability.Immutable };
-            let symbol = hir_lower_symbol(context, (*node).children[0], HIRSymbolKind.Local, type_, HIRVisibility.Private, mutability);
-            if symbol == 0 { return 0; }
-            set result.kind = HIRNodeKind.Let;
-            set result.payload[0] = symbol; set result.payload[1] = type_; set result.payload[2] = initializer; set result.payload[3] = mutability as u64;
+            let is_mutable = ((*node).node_flags & PARSER_AST_FLAG_MUTABLE) != 0;
+            let mutability: HIRMutability = if is_mutable { HIRMutability.Mutable } else { HIRMutability.Immutable };
+            let mut pattern_node = hir_lower_get_node(context, (*node).children[0]);
+            let mut binding_name_id: ASTNodeId = 0;
+            let mut pattern_mutable: bool = is_mutable;
+            while pattern_node != null and (*pattern_node).kind == ASTNodeKind.Pattern and (*pattern_node).child_count == 1 {
+                if ((*pattern_node).node_flags & PARSER_AST_FLAG_PATTERN_MUTABLE) != 0 { set pattern_mutable = true; }
+                set pattern_node = hir_lower_get_node(context, (*pattern_node).children[0]);
+            }
+            if pattern_node != null and (*pattern_node).kind == ASTNodeKind.Path and (*pattern_node).child_count == 1 {
+                set pattern_node = hir_lower_get_node(context, (*pattern_node).children[0]);
+            }
+            if pattern_node != null and (*pattern_node).kind == ASTNodeKind.Identifier { set binding_name_id = (*pattern_node).id; }
+            let mut simple_binding = false;
+            if binding_name_id != 0 {
+                let binding_name = hir_lower_node_text(context, hir_lower_get_node(context, binding_name_id));
+                set simple_binding = not hir_lower_name_equal(context, binding_name, "_");
+            }
+            if simple_binding {
+                let symbol = hir_lower_symbol(context, binding_name_id, HIRSymbolKind.Local, type_, HIRVisibility.Private, if pattern_mutable { HIRMutability.Mutable } else { mutability });
+                if symbol == 0 { return 0; }
+                set result.kind = HIRNodeKind.Let;
+                set result.payload[0] = symbol;
+                set result.payload[1] = type_;
+                set result.payload[2] = initializer;
+                set result.payload[3] = if pattern_mutable { HIRMutability.Mutable as u64 } else { mutability as u64 };
+            } else {
+                let lowered_pattern = hir_lower_match_pattern(context, (*node).children[0], type_, is_mutable);
+                if lowered_pattern == 0 { return 0; }
+                set result.kind = HIRNodeKind.LetPattern;
+                set result.payload[0] = lowered_pattern;
+                set result.payload[1] = type_;
+                set result.payload[2] = initializer;
+                set result.payload[3] = mutability as u64;
+            }
             return hir_lower_add_node(context, &mut result);
         }
         case ASTNodeKind.ReturnStmt => {
             set result.kind = HIRNodeKind.Return;
             if (*node).child_count != 0 { set result.payload[0] = hir_lower_expr(context, (*node).children[0]); }
+            return hir_lower_add_node(context, &mut result);
+        }
+        case ASTNodeKind.DeferStmt => {
+            if (*node).child_count != 1 { return 0; }
+            let body = hir_lower_get_node(context, (*node).children[0]);
+            if body == null { return 0; }
+            set result.kind = HIRNodeKind.Defer;
+            set result.payload[0] = if (*body).kind == ASTNodeKind.Block { hir_lower_statement(context, (*body).id) } else { hir_lower_expr(context, (*body).id) };
+            if result.payload[0] == 0 { return 0; }
+            return hir_lower_add_node(context, &mut result);
+        }
+        case ASTNodeKind.AssertStmt => {
+            if (*node).child_count != 1 { return 0; }
+            set result.kind = HIRNodeKind.Assert;
+            set result.payload[0] = hir_lower_expr(context, (*node).children[0]);
+            if result.payload[0] == 0 { return 0; }
+            return hir_lower_add_node(context, &mut result);
+        }
+        case ASTNodeKind.UnsafeBlock => {
+            if (*node).child_count != 1 { return 0; }
+            set result.kind = HIRNodeKind.Unsafe;
+            set result.payload[0] = hir_lower_statement(context, (*node).children[0]);
+            if result.payload[0] == 0 { return 0; }
+            return hir_lower_add_node(context, &mut result);
+        }
+        case ASTNodeKind.AsmStmt => {
+            set result.kind = HIRNodeKind.Asm;
+            set result.payload[4] = (*node).child_count as u64;
+            let mut index: usize = 0;
+            while index < (*node).child_count {
+                let operand = hir_lower_expr(context, (*node).children[index]);
+                if operand == 0 or not hir_lower_append_nodes(&mut result, 0, operand) {
+                    hir_node_release_storage(&mut result);
+                    return 0;
+                }
+                set index += 1;
+            }
             return hir_lower_add_node(context, &mut result);
         }
         case ASTNodeKind.ExprStmt => {
@@ -3064,12 +3564,15 @@ proc hir_lower_statement(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNod
             if result.payload[0] == 0 { hir_node_release_storage(&mut result); return 0; }
             let mut arm_index: usize = 1;
             while arm_index < (*node).child_count {
+                let saved_symbol_count = (*context).symbol_count;
                 let arm_node = hir_lower_get_node(context, (*node).children[arm_index]);
                 if arm_node == null or (*arm_node).kind != ASTNodeKind.MatchArm or (*arm_node).child_count < 2 {
                     hir_node_release_storage(&mut result);
                     return 0;
                 }
-                let pattern = hir_lower_match_pattern(context, (*arm_node).children[0]);
+                let match_value = vitte_hir_get_node((*context).hir, result.payload[0]);
+                let pattern_type = if match_value == null { (*context).i64_type } else { (*match_value).type_ };
+                let pattern = hir_lower_match_pattern(context, (*arm_node).children[0], pattern_type, false);
                 let body = hir_lower_statement(context, (*arm_node).children[(*arm_node).child_count - 1]);
                 let mut guard: HIRNodeId = 0;
                 if (*arm_node).child_count == 3 { set guard = hir_lower_expr(context, (*arm_node).children[1]); }
@@ -3083,6 +3586,7 @@ proc hir_lower_statement(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNod
                     hir_node_release_storage(&mut result);
                     return 0;
                 }
+                set (*context).symbol_count = saved_symbol_count;
                 set arm_index += 1;
             }
             return hir_lower_add_node(context, &mut result);
@@ -3111,8 +3615,15 @@ proc hir_lower_statement(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRNod
             let mut element_type: HIRTypeId = (*iterable_node).type_;
             if (*iterable_node).kind != HIRNodeKind.Range {
                 let iterable_type = vitte_hir_get_type((*context).hir, element_type);
-                if iterable_type == null or (*iterable_type).kind != HIRTypeKind.Array { return 0; }
-                set element_type = (*iterable_type).element_type;
+                if iterable_type == null { return 0; }
+                if (*iterable_type).kind == HIRTypeKind.String {
+                    set element_type = hir_lower_primitive(context, HIRTypeKind.Char);
+                } elif (*iterable_type).kind == HIRTypeKind.Array or
+                       (*iterable_type).kind == HIRTypeKind.Slice or
+                       (*iterable_type).kind == HIRTypeKind.Pointer {
+                    set element_type = (*iterable_type).element_type;
+                } else { return 0; }
+                if element_type == 0 { return 0; }
             }
             let saved_symbol_count = (*context).symbol_count;
             set result.kind = HIRNodeKind.For;
@@ -3196,10 +3707,13 @@ proc hir_lower_declaration(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRN
             if (*node).child_count < 2 { return 0; }
             let symbol = hir_lower_symbol(context, (*node).children[0], HIRSymbolKind.Type, (*context).i64_type, visibility, HIRMutability.Immutable);
             if symbol == 0 { return 0; }
+            let saved_symbol_count = (*context).symbol_count;
+            if not hir_lower_register_generic_parameters(context, node) { return 0; }
             set result.kind = HIRNodeKind.TypeDecl;
             set result.payload[0] = symbol;
             set result.payload[1] = hir_lower_type(context, (*node).children[(*node).child_count - 1]);
             set result.payload[2] = visibility as u64;
+            set (*context).symbol_count = saved_symbol_count;
             if result.payload[1] == 0 { return 0; }
             return hir_lower_add_node(context, &mut result);
         }
@@ -3220,46 +3734,49 @@ proc hir_lower_declaration(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRN
         }
         case ASTNodeKind.FormDecl => {
             if (*node).child_count == 0 { return 0; }
-            let mut index: usize = 1;
-            while index < (*node).child_count {
-                let part = hir_lower_get_node(context, (*node).children[index]);
-                if part == null or (*part).kind == ASTNodeKind.GenericParam or (*part).kind == ASTNodeKind.WhereClause { return 0; }
-                set index += 1;
-            }
             let symbol = hir_lower_symbol(context, (*node).children[0], HIRSymbolKind.Form, (*context).i64_type, visibility, HIRMutability.Immutable);
             if symbol == 0 { return 0; }
+            let saved_symbol_count = (*context).symbol_count;
+            if not hir_lower_register_generic_parameters(context, node) { return 0; }
             set result.kind = HIRNodeKind.FormDecl;
             set result.payload[0] = symbol;
-            set index = 1;
+            let mut index: usize = 1;
+            let mut field_ordinal: u64 = 0;
             while index < (*node).child_count {
                 let field = hir_lower_get_node(context, (*node).children[index]);
-                if field == null or (*field).kind != ASTNodeKind.FieldDecl or (*field).child_count != 2 { hir_node_release_storage(&mut result); return 0; }
-                let field_type = hir_lower_type(context, (*field).children[1]);
-                let field_symbol = hir_lower_member_symbol(context, (*field).children[0], field_type);
-                if field_type == 0 or field_symbol == 0 { hir_node_release_storage(&mut result); return 0; }
-                let mut lowered_field: HIRNode = HIRNode {};
-                set lowered_field.kind = HIRNodeKind.FieldDecl;
-                set lowered_field.span = hir_lower_copy_span(&(*field).span);
-                set lowered_field.type_ = field_type;
-                set lowered_field.payload[0] = field_symbol;
-                set lowered_field.payload[1] = field_type;
-                set lowered_field.payload[2] = index - 1;
-                let field_id = hir_lower_add_node(context, &mut lowered_field);
-                if field_id == 0 or not hir_lower_append_nodes(&mut result, 1, field_id) { hir_node_release_storage(&mut result); return 0; }
+                if field != null and (*field).kind == ASTNodeKind.FieldDecl and (*field).child_count == 2 {
+                    let field_type = hir_lower_type(context, (*field).children[1]);
+                    let field_symbol = hir_lower_member_symbol(context, (*field).children[0], field_type);
+                    if field_type == 0 or field_symbol == 0 { hir_node_release_storage(&mut result); return 0; }
+                    let mut lowered_field: HIRNode = HIRNode {};
+                    set lowered_field.kind = HIRNodeKind.FieldDecl;
+                    set lowered_field.span = hir_lower_copy_span(&(*field).span);
+                    set lowered_field.type_ = field_type;
+                    set lowered_field.payload[0] = field_symbol;
+                    set lowered_field.payload[1] = field_type;
+                    set lowered_field.payload[2] = field_ordinal;
+                    let field_id = hir_lower_add_node(context, &mut lowered_field);
+                    if field_id == 0 or not hir_lower_append_nodes(&mut result, 1, field_id) { hir_node_release_storage(&mut result); return 0; }
+                    set field_ordinal += 1;
+                } elif field == null or ((*field).kind != ASTNodeKind.GenericParam and (*field).kind != ASTNodeKind.WhereClause) {
+                    hir_node_release_storage(&mut result);
+                    return 0;
+                }
                 set index += 1;
             }
-            return hir_lower_add_node(context, &mut result);
+            set (*context).symbol_count = saved_symbol_count;
+            let declaration_id = hir_lower_add_node(context, &mut result);
+            let symbol_value = vitte_hir_get_symbol((*context).hir, symbol);
+            if declaration_id == 0 or symbol_value == null { return 0; }
+            set (*(symbol_value as *mut HIRSymbol)).declaration = declaration_id;
+            return declaration_id;
         }
         case ASTNodeKind.PickDecl => {
             if (*node).child_count == 0 { return 0; }
-            let mut generic_index: usize = 1;
-            while generic_index < (*node).child_count {
-                let child = hir_lower_get_node(context, (*node).children[generic_index]);
-                if child != null and (*child).kind == ASTNodeKind.GenericParam { return 0; }
-                set generic_index += 1;
-            }
             let symbol = hir_lower_symbol(context, (*node).children[0], HIRSymbolKind.Pick, (*context).i64_type, visibility, HIRMutability.Immutable);
             if symbol == 0 { return 0; }
+            let saved_symbol_count = (*context).symbol_count;
+            if not hir_lower_register_generic_parameters(context, node) { return 0; }
             set result.kind = HIRNodeKind.PickDecl;
             set result.payload[0] = symbol;
             let mut tag: u64 = 0;
@@ -3268,7 +3785,22 @@ proc hir_lower_declaration(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRN
                 let variant = hir_lower_get_node(context, (*node).children[index]);
                 if variant != null and (*variant).kind == ASTNodeKind.VariantDecl {
                     let variant_payload_count = (*variant).child_count - 1;
-                    let variant_payload_type = if variant_payload_count == 0 { (*context).i64_type } else { hir_lower_type(context, (*variant).children[1]) };
+                    let mut variant_payload_type: HIRTypeId = (*context).unit_type;
+                    if variant_payload_count == 1 { set variant_payload_type = hir_lower_type(context, (*variant).children[1]); }
+                    elif variant_payload_count > 1 {
+                        let mut payload_types: [HIRTypeId] = [];
+                        let mut payload_index: usize = 1;
+                        while payload_index < (*variant).child_count {
+                            let payload_type = hir_lower_type(context, (*variant).children[payload_index]);
+                            if payload_type == 0 or not payload_types.push(payload_type) { hir_node_release_storage(&mut result); return 0; }
+                            set payload_index += 1;
+                        }
+                        let mut tuple_type: HIRType = HIRType {};
+                        set tuple_type.kind = HIRTypeKind.Tuple;
+                        set tuple_type.parameters = payload_types.as_ptr() as usize as *mut HIRTypeId;
+                        set tuple_type.parameter_count = payload_types.len();
+                        set variant_payload_type = vitte_hir_add_type((*context).hir, &mut tuple_type);
+                    }
                     if variant_payload_type == 0 { hir_node_release_storage(&mut result); return 0; }
                     let mut variant_symbol: HIRSymbol = HIRSymbol {};
                     set variant_symbol.kind = HIRSymbolKind.Variant;
@@ -3293,12 +3825,143 @@ proc hir_lower_declaration(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRN
                         return 0;
                     }
                     set tag += 1;
-                } elif variant != null and (*variant).kind == ASTNodeKind.WhereClause {
+                } elif variant == null or ((*variant).kind != ASTNodeKind.GenericParam and (*variant).kind != ASTNodeKind.WhereClause) {
                     hir_node_release_storage(&mut result);
                     return 0;
                 }
                 set index += 1;
             }
+            set (*context).symbol_count = saved_symbol_count;
+            return hir_lower_add_node(context, &mut result);
+        }
+        case ASTNodeKind.TraitDecl => {
+            if (*node).child_count == 0 { return 0; }
+            let symbol = hir_lower_symbol(context, (*node).children[0], HIRSymbolKind.Trait, 0, visibility, HIRMutability.Immutable);
+            if symbol == 0 { return 0; }
+            let saved_symbol_count = (*context).symbol_count;
+            if not hir_lower_register_generic_parameters(context, node) { return 0; }
+            set result.kind = HIRNodeKind.TraitDecl;
+            set result.payload[0] = symbol;
+            set result.payload[2] = visibility as u64;
+            let mut index: usize = 1;
+            while index < (*node).child_count {
+                let member = hir_lower_get_node(context, (*node).children[index]);
+                if member == null { hir_node_release_storage(&mut result); return 0; }
+                if (*member).kind != ASTNodeKind.GenericParam and
+                   (*member).kind != ASTNodeKind.WhereClause {
+                    let lowered_member = hir_lower_declaration(context, (*member).id);
+                    if lowered_member == 0 or not hir_lower_append_nodes(&mut result, 1, lowered_member) {
+                        hir_node_release_storage(&mut result);
+                        return 0;
+                    }
+                }
+                set index += 1;
+            }
+            set (*context).symbol_count = saved_symbol_count;
+            return hir_lower_add_node(context, &mut result);
+        }
+        case ASTNodeKind.ImplDecl => {
+            let saved_symbol_count = (*context).symbol_count;
+            if not hir_lower_register_generic_parameters(context, node) { return 0; }
+            let mut type_nodes: [ASTNodeId] = [];
+            let mut index: usize = 0;
+            while index < (*node).child_count {
+                let child = hir_lower_get_node(context, (*node).children[index]);
+                if child != null and hir_ast_kind_is_type((*child).kind) {
+                    if not type_nodes.push((*child).id) { set (*context).symbol_count = saved_symbol_count; return 0; }
+                }
+                set index += 1;
+            }
+            if type_nodes.len() == 0 or type_nodes.len() > 2 { set (*context).symbol_count = saved_symbol_count; return 0; }
+            let target_node = type_nodes[type_nodes.len() - 1];
+            let target_type = hir_lower_type(context, target_node);
+            if target_type == 0 { set (*context).symbol_count = saved_symbol_count; return 0; }
+            let mut trait_symbol: HIRSymbolId = 0;
+            if type_nodes.len() == 2 {
+                let trait_type_id = hir_lower_type(context, type_nodes[0]);
+                let trait_type = vitte_hir_get_type((*context).hir, trait_type_id);
+                if trait_type == null or (*trait_type).kind != HIRTypeKind.DynTrait { set (*context).symbol_count = saved_symbol_count; return 0; }
+                set trait_symbol = (*trait_type).symbol;
+            }
+            set result.kind = HIRNodeKind.ImplDecl;
+            set result.payload[0] = target_type;
+            set result.payload[1] = trait_symbol;
+            index = 0;
+            while index < (*node).child_count {
+                let member = hir_lower_get_node(context, (*node).children[index]);
+                if member == null { hir_node_release_storage(&mut result); set (*context).symbol_count = saved_symbol_count; return 0; }
+                if not hir_ast_kind_is_type((*member).kind) and
+                   (*member).kind != ASTNodeKind.GenericParam and
+                   (*member).kind != ASTNodeKind.WhereClause {
+                    let lowered_member = hir_lower_declaration(context, (*member).id);
+                    if lowered_member == 0 or not hir_lower_append_nodes(&mut result, 2, lowered_member) {
+                        hir_node_release_storage(&mut result);
+                        set (*context).symbol_count = saved_symbol_count;
+                        return 0;
+                    }
+                }
+                set index += 1;
+            }
+            set (*context).symbol_count = saved_symbol_count;
+            return hir_lower_add_node(context, &mut result);
+        }
+        case ASTNodeKind.TestDecl => {
+            let mut name: HIRStringId = 0;
+            let mut body_id: ASTNodeId = 0;
+            let mut index: usize = 0;
+            while index < (*node).child_count {
+                let child = hir_lower_get_node(context, (*node).children[index]);
+                if child != null and (*child).kind == ASTNodeKind.Block { set body_id = (*child).id; }
+                elif child != null and (*child).kind == ASTNodeKind.StringLiteral {
+                    name = hir_lower_string_literal(context, hir_lower_get_token(context, child));
+                } elif child != null and (*child).kind == ASTNodeKind.Identifier {
+                    name = hir_lower_node_text(context, child);
+                }
+                set index += 1;
+            }
+            if body_id == 0 { return 0; }
+            if name == 0 { set name = vitte_hir_intern_string((*context).hir, "__test" as *const u8, 6); }
+            let mut test_symbol: HIRSymbol = HIRSymbol {};
+            set test_symbol.kind = HIRSymbolKind.Proc;
+            set test_symbol.name = name;
+            set test_symbol.type_ = (*context).unit_type;
+            set test_symbol.visibility = visibility;
+            set test_symbol.mutability = HIRMutability.Immutable;
+            set test_symbol.span = hir_lower_copy_span(&(*node).span);
+            let symbol = vitte_hir_add_symbol((*context).hir, &mut test_symbol);
+            if symbol == 0 { return 0; }
+            set result.kind = HIRNodeKind.TestDecl;
+            set result.payload[0] = symbol;
+            set result.payload[4] = (*context).unit_type;
+            set result.payload[5] = hir_lower_statement(context, body_id);
+            if result.payload[5] == 0 { return 0; }
+            return hir_lower_add_node(context, &mut result);
+        }
+        case ASTNodeKind.MacroDecl => {
+            if (*node).child_count < 2 { return 0; }
+            let saved_symbol_count = (*context).symbol_count;
+            let name = hir_lower_node_text(context, hir_lower_get_node(context, (*node).children[0]));
+            if name == 0 { return 0; }
+            set result.kind = HIRNodeKind.MacroDecl;
+            set result.payload[0] = name;
+            let mut body_id: ASTNodeId = 0;
+            let mut index: usize = 1;
+            while index < (*node).child_count {
+                let part = hir_lower_get_node(context, (*node).children[index]);
+                if part == null { hir_node_release_storage(&mut result); return 0; }
+                if (*part).kind == ASTNodeKind.Block { set body_id = (*part).id; }
+                elif (*part).kind == ASTNodeKind.Parameter and (*part).child_count >= 2 {
+                    let parameter_type = hir_lower_type(context, (*part).children[1]);
+                    if parameter_type == 0 { hir_node_release_storage(&mut result); return 0; }
+                    let pattern_id = hir_lower_match_pattern(context, (*part).children[0], parameter_type, false);
+                    if pattern_id == 0 or not hir_lower_append_nodes(&mut result, 1, pattern_id) { hir_node_release_storage(&mut result); return 0; }
+                }
+                set index += 1;
+            }
+            if body_id == 0 { hir_node_release_storage(&mut result); set (*context).symbol_count = saved_symbol_count; return 0; }
+            set result.payload[5] = hir_lower_statement(context, body_id);
+            set (*context).symbol_count = saved_symbol_count;
+            if result.payload[5] == 0 { hir_node_release_storage(&mut result); return 0; }
             return hir_lower_add_node(context, &mut result);
         }
         case ASTNodeKind.ProcDecl | ASTNodeKind.ExternProcDecl => {
@@ -3306,35 +3969,43 @@ proc hir_lower_declaration(context: *mut HIRLowerContext, id: ASTNodeId) -> HIRN
             let symbol = hir_lower_symbol(context, (*node).children[0], HIRSymbolKind.Proc, (*context).i64_type, visibility, HIRMutability.Immutable);
             if symbol == 0 { return 0; }
             let saved_symbol_count = (*context).symbol_count;
+            if not hir_lower_register_generic_parameters(context, node) { return 0; }
             set result.kind = if (*node).kind == ASTNodeKind.ProcDecl { HIRNodeKind.ProcDecl } else { HIRNodeKind.ExternProcDecl };
             set result.payload[0] = symbol;
             set result.payload[4] = (*context).unit_type;
             set result.payload[6] = visibility as u64;
             if (*node).kind == ASTNodeKind.ExternProcDecl { set result.payload[7] = (1 as u64) << 8; }
+            if ((*node).node_flags & PARSER_AST_FLAG_ASYNC) != 0 { set result.payload[7] = result.payload[7] | 1; }
+            if ((*node).node_flags & PARSER_AST_FLAG_UNSAFE) != 0 { set result.payload[7] = result.payload[7] | 2; }
+            if ((*node).node_flags & PARSER_AST_FLAG_COMPTIME) != 0 { set result.payload[7] = result.payload[7] | 4; }
             let mut index: usize = 1;
             while index < (*node).child_count {
                 let part = hir_lower_get_node(context, (*node).children[index]);
                 if part != null and (*part).kind == ASTNodeKind.Parameter and (*part).child_count >= 2 {
                     let parameter_type: HIRTypeId = hir_lower_type(context, (*part).children[1]);
-                    let parameter = hir_lower_symbol(context, (*part).children[0], HIRSymbolKind.Parameter, parameter_type, HIRVisibility.Private, HIRMutability.Immutable);
-                    if parameter == 0 { hir_node_release_storage(&mut result); return 0; }
-                    let mut pattern: HIRNode = HIRNode {};
-                    set pattern.kind = HIRNodeKind.PatternBinding;
-                    set pattern.span = hir_lower_copy_span(&(*part).span);
-                    set pattern.payload[0] = parameter;
-                    let pattern_id = hir_lower_add_node(context, &mut pattern);
-                    if not hir_lower_append_nodes(&mut result, 1, pattern_id) { hir_node_release_storage(&mut result); return 0; }
+                    if parameter_type == 0 { hir_node_release_storage(&mut result); return 0; }
+                    let pattern_id = hir_lower_match_pattern(context, (*part).children[0], parameter_type, ((*part).node_flags & PARSER_AST_FLAG_MUTABLE) != 0);
+                    if pattern_id == 0 or not hir_lower_append_nodes(&mut result, 1, pattern_id) { hir_node_release_storage(&mut result); return 0; }
                 } else if part != null and hir_ast_kind_is_type((*part).kind) {
                     set result.payload[4] = hir_lower_type(context, (*node).children[index]);
                     let symbol_value = vitte_hir_get_symbol((*context).hir, symbol);
-                    if symbol_value == null or not hir_lower_set_proc_return(context, (*symbol_value).name, result.payload[4]) { hir_node_release_storage(&mut result); return 0; }
+                    if symbol_value == null or not hir_lower_set_proc_return(
+                        context,
+                        (*symbol_value).name,
+                        result.payload[4],
+                        ((*node).node_flags & PARSER_AST_FLAG_ASYNC) != 0
+                    ) { hir_node_release_storage(&mut result); return 0; }
                 } else if part != null and (*part).kind == ASTNodeKind.Block {
                     set result.payload[5] = hir_lower_statement(context, (*node).children[index]);
                 }
                 set index += 1;
             }
             set (*context).symbol_count = saved_symbol_count;
-            return hir_lower_add_node(context, &mut result);
+            let declaration_id = hir_lower_add_node(context, &mut result);
+            let symbol_value = vitte_hir_get_symbol((*context).hir, symbol);
+            if declaration_id == 0 or symbol_value == null { return 0; }
+            set (*(symbol_value as *mut HIRSymbol)).declaration = declaration_id;
+            return declaration_id;
         }
         case _ => return 0;
     }
@@ -3357,7 +4028,8 @@ proc hir_lower_predeclare(context: *mut HIRLowerContext, id: ASTNodeId) -> bool 
     if (*node).kind == ASTNodeKind.ProcDecl or (*node).kind == ASTNodeKind.ExternProcDecl or
        (*node).kind == ASTNodeKind.ConstDecl or (*node).kind == ASTNodeKind.StaticDecl or
        (*node).kind == ASTNodeKind.TypeDecl or (*node).kind == ASTNodeKind.OpaqueDecl or
-       (*node).kind == ASTNodeKind.FormDecl or (*node).kind == ASTNodeKind.PickDecl {
+       (*node).kind == ASTNodeKind.FormDecl or (*node).kind == ASTNodeKind.PickDecl or
+       (*node).kind == ASTNodeKind.TraitDecl {
         if (*node).child_count == 0 { return false; }
         let mut kind: HIRSymbolKind = HIRSymbolKind.Static;
         let mut mutability: HIRMutability = HIRMutability.Immutable;
@@ -3366,6 +4038,7 @@ proc hir_lower_predeclare(context: *mut HIRLowerContext, id: ASTNodeId) -> bool 
         else if (*node).kind == ASTNodeKind.OpaqueDecl { set kind = HIRSymbolKind.Opaque; }
         else if (*node).kind == ASTNodeKind.FormDecl { set kind = HIRSymbolKind.Form; }
         else if (*node).kind == ASTNodeKind.PickDecl { set kind = HIRSymbolKind.Pick; }
+        else if (*node).kind == ASTNodeKind.TraitDecl { set kind = HIRSymbolKind.Trait; }
         else if (*node).kind == ASTNodeKind.ConstDecl { set kind = HIRSymbolKind.Const; }
         elif (*node).kind == ASTNodeKind.StaticDecl and ((*node).node_flags & PARSER_AST_FLAG_MUTABLE) != 0 { set mutability = HIRMutability.Mutable; }
         let visibility: HIRVisibility = if ((*node).node_flags & PARSER_AST_FLAG_PUBLIC) != 0 { HIRVisibility.Public } else { HIRVisibility.Private };
@@ -3390,6 +4063,8 @@ proc hir_lower_collect_proc_returns(context: *mut HIRLowerContext, id: ASTNodeId
     }
     if (*node).kind == ASTNodeKind.ProcDecl or (*node).kind == ASTNodeKind.ExternProcDecl {
         if (*node).child_count == 0 { return false; }
+        let saved_symbol_count = (*context).symbol_count;
+        if not hir_lower_register_generic_parameters(context, node) { return false; }
         let name = hir_lower_node_text(context, hir_lower_get_node(context, (*node).children[0]));
         let mut return_type = (*context).unit_type;
         let mut index: usize = 1;
@@ -3398,7 +4073,26 @@ proc hir_lower_collect_proc_returns(context: *mut HIRLowerContext, id: ASTNodeId
             if part != null and hir_ast_kind_is_type((*part).kind) { set return_type = hir_lower_type(context, (*node).children[index]); }
             set index += 1;
         }
-        return hir_lower_set_proc_return(context, name, return_type);
+        set (*context).symbol_count = saved_symbol_count;
+        return return_type != 0 and hir_lower_set_proc_return(
+            context,
+            name,
+            return_type,
+            ((*node).node_flags & PARSER_AST_FLAG_ASYNC) != 0
+        );
+    }
+    if (*node).kind == ASTNodeKind.TraitDecl or (*node).kind == ASTNodeKind.ImplDecl {
+        let saved_symbol_count = (*context).symbol_count;
+        if not hir_lower_register_generic_parameters(context, node) { return false; }
+        let mut index: usize = 0;
+        while index < (*node).child_count {
+            if not hir_lower_collect_proc_returns(context, (*node).children[index]) {
+                set (*context).symbol_count = saved_symbol_count;
+                return false;
+            }
+            set index += 1;
+        }
+        set (*context).symbol_count = saved_symbol_count;
     }
     return true;
 }

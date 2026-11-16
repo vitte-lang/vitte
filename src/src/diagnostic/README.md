@@ -30,8 +30,13 @@ Infrastructure codes (`E0000`–`E0099` are reserved):
   `E0007` source map, `E0008` diagnostic construction, `E0009` internal limit.
 - `E0010` incompatible file format, `E0011` configuration, `E0012` phase failure,
   `E0013` component failure. Each code has a fixed symbolic name in `diagnostic.h`.
-- Other diagnostic IDs are deterministic hashes in `E0100`–`E9999` (or the
-  equivalent warning/note/help prefix). A symbolic code remains the durable key.
+- Registered public IDs are assigned explicitly in `registry.c`, never hashed.
+  Unregistered identifiers retain their symbolic code and receive a display
+  placeholder such as `E????`; register an ID to give the diagnostic a stable
+  public identity.
+- Once published, a public ID and its meaning are append-only: do not renumber
+  or reuse an ID for a different diagnostic. Keep this registry synchronized
+  with the native Vitte implementation.
 - Set `VITTE_BACKTRACE=1` to append a best-effort native backtrace to `E0001`,
   `E0002`, `E0003`, and `E0013` on macOS/Linux.
 

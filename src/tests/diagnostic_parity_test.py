@@ -14,9 +14,9 @@ root = Path(__file__).resolve().parents[2]
 registry = root / "src/bootstrap/diagnostic/registry.c"
 
 
-def run_diagnostic(path, fmt):
+def run_diagnostic(path, fmt, executable=None):
     command = [
-        str(format_binary),
+        str(executable or format_binary),
         "check",
         str(path),
         "--quiet",
@@ -55,6 +55,64 @@ def first_lsp_diagnostic(document, code):
     matches = [item for item in document if item["code"] == code]
     assert len(matches) == 1, (code, document)
     return matches[0]
+
+
+def check_native_structured_case(path, source, code, phase, help_fragment):
+    path.write_text(source)
+    json_document = run_diagnostic(path, "json", binary)
+    sarif_document = run_diagnostic(path, "sarif", binary)
+    lsp_document = run_diagnostic(path, "lsp", binary)
+
+    diagnostic = first_json_diagnostic(json_document, code)
+    sarif = first_sarif_result(sarif_document, code)
+    lsp = first_lsp_diagnostic(lsp_document, code)
+    properties = sarif["properties"]
+    lsp_data = lsp["data"]
+
+    # Native JSON has its own compact API schema; SARIF and LSP use their
+    # public renderer schemas. Assert the common metadata in each contract.
+    assert diagnostic["severity"] == "error", diagnostic
+    assert diagnostic["phase"] == phase.replace("-", "_"), diagnostic
+    assert diagnostic["internal_code"], diagnostic
+    assert diagnostic["message"], diagnostic
+    assert help_fragment in diagnostic.get("help", ""), diagnostic
+    assert sarif["level"] == properties["severity"] == "error", sarif
+    assert properties["phase"] == lsp_data["phase"] == phase, (sarif, lsp)
+    assert properties["help"] == lsp_data["help"], (sarif, lsp)
+    assert help_fragment in properties["help"], properties
+    assert sarif["ruleId"] == lsp["code"] == diagnostic["code"] == code
+
+    # JSON and LSP use zero-based line/column values, while SARIF uses
+    # one-based source regions. The LSP data mirror also retains raw spans.
+    location = diagnostic["location"]
+    region = sarif["locations"][0]["physicalLocation"]["region"]
+    lsp_range = lsp["range"]
+    position = lsp_data["position"]
+    assert location["source"] == str(path), location
+    assert region["startLine"] == location["start"]["line"] + 1
+    assert region["startColumn"] == location["start"]["column"] + 1
+    assert region["endLine"] == location["end"]["line"] + 1
+    assert region["endColumn"] == location["end"]["column"] + 1
+    assert lsp_range["start"]["line"] == location["start"]["line"]
+    assert lsp_range["start"]["character"] == location["start"]["column"]
+    assert lsp_range["end"]["line"] == location["end"]["line"]
+    assert lsp_range["end"]["character"] == location["end"]["column"]
+    assert position["source"] == location["source"]
+    assert position["startLine"] == location["start"]["line"]
+    assert position["startColumn"] == location["start"]["column"]
+    assert position["endLine"] == location["end"]["line"]
+    assert position["endColumn"] == location["end"]["column"]
+
+    labels = [label for label in lsp_data["labels"] if label["style"] == "primary"]
+    assert len(labels) == 1, lsp_data
+    label = labels[0]
+    assert label["source"] == location["source"]
+    assert region["byteOffset"] == label["startByte"]
+    assert region["byteLength"] == label["endByte"] - label["startByte"]
+
+    if code == "E0602":
+        related = lsp["relatedInformation"]
+        assert any(item["message"] == "parameter declared here" for item in related), lsp
 
 
 def check_explain_for_every_public_code():
@@ -141,6 +199,7 @@ def check_format_parity():
         path.write_text(source)
 
         terminal = run_diagnostic(path, "terminal")
+        native_terminal = run_diagnostic(path, "terminal", binary)
         json_document = run_diagnostic(path, "json")
         sarif_document = run_diagnostic(path, "sarif")
         lsp_document = run_diagnostic(path, "lsp")
@@ -203,6 +262,40 @@ def check_format_parity():
         assert "expected `i64`, found `string`" in terminal
         assert help_text in terminal
         assert str(path) in terminal
+
+        # The native CLI must use the terminal renderer too, including the
+        # actionable help and source excerpt, instead of leaking API JSON.
+        assert code in native_terminal
+        assert "phase: type-check" in native_terminal
+        assert "expected `i64`, found `string`" in native_terminal
+        assert help_text in native_terminal
+        assert str(path) in native_terminal
+        assert 'return add("42");' in native_terminal
+
+        # Exercise all structured formats on the native frontend across lexer,
+        # parser, and semantic diagnostics, including the registry help fallback
+        # used by native JSON when a frontend diagnostic has no inline help.
+        check_native_structured_case(
+            path,
+            'proc main() -> int { let value = "bad\\q"; }\n',
+            "E0103",
+            "lexer",
+            "supported escape sequence",
+        )
+        check_native_structured_case(
+            path,
+            "proc main() -> int { return (1 + 2; }\n",
+            "E0201",
+            "parser",
+            "`)`",
+        )
+        check_native_structured_case(
+            path,
+            source,
+            "E0602",
+            "type-check",
+            "Argument 1 does not match parameter `a`",
+        )
 
         # Related declaration locations are part of the parity contract too.
         related_json = diagnostic["related_locations"][0]["span"]

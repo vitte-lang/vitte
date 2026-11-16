@@ -100,9 +100,12 @@ reference aliases, lexical scopes and the last syntactic use. It reports
 `E1205` for a local escape or an unknown reference origin, `E1206` for
 overlapping incompatible borrows, and `E1207` for an access that conflicts
 with a live borrow. Calls compare reference arguments when their roots are
-known. Provenance through aggregates, raw pointers, closures, indirect calls
-and returned references is not modeled completely, so this remains an
-experimental safety check rather than a complete alias or lifetime proof.
+known. Direct procedure calls that return one of their reference parameters
+propagate that argument's origin, so returning a borrowed local through an
+identity helper is rejected as well. Provenance through aliases inside the
+callee, block-valued expressions, aggregates, raw pointers, closures, indirect
+calls and other returned references is not modeled completely, so this remains
+an experimental safety check rather than a complete alias or lifetime proof.
 
 `move` is accepted for a whole local binding or parameter. The bootstrap marks
 that binding unavailable until it is assigned again, rejects use after move

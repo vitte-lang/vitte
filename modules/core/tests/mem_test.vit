@@ -1,6 +1,8 @@
 use core::mem::layout::{layout, layout_is_valid, layout_array, layout_extend_with_offset};
 use core::mem::memory::{mem_compare, mem_copy, mem_equal, mem_fill, mem_zero};
-use core::ptr::arithmetic::{ptr_add_bytes};
+use core::ptr::arithmetic::{ptr_add_bytes, ptr_add_elements, ptr_is_aligned, ptr_sub_elements};
+use core::ptr::memory::{allocate, deallocate};
+use core::ptr::write::{ptr_write};
 
 test "memory layout alignment and replacement helpers preserve bounds" {
     let element = layout(3, 4);
@@ -87,4 +89,26 @@ test "memory byte operations handle overlap and preserve outputs on failure" {
     assert(ordering == 5);
     assert(mem_compare(null, null, 0, &mut ordering));
     assert(ordering == 0);
+}
+
+test "heap allocation and typed pointer operations stay valid until release" {
+    let zero_sized: *mut u8 = allocate(0);
+    assert(zero_sized == null);
+    deallocate(zero_sized);
+
+    let storage: *mut u8 = allocate(sizeof(i64) * 2);
+    assert(storage != null);
+
+    let values: *mut i64 = storage as *mut i64;
+    assert(ptr_is_aligned(values as *const i64));
+
+    let second: *mut i64 = ptr_add_elements(values, 1);
+    assert(second != null);
+    assert(ptr_sub_elements(second, 1) == values);
+    assert(ptr_write(values, 40));
+    assert(ptr_write(second, 2));
+    assert(*values + *second == 42);
+
+    deallocate(storage);
+    deallocate(null);
 }

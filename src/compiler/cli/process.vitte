@@ -11,6 +11,7 @@ use compiler::cli::cli::{
     CliCommand,
     CliError,
     CliDiagnosticFormat,
+    CliColorMode,
     vitte_cli_destroy,
     vitte_cli_error_name,
     vitte_cli_forward_arg_at,
@@ -23,6 +24,7 @@ use compiler::cli::cli::{
     vitte_cli_parse,
     vitte_cli_selected_command,
     vitte_cli_selected_diagnostic_format,
+    vitte_cli_selected_color_mode,
     vitte_cli_selected_output,
     vitte_cli_seen_options,
     vitte_cli_suggested_exit_status,
@@ -44,10 +46,11 @@ use vitte::core::pointer::{add_bytes_const, read};
 extern proc puts(text: string) -> i32;
 extern proc vitte_native_write_stdout(data: *const char, length: usize);
 extern proc vitte_native_write_stderr(data: *const char, length: usize);
-extern proc vitte_api_check_path(path: string) -> i32;
-extern proc vitte_api_compile_path(source_path: string, output_path: string) -> i32;
-extern proc vitte_api_emit_ir_path(source_path: string) -> i32;
-extern proc vitte_api_build_path(source_path: string, output_path: ?string, run_program: bool, diagnostic_json: bool, run_argc: i32, run_argv: *mut *mut u8) -> i32;
+extern proc vitte_native_stderr_is_terminal() -> bool;
+extern proc vitte_api_compile_path(source_path: string, output_path: string, diagnostic_format: u32, diagnostic_color: bool) -> i32;
+extern proc vitte_api_emit_ir_path(source_path: string, diagnostic_format: u32, diagnostic_color: bool) -> i32;
+extern proc vitte_api_check_path(path: string, diagnostic_format: u32, diagnostic_color: bool) -> i32;
+extern proc vitte_api_build_path(source_path: string, output_path: ?string, run_program: bool, diagnostic_format: u32, diagnostic_color: bool, run_argc: i32, run_argv: *mut *mut u8) -> i32;
 extern proc vitte_api_lex_path(path: string) -> i32;
 extern proc vitte_api_parse_path(path: string) -> i32;
 
@@ -66,6 +69,13 @@ proc cli_entry_write(text: string) {
 
 proc cli_entry_write_error(text: string) {
     vitte_native_write_stderr(text.as_ptr() as *const char, text.len());
+}
+
+proc cli_entry_diagnostic_color(cli: *Cli) -> bool {
+    let mode = vitte_cli_selected_color_mode(cli);
+    if mode == CliColorMode.Always { return true; }
+    if mode == CliColorMode.Never { return false; }
+    return vitte_native_stderr_is_terminal();
 }
 
 proc cli_entry_normalize_diagnostic_code(code: string) -> string {
@@ -224,6 +234,8 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
             return 2;
         }
         let selected_output = vitte_cli_selected_output(&cli);
+        let diagnostic_format = vitte_cli_selected_diagnostic_format(&cli) as u32;
+        let diagnostic_color = cli_entry_diagnostic_color(&cli);
         let output_path: string = if selected_output == null { "" } else { selected_output? };
         let seen_options = vitte_cli_seen_options(&cli);
         let mut output_pointer: ?string = null;
@@ -231,17 +243,18 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
             set output_pointer = selected_output;
         }
         let status = if (seen_options & VITTE_CLI_SEEN_STOP_AFTER_SEMA) != 0 {
-            vitte_api_check_path(input?)
+            vitte_api_check_path(input?, diagnostic_format, diagnostic_color)
         } else if (seen_options & VITTE_CLI_SEEN_EMIT_IR) != 0 {
-            vitte_api_emit_ir_path(input?)
+            vitte_api_emit_ir_path(input?, diagnostic_format, diagnostic_color)
         } else if (seen_options & VITTE_CLI_SEEN_EMIT_C) != 0 {
-            vitte_api_compile_path(input?, output_path)
+            vitte_api_compile_path(input?, output_path, diagnostic_format, diagnostic_color)
         } else {
             vitte_api_build_path(
                 input?,
                 output_pointer,
                 false,
-                vitte_cli_selected_diagnostic_format(&cli) == CliDiagnosticFormat.Json,
+                diagnostic_format,
+                diagnostic_color,
                 0,
                 null
             )
@@ -251,6 +264,8 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
     }
 
     if command == CliCommand.Check {
+        let diagnostic_format = vitte_cli_selected_diagnostic_format(&cli) as u32;
+        let diagnostic_color = cli_entry_diagnostic_color(&cli);
         let input = vitte_cli_input_at(&cli, 0);
         if input == null {
             cli_entry_puts("vitte check: expected a source file");
@@ -258,7 +273,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
             vitte_cli_destroy(&mut cli);
             return 2;
         }
-        let status = vitte_api_check_path(input?);
+        let status = vitte_api_check_path(input?, diagnostic_format, diagnostic_color);
         if status == 0 {
             cli_entry_puts("check succeeded");
         }
@@ -414,7 +429,8 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
             input?,
             output_pointer,
             command == CliCommand.Run,
-            vitte_cli_selected_diagnostic_format(&cli) == CliDiagnosticFormat.Json,
+            vitte_cli_selected_diagnostic_format(&cli) as u32,
+            cli_entry_diagnostic_color(&cli),
             run_argument_count as i32,
             run_pointer
         );

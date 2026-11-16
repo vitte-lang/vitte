@@ -667,8 +667,22 @@ vitte_parser_emit_diagnostic(
     }
 
     if (kind == VITTE_PARSER_DIAGNOSTIC_ERROR &&
-        parser->recovering) {
-        return true;
+        parser->recovering &&
+        parser->diagnostic_count != 0u) {
+        const vitte_parser_diagnostic_t *previous =
+            &parser->diagnostics[parser->diagnostic_count - 1u];
+
+        if (previous->kind == VITTE_PARSER_DIAGNOSTIC_ERROR &&
+            previous->error == error &&
+            previous->expected == expected &&
+            previous->found == found &&
+            previous->span.valid == span.valid &&
+            (!span.valid ||
+             (previous->span.file_id == span.file_id &&
+              previous->span.begin == span.begin &&
+              previous->span.end == span.end))) {
+            return true;
+        }
     }
 
     if (parser->diagnostic_count >=
@@ -759,6 +773,11 @@ vitte_parser_error_here(
     return false;
 }
 
+static bool
+vitte_parser_expect_can_insert(
+    const vitte_parser_t *parser,
+    vitte_token_kind_t expected);
+
 static const vitte_token_t *
 vitte_parser_expect(
     vitte_parser_t *parser,
@@ -772,6 +791,16 @@ vitte_parser_expect(
         parser,
         VITTE_PARSER_ERROR_EXPECTED_TOKEN,
         kind);
+
+    if (vitte_parser_expect_can_insert(parser, kind)) {
+        const vitte_token_t *previous =
+            vitte_parser_previous(parser);
+
+        parser->recovering = false;
+        return previous != NULL
+            ? previous
+            : vitte_parser_current(parser);
+    }
 
     return NULL;
 }
@@ -817,7 +846,9 @@ vitte_parser_recovery_track(
 {
     switch (kind) {
         case VITTE_TOKEN_LEFT_PAREN:
-            ++depth->parentheses;
+            if (depth->parentheses < SIZE_MAX) {
+                ++depth->parentheses;
+            }
             break;
         case VITTE_TOKEN_RIGHT_PAREN:
             if (depth->parentheses != 0u) {
@@ -825,7 +856,9 @@ vitte_parser_recovery_track(
             }
             break;
         case VITTE_TOKEN_LEFT_BRACKET:
-            ++depth->brackets;
+            if (depth->brackets < SIZE_MAX) {
+                ++depth->brackets;
+            }
             break;
         case VITTE_TOKEN_RIGHT_BRACKET:
             if (depth->brackets != 0u) {
@@ -833,7 +866,9 @@ vitte_parser_recovery_track(
             }
             break;
         case VITTE_TOKEN_LEFT_BRACE:
-            ++depth->braces;
+            if (depth->braces < SIZE_MAX) {
+                ++depth->braces;
+            }
             break;
         case VITTE_TOKEN_RIGHT_BRACE:
             if (depth->braces != 0u) {
@@ -841,8 +876,16 @@ vitte_parser_recovery_track(
             }
             break;
         case VITTE_TOKEN_LESS:
-            if (track_angles) {
+            if (track_angles && depth->angles < SIZE_MAX) {
                 ++depth->angles;
+            }
+            break;
+        case VITTE_TOKEN_SHIFT_RIGHT:
+            if (track_angles && depth->angles != 0u) {
+                --depth->angles;
+            }
+            if (track_angles && depth->angles != 0u) {
+                --depth->angles;
             }
             break;
         case VITTE_TOKEN_GREATER:
@@ -922,6 +965,7 @@ vitte_parser_is_statement_start(
         case VITTE_TOKEN_KW_RETURN:
         case VITTE_TOKEN_KW_DEFER:
         case VITTE_TOKEN_KW_IF:
+        case VITTE_TOKEN_KW_ELIF:
         case VITTE_TOKEN_KW_WHILE:
         case VITTE_TOKEN_KW_LOOP:
         case VITTE_TOKEN_KW_FOR:
@@ -937,6 +981,142 @@ vitte_parser_is_statement_start(
         default:
             return false;
     }
+}
+
+static bool
+vitte_parser_is_match_arm_start(
+    const vitte_token_t *token)
+{
+    return token != NULL &&
+           (token->kind == VITTE_TOKEN_KW_ELSE ||
+            vitte_parser_token_text_equal(token, "case", 4u));
+}
+
+static bool
+vitte_parser_is_declaration_escape_start(
+    vitte_token_kind_t kind)
+{
+    return kind != VITTE_TOKEN_KW_UNSAFE &&
+           vitte_parser_is_declaration_start(kind);
+}
+
+static bool
+vitte_parser_is_block_escape_start(
+    vitte_token_kind_t kind)
+{
+    return kind == VITTE_TOKEN_KW_ELSE ||
+           vitte_parser_is_declaration_escape_start(kind);
+}
+
+static bool
+vitte_parser_token_can_start_expression(
+    const vitte_token_t *token)
+{
+    if (token == NULL) {
+        return false;
+    }
+
+    switch (token->kind) {
+        case VITTE_TOKEN_IDENTIFIER:
+        case VITTE_TOKEN_INTEGER_LITERAL:
+        case VITTE_TOKEN_FLOAT_LITERAL:
+        case VITTE_TOKEN_STRING_LITERAL:
+        case VITTE_TOKEN_CHARACTER_LITERAL:
+        case VITTE_TOKEN_KW_TRUE:
+        case VITTE_TOKEN_KW_FALSE:
+        case VITTE_TOKEN_KW_NULL:
+        case VITTE_TOKEN_KW_SELF:
+        case VITTE_TOKEN_KW_IF:
+        case VITTE_TOKEN_KW_ELIF:
+        case VITTE_TOKEN_KW_PRINT:
+        case VITTE_TOKEN_KW_SIZEOF:
+        case VITTE_TOKEN_KW_ALIGNOF:
+        case VITTE_TOKEN_LEFT_PAREN:
+        case VITTE_TOKEN_LEFT_BRACKET:
+        case VITTE_TOKEN_LEFT_BRACE:
+        case VITTE_TOKEN_PLUS:
+        case VITTE_TOKEN_MINUS:
+        case VITTE_TOKEN_TILDE:
+        case VITTE_TOKEN_STAR:
+        case VITTE_TOKEN_AMP:
+        case VITTE_TOKEN_KW_NOT:
+        case VITTE_TOKEN_KW_MOVE:
+        case VITTE_TOKEN_KW_REF:
+        case VITTE_TOKEN_KW_AWAIT:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+static bool
+vitte_parser_expect_can_insert(
+    const vitte_parser_t *parser,
+    vitte_token_kind_t expected)
+{
+    const vitte_token_t *current =
+        vitte_parser_current(parser);
+    vitte_token_kind_t found = current != NULL
+        ? current->kind
+        : VITTE_TOKEN_INVALID;
+
+    if (current == NULL || found == VITTE_TOKEN_EOF) {
+        return expected == VITTE_TOKEN_SEMICOLON ||
+               expected == VITTE_TOKEN_RIGHT_PAREN ||
+               expected == VITTE_TOKEN_RIGHT_BRACKET ||
+               expected == VITTE_TOKEN_RIGHT_BRACE;
+    }
+
+    if (expected == VITTE_TOKEN_SEMICOLON) {
+        const vitte_token_t *previous =
+            vitte_parser_previous(parser);
+
+        if (found == VITTE_TOKEN_RIGHT_BRACE ||
+            found == VITTE_TOKEN_KW_ELSE ||
+            vitte_parser_is_declaration_start(found) ||
+            vitte_parser_is_statement_start(found)) {
+            return true;
+        }
+
+        return previous != NULL &&
+               current->line > previous->line &&
+               vitte_parser_token_can_start_expression(current);
+    }
+
+    if (expected == VITTE_TOKEN_RIGHT_PAREN) {
+        return found == VITTE_TOKEN_COMMA ||
+               found == VITTE_TOKEN_SEMICOLON ||
+               found == VITTE_TOKEN_RIGHT_BRACE ||
+               found == VITTE_TOKEN_RIGHT_BRACKET ||
+               found == VITTE_TOKEN_FAT_ARROW ||
+               found == VITTE_TOKEN_ARROW ||
+               found == VITTE_TOKEN_LEFT_BRACE ||
+               found == VITTE_TOKEN_KW_WHERE ||
+               found == VITTE_TOKEN_KW_REQUIRES ||
+               found == VITTE_TOKEN_KW_ENSURES ||
+               found == VITTE_TOKEN_KW_ELSE;
+    }
+
+    if (expected == VITTE_TOKEN_RIGHT_BRACKET) {
+        return found == VITTE_TOKEN_COMMA ||
+               found == VITTE_TOKEN_SEMICOLON ||
+               found == VITTE_TOKEN_RIGHT_PAREN ||
+               found == VITTE_TOKEN_RIGHT_BRACE ||
+               found == VITTE_TOKEN_EQUAL ||
+               found == VITTE_TOKEN_FAT_ARROW ||
+               found == VITTE_TOKEN_KW_ELSE;
+    }
+
+    if (expected == VITTE_TOKEN_RIGHT_BRACE) {
+        return found == VITTE_TOKEN_SEMICOLON ||
+               found == VITTE_TOKEN_RIGHT_PAREN ||
+               found == VITTE_TOKEN_RIGHT_BRACKET ||
+               found == VITTE_TOKEN_KW_ELSE ||
+               vitte_parser_is_block_escape_start(found);
+    }
+
+    return false;
 }
 
 static void
@@ -1010,7 +1190,10 @@ vitte_parser_synchronize(
                   vitte_parser_is_declaration_start(current->kind)) ||
                  (mode == VITTE_PARSER_RECOVERY_STATEMENT &&
                   vitte_parser_recovery_at_top(&depth) &&
-                  vitte_parser_is_statement_start(current->kind)))) {
+                  vitte_parser_is_statement_start(current->kind)) ||
+                 (mode == VITTE_PARSER_RECOVERY_MATCH_ARM &&
+                  vitte_parser_recovery_at_top(&depth) &&
+                  vitte_parser_is_match_arm_start(current)))) {
                 break;
             }
 
@@ -1067,6 +1250,11 @@ vitte_parser_synchronize_list(
         }
         if (at_top && closing_kind != VITTE_TOKEN_INVALID &&
             kind == closing_kind) {
+            parser->recovering = false;
+            return VITTE_PARSER_LIST_END;
+        }
+        if (at_top && closing_kind == VITTE_TOKEN_GREATER &&
+            kind == VITTE_TOKEN_SHIFT_RIGHT) {
             parser->recovering = false;
             return VITTE_PARSER_LIST_END;
         }
@@ -1427,7 +1615,8 @@ vitte_parser_parse_space_body(
 static vitte_ast_node_id_t
 vitte_parser_parse_path_mode(
     vitte_parser_t *parser,
-    bool allow_slash_separator);
+    bool allow_slash_separator,
+    bool allow_self_segment);
 
 static vitte_ast_node_id_t
 vitte_parser_parse_block_expression(
@@ -2067,7 +2256,7 @@ vitte_parser_parse_pattern_atom(
 
     if (vitte_parser_token_is_identifier(token) ||
         token->kind == VITTE_TOKEN_KW_SELF) {
-        vitte_ast_node_id_t head = vitte_parser_parse_path_mode(parser, false);
+        vitte_ast_node_id_t head = vitte_parser_parse_path_mode(parser, false, true);
 
         if (head == VITTE_AST_INVALID_ID) {
             return head;
@@ -2170,7 +2359,9 @@ vitte_parser_parse_pattern(
     vitte_parser_t *parser)
 {
     vitte_ast_node_id_t first;
+    size_t begin;
 
+    begin = parser->position;
     first = vitte_parser_parse_pattern_atom(parser);
     if (first == VITTE_AST_INVALID_ID) {
         return first;
@@ -2179,7 +2370,6 @@ vitte_parser_parse_pattern(
     if (vitte_parser_match(parser, VITTE_TOKEN_PIPE)) {
         vitte_ast_node_id_t alternatives;
         vitte_ast_node_t *node;
-        size_t begin = parser->position;
 
         alternatives = vitte_parser_add_node(
             parser, VITTE_AST_NODE_PATTERN,
@@ -2202,7 +2392,7 @@ vitte_parser_parse_pattern(
         if (node != NULL) {
             node->flags |= VITTE_AST_FLAG_PATTERN_OR;
             node->span = vitte_parser_span_from_range(parser,
-                                                       begin - 1u,
+                                                       begin,
                                                        parser->position);
         }
         return alternatives;
@@ -2229,7 +2419,8 @@ vitte_parser_parse_binding_pattern(
 static vitte_ast_node_id_t
 vitte_parser_parse_path_mode(
     vitte_parser_t *parser,
-    bool allow_slash_separator)
+    bool allow_slash_separator,
+    bool allow_self_segment)
 {
     size_t begin;
     vitte_ast_node_id_t path_id;
@@ -2238,8 +2429,24 @@ vitte_parser_parse_path_mode(
 
     begin = parser->position;
 
-    segment_id =
-        vitte_parser_parse_path_segment_node(parser);
+    if (allow_self_segment &&
+        vitte_parser_check(parser, VITTE_TOKEN_KW_SELF)) {
+        const vitte_token_t *self_token = vitte_parser_advance(parser);
+        vitte_ast_node_t *self_node;
+
+        segment_id = vitte_parser_add_node(
+            parser,
+            VITTE_AST_NODE_IDENTIFIER,
+            vitte_parser_span_from_token(self_token));
+        self_node = vitte_parser_get_node_mut(parser, segment_id);
+        if (self_node != NULL && self_token != NULL) {
+            self_node->token_index =
+                (size_t)(self_token - parser->tokens);
+        }
+    } else {
+        segment_id =
+            vitte_parser_parse_path_segment_node(parser);
+    }
 
     if (segment_id == VITTE_AST_INVALID_ID) {
         return VITTE_AST_INVALID_ID;
@@ -2326,7 +2533,7 @@ static vitte_ast_node_id_t
 vitte_parser_parse_path(
     vitte_parser_t *parser)
 {
-    return vitte_parser_parse_path_mode(parser, true);
+    return vitte_parser_parse_path_mode(parser, true, false);
 }
 
 /* ========================================================================= */
@@ -2765,7 +2972,7 @@ vitte_parser_parse_primary(
         vitte_parser_check_next(
             parser,
             VITTE_TOKEN_LEFT_PAREN)) {
-        return vitte_parser_parse_path_mode(parser, false);
+        return vitte_parser_parse_path_mode(parser, false, false);
     }
 
     if (vitte_parser_literal_node_kind(
@@ -2814,7 +3021,7 @@ vitte_parser_parse_primary(
             return id;
         }
 
-        return vitte_parser_parse_path_mode(parser, false);
+        return vitte_parser_parse_path_mode(parser, false, false);
     }
 
     if (token->kind == VITTE_TOKEN_KW_IF) {
@@ -2948,7 +3155,7 @@ vitte_parser_parse_primary(
     if (vitte_parser_check(
             parser,
             VITTE_TOKEN_LEFT_BRACE)) {
-        return vitte_parser_parse_block(parser);
+        return vitte_parser_parse_block_expression(parser);
     }
 
     (void)vitte_parser_error_here(
@@ -3145,6 +3352,12 @@ vitte_parser_parse_postfix(
             const vitte_ast_node_t *type_path;
             vitte_ast_node_id_t form;
             vitte_parser_span_t type_span;
+
+            if (parser->match_subject_depth != 0u &&
+                parser->recursion_depth ==
+                    parser->match_subject_depth) {
+                break;
+            }
 
             type_path =
                 vitte_parser_get_node(parser, expression);
@@ -4749,6 +4962,18 @@ vitte_parser_parse_generic_parameters(
             }
         }
 
+        {
+            vitte_ast_node_t *parameter_node =
+                vitte_parser_get_node_mut(parser, parameter);
+
+            if (parameter_node != NULL) {
+                parameter_node->span = vitte_parser_span_from_range(
+                    parser,
+                    parameter_begin,
+                    parser->position);
+            }
+        }
+
         if (!vitte_parser_node_append_child(
                 parser,
                 owner,
@@ -4800,12 +5025,14 @@ vitte_parser_parse_where_clause(
     vitte_ast_node_id_t owner)
 {
     vitte_ast_node_id_t where_node;
+    size_t begin;
 
     if (!vitte_parser_match(
             parser,
             VITTE_TOKEN_KW_WHERE)) {
         return true;
     }
+    begin = parser->position - 1u;
 
     where_node =
         vitte_parser_add_node(
@@ -4914,6 +5141,17 @@ vitte_parser_parse_where_clause(
                         parser, predicate, extra_bound)) {
                     goto recover_where_predicate;
                 }
+                {
+                    vitte_ast_node_t *predicate_node =
+                        vitte_parser_get_node_mut(parser, predicate);
+
+                    if (predicate_node != NULL) {
+                        predicate_node->span = vitte_parser_span_from_range(
+                            parser,
+                            predicate_begin,
+                            parser->position);
+                    }
+                }
             }
         }
 
@@ -4943,6 +5181,18 @@ recover_where_predicate:
             break;
         }
         return false;
+    }
+
+    {
+        vitte_ast_node_t *where_ast_node =
+            vitte_parser_get_node_mut(parser, where_node);
+
+        if (where_ast_node != NULL) {
+            where_ast_node->span = vitte_parser_span_from_range(
+                parser,
+                begin,
+                parser->position);
+        }
     }
 
     return vitte_parser_node_append_child(
@@ -5125,8 +5375,15 @@ vitte_parser_parse_block(
            !vitte_parser_check(
                parser,
                VITTE_TOKEN_RIGHT_BRACE)) {
+        const vitte_token_t *current =
+            vitte_parser_current(parser);
         vitte_ast_node_id_t statement;
         size_t before;
+
+        if (current != NULL &&
+            vitte_parser_is_block_escape_start(current->kind)) {
+            break;
+        }
 
         before = parser->position;
 
@@ -5216,6 +5473,10 @@ vitte_parser_parse_block_expression(
         current = vitte_parser_current(parser);
         before = parser->position;
         if (current != NULL &&
+            vitte_parser_is_block_escape_start(current->kind)) {
+            break;
+        }
+        if (current != NULL &&
             ((current->kind == VITTE_TOKEN_KW_IF &&
               !vitte_parser_if_has_else_ahead(parser)) ||
              current->kind == VITTE_TOKEN_KW_LET ||
@@ -5226,8 +5487,11 @@ vitte_parser_parse_block_expression(
              current->kind == VITTE_TOKEN_KW_FOR ||
              current->kind == VITTE_TOKEN_KW_BREAK ||
              current->kind == VITTE_TOKEN_KW_CONTINUE ||
+             current->kind == VITTE_TOKEN_KW_MATCH ||
              current->kind == VITTE_TOKEN_KW_DEFER ||
-             current->kind == VITTE_TOKEN_KW_ASSERT)) {
+             current->kind == VITTE_TOKEN_KW_ASSERT ||
+             current->kind == VITTE_TOKEN_KW_UNSAFE ||
+             current->kind == VITTE_TOKEN_KW_ASM)) {
             item = vitte_parser_parse_statement(parser);
         } else {
             item = vitte_parser_parse_expression(parser);
@@ -5252,18 +5516,47 @@ vitte_parser_parse_block_expression(
             } else if (item != VITTE_AST_INVALID_ID) {
                 if (!vitte_parser_check(
                         parser,
-                        VITTE_TOKEN_RIGHT_BRACE)) {
-                    (void)vitte_parser_error_here(
-                        parser,
-                        VITTE_PARSER_ERROR_EXPECTED_TOKEN,
-                        VITTE_TOKEN_RIGHT_BRACE);
-                    item = VITTE_AST_INVALID_ID;
+                        VITTE_TOKEN_RIGHT_BRACE) &&
+                    !vitte_parser_at_end(parser)) {
+                    if (vitte_parser_expect(
+                            parser,
+                            VITTE_TOKEN_SEMICOLON) == NULL) {
+                        item = VITTE_AST_INVALID_ID;
+                    } else {
+                        vitte_ast_node_id_t statement =
+                            vitte_parser_add_node(
+                                parser,
+                                VITTE_AST_NODE_EXPR_STMT,
+                                vitte_parser_get_node(parser, item)->span);
+                        if (statement == VITTE_AST_INVALID_ID ||
+                            !vitte_parser_node_append_child(
+                                parser,
+                                statement,
+                                item)) {
+                            item = VITTE_AST_INVALID_ID;
+                        } else {
+                            item = statement;
+                        }
+                    }
                 }
             }
         }
 
-        if (item == VITTE_AST_INVALID_ID ||
-            !vitte_parser_node_append_child(parser, block, item)) {
+        if (item == VITTE_AST_INVALID_ID) {
+            if (!parser->recovering) {
+                vitte_parser_leave_recursion(parser);
+                return VITTE_AST_INVALID_ID;
+            }
+            vitte_parser_synchronize(
+                parser, VITTE_PARSER_RECOVERY_STATEMENT, before);
+            if (parser->position == before &&
+                !vitte_parser_at_end(parser) &&
+                !vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+                (void)vitte_parser_advance(parser);
+            }
+            continue;
+        }
+        if (!vitte_parser_node_append_child(parser, block, item)) {
             vitte_parser_leave_recursion(parser);
             return VITTE_AST_INVALID_ID;
         }
@@ -6274,6 +6567,7 @@ vitte_parser_parse_match_statement(
     vitte_parser_t *parser)
 {
     size_t begin;
+    size_t previous_match_subject_depth;
     vitte_ast_node_id_t match_node;
     vitte_ast_node_id_t subject;
 
@@ -6281,8 +6575,14 @@ vitte_parser_parse_match_statement(
 
     (void)vitte_parser_advance(parser);
 
+    previous_match_subject_depth = parser->match_subject_depth;
+    parser->match_subject_depth =
+        parser->recursion_depth == SIZE_MAX
+            ? SIZE_MAX
+            : parser->recursion_depth + 1u;
     subject =
         vitte_parser_parse_expression(parser);
+    parser->match_subject_depth = previous_match_subject_depth;
 
     if (subject == VITTE_AST_INVALID_ID) {
         return subject;
@@ -6322,6 +6622,13 @@ vitte_parser_parse_match_statement(
         size_t arm_begin;
 
         arm_begin = parser->position;
+
+        if (vitte_parser_is_declaration_start(
+                vitte_parser_current(parser) != NULL
+                    ? vitte_parser_current(parser)->kind
+                    : VITTE_TOKEN_INVALID)) {
+            break;
+        }
 
         if (vitte_parser_current(parser) != NULL &&
             vitte_parser_token_text_equal(
@@ -6540,9 +6847,26 @@ vitte_parser_parse_statement(
             return vitte_parser_parse_return_statement(
                 parser);
 
-        case VITTE_TOKEN_KW_SET:
+        case VITTE_TOKEN_KW_SET: {
+            size_t begin = parser->position;
+            vitte_ast_node_id_t statement;
+            vitte_ast_node_t *statement_node;
+
             (void)vitte_parser_advance(parser);
-            return vitte_parser_parse_expression_statement(parser);
+            statement = vitte_parser_parse_expression_statement(parser);
+            if (statement == VITTE_AST_INVALID_ID) {
+                return statement;
+            }
+            statement_node = vitte_parser_get_node_mut(parser, statement);
+            if (statement_node != NULL) {
+                statement_node->span = vitte_parser_span_from_range(
+                    parser,
+                    begin,
+                    parser->position);
+                statement_node->token_index = begin;
+            }
+            return statement;
+        }
 
         case VITTE_TOKEN_KW_BREAK:
             return vitte_parser_parse_jump_statement(
@@ -7103,6 +7427,17 @@ recover_export_item:
 
     if (vitte_parser_expect(parser, VITTE_TOKEN_SEMICOLON) == NULL) {
         return VITTE_AST_INVALID_ID;
+    }
+
+    {
+        vitte_ast_node_t *node = vitte_parser_get_node_mut(parser, export_node);
+
+        if (node != NULL) {
+            node->span = vitte_parser_span_from_range(
+                parser,
+                begin,
+                parser->position);
+        }
     }
 
     return export_node;
@@ -9388,6 +9723,17 @@ vitte_parser_run(
 
     parser->root = root;
 
+    if (parser->last_error != VITTE_PARSER_ERROR_NONE) {
+        parser->state = VITTE_PARSER_STATE_FAILED;
+
+        parser->stats.failed_runs =
+            vitte_parser_u64_add_sat(
+                parser->stats.failed_runs,
+                UINT64_C(1));
+
+        return false;
+    }
+
     if (parser->diagnostic_count != 0u) {
         size_t index;
 
@@ -9612,6 +9958,7 @@ vitte_parser_init(
 
     parser->last_error =
         VITTE_PARSER_ERROR_NONE;
+    parser->match_subject_depth = 0u;
     parser->recovering = false;
 
     parser->tokens = tokens;
@@ -9681,6 +10028,7 @@ vitte_parser_reset(
 
     parser->last_error =
         VITTE_PARSER_ERROR_NONE;
+    parser->match_subject_depth = 0u;
     parser->recovering = false;
 
     parser->max_nodes = max_nodes;

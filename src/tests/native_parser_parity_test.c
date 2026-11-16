@@ -114,6 +114,7 @@ extern bool compiler_parser_parser_vitte_parser_init(
 extern bool compiler_parser_parser_vitte_parser_run_native(native_parser_t *parser);
 extern void compiler_parser_parser_vitte_parser_destroy(native_parser_t *parser);
 extern size_t compiler_parser_parser_vitte_parser_node_count(native_parser_t *parser);
+extern bool compiler_parser_parser_vitte_parser_validate(native_parser_t *parser);
 extern uint64_t compiler_parser_parser_vitte_parser_root(native_parser_t *parser);
 extern native_ast_node_t *compiler_parser_parser_vitte_parser_get_node(
     native_parser_t *parser,
@@ -130,7 +131,44 @@ typedef struct parser_parity_case {
     const char *name;
     const char *source;
     bool expected_to_parse;
+    bool parser_only;
 } parser_parity_case_t;
+
+static char *
+read_source_file(const char *path)
+{
+    FILE *file;
+    long file_length;
+    char *source;
+    size_t length;
+
+    file = fopen(path, "rb");
+    if (file == NULL || fseek(file, 0L, SEEK_END) != 0) {
+        if (file != NULL) {
+            (void)fclose(file);
+        }
+        return NULL;
+    }
+    file_length = ftell(file);
+    if (file_length < 0L || fseek(file, 0L, SEEK_SET) != 0) {
+        (void)fclose(file);
+        return NULL;
+    }
+    length = (size_t)file_length;
+    source = (char *)malloc(length + 1u);
+    if (source == NULL ||
+        (length != 0u && fread(source, 1u, length, file) != length)) {
+        free(source);
+        (void)fclose(file);
+        return NULL;
+    }
+    source[length] = '\0';
+    if (fclose(file) != 0) {
+        free(source);
+        return NULL;
+    }
+    return source;
+}
 
 static int
 parser_spans_equal(
@@ -171,9 +209,9 @@ node_has_shared_token_anchor(int32_t kind)
 static uint32_t
 normalize_native_parser_flags(uint32_t flags)
 {
-    /* The native parser reserves high bits for pattern markers internally;
-     * compare their meaning against the bootstrap parser's public flag bits. */
-    uint32_t normalized = flags & ~UINT32_C(0x00fc0000);
+    /* The native parser stores pattern and const-generic flags in bits 18-24;
+     * the bootstrap AST uses the public flag positions below bit 19. */
+    uint32_t normalized = flags & ~UINT32_C(0x01fc0000);
 
     if ((flags & (UINT32_C(1) << 18u)) != 0u) {
         normalized |= UINT32_C(1) << 10u;
@@ -190,7 +228,7 @@ normalize_native_parser_flags(uint32_t flags)
     if ((flags & (UINT32_C(1) << 22u)) != 0u) {
         normalized |= UINT32_C(1) << 14u;
     }
-    if ((flags & (UINT32_C(1) << 23u)) != 0u) {
+    if ((flags & (UINT32_C(1) << 24u)) != 0u) {
         normalized |= UINT32_C(1) << 18u;
     }
     return normalized;
@@ -201,48 +239,57 @@ compare_node(
     const parser_parity_case_t *test_case,
     const vitte_parser_t *bootstrap,
     native_parser_t *native_parser,
-    uint64_t node_id)
+    uint64_t bootstrap_node_id,
+    uint64_t native_node_id)
 {
     const vitte_ast_node_t *bootstrap_node;
     native_ast_node_t *native_node;
     size_t index;
 
-    bootstrap_node = vitte_parser_get_node(bootstrap, node_id);
+    bootstrap_node = vitte_parser_get_node(bootstrap, bootstrap_node_id);
     native_node = compiler_parser_parser_vitte_parser_get_node(
         native_parser,
-        node_id);
+        native_node_id);
     if (bootstrap_node == NULL || native_node == NULL) {
-        (void)fprintf(stderr, "%s: missing AST node %" PRIu64 "\n", test_case->name, node_id);
+        (void)fprintf(stderr,
+            "%s: missing AST node bootstrap=%" PRIu64 " native=%" PRIu64 "\n",
+            test_case->name, bootstrap_node_id, native_node_id);
         return 0;
     }
 #define CHECK_NODE_FIELD(field) \
     do { \
         if ((uint64_t)bootstrap_node->field != (uint64_t)native_node->field) { \
             (void)fprintf(stderr, \
-                "%s: AST node %" PRIu64 " kind %d/%d field %s differs (bootstrap=%" PRIu64 " native=%" PRIu64 ")\n", \
-                test_case->name, node_id, (int)bootstrap_node->kind, (int)native_node->kind, #field, \
+                "%s: AST node bootstrap=%" PRIu64 " native=%" PRIu64 " kind %d/%d span=%zu-%zu/%zu-%zu field %s differs (bootstrap=%" PRIu64 " native=%" PRIu64 ")\n", \
+                test_case->name, bootstrap_node_id, native_node_id, (int)bootstrap_node->kind, (int)native_node->kind, \
+                bootstrap_node->span.begin, bootstrap_node->span.end, \
+                native_node->span.begin, native_node->span.end, \
+                #field, \
                 (uint64_t)bootstrap_node->field, (uint64_t)native_node->field); \
             return 0; \
         } \
     } while (0)
 
-    CHECK_NODE_FIELD(id);
     CHECK_NODE_FIELD(kind);
     CHECK_NODE_FIELD(operator_kind);
     CHECK_NODE_FIELD(child_count);
     CHECK_NODE_FIELD(attribute_count);
     if (bootstrap_node->flags != normalize_native_parser_flags(native_node->flags)) {
         (void)fprintf(stderr,
-            "%s: AST node %" PRIu64 " flags differ (bootstrap=%" PRIu64 " native-normalized=%" PRIu64 ")\n",
-            test_case->name, node_id, (uint64_t)bootstrap_node->flags,
-            (uint64_t)normalize_native_parser_flags(native_node->flags));
+            "%s: AST node bootstrap=%" PRIu64 " native=%" PRIu64 " kind=%d/%d flags differ (bootstrap=%" PRIu64 " native-normalized=%" PRIu64 ") spans=%zu-%zu/%zu-%zu\n",
+            test_case->name, bootstrap_node_id, native_node_id,
+            (int)bootstrap_node->kind, (int)native_node->kind,
+            (uint64_t)bootstrap_node->flags,
+            (uint64_t)normalize_native_parser_flags(native_node->flags),
+            bootstrap_node->span.begin, bootstrap_node->span.end,
+            native_node->span.begin, native_node->span.end);
         return 0;
     }
     if (node_has_shared_token_anchor((int32_t)bootstrap_node->kind) &&
         bootstrap_node->token_index != native_node->token_index) {
         (void)fprintf(stderr,
-            "%s: AST node %" PRIu64 " token anchor differs (bootstrap=%zu native=%zu)\n",
-            test_case->name, node_id,
+            "%s: AST node bootstrap=%" PRIu64 " native=%" PRIu64 " token anchor differs (bootstrap=%zu native=%zu)\n",
+            test_case->name, bootstrap_node_id, native_node_id,
             bootstrap_node->token_index, native_node->token_index);
         return 0;
     }
@@ -253,8 +300,8 @@ compare_node(
         bootstrap_node->span.column != native_node->span.column ||
         bootstrap_node->span.valid != native_node->span.valid) {
         (void)fprintf(stderr,
-            "%s: AST node %" PRIu64 " kind %d span differs (bootstrap=%u:%zu-%zu %zu:%zu valid=%d; native=%u:%zu-%zu %zu:%zu valid=%d)\n",
-            test_case->name, node_id, (int)bootstrap_node->kind,
+            "%s: AST node bootstrap=%" PRIu64 " native=%" PRIu64 " kind %d span differs (bootstrap=%u:%zu-%zu %zu:%zu valid=%d; native=%u:%zu-%zu %zu:%zu valid=%d)\n",
+            test_case->name, bootstrap_node_id, native_node_id, (int)bootstrap_node->kind,
             bootstrap_node->span.file_id, bootstrap_node->span.begin,
             bootstrap_node->span.end, bootstrap_node->span.line,
             bootstrap_node->span.column, bootstrap_node->span.valid,
@@ -264,24 +311,29 @@ compare_node(
         return 0;
     }
     for (index = 0u; index < bootstrap_node->child_count; ++index) {
-        if (bootstrap_node->children[index] != native_node->children[index]) {
-            (void)fprintf(stderr, "%s: AST node %" PRIu64 " child %zu differs\n", test_case->name, node_id, index);
+        if (!compare_node(
+                test_case, bootstrap, native_parser,
+                bootstrap_node->children[index],
+                native_node->children[index])) {
             return 0;
         }
     }
-    if (vitte_parser_attribute_count(bootstrap, node_id) !=
-        compiler_parser_parser_vitte_parser_node_attribute_count(native_parser, node_id)) {
-        (void)fprintf(stderr, "%s: AST node %" PRIu64 " attribute count differs\n", test_case->name, node_id);
+    if (vitte_parser_attribute_count(bootstrap, bootstrap_node_id) !=
+        compiler_parser_parser_vitte_parser_node_attribute_count(native_parser, native_node_id)) {
+            (void)fprintf(stderr,
+                "%s: AST node bootstrap=%" PRIu64 " native=%" PRIu64 " attribute count differs\n",
+                test_case->name, bootstrap_node_id, native_node_id);
         return 0;
     }
     for (index = 0u; index < bootstrap_node->attribute_count; ++index) {
         const vitte_ast_attribute_t *bootstrap_attribute;
         native_parser_attribute_t *native_attribute;
 
-        bootstrap_attribute = vitte_parser_get_attribute(bootstrap, node_id, index);
+        bootstrap_attribute = vitte_parser_get_attribute(
+            bootstrap, bootstrap_node_id, index);
         native_attribute = compiler_parser_parser_vitte_parser_get_attribute(
             native_parser,
-            node_id,
+            native_node_id,
             index);
         if (bootstrap_attribute == NULL || native_attribute == NULL ||
             bootstrap_attribute->token_start != native_attribute->token_start ||
@@ -291,7 +343,9 @@ compare_node(
             bootstrap_attribute->argument_start != native_attribute->argument_start ||
             bootstrap_attribute->argument_count != native_attribute->argument_count ||
             bootstrap_attribute->inner != native_attribute->inner) {
-            (void)fprintf(stderr, "%s: AST node %" PRIu64 " attribute %zu differs\n", test_case->name, node_id, index);
+            (void)fprintf(stderr,
+                "%s: AST node bootstrap=%" PRIu64 " native=%" PRIu64 " attribute %zu differs\n",
+                test_case->name, bootstrap_node_id, native_node_id, index);
             return 0;
         }
     }
@@ -306,6 +360,7 @@ compare_native_parser(const parser_parity_case_t *test_case)
     vitte_parser_t bootstrap_parser;
     native_parser_t native_parser;
     native_parser_token_t *native_tokens = NULL;
+    char *native_lexeme_storage = NULL;
     vitte_cli_diagnostic_t *diagnostics = NULL;
     size_t diagnostic_count = 0u;
     uint8_t *native_output = NULL;
@@ -314,6 +369,7 @@ compare_native_parser(const parser_parity_case_t *test_case)
     bool bootstrap_parsed;
     bool native_parsed;
     size_t index;
+    size_t native_lexeme_offset = 0u;
     bool bootstrap_parser_initialized = false;
     bool native_parser_initialized = false;
 
@@ -348,6 +404,16 @@ compare_native_parser(const parser_parity_case_t *test_case)
         (void)fprintf(stderr, "%s: native token allocation failed\n", test_case->name);
         goto failure;
     }
+    if (lexer.token_count > SIZE_MAX - strlen(test_case->source)) {
+        (void)fprintf(stderr, "%s: native lexeme storage size overflow\n", test_case->name);
+        goto failure;
+    }
+    native_lexeme_storage = (char *)malloc(
+        strlen(test_case->source) + lexer.token_count);
+    if (native_lexeme_storage == NULL && lexer.token_count != 0u) {
+        (void)fprintf(stderr, "%s: native lexeme storage allocation failed\n", test_case->name);
+        goto failure;
+    }
     for (index = 0u; index < lexer.token_count; ++index) {
         const vitte_token_t *source_token = &lexer.tokens[index];
         native_parser_token_t *native_token = &native_tokens[index];
@@ -358,8 +424,16 @@ compare_native_parser(const parser_parity_case_t *test_case)
         native_token->span.valid = source_token->span.valid;
         native_token->line = source_token->line;
         native_token->column = source_token->column;
-        native_token->lexeme = source_token->lexeme;
+        native_token->lexeme = native_lexeme_storage + native_lexeme_offset;
         native_token->length = source_token->length;
+        if (source_token->length != 0u) {
+            memcpy(
+                native_lexeme_storage + native_lexeme_offset,
+                source_token->lexeme,
+                source_token->length);
+        }
+        native_lexeme_storage[native_lexeme_offset + source_token->length] = '\0';
+        native_lexeme_offset += source_token->length + 1u;
     }
     if (!compiler_parser_parser_vitte_parser_init(
             &native_parser,
@@ -375,7 +449,41 @@ compare_native_parser(const parser_parity_case_t *test_case)
     if (bootstrap_parsed != test_case->expected_to_parse ||
         native_parsed != test_case->expected_to_parse ||
         bootstrap_parsed != native_parsed) {
-        (void)fprintf(stderr, "%s: parser acceptance differs or is unexpected\n", test_case->name);
+        (void)fprintf(stderr,
+            "%s: parser acceptance differs or is unexpected "
+            "(expected=%d bootstrap=%d native=%d; "
+            "bootstrap error/diagnostics=%d/%zu, "
+            "native error/diagnostics=%d/%zu position=%zu nodes=%zu)\n",
+            test_case->name,
+            test_case->expected_to_parse ? 1 : 0,
+            bootstrap_parsed ? 1 : 0,
+            native_parsed ? 1 : 0,
+            (int)bootstrap_parser.last_error,
+            bootstrap_parser.diagnostic_count,
+            (int)native_parser.last_error,
+            native_parser.diagnostic_count,
+            native_parser.position,
+            native_parser.node_count);
+        for (index = 0u;
+             index < native_parser.diagnostic_count && index < 3u;
+             ++index) {
+            const native_parser_diagnostic_t *diagnostic;
+
+            diagnostic = &native_parser.diagnostics[index];
+            (void)fprintf(stderr,
+                "%s: native diagnostic %zu error=%d line=%zu column=%zu "
+                "begin=%zu expected=%d found=%d\n",
+                test_case->name, index, diagnostic->error,
+                diagnostic->span.line, diagnostic->span.column,
+                diagnostic->span.begin, diagnostic->expected,
+                diagnostic->found);
+        }
+        goto failure;
+    }
+    if (bootstrap_parsed &&
+        (!vitte_parser_validate(&bootstrap_parser) ||
+         !compiler_parser_parser_vitte_parser_validate(&native_parser))) {
+        (void)fprintf(stderr, "%s: parser accepted an invalid AST\n", test_case->name);
         goto failure;
     }
     if (!bootstrap_parsed) {
@@ -412,41 +520,47 @@ compare_native_parser(const parser_parity_case_t *test_case)
         size_t bootstrap_count = bootstrap_parser.node_count;
         size_t native_count = compiler_parser_parser_vitte_parser_node_count(
             &native_parser);
-        if (bootstrap_count != native_count ||
-            vitte_parser_root(&bootstrap_parser) !=
-                compiler_parser_parser_vitte_parser_root(&native_parser)) {
+        if (vitte_parser_root(&bootstrap_parser) !=
+            compiler_parser_parser_vitte_parser_root(&native_parser)) {
             (void)fprintf(stderr,
-                "%s: AST root/count differs (bootstrap root=%" PRIu64 " nodes=%zu; native root=%" PRIu64 " nodes=%zu)\n",
+                "%s: AST root differs (bootstrap root=%" PRIu64 "; native root=%" PRIu64 ")\n",
                 test_case->name,
-                vitte_parser_root(&bootstrap_parser), bootstrap_count,
-                compiler_parser_parser_vitte_parser_root(&native_parser), native_count);
+                vitte_parser_root(&bootstrap_parser),
+                compiler_parser_parser_vitte_parser_root(&native_parser));
             goto failure;
         }
-        for (index = 1u; index <= bootstrap_count; ++index) {
-            if (!compare_node(
-                    test_case,
-                    &bootstrap_parser,
-                    &native_parser,
-                    index)) {
-                goto failure;
-            }
+        if (!compare_node(
+                test_case,
+                &bootstrap_parser,
+                &native_parser,
+                vitte_parser_root(&bootstrap_parser),
+                compiler_parser_parser_vitte_parser_root(&native_parser))) {
+            goto failure;
+        }
+        if (bootstrap_count != native_count) {
+            (void)fprintf(stderr,
+                "%s: AST node count differs (bootstrap=%zu native=%zu)\n",
+                test_case->name, bootstrap_count, native_count);
+            goto failure;
         }
     }
 
-    /* The public native pipeline must produce the same fingerprint while
-     * tokenizing the source itself. This also checks lexer-to-parser mapping. */
-    status = vitte_native_frontend_execute_with_diagnostics(
-        VITTE_NATIVE_FRONTEND_ACTION_EMIT_AST_FINGERPRINT,
-        test_case->source,
-        strlen(test_case->source),
-        UINT64_C(1),
-        "native-parser-parity.vit",
-        NULL,
-        &native_output,
-        &native_output_length,
-        &diagnostics,
-        &diagnostic_count);
-    if (bootstrap_parsed) {
+    if (!test_case->parser_only) {
+        /* The public native pipeline must produce the same fingerprint while
+         * tokenizing the source itself. This also checks lexer-to-parser mapping. */
+        status = vitte_native_frontend_execute_with_diagnostics(
+            VITTE_NATIVE_FRONTEND_ACTION_EMIT_AST_FINGERPRINT,
+            test_case->source,
+            strlen(test_case->source),
+            UINT64_C(1),
+            "native-parser-parity.vit",
+            NULL,
+            &native_output,
+            &native_output_length,
+            &diagnostics,
+            &diagnostic_count);
+    }
+    if (!test_case->parser_only && bootstrap_parsed) {
         char fingerprint_text[32];
         char *end = NULL;
         if ((status != UINT32_C(1) && status != UINT32_C(2)) ||
@@ -462,7 +576,7 @@ compare_native_parser(const parser_parity_case_t *test_case)
             (void)fprintf(stderr, "%s: native pipeline returned an invalid AST fingerprint\n", test_case->name);
             goto failure;
         }
-    } else if (status != UINT32_C(3)) {
+    } else if (!test_case->parser_only && status != UINT32_C(3)) {
         (void)fprintf(stderr, "%s: native pipeline rejection status differs (%" PRIu32 ")\n", test_case->name, status);
         goto failure;
     }
@@ -473,6 +587,7 @@ compare_native_parser(const parser_parity_case_t *test_case)
         compiler_parser_parser_vitte_parser_destroy(&native_parser);
     }
     free(native_tokens);
+    free(native_lexeme_storage);
     vitte_parser_destroy(&bootstrap_parser);
     vitte_lexer_destroy(&lexer);
     return 1;
@@ -484,6 +599,7 @@ failure:
         compiler_parser_parser_vitte_parser_destroy(&native_parser);
     }
     free(native_tokens);
+    free(native_lexeme_storage);
     if (bootstrap_parser_initialized) {
         vitte_parser_destroy(&bootstrap_parser);
     }
@@ -492,13 +608,14 @@ failure:
 }
 
 int
-main(void)
+main(int argc, char **argv)
 {
     static const parser_parity_case_t cases[] = {
         {
             "procedures and expressions",
             "proc add(value: i64) -> i64 { return value + 1; }\n",
-            true
+            true,
+            false
         },
         {
             "form with a fixed-array field",
@@ -507,7 +624,8 @@ main(void)
             "    let packet: Packet = Packet { values: [10, 20, 12] };\n"
             "    return packet.values[2] - 12;\n"
             "}\n",
-            true
+            true,
+            false
         },
         {
             "payload pick and match",
@@ -516,12 +634,14 @@ main(void)
             "    match value { Value::Some(inner) => { return inner; }, else => { return 0; } }\n"
             "    return 0;\n"
             "}\n",
-            true
+            true,
+            false
         },
         {
             "generic procedure declaration",
             "proc identity<T>(value: T) -> T { return value; }\n",
-            true
+            true,
+            false
         },
         {
             "nested generic type arguments",
@@ -533,21 +653,25 @@ main(void)
             "    };\n"
             "    return outer.wrapped.value.value - 42;\n"
             "}\n",
-            true
+            true,
+            false
         },
         {
             "attributed procedure declaration",
             "#[cold]\nproc tagged() -> i64 { return 1; }\n",
-            true
+            true,
+            false
         },
         {
             "missing procedure parameter type",
             "proc main(value) -> i64 { return 0; }\n",
+            false,
             false
         },
         {
             "unterminated form declaration",
             "form Packet { values: [3]i64\n",
+            false,
             false
         }
     };
@@ -559,8 +683,28 @@ main(void)
         }
     }
 
+    for (index = 1u; index < (size_t)argc; ++index) {
+        char *source = read_source_file(argv[index]);
+        parser_parity_case_t file_case;
+
+        if (source == NULL) {
+            (void)fprintf(stderr, "could not read parser fixture: %s\n", argv[index]);
+            return EXIT_FAILURE;
+        }
+        file_case.name = argv[index];
+        file_case.source = source;
+        file_case.expected_to_parse = true;
+        file_case.parser_only = true;
+        if (!compare_native_parser(&file_case)) {
+            free(source);
+            return EXIT_FAILURE;
+        }
+        free(source);
+    }
+
     (void)printf(
-        "Native/bootstrap parser and AST parity passed: %zu cases.\n",
-        sizeof(cases) / sizeof(cases[0]));
+        "Native/bootstrap parser and AST parity passed: %zu cases and %zu fixtures.\n",
+        sizeof(cases) / sizeof(cases[0]),
+        (size_t)argc - 1u);
     return EXIT_SUCCESS;
 }

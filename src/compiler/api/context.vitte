@@ -30,6 +30,7 @@ use compiler::api::error::{
     Error,
     error_init,
     error_reset,
+    error_destroy,
     error_set,
     error_set_last,
     error_last,
@@ -45,6 +46,7 @@ use compiler::diagnostic::diagnostic::{
     diagnostic_warning_count,
 };
 use compiler::source::source::{SourceId};
+use vitte::core::memory::{deallocate as context_deallocate};
 
 /// =========================================================================
 /// Configuration
@@ -249,6 +251,8 @@ proc source_init() -> ContextSource {
 proc source_destroy(
     source: &mut ContextSource
 ) {
+    context_deallocate(source.name.as_ptr() as *mut u8);
+    context_deallocate(source.data.as_ptr() as *mut u8);
     set source.id = SOURCE_ID_NONE;
 
     set source.name = "";
@@ -658,12 +662,16 @@ export proc context_destroy(
     set context.cancel_requested = true;
 
     clear_sources(context);
+    context.sources.shrink_to_fit();
     set context.sources = [];
+
+    diagnostic_bag_reset(&mut context.diagnostics);
+    context.diagnostics.storage.shrink_to_fit();
 
     set context.diagnostics =
         diagnostic_bag_default();
 
-    error_reset(
+    error_destroy(
         &mut context.last_error
     );
 

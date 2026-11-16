@@ -9,6 +9,9 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "filesystem/filesystem.h"
+#include "diagnostic/cli_bridge.h"
+
 #if defined(_WIN32)
 #include <io.h>
 #include <windows.h>
@@ -118,6 +121,13 @@ vitte_native_api_file_close(
 }
 
 /* Primitive host calls used by the Vitte-owned filesystem policy layer. */
+vitte_filesystem_result_t
+vitte_native_fs_create_directory(
+    const uint8_t *path)
+{
+    return vitte_filesystem_create_directory((const char *)path);
+}
+
 int32_t
 vitte_native_fs_path_kind(
     const uint8_t *path)
@@ -385,6 +395,61 @@ vitte_native_write_stderr(
     }
     (void)fwrite(data, 1u, length, stderr);
     (void)fflush(stderr);
+}
+
+bool
+vitte_native_render_cli_diagnostics(
+    const char *source_name,
+    const char *source,
+    size_t source_length,
+    uint64_t source_id,
+    const uint8_t *diagnostics,
+    size_t diagnostic_count,
+    bool color,
+    uint32_t format)
+{
+    vitte_source_context_t sources = {0};
+    vitte_source_id_t registered_source_id = VITTE_SOURCE_INVALID_ID;
+    bool rendered = false;
+
+    if (source_name == NULL || source == NULL || diagnostics == NULL ||
+        diagnostic_count == 0u ||
+        format > (uint32_t)VITTE_CLI_DIAGNOSTIC_LSP ||
+        !vitte_source_init(&sources)) {
+        return false;
+    }
+
+    if (vitte_source_add(
+            &sources, source_name, source_name, source, source_length,
+            &registered_source_id) &&
+        sources.source_count != 0u) {
+        /* The native API owns source IDs across compilations. The temporary C
+         * renderer context contains one source, so preserve that API ID. */
+        sources.sources[0].id = source_id;
+        rendered = vitte_diagnostic_render_cli_batch(
+            stderr,
+            &sources,
+            source_id,
+            source_name,
+            (const vitte_cli_diagnostic_t *)(const void *)diagnostics,
+            diagnostic_count,
+            color,
+            (vitte_cli_diagnostic_format_t)format);
+    }
+
+    vitte_source_destroy(&sources);
+    (void)fflush(stderr);
+    return rendered;
+}
+
+bool
+vitte_native_stderr_is_terminal(void)
+{
+#if defined(_WIN32)
+    return _isatty(_fileno(stderr)) != 0;
+#else
+    return isatty(fileno(stderr)) != 0;
+#endif
 }
 
 void

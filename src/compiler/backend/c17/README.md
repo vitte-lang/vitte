@@ -41,9 +41,16 @@ using temporary snapshots, preserving parallel-copy semantics.
 `switch` remains unsupported because the current IR instruction has no case
 table.
 
+The IR emitter declares aggregate tags before their layouts and emits a C
+prototype for every function before any function body, so recursive and
+forward calls use valid C17 declarations. Signed integer constants preserve
+their IR width, empty structs use the backend's placeholder member, and
+bitcasts copy object representations through `memcpy` with a compile-time size
+check. The emitter rejects incomplete by-value types, invalid external C
+names, weak linkage, and non-C calling conventions with an explicit error.
+
 The native Vitte IR declaration and C17 emitter now cover the bootstrap IR's
-`Slice` type, `ConstantString` values, and six string/slice opcodes. `switch`
-remains unsupported because the current IR instruction has no case table.
+`Slice` type, `ConstantString` values, and six string/slice opcodes.
 
 ## Bootstrap boundary
 

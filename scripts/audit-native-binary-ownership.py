@@ -52,7 +52,6 @@ EXPECTED_FILESYSTEM_EXPORTS = {
 }
 
 EXPECTED_FRONTEND_FILESYSTEM_IMPORTS = {
-    "vitte_filesystem_create_directories",
     "vitte_filesystem_current_directory",
     "vitte_filesystem_directory_list_destroy",
     "vitte_filesystem_list_directory",
@@ -60,6 +59,10 @@ EXPECTED_FRONTEND_FILESYSTEM_IMPORTS = {
     "vitte_filesystem_remove_file",
     "vitte_filesystem_rename",
     "vitte_filesystem_stat",
+}
+EXPECTED_DIRECTORY_CREATION_HOST_IMPORTS = {
+    "vitte_native_fs_create_directory",
+    "vitte_platform_path_list_separator",
 }
 
 
@@ -172,7 +175,21 @@ def check_symbols(nm: list[str], binary: Path, frontend_object: Path, filesystem
         added = sorted(frontend_imports - EXPECTED_FRONTEND_FILESYSTEM_IMPORTS)
         fail(
             "Vitte frontend filesystem dependencies changed; review ownership "
-            f"and tests (missing={missing}, added={added})"
+            f"and semantics (missing={missing}, added={added})"
+        )
+
+    directory_creation_host_imports = {
+        symbol
+        for symbol in undefined_symbols(nm, frontend_object)
+        if symbol in EXPECTED_DIRECTORY_CREATION_HOST_IMPORTS
+    }
+    if directory_creation_host_imports != EXPECTED_DIRECTORY_CREATION_HOST_IMPORTS:
+        missing = sorted(
+            EXPECTED_DIRECTORY_CREATION_HOST_IMPORTS - directory_creation_host_imports
+        )
+        fail(
+            "Vitte recursive directory creation host imports changed; review ownership "
+            f"and semantics (missing={missing})"
         )
 
     executable_exports = defined_symbols(nm, binary)
@@ -182,6 +199,12 @@ def check_symbols(nm: list[str], binary: Path, frontend_object: Path, filesystem
     missing_from_binary = sorted(frontend_imports - executable_exports)
     if missing_from_binary:
         fail(f"filesystem ABI imports are not defined by the executable: {missing_from_binary}")
+    missing_host_boundary = sorted(directory_creation_host_imports - executable_exports)
+    if missing_host_boundary:
+        fail(
+            "Vitte filesystem host-boundary imports are not defined by the executable: "
+            f"{missing_host_boundary}"
+        )
 
     unreferenced = filesystem_exports - frontend_imports
     print("Main executable ownership audit passed:")
@@ -194,6 +217,10 @@ def check_symbols(nm: list[str], binary: Path, frontend_object: Path, filesystem
         f"{len(unreferenced)} additional exports are linked but unreferenced there."
     )
     print("  Active filesystem imports: " + ", ".join(sorted(frontend_imports)))
+    print(
+        "  Vitte recursive directory creation host boundary: "
+        + ", ".join(sorted(directory_creation_host_imports))
+    )
 
 
 def main() -> int:
