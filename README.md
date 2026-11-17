@@ -40,10 +40,10 @@ Depuis la racine du dépôt :
 steel run --file steelconf
 
 # Vérifier la version
-./build/bin/vitte --version
+vitte --version
 
 # Exécuter un premier programme
-./build/bin/vitte run examples/hello.vit
+vitte run examples/hello.vit
 ```
 
 > **Steelconf est le point d’entrée recommandé** pour les nouvelles intégrations. Le Makefile reste disponible pendant la migration.
@@ -60,7 +60,7 @@ make CC=clang
 
 # Construire uniquement le seed C17
 make bootstrap
-./build/bin/vitte-bootstrap --version
+vitte-bootstrap --version
 ```
 
 Sous Windows avec MSYS, le seed est produit sous le nom `vitte-bootstrap.exe`.
