@@ -7,6 +7,7 @@ typedef struct vitte_cli_diagnostic_transport_header {
     size_t count;
     char **owned_text;
     vitte_cli_diagnostic_suggestion_t *owned_suggestions;
+    vitte_cli_diagnostic_cause_t *owned_causes;
 } vitte_cli_diagnostic_transport_header_t;
 
 enum {
@@ -79,6 +80,8 @@ vitte_cli_diagnostic_transport_add_parser_suggestion(
     const char *replacement = NULL;
     const char *message = NULL;
     bool replace_token = false;
+    bool allow_token_replacement;
+    bool expression_list_missing_comma;
 
     if (diagnostic == NULL || suggestion == NULL ||
         !diagnostic->has_span || diagnostic->source_name == NULL) {
@@ -92,10 +95,10 @@ vitte_cli_diagnostic_transport_add_parser_suggestion(
         strncmp(diagnostic->details, "invalid character `'",
                 sizeof("invalid character `'" ) - 1u) == 0) {
         memset(suggestion, 0, sizeof(*suggestion));
-        suggestion->message = "Insert the missing closing `'` here.";
-        suggestion->applicability = VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MACHINE;
-        suggestion->confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_HIGH;
-        suggestion->preferred = true;
+        suggestion->message = "Possible edit: add a closing `'` only if this was meant to be a one-character literal. The transport cannot verify that from this diagnostic, so review the source manually.";
+        suggestion->applicability = VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MANUAL;
+        suggestion->confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_LOW;
+        suggestion->preferred = false;
         suggestion->suggestion_id = diagnostic_id;
         suggestion->has_span = true;
         suggestion->span.valid = true;
@@ -112,35 +115,46 @@ vitte_cli_diagnostic_transport_add_parser_suggestion(
         suggestion->replacement = "'";
         diagnostic->suggestions = suggestion;
         diagnostic->suggestion_count = 1u;
-        diagnostic->has_machine_fix = true;
+        diagnostic->has_machine_fix = false;
         return;
     }
 
+    expression_list_missing_comma =
+        diagnostic->code != NULL &&
+        strcmp(diagnostic->code,
+               "VITTE_PARSER_E_INVALID_EXPRESSION_LIST") == 0 &&
+        diagnostic->expected != NULL &&
+        strcmp(diagnostic->expected, ",") == 0;
     if (diagnostic->origin != VITTE_CLI_DIAGNOSTIC_ORIGIN_PARSER ||
         diagnostic->code == NULL ||
         (strcmp(diagnostic->code, "VITTE_PARSER_E_EXPECTED_TOKEN") != 0 &&
-         strcmp(diagnostic->code, "VITTE_PARSER_E_EXPECTED_EXPRESSION") != 0) ||
+         strcmp(diagnostic->code, "VITTE_PARSER_E_EXPECTED_EXPRESSION") != 0 &&
+         !expression_list_missing_comma) ||
         diagnostic->found == NULL) {
         return;
     }
 
-    if (strcmp(diagnostic->found, "&&") == 0) {
+    allow_token_replacement = !expression_list_missing_comma;
+
+    if (allow_token_replacement && strcmp(diagnostic->found, "&&") == 0) {
         replacement = "and";
-        message = "Use `and` instead of `&&` for logical conjunction.";
+        message = "If logical conjunction was intended, use `and`; review the surrounding expression because this edit changes the operator token.";
         replace_token = true;
-    } else if (strcmp(diagnostic->found, "||") == 0) {
+    } else if (allow_token_replacement &&
+               strcmp(diagnostic->found, "||") == 0) {
         replacement = "or";
-        message = "Use `or` instead of `||` for logical disjunction.";
+        message = "If logical disjunction was intended, use `or`; review the surrounding expression because this edit changes the operator token.";
         replace_token = true;
-    } else if (strcmp(diagnostic->found, "!") == 0) {
+    } else if (allow_token_replacement &&
+               strcmp(diagnostic->found, "!") == 0) {
         replacement = "not";
-        message = "Use `not` instead of `!` for logical negation.";
+        message = "If logical negation was intended, use `not`; review the operand and grouping because this edit changes the operator token.";
         replace_token = true;
-    } else if (diagnostic->expected != NULL &&
+    } else if (allow_token_replacement && diagnostic->expected != NULL &&
                strcmp(diagnostic->found, ".") == 0 &&
                strcmp(diagnostic->expected, "::") == 0) {
         replacement = "::";
-        message = "Use `::` instead of `.` in an import path.";
+        message = "If this dot separates import path segments, use `::`; review the path before changing its qualification.";
         replace_token = true;
     } else if (diagnostic->expected != NULL &&
                strcmp(diagnostic->expected, ")") == 0 &&
@@ -167,7 +181,6 @@ vitte_cli_diagnostic_transport_add_parser_suggestion(
                strcmp(diagnostic->expected, ";") == 0 &&
                (strcmp(diagnostic->found, "<eof>") == 0 ||
                 strcmp(diagnostic->found, "}") == 0 ||
-                strcmp(diagnostic->found, "identifier") == 0 ||
                 strcmp(diagnostic->found, "let") == 0 ||
                 strcmp(diagnostic->found, "return") == 0 ||
                 strcmp(diagnostic->found, "print") == 0 ||
@@ -183,17 +196,42 @@ vitte_cli_diagnostic_transport_add_parser_suggestion(
     } else if (diagnostic->expected != NULL &&
                strcmp(diagnostic->expected, ",") == 0 &&
                (strcmp(diagnostic->found, "identifier") == 0 ||
-                strcmp(diagnostic->found, "integer literal") == 0 ||
-                strcmp(diagnostic->found, "string literal") == 0 ||
+                strcmp(diagnostic->found, "integer_literal") == 0 ||
+                strcmp(diagnostic->found, "float_literal") == 0 ||
+                strcmp(diagnostic->found, "string_literal") == 0 ||
+                strcmp(diagnostic->found, "character_literal") == 0 ||
+                strcmp(diagnostic->found, "true") == 0 ||
+                strcmp(diagnostic->found, "false") == 0 ||
+                strcmp(diagnostic->found, "null") == 0 ||
+                strcmp(diagnostic->found, "self") == 0 ||
+                strcmp(diagnostic->found, "if") == 0 ||
+                strcmp(diagnostic->found, "elif") == 0 ||
+                strcmp(diagnostic->found, "print") == 0 ||
+                strcmp(diagnostic->found, "sizeof") == 0 ||
+                strcmp(diagnostic->found, "alignof") == 0 ||
                 strcmp(diagnostic->found, "(") == 0 ||
-                strcmp(diagnostic->found, "[") == 0)) {
+                strcmp(diagnostic->found, "[") == 0 ||
+                strcmp(diagnostic->found, "{") == 0 ||
+                strcmp(diagnostic->found, "+") == 0 ||
+                strcmp(diagnostic->found, "-") == 0 ||
+                strcmp(diagnostic->found, "~") == 0 ||
+                strcmp(diagnostic->found, "*") == 0 ||
+                strcmp(diagnostic->found, "&") == 0 ||
+                strcmp(diagnostic->found, "not") == 0 ||
+                strcmp(diagnostic->found, "move") == 0 ||
+                strcmp(diagnostic->found, "ref") == 0 ||
+                strcmp(diagnostic->found, "await") == 0)) {
         replacement = ",";
     }
 
     if (replacement == NULL) {
         return;
     }
-    if (!replace_token) {
+    if (strcmp(replacement, ",") == 0) {
+        message = expression_list_missing_comma
+            ? "Insert a comma only if these are separate list items; if one expression was intended, add the intended operator or grouping instead."
+            : "A comma may be missing here; apply it only if the following token starts a separate list item.";
+    } else if (!replace_token) {
         message = strcmp(replacement, ")") == 0
             ? "Insert the missing `)` here."
             : strcmp(replacement, "]") == 0
@@ -207,11 +245,16 @@ vitte_cli_diagnostic_transport_add_parser_suggestion(
 
     memset(suggestion, 0, sizeof(*suggestion));
     suggestion->message = message;
-    suggestion->applicability = replace_token
+    suggestion->applicability = (replace_token ||
+        strcmp(replacement, ",") == 0)
         ? VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MAYBE
         : VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MACHINE;
-    suggestion->confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_HIGH;
-    suggestion->preferred = true;
+    suggestion->confidence = (replace_token ||
+        strcmp(replacement, ",") == 0)
+        ? VITTE_CLI_DIAGNOSTIC_CONFIDENCE_MEDIUM
+        : VITTE_CLI_DIAGNOSTIC_CONFIDENCE_HIGH;
+    suggestion->preferred = !replace_token &&
+        strcmp(replacement, ",") != 0;
     suggestion->suggestion_id = diagnostic_id;
     suggestion->has_span = true;
     suggestion->span.valid = true;
@@ -232,7 +275,8 @@ vitte_cli_diagnostic_transport_add_parser_suggestion(
     suggestion->replacement = replacement;
     diagnostic->suggestions = suggestion;
     diagnostic->suggestion_count = 1u;
-    diagnostic->has_machine_fix = !replace_token;
+    diagnostic->has_machine_fix = !replace_token &&
+        strcmp(replacement, ",") != 0;
 }
 #endif
 
@@ -304,7 +348,11 @@ vitte_cli_diagnostic_transport_create(
         sizeof(*header->owned_text));
     header->owned_suggestions = (vitte_cli_diagnostic_suggestion_t *)calloc(
         count, sizeof(*header->owned_suggestions));
-    if (header->owned_text == NULL || header->owned_suggestions == NULL) {
+    header->owned_causes = (vitte_cli_diagnostic_cause_t *)calloc(
+        count, sizeof(*header->owned_causes));
+    if (header->owned_text == NULL || header->owned_suggestions == NULL ||
+        header->owned_causes == NULL) {
+        free(header->owned_causes);
         free(header->owned_suggestions);
         free(header->owned_text);
         free(header);
@@ -452,6 +500,7 @@ vitte_cli_diagnostic_transport_set_semantic(
 {
     vitte_cli_diagnostic_t *diagnostics;
     vitte_cli_diagnostic_t *diagnostic;
+    vitte_cli_diagnostic_transport_header_t *header;
     vitte_cli_diagnostic_location_t *location;
     const char *owned_symbol;
     const char *owned_probable_cause;
@@ -485,31 +534,65 @@ vitte_cli_diagnostic_transport_set_semantic(
 
     diagnostics = (vitte_cli_diagnostic_t *)batch;
     diagnostic = &diagnostics[index];
+    header = ((vitte_cli_diagnostic_transport_header_t *)batch) - 1;
     diagnostic->symbol = owned_symbol;
     diagnostic->probable_cause = owned_probable_cause;
     diagnostic->context = owned_context;
-    if (!has_related) {
-        return true;
+    if (has_related) {
+        location = (vitte_cli_diagnostic_location_t *)calloc(1u, sizeof(*location));
+        if (location == NULL) {
+            return false;
+        }
+        location->kind = VITTE_CLI_DIAGNOSTIC_LOCATION_RELATED;
+        location->label = owned_related_label;
+        location->span.valid = true;
+        location->span.file_id = related_file_id;
+        location->span.source_id = related_source_id;
+        location->span.source_name = owned_related_source_name;
+        location->span.start_offset = related_start_offset;
+        location->span.end_offset = related_end_offset;
+        location->span.start_line = related_start_line;
+        location->span.start_column = related_start_column;
+        location->span.end_line = related_end_line;
+        location->span.end_column = related_end_column;
+        diagnostic->related = location;
+        diagnostic->related_count = 1u;
     }
-
-    location = (vitte_cli_diagnostic_location_t *)calloc(1u, sizeof(*location));
-    if (location == NULL) {
-        return false;
+    if (diagnostic->origin == VITTE_CLI_DIAGNOSTIC_ORIGIN_CONTRACT ||
+        diagnostic->origin == VITTE_CLI_DIAGNOSTIC_ORIGIN_CONSTANT_EVAL) {
+        vitte_cli_diagnostic_cause_t *cause;
+        cause = &header->owned_causes[index];
+        memset(cause, 0, sizeof(*cause));
+        cause->kind = diagnostic->origin == VITTE_CLI_DIAGNOSTIC_ORIGIN_CONTRACT
+            ? VITTE_CLI_DIAGNOSTIC_CAUSE_CONTRACT
+            : VITTE_CLI_DIAGNOSTIC_CAUSE_CONSTANT_EVAL;
+        cause->message = owned_probable_cause != NULL
+            ? owned_probable_cause
+            : diagnostic->help != NULL
+                ? diagnostic->help
+                : diagnostic->origin == VITTE_CLI_DIAGNOSTIC_ORIGIN_CONTRACT
+                    ? "contract condition is invalid or false"
+                    : "compile-time evaluation cannot produce a value";
+        cause->confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_CERTAIN;
+        if (has_related && diagnostic->origin == VITTE_CLI_DIAGNOSTIC_ORIGIN_CONTRACT) {
+            cause->has_span = true;
+            cause->span = location->span;
+        } else if (diagnostic->has_span) {
+            cause->has_span = true;
+            cause->span.valid = true;
+            cause->span.file_id = diagnostic->file_id;
+            cause->span.source_id = diagnostic->source_id;
+            cause->span.source_name = diagnostic->source_name;
+            cause->span.start_offset = diagnostic->start_offset;
+            cause->span.end_offset = diagnostic->end_offset;
+            cause->span.start_line = diagnostic->start_line;
+            cause->span.start_column = diagnostic->start_column;
+            cause->span.end_line = diagnostic->end_line;
+            cause->span.end_column = diagnostic->end_column;
+        }
+        diagnostic->causes = cause;
+        diagnostic->cause_count = 1u;
     }
-    location->kind = VITTE_CLI_DIAGNOSTIC_LOCATION_RELATED;
-    location->label = owned_related_label;
-    location->span.valid = true;
-    location->span.file_id = related_file_id;
-    location->span.source_id = related_source_id;
-    location->span.source_name = owned_related_source_name;
-    location->span.start_offset = related_start_offset;
-    location->span.end_offset = related_end_offset;
-    location->span.start_line = related_start_line;
-    location->span.start_column = related_start_column;
-    location->span.end_line = related_end_line;
-    location->span.end_column = related_end_column;
-    diagnostic->related = location;
-    diagnostic->related_count = 1u;
     return true;
 }
 
@@ -541,6 +624,7 @@ vitte_cli_diagnostic_transport_destroy(
     }
     free(header->owned_text);
     free(header->owned_suggestions);
+    free(header->owned_causes);
     free(header);
 }
 #endif

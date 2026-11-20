@@ -1,5 +1,5 @@
 import { workspaceBinaryRoots, expandToolPath } from "./utils/project";
-import { normalizeCompilerDiagnostics } from "./utils/compilerDiagnostics";
+import { clearCompilerSuggestions, normalizeCompilerDiagnostics, storeCompilerSuggestions } from "./utils/compilerDiagnostics";
 /*
  * extension.ts — VS Code client for Vitte/Vit
  * - Full LSP client (start/stop/restart, traces, status, watchers)
@@ -1904,6 +1904,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     editorLintCollection?.delete(doc.uri);
     syntaxLintCollection?.delete(doc.uri);
     const key = doc.uri.toString();
+    clearCompilerSuggestions(key);
     const syntaxTimer = syntaxLintTimers.get(key);
     if (syntaxTimer) {
       clearTimeout(syntaxTimer);
@@ -2395,13 +2396,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       const forcedBin = (options && typeof options === "object" && "bin" in options)
         ? (options as { bin?: unknown }).bin
         : undefined;
+      const compilerHelp = options && typeof options === "object" && "help" in options
+        ? (options as { help?: unknown }).help
+        : undefined;
       const bin = typeof forcedBin === "string" && forcedBin.trim().length > 0 ? forcedBin.trim() : "vitte";
       const resolved = { bin, cwd: folder };
       const rawCodeText = typeof rawCode === "string" || typeof rawCode === "number" ? String(rawCode) : "";
       const baseMessageText = typeof baseMessage === "string" && baseMessage.length > 0 ? baseMessage : "Syntax error";
       const code = normalizeDiagCode(rawCodeText);
       const baseCode = explainableDiagCode(code) ?? code;
-      const explain = baseCode ? resolveDiagnosticHelp(baseCode, lang, resolved, helpSource, explainTimeoutMs) : undefined;
+      const explain = typeof compilerHelp === "string" && compilerHelp.trim().length > 0
+        ? { help: compilerHelp, source: "local" as const }
+        : baseCode ? resolveDiagnosticHelp(baseCode, lang, resolved, helpSource, explainTimeoutMs) : undefined;
       return baseCode ? formatVitteDiagnosticMessage(baseMessageText, baseCode, explain) : baseMessageText;
     }),
     vscode.commands.registerCommand("vitte.test.getDiagnosticHelpObservability", () => diagnosticHelpObservabilitySnapshot()),
@@ -3806,11 +3812,14 @@ function isLiveSyntaxTarget(doc: vscode.TextDocument): boolean {
   return vscode.window.visibleTextEditors.some((e) => e.document.uri.toString() === key);
 }
 
-function normalizeDiagSeverityToken(severity: string | undefined): string {
+function normalizeDiagSeverityToken(severity: string | number | undefined): string {
+  if (typeof severity === "number") {
+    return ({ 1: "error", 2: "warning", 3: "information", 4: "hint" } as Record<number, string>)[severity] ?? "";
+  }
   return (severity ?? "").trim().toLowerCase();
 }
 
-function mapDiagSeverity(severity: string | undefined): vscode.DiagnosticSeverity {
+function mapDiagSeverity(severity: string | number | undefined): vscode.DiagnosticSeverity {
   const token = normalizeDiagSeverityToken(severity);
   switch (token) {
     case "error":
@@ -4187,6 +4196,12 @@ function resolveDiagnosticHelp(
 function formatVitteDiagnosticMessage(base: string, code: string, explain?: DiagnosticExplainPayload): string {
   const help = explain?.help ?? vitteDiagnosticHelpForCode(code);
   if (!help) return base;
+  const existingHelp = base.split(/\r?\n/).some((line) => {
+    const match = /^\s*(?:help|aide)\s*:\s*(.*)$/i.exec(line);
+    return match?.[1]?.trim() === help.trim();
+  });
+  const flattened = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
+  if (existingHelp || flattened(base).includes(flattened(help))) return base;
   const example = explain?.example?.trim();
   const lang = vscode.workspace.getConfiguration("vitte").get<string>("lang", "en").trim().toLowerCase();
   const isFr = lang.startsWith("fr");
@@ -4201,18 +4216,31 @@ function formatVitteDiagnosticMessage(base: string, code: string, explain?: Diag
 function extractDiagJson(stdout: string, stderr: string): string | undefined {
   const blobs = [stdout, stderr, `${stdout}\n${stderr}`];
   for (const text of blobs) {
-    const i = text.indexOf("{");
-    const j = text.lastIndexOf("}");
-    if (i < 0 || j <= i) continue;
-    const json = text.slice(i, j + 1);
-    if (json.includes("\"diagnostics\"")) {
-      return json;
-    }
+    const trimmed = text.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed) || (parsed !== null && typeof parsed === "object" && "diagnostics" in parsed)) return trimmed;
+    } catch { /* accept compiler output with a log line before its JSON */ }
+    const firstObject = text.indexOf("{");
+    const lastObject = text.lastIndexOf("}");
+    const firstArray = text.indexOf("[");
+    const lastArray = text.lastIndexOf("]");
+    const useArray = firstArray >= 0 && (firstObject < 0 || firstArray < firstObject) && lastArray > firstArray;
+    const start = useArray ? firstArray : firstObject;
+    const end = useArray ? lastArray : lastObject;
+    if (start < 0 || end <= start) continue;
+    const candidate = text.slice(start, end + 1);
+    try {
+      const parsed: unknown = JSON.parse(candidate);
+      if (Array.isArray(parsed) || (parsed !== null && typeof parsed === "object" && "diagnostics" in parsed)) return candidate;
+    } catch { /* this output did not contain a complete JSON diagnostic payload */ }
   }
   return undefined;
 }
 
 function normalizeDiagSchemaSignature(parsed: unknown): string {
+  if (Array.isArray(parsed)) return "vitte-lsp-array@1";
   if (!parsed || typeof parsed !== "object") return "invalid";
   const asRecord = parsed as Record<string, unknown>;
   const schema = asRecord.diag_schema ?? asRecord.schema;
@@ -4312,7 +4340,7 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
   const lang = cfg.get<string>("lang", "en");
   const helpSource = cfg.get<DiagnosticHelpSource>("diagnostics.helpSource", "auto");
   const explainTimeoutMs = Math.max(100, Math.min(5000, cfg.get<number>("diagnostics.explainTimeoutMs", 450)));
-  const args = ["check", "--diagnostic=json", "--no-color", doc.uri.fsPath];
+  const args = ["check", "--diagnostic=lsp", "--no-color", doc.uri.fsPath];
   const key = doc.uri.toString();
   const prev = syntaxLintProcByDoc.get(key);
   if (prev && !prev.killed) {
@@ -4344,27 +4372,24 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
 
     const payload = extractDiagJson(stdout, stderr);
     if (!payload) {
+      storeCompilerSuggestions(doc.uri.toString(), []);
       const diagnostics = parseVitteTextDiagnostics(doc, `${stdout}\n${stderr}`, maxDiag);
       syntaxLintCollection.set(doc.uri, dedupeDiagnosticsBySpanCodeSource(diagnostics));
       return;
     }
     try {
-      const parsed = JSON.parse(payload) as {
-        diag_schema?: unknown;
-        diagnostics?: {
-          severity?: string;
-          code?: string | number;
-          message?: string;
-          start?: number;
-          end?: number;
-        }[];
-      };
+      const parsed: unknown = JSON.parse(payload);
       const diagSchemaSignature = normalizeDiagSchemaSignature(parsed);
+      const parsedDiagnostics = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray((parsed as { diagnostics?: unknown[] } | null)?.diagnostics)
+          ? (parsed as { diagnostics: unknown[] }).diagnostics
+          : [];
       if (diagSchemaSignature !== lastDiagSchemaSignature) {
         lastDiagSchemaSignature = diagSchemaSignature;
         obsLog("diagnostics.diagSchema.signature", "info", {
           signature: diagSchemaSignature,
-          diagnosticsCount: Array.isArray(parsed.diagnostics) ? parsed.diagnostics.length : 0,
+          diagnosticsCount: parsedDiagnostics.length,
         });
       }
       const incoming = normalizeCompilerDiagnostics(parsed, doc.getText(), doc.uri.fsPath, resolved.cwd);
@@ -4377,7 +4402,7 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
         if (diagnostics.length >= maxDiag) break;
         const start = Math.max(0, Number.isFinite(d.start) ? Number(d.start) : 0);
         const endRaw = Number.isFinite(d.end) ? Number(d.end) : start + 1;
-        const end = Math.max(start + 1, endRaw);
+        const end = Math.max(start, endRaw);
         const range = new vscode.Range(doc.positionAt(start), doc.positionAt(end));
         const baseMessage = typeof d.message === "string" && d.message.length > 0 ? d.message : "Syntax error";
         const severity = mapDiagSeverity(d.severity);
@@ -4389,8 +4414,22 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
         if (strictSeen.has(dedupeKey)) continue;
         strictSeen.add(dedupeKey);
         const baseCode = explainableDiagCode(code);
-        const explainHelp = baseCode ? resolveDiagnosticHelp(baseCode, lang, resolved, helpSource, explainTimeoutMs) : undefined;
-        const message = baseCode ? formatVitteDiagnosticMessage(baseMessage, baseCode, explainHelp) : baseMessage;
+        let contextualMessage = baseMessage;
+        const languageIsFrench = lang.trim().toLowerCase().startsWith("fr");
+        if (d.expected && d.found && !(baseMessage.includes(d.expected) && baseMessage.includes(d.found))) {
+          contextualMessage += languageIsFrench
+            ? `\nAttendu : ${d.expected} ; trouvé : ${d.found}.`
+            : `\nExpected ${d.expected}; found ${d.found}.`;
+        }
+        if (d.expectedType && d.actualType && !(contextualMessage.includes(d.expectedType) && contextualMessage.includes(d.actualType))) {
+          contextualMessage += languageIsFrench
+            ? `\nType attendu : ${d.expectedType} ; type reçu : ${d.actualType}.`
+            : `\nExpected type ${d.expectedType}; actual type ${d.actualType}.`;
+        }
+        const explainHelp = d.help
+          ? { help: d.help, source: "local" as const }
+          : baseCode ? resolveDiagnosticHelp(baseCode, lang, resolved, helpSource, explainTimeoutMs) : undefined;
+        const message = baseCode ? formatVitteDiagnosticMessage(contextualMessage, baseCode, explainHelp) : contextualMessage;
 
         // Avoid cascade noise: configurable first parser error policy.
         if (severity === vscode.DiagnosticSeverity.Error) {
@@ -4412,15 +4451,40 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
           continue;
         }
 
-        const diag = new vscode.Diagnostic(range, message, severity);
+        const primaryLabel = d.labels.find(label => label.style === "primary")?.message;
+        const labeledMessage = primaryLabel && !message.includes(primaryLabel)
+          ? `${message}\n${primaryLabel}`
+          : message;
+        const diag = new vscode.Diagnostic(range, labeledMessage, severity);
         const target = baseCode ? diagnosticDocUri(baseCode) : undefined;
         diag.code = target ? { value: parseCode, target } : parseCode;
         diag.source = sourceKey;
+        const relatedInformation: vscode.DiagnosticRelatedInformation[] = [];
+        for (const related of d.related) {
+          let relatedUri: vscode.Uri;
+          if (!related.source || related.source === doc.uri.fsPath || related.source === doc.uri.toString()) {
+            relatedUri = doc.uri;
+          } else if (related.source.startsWith("file://")) {
+            try { relatedUri = vscode.Uri.parse(related.source); } catch { relatedUri = vscode.Uri.file(path.resolve(resolved.cwd, related.source)); }
+          } else {
+            relatedUri = vscode.Uri.file(path.resolve(resolved.cwd, related.source));
+          }
+          if (relatedUri.toString() !== doc.uri.toString() && !related.lineRange) continue;
+          const relatedRange = related.lineRange
+            ? new vscode.Range(related.lineRange.startLine, related.lineRange.startCharacter, related.lineRange.endLine, related.lineRange.endCharacter)
+            : new vscode.Range(doc.positionAt(related.start), doc.positionAt(related.end));
+          relatedInformation.push(new vscode.DiagnosticRelatedInformation(
+            new vscode.Location(relatedUri, relatedRange),
+            related.message,
+          ));
+        }
+        diag.relatedInformation = relatedInformation;
         diagnostics.push(diag);
         if (severity === vscode.DiagnosticSeverity.Error) {
           lastError = diag;
         }
       }
+      storeCompilerSuggestions(doc.uri.toString(), incoming);
       syntaxLintCollection.set(doc.uri, dedupeDiagnosticsBySpanCodeSource(diagnostics));
     } catch (parseErr) {
       output.appendLine(`[syntax.live] invalid diagnostic json: ${String(parseErr)}`);

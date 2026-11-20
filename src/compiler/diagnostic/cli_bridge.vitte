@@ -365,7 +365,8 @@ form CliDiagnosticTransportHeader {
     count: usize,
     owned_text: *mut *const char,
     suggestions: *mut CliDiagnosticSuggestion,
-    related: *mut CliDiagnosticLocation
+    related: *mut CliDiagnosticLocation,
+    causes: *mut CliDiagnosticCause
 }
 
 proc cli_transport_header(batch: *mut u8) -> *mut CliDiagnosticTransportHeader {
@@ -419,18 +420,6 @@ proc cli_transport_cstr_equals(source: *const char, expected: string) -> bool {
     return source_bytes[index] == 0;
 }
 
-proc cli_transport_cstr_starts_with(source: *const char, expected: string) -> bool {
-    if source == null { return false; }
-    let source_bytes = source as *const u8;
-    let expected_bytes = expected.as_bytes();
-    let mut index: usize = 0;
-    while index < expected_bytes.len() {
-        if source_bytes[index] != expected_bytes[index] { return false; }
-        set index += 1;
-    }
-    return true;
-}
-
 export proc vitte_cli_diagnostic_transport_create(count: usize) -> *mut u8 {
     if count == 0 or count > (usize.MAX - sizeof(CliDiagnosticTransportHeader)) / sizeof(CliDiagnostic) {
         return null;
@@ -449,10 +438,12 @@ export proc vitte_cli_diagnostic_transport_create(count: usize) -> *mut u8 {
     let owned_text = allocate(text_slot_count * sizeof(*const char)) as *mut *const char;
     let suggestions = allocate(count * sizeof(CliDiagnosticSuggestion)) as *mut CliDiagnosticSuggestion;
     let related = allocate(count * sizeof(CliDiagnosticLocation)) as *mut CliDiagnosticLocation;
-    if owned_text == null or suggestions == null or related == null {
+    let causes = allocate(count * sizeof(CliDiagnosticCause)) as *mut CliDiagnosticCause;
+    if owned_text == null or suggestions == null or related == null or causes == null {
         if owned_text != null { deallocate(owned_text as *mut u8); }
         if suggestions != null { deallocate(suggestions as *mut u8); }
         if related != null { deallocate(related as *mut u8); }
+        if causes != null { deallocate(causes as *mut u8); }
         deallocate(block);
         return null;
     }
@@ -460,11 +451,13 @@ export proc vitte_cli_diagnostic_transport_create(count: usize) -> *mut u8 {
     fill(owned_text as *mut u8, 0, text_slot_count * sizeof(*const char));
     fill(suggestions as *mut u8, 0, count * sizeof(CliDiagnosticSuggestion));
     fill(related as *mut u8, 0, count * sizeof(CliDiagnosticLocation));
+    fill(causes as *mut u8, 0, count * sizeof(CliDiagnosticCause));
     set (*header).magic = CLI_TRANSPORT_MAGIC;
     set (*header).count = count;
     set (*header).owned_text = owned_text;
     set (*header).suggestions = suggestions;
     set (*header).related = related;
+    set (*header).causes = causes;
     let mut index: usize = 0;
     while index < count {
         vitte_cli_diagnostic_init(&mut diagnostics[index]);
@@ -558,24 +551,55 @@ export proc vitte_cli_diagnostic_transport_set(
         set (*diag_entry).end_column = end_column;
     }
 
-    if has_span and owned_source_name != null and origin == CliDiagnosticOrigin.Lexer as u32 and
-       cli_transport_cstr_equals(code, "VITTE_LEXER_E_INVALID_CHARACTER") and
-       cli_transport_cstr_starts_with(details, "invalid character `'" ) {
+    if has_span and owned_source_name != null and
+       origin == CliDiagnosticOrigin.Parser as u32 and
+       cli_transport_cstr_equals(owned_code, "VITTE_PARSER_E_INVALID_EXPRESSION_LIST") and
+       cli_transport_cstr_equals(owned_expected, ",") and
+       (cli_transport_cstr_equals(owned_found, "identifier") or
+        cli_transport_cstr_equals(owned_found, "integer_literal") or
+        cli_transport_cstr_equals(owned_found, "float_literal") or
+        cli_transport_cstr_equals(owned_found, "string_literal") or
+        cli_transport_cstr_equals(owned_found, "character_literal") or
+        cli_transport_cstr_equals(owned_found, "true") or
+        cli_transport_cstr_equals(owned_found, "false") or
+        cli_transport_cstr_equals(owned_found, "null") or
+        cli_transport_cstr_equals(owned_found, "self") or
+        cli_transport_cstr_equals(owned_found, "if") or
+        cli_transport_cstr_equals(owned_found, "elif") or
+        cli_transport_cstr_equals(owned_found, "print") or
+        cli_transport_cstr_equals(owned_found, "sizeof") or
+        cli_transport_cstr_equals(owned_found, "alignof") or
+        cli_transport_cstr_equals(owned_found, "(") or
+        cli_transport_cstr_equals(owned_found, "[") or
+        cli_transport_cstr_equals(owned_found, "{") or
+        cli_transport_cstr_equals(owned_found, "+") or
+        cli_transport_cstr_equals(owned_found, "-") or
+        cli_transport_cstr_equals(owned_found, "~") or
+        cli_transport_cstr_equals(owned_found, "*") or
+        cli_transport_cstr_equals(owned_found, "&") or
+        cli_transport_cstr_equals(owned_found, "not") or
+        cli_transport_cstr_equals(owned_found, "move") or
+        cli_transport_cstr_equals(owned_found, "ref") or
+        cli_transport_cstr_equals(owned_found, "await")) {
         let suggestion = &mut (*header).suggestions[index];
-        set (*suggestion).message = "Insert the missing closing `'` here.".as_ptr() as *const char;
-        set (*suggestion).applicability = CliDiagnosticApplicability.Machine;
-        set (*suggestion).confidence = CliDiagnosticConfidence.High;
-        set (*suggestion).preferred = true;
+        set (*suggestion).message = "Insert a comma only if the following token starts another list item; if one expression was intended, add the intended operator or grouping instead.".as_ptr() as *const char;
+        set (*suggestion).applicability = CliDiagnosticApplicability.Maybe;
+        set (*suggestion).confidence = CliDiagnosticConfidence.Medium;
+        set (*suggestion).preferred = false;
         set (*suggestion).suggestion_id = diagnostic_id;
         set (*suggestion).has_span = true;
         set (*suggestion).span = CliDiagnosticSpan {
             valid: true, file_id: file_id, source_id: source_id, source_name: owned_source_name,
-            start_offset: start_offset, end_offset: end_offset, start_line: start_line,
-            start_column: start_column, end_line: end_line, end_column: end_column
+            start_offset: start_offset, end_offset: start_offset, start_line: start_line,
+            start_column: start_column, end_line: start_line, end_column: start_column
         };
+        set (*suggestion).has_replacement = true;
+        set (*suggestion).replacement = ",".as_ptr() as *const char;
         set (*diag_entry).suggestions = suggestion as *const CliDiagnosticSuggestion;
         set (*diag_entry).suggestion_count = 1;
+        set (*diag_entry).has_machine_fix = false;
     }
+
     return true;
 }
 
@@ -619,19 +643,56 @@ export proc vitte_cli_diagnostic_transport_set_semantic(
     set diagnostics[index].symbol = owned_symbol;
     set diagnostics[index].probable_cause = owned_cause;
     set diagnostics[index].context = owned_context;
-    if not has_related { return true; }
-    let location = &mut (*header).related[index];
-    set (*location).kind = CliDiagnosticLocationKind.Related;
-    set (*location).label = owned_related_label;
-    set (*location).span = CliDiagnosticSpan {
-        valid: true, file_id: related_file_id, source_id: related_source_id,
-        source_name: owned_related_source, start_offset: related_start_offset,
-        end_offset: related_end_offset, start_line: related_start_line,
-        start_column: related_start_column, end_line: related_end_line,
-        end_column: related_end_column
-    };
-    set diagnostics[index].related = location as *const CliDiagnosticLocation;
-    set diagnostics[index].related_count = 1;
+    if has_related {
+        let location = &mut (*header).related[index];
+        set (*location).kind = CliDiagnosticLocationKind.Related;
+        set (*location).label = owned_related_label;
+        set (*location).span = CliDiagnosticSpan {
+            valid: true, file_id: related_file_id, source_id: related_source_id,
+            source_name: owned_related_source, start_offset: related_start_offset,
+            end_offset: related_end_offset, start_line: related_start_line,
+            start_column: related_start_column, end_line: related_end_line,
+            end_column: related_end_column
+        };
+        set diagnostics[index].related = location as *const CliDiagnosticLocation;
+        set diagnostics[index].related_count = 1;
+    }
+    if diagnostics[index].origin == CliDiagnosticOrigin.Contract or
+       diagnostics[index].origin == CliDiagnosticOrigin.ConstantEval {
+        let cause = &mut (*header).causes[index];
+        set (*cause).kind = if diagnostics[index].origin == CliDiagnosticOrigin.Contract {
+            CliDiagnosticCauseKind.Contract
+        } else {
+            CliDiagnosticCauseKind.ConstantEval
+        };
+        set (*cause).message = if owned_cause != null { owned_cause } else if
+            diagnostics[index].help != null { diagnostics[index].help } else if
+            diagnostics[index].origin == CliDiagnosticOrigin.Contract {
+                "contract condition is invalid or false".as_ptr() as *const char
+            } else {
+                "compile-time evaluation cannot produce a value".as_ptr() as *const char
+            };
+        set (*cause).confidence = CliDiagnosticConfidence.Certain;
+        if has_related and diagnostics[index].origin == CliDiagnosticOrigin.Contract {
+            set (*cause).has_span = true;
+            set (*cause).span = (*header).related[index].span;
+        } elif diagnostics[index].has_span {
+            set (*cause).has_span = true;
+            set (*cause).span = CliDiagnosticSpan {
+                valid: true, file_id: diagnostics[index].file_id,
+                source_id: diagnostics[index].source_id,
+                source_name: diagnostics[index].source_name,
+                start_offset: diagnostics[index].start_offset,
+                end_offset: diagnostics[index].end_offset,
+                start_line: diagnostics[index].start_line,
+                start_column: diagnostics[index].start_column,
+                end_line: diagnostics[index].end_line,
+                end_column: diagnostics[index].end_column
+            };
+        }
+        set diagnostics[index].causes = cause as *const CliDiagnosticCause;
+        set diagnostics[index].cause_count = 1;
+    }
     return true;
 }
 
@@ -652,10 +713,12 @@ export proc vitte_cli_diagnostic_transport_destroy(batch: *mut u8) {
     let owned_text = (*header).owned_text;
     let suggestions = (*header).suggestions;
     let related = (*header).related;
+    let causes = (*header).causes;
     set (*header).magic = 0;
     deallocate(owned_text as *mut u8);
     deallocate(suggestions as *mut u8);
     deallocate(related as *mut u8);
+    deallocate(causes as *mut u8);
     deallocate(header as *mut u8);
 }
 

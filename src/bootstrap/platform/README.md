@@ -5,7 +5,9 @@ current directory lookup, executable probing, path-list separators and child
 process execution. POSIX `posix_spawnp`/`waitpid` and Windows wide spawn APIs
 are selected here so compiler emitters do not depend on a host process API or
 the active Windows code page. UTF-8 command arguments are converted at this
-boundary.
+boundary. The status-returning process API distinguishes a launch/wait failure
+from a child that ran and returned unsuccessfully; the compatibility boolean
+API remains available to callers that only need success or failure.
 Filesystem path operations accept both `/` and `\\`, drive-letter absolute
 paths and UTF-8 path bytes. Directory suggestions use the filesystem
 abstraction, so the same enumeration API is used on every host.

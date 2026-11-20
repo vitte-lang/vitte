@@ -39,13 +39,31 @@ The semantic analyzer validates the parsed AST before backend emission.
 - operator operand compatibility
 - canonical logical operator semantics for `and` and `or`
 
+Import names follow three distinct forms: `use path;` binds the module under
+its final path segment, so a member is referenced as `module::member`;
+`use path::{member};` binds that exported member directly; and `as name` gives
+either form a local alias. Repeating an import is reported as E0304; conflicting
+explicit aliases are E0402; and one unaliased name supplied by multiple grouped
+or glob imports is E0403 with both declaration locations and module names. An
+unresolved bare member available through a module import explains the qualified
+and grouped forms, including when an alias is needed to select one candidate.
+
+Private member use reports the defining declaration as a related location
+(E0404), with `pub` and module export-clause forms shown as concrete access
+changes. Same-scope declaration conflicts use E0402; repeated pattern bindings
+use E0406, and both point back to the earlier declaration or binding. Export
+clauses are accepted only at root or module scope (E0405 elsewhere). Missing
+export targets and attempts to re-export imported symbols use E0407; export
+paths use `::`, and a dependency should expose its own API before consumers
+import it with `use path::{name};`.
+
 ## Current Limits
 
 - generic procedure instantiation and trait-bound enforcement remain a later
   pass; nominal type arguments and their field/member substitutions are
   already validated here
 - constructor pattern typing and exhaustiveness for non-boolean subjects remain a later pass
-- export clauses are local-only in compiler; re-exporting imported module paths still belongs to a later stage
+- export clauses publish local declarations only; re-exporting imported symbols is diagnosed as E0407 and remains unsupported
 - imported modules are analyzed for compiler visibility and declaration validity only
 
 ## Driver Integration
@@ -87,13 +105,27 @@ zero (`E1503`), constant dependency cycles (`E1504`), invalid shifts (`E0512`)
 and known array index bounds (`E1201`). Statically dead branches and
 short-circuited operands do not generate arithmetic or contract failures.
 
-Boolean matches require complete coverage (`E1601`). Inaccessible arms receive
-`E1602`: duplicate boolean, integer, identical string/character patterns,
-patterns after an unguarded wildcard, and statically false guards. Integer
-comparison uses values, including alternate radix spellings. Guarded arms do
-not establish coverage. Pattern type mismatches receive `E1603`; constructor
-and range coverage remain conservative. Distinct escape spellings are not yet
-normalized for duplicate string/character detection.
+Boolean and pick matches require complete coverage (`E1601`); help lists the
+missing boolean form or pick variants, and the pick declaration is attached
+as a related location. Other subjects require an unguarded wildcard because
+the compiler does not prove their full value space. Inaccessible arms receive
+`E1602` for duplicate boolean, integer, identical string/character and pick
+patterns, patterns after an unguarded wildcard, covered integer ranges, and
+statically false guards. Partly overlapping integer/character ranges receive
+`W0052`. Integer coverage uses values, including alternate radix spellings;
+guarded arms do not establish coverage. Pattern mismatches and invalid
+array/struct/variant shapes receive `E1603`; inconsistent alternative
+bindings receive `E1604`. Tuple syntax is parsed, but tuple value types are not
+part of the language's type model, so tuple patterns receive `E1603`.
+Distinct escape spellings are not yet normalized for duplicate
+string/character detection. The grammar defines `match_statement` only; there
+is no match-expression production.
+
+Deferred work rejects `return`, `?`, `break`/`continue` that leave the
+deferred action, and nested `defer` with `E1105`. Loops created inside a
+deferred block may use their own `break` and `continue`. Captures keep a local
+available until scope exit; moving a captured value early reports `E1208` and
+relates the move to its `defer` site.
 
 The bootstrap reference pass tracks direct local and parameter roots, simple
 reference aliases, lexical scopes and the last syntactic use. It reports

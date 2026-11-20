@@ -390,6 +390,50 @@ vitte_main_import_edge_exists(
 }
 
 static bool
+vitte_main_import_edge_location(
+    const vitte_main_module_set_t *modules,
+    const vitte_import_edge_t *edge,
+    const char *label,
+    vitte_cli_diagnostic_location_t *location)
+{
+    size_t path_index;
+
+    if (modules == NULL || edge == NULL || location == NULL ||
+        !edge->span.valid || edge->span.begin > edge->span.end) {
+        return false;
+    }
+    path_index = vitte_main_module_graph_path_index(
+        modules,
+        edge->source_module);
+    if (path_index == SIZE_MAX || path_index >= modules->count) {
+        return false;
+    }
+
+    memset(location, 0, sizeof(*location));
+    location->kind = VITTE_CLI_DIAGNOSTIC_LOCATION_RELATED;
+    location->label = label;
+    location->span.valid = true;
+    location->span.file_id = edge->span.file_id;
+    location->span.source_id = VITTE_SOURCE_INVALID_ID;
+    location->span.source_name = modules->paths[path_index];
+    location->span.start_offset = edge->span.begin;
+    location->span.end_offset = edge->span.end;
+    location->span.start_line = edge->span.line != 0u
+        ? edge->span.line - 1u
+        : 0u;
+    location->span.start_column = edge->span.column != 0u
+        ? edge->span.column - 1u
+        : 0u;
+    location->span.end_line = edge->span.end_line != 0u
+        ? edge->span.end_line - 1u
+        : location->span.start_line;
+    location->span.end_column = edge->span.end_column != 0u
+        ? edge->span.end_column - 1u
+        : location->span.start_column;
+    return true;
+}
+
+static bool
 vitte_main_import_alias(
     const unsigned char *data,
     size_t begin,
@@ -604,6 +648,7 @@ vitte_main_import_register_edge(
     const unsigned char *data,
     size_t directive_start,
     size_t directive_end,
+    size_t name_start,
     size_t name_end)
 {
     const vitte_import_module_t *target;
@@ -682,6 +727,14 @@ vitte_main_import_register_edge(
 
     {
         char details[1024];
+        char primary_label[512];
+        vitte_import_span_t diagnostic_span;
+        vitte_cli_diagnostic_location_t related_location;
+        const vitte_cli_diagnostic_location_t *related_pointer;
+        size_t related_count;
+        const vitte_import_module_t *source_module;
+        const vitte_import_edge_t *conflicting_edge;
+        size_t import_index;
         const char *module_name = vitte_import_string_data(
             &modules->import_graph,
             description.module_name);
@@ -697,19 +750,95 @@ vitte_main_import_register_edge(
                 ? "conflicting import"
                 : "duplicate import";
 
-        if (!vitte_main_import_format_edge_details(
-                &modules->import_graph,
-                &description,
-                prefix,
+        if (vitte_import_last_error(&modules->import_graph) ==
+            VITTE_IMPORT_ERROR_ALIAS_CONFLICT) {
+            (void)snprintf(
+                primary_label,
+                sizeof(primary_label),
+                "alias `%s` is already bound here",
+                alias_name != NULL ? alias_name : "<alias>");
+        } else {
+            (void)snprintf(
+                primary_label,
+                sizeof(primary_label),
+                "this import duplicates an earlier dependency");
+        }
+
+        diagnostic_span = description.span;
+        related_pointer = NULL;
+        related_count = 0u;
+        conflicting_edge = NULL;
+        source_module = vitte_import_get_module(
+            &modules->import_graph,
+            description.source_module);
+        if (source_module != NULL) {
+            for (import_index = 0u;
+                 import_index < source_module->import_count;
+                 ++import_index) {
+                const vitte_import_edge_t *candidate = vitte_import_get(
+                    &modules->import_graph,
+                    source_module->imports[import_index]);
+                if (candidate != NULL &&
+                    ((description.alias != VITTE_IMPORT_INVALID_ID &&
+                      candidate->alias == description.alias) ||
+                     (candidate->module_name == description.module_name &&
+                      candidate->alias == description.alias))) {
+                    conflicting_edge = candidate;
+                    break;
+                }
+            }
+        }
+        if (vitte_import_last_error(&modules->import_graph) ==
+                VITTE_IMPORT_ERROR_ALIAS_CONFLICT &&
+            alias_begin < alias_end) {
+            diagnostic_span = vitte_main_import_span_make(
+                (uint32_t)(source_path_index + 1u),
+                data,
+                directive_end + 1u,
+                alias_begin,
+                alias_end);
+        } else if (name_start < name_end) {
+            diagnostic_span = vitte_main_import_span_make(
+                (uint32_t)(source_path_index + 1u),
+                data,
+                directive_end + 1u,
+                name_start,
+                name_end);
+        }
+
+        if (vitte_import_last_error(&modules->import_graph) ==
+            VITTE_IMPORT_ERROR_ALIAS_CONFLICT) {
+            (void)snprintf(
                 details,
-                sizeof(details))) {
+                sizeof(details),
+                "conflicting import module `%s` as alias `%s`; an earlier import already binds this alias",
+                module_name != NULL ? module_name : "<module>",
+                alias_name != NULL ? alias_name : "<alias>");
+        } else if (!vitte_main_import_format_edge_details(
+                       &modules->import_graph,
+                       &description,
+                       prefix,
+                       details,
+                       sizeof(details))) {
             (void)snprintf(
                 details,
                 sizeof(details),
                 "%s; choose a distinct alias",
                 prefix);
         }
-        vitte_main_report_process_error_span(
+        if (conflicting_edge != NULL &&
+            vitte_main_import_edge_location(
+                modules,
+                conflicting_edge,
+                vitte_import_last_error(&modules->import_graph) ==
+                        VITTE_IMPORT_ERROR_ALIAS_CONFLICT
+                    ? "earlier import binds this alias"
+                    : "earlier import is declared here",
+                &related_location)) {
+            related_pointer = &related_location;
+            related_count = 1u;
+        }
+        vitte_main_report_process_error_span_related(
             "VITTE_IMPORT_E_DUPLICATE",
             vitte_import_last_error(&modules->import_graph) ==
                     VITTE_IMPORT_ERROR_ALIAS_CONFLICT
@@ -717,11 +846,14 @@ vitte_main_import_register_edge(
                 : "duplicate import",
             details,
             modules->paths[source_path_index],
-            &description.span,
+            &diagnostic_span,
             "use declaration",
             module_name,
             alias_name,
-            "import graph");
+            "import graph",
+            primary_label,
+            related_pointer,
+            related_count);
     }
     return false;
 }
@@ -830,9 +962,15 @@ vitte_main_import_graph_resolve(
         const size_t cycle_count = vitte_import_cycle_path_count(
             &modules->import_graph);
         const vitte_import_edge_t *cycle_edge = NULL;
+        vitte_cli_diagnostic_location_t related_locations[
+            VITTE_CLI_DIAGNOSTIC_MAX_RELATED];
+        size_t related_count = 0u;
         int written;
 
-        written = snprintf(details, sizeof(details), "import chain: ");
+        written = snprintf(
+            details,
+            sizeof(details),
+            "this import participates in the cycle; import chain: ");
         if (written > 0) {
             detail_length = (size_t)written;
         }
@@ -868,6 +1006,30 @@ vitte_main_import_graph_resolve(
             detail_length += (size_t)written;
         }
         if (cycle_edge != NULL) {
+            for (index = 0u;
+                 index + 1u < cycle_count &&
+                     related_count < VITTE_CLI_DIAGNOSTIC_MAX_RELATED;
+                 ++index) {
+                const vitte_import_edge_t *path_edge =
+                    vitte_main_import_find_edge(
+                        &modules->import_graph,
+                        vitte_import_cycle_path_at(
+                            &modules->import_graph,
+                            index),
+                        vitte_import_cycle_path_at(
+                            &modules->import_graph,
+                            index + 1u));
+                if (path_edge == NULL || path_edge == cycle_edge) {
+                    continue;
+                }
+                if (vitte_main_import_edge_location(
+                        modules,
+                        path_edge,
+                        "another import in this cycle is here",
+                        &related_locations[related_count])) {
+                    ++related_count;
+                }
+            }
             const char *module_name = vitte_import_string_data(
                 &modules->import_graph,
                 cycle_edge->module_name);
@@ -893,7 +1055,7 @@ vitte_main_import_graph_resolve(
                     "use declaration imports `%s`",
                     module_name != NULL ? module_name : "<module>");
             }
-            vitte_main_report_process_error_span(
+            vitte_main_report_process_error_span_related(
                 "VITTE_IMPORT_E_CYCLE",
                 "cyclic module import",
                 details,
@@ -904,7 +1066,10 @@ vitte_main_import_graph_resolve(
                 import_context,
                 module_name,
                 alias_name,
-                "import graph");
+                "import graph",
+                details,
+                related_locations,
+                related_count);
         } else {
             vitte_main_report_process_error(
                 "VITTE_IMPORT_E_CYCLE",
@@ -1150,6 +1315,64 @@ vitte_main_module_record_origin(
         VITTE_SOURCE_INVALID_ID;
     ++modules->origin_count;
     return true;
+}
+
+static bool
+vitte_main_module_root_header_range(
+    const unsigned char *source,
+    size_t source_length,
+    size_t *header_begin,
+    size_t *header_end)
+{
+    size_t offset;
+
+    if (source == NULL || header_begin == NULL || header_end == NULL) {
+        return false;
+    }
+    offset = vitte_unicode_skip_utf8_bom(
+        (const char *)source,
+        source_length);
+
+    while (offset < source_length) {
+        size_t line_end = offset;
+        size_t token_begin;
+        size_t token_length;
+
+        while (line_end < source_length && source[line_end] != '\n') {
+            ++line_end;
+        }
+        token_begin = offset;
+        while (token_begin < line_end &&
+               (source[token_begin] == ' ' || source[token_begin] == '\t' ||
+                source[token_begin] == '\r')) {
+            ++token_begin;
+        }
+        token_length = line_end - token_begin;
+        if (token_length == 0u ||
+            (token_length >= 2u && source[token_begin] == '/' &&
+             (source[token_begin + 1u] == '/' ||
+              source[token_begin + 1u] == '*')) ||
+            (token_length >= 2u && source[token_begin] == '#' &&
+             source[token_begin + 1u] == '!')) {
+            offset = line_end < source_length ? line_end + 1u : line_end;
+            continue;
+        }
+
+        if (token_length >= 5u &&
+            memcmp(source + token_begin, "space", 5u) == 0 &&
+            (token_length == 5u || source[token_begin + 5u] == ' ' ||
+             source[token_begin + 5u] == '\t' ||
+             source[token_begin + 5u] == ';' ||
+             source[token_begin + 5u] == '{')) {
+            *header_begin = offset;
+            *header_end = line_end < source_length ? line_end + 1u : line_end;
+            return true;
+        }
+
+        return false;
+    }
+
+    return false;
 }
 
 static bool
@@ -1424,11 +1647,51 @@ vitte_main_module_try_root(
         resolved_capacity);
 }
 
+static void
+vitte_main_module_trace_root(
+    char *trace,
+    size_t trace_capacity,
+    const char *root)
+{
+    size_t length;
+    size_t root_length;
+    const char *separator;
+    int written;
+
+    if (trace == NULL || trace_capacity == 0u || root == NULL ||
+        root[0] == '\0') {
+        return;
+    }
+    length = strlen(trace);
+    root_length = strlen(root);
+    separator = length == 0u ? "" : ", ";
+    if (trace_capacity - length <= root_length + strlen(separator) + 2u) {
+        static const char truncated[] = ", …";
+        size_t truncated_length = sizeof(truncated) - 1u;
+        if (length + truncated_length < trace_capacity &&
+            (length == 0u ||
+             (length >= truncated_length &&
+              strcmp(trace + length - truncated_length, truncated) != 0))) {
+            memcpy(trace + length, truncated, truncated_length + 1u);
+        }
+        return;
+    }
+    written = snprintf(
+        trace + length,
+        trace_capacity - length,
+        "%s`%s`",
+        separator,
+        root);
+    (void)written;
+}
+
 static bool
 vitte_main_module_resolve_installed(
     const char *module_path,
     char *resolved,
-    size_t resolved_capacity)
+    size_t resolved_capacity,
+    char *lookup_roots,
+    size_t lookup_roots_capacity)
 {
     const char *configured_paths;
     const char *cursor;
@@ -1450,6 +1713,10 @@ vitte_main_module_resolve_installed(
         if (length != 0u && length < sizeof(root)) {
             memcpy(root, cursor, length);
             root[length] = '\0';
+            vitte_main_module_trace_root(
+                lookup_roots,
+                lookup_roots_capacity,
+                root);
             if (vitte_main_module_try_root(
                     root,
                     module_path,
@@ -1462,6 +1729,36 @@ vitte_main_module_resolve_installed(
             break;
         }
         cursor = separator + 1;
+    }
+
+#if defined(_WIN32)
+    {
+        const char *user_data = getenv("LOCALAPPDATA");
+        written = user_data != NULL && user_data[0] != '\0'
+            ? snprintf(root, sizeof(root), "%s/Vitte/modules", user_data)
+            : -1;
+    }
+#else
+    {
+        const char *user_data = getenv("XDG_DATA_HOME");
+        if (user_data != NULL && user_data[0] != '\0') {
+            written = snprintf(root, sizeof(root), "%s/vitte/modules", user_data);
+        } else {
+            user_data = getenv("HOME");
+            written = user_data != NULL && user_data[0] != '\0'
+                ? snprintf(root, sizeof(root), "%s/.local/share/vitte/modules",
+                           user_data)
+                : -1;
+        }
+    }
+#endif
+    if (written >= 0 && (size_t)written < sizeof(root)) {
+        vitte_main_module_trace_root(
+            lookup_roots, lookup_roots_capacity, root);
+        if (vitte_main_module_try_root(
+                root, module_path, resolved, resolved_capacity)) {
+            return true;
+        }
     }
 
     if (vitte_main_executable_path[0] != '\0' &&
@@ -1484,6 +1781,13 @@ vitte_main_module_resolve_installed(
                     "%s/share/vitte/modules",
                     executable_directory);
                 if (written >= 0 &&
+                    (size_t)written < sizeof(root)) {
+                    vitte_main_module_trace_root(
+                        lookup_roots,
+                        lookup_roots_capacity,
+                        root);
+                }
+                if (written >= 0 &&
                     (size_t)written < sizeof(root) &&
                     vitte_main_module_try_root(
                         root,
@@ -1496,12 +1800,22 @@ vitte_main_module_resolve_installed(
         }
     }
 
+    vitte_main_module_trace_root(
+        lookup_roots,
+        lookup_roots_capacity,
+        "/usr/local/share/vitte/modules");
     if (vitte_main_module_try_root(
             "/usr/local/share/vitte/modules",
             module_path,
             resolved,
-            resolved_capacity) ||
-        vitte_main_module_try_root(
+            resolved_capacity)) {
+        return true;
+    }
+    vitte_main_module_trace_root(
+        lookup_roots,
+        lookup_roots_capacity,
+        "/usr/share/vitte/modules");
+    if (vitte_main_module_try_root(
             "/usr/share/vitte/modules",
             module_path,
             resolved,
@@ -1587,12 +1901,29 @@ vitte_main_set_executable_path(
     vitte_main_executable_path[0] = '\0';
 }
 
+typedef enum vitte_main_module_path_status {
+    VITTE_MAIN_MODULE_PATH_VALID = 0,
+    VITTE_MAIN_MODULE_PATH_MALFORMED,
+    VITTE_MAIN_MODULE_PATH_INVALID_UTF8,
+    VITTE_MAIN_MODULE_PATH_INVALID_IDENTIFIER
+} vitte_main_module_path_status_t;
+
+static vitte_main_module_path_status_t
+vitte_main_module_import_path_is_well_formed(
+    const char *path,
+    size_t *error_begin,
+    size_t *error_end,
+    uint32_t *error_codepoint,
+    vitte_unicode_error_t *unicode_error);
+
 static bool
 vitte_main_module_resolve_path(
     const char *importer_path,
     const char *requested,
     char *resolved,
-    size_t resolved_capacity)
+    size_t resolved_capacity,
+    char *lookup_roots,
+    size_t lookup_roots_capacity)
 {
     char module_path[VITTE_MAIN_MODULE_PATH_MAX];
     char ancestor[VITTE_MAIN_MODULE_PATH_MAX];
@@ -1608,6 +1939,9 @@ vitte_main_module_resolve_path(
     const char *path_separator;
     int written;
 
+    if (lookup_roots != NULL && lookup_roots_capacity != 0u) {
+        lookup_roots[0] = '\0';
+    }
     if (importer_path == NULL || requested == NULL ||
         resolved == NULL || resolved_capacity == 0u) {
         return false;
@@ -1627,17 +1961,12 @@ vitte_main_module_resolve_path(
             }
             module_path[end++] = '/';
             cursor += 2;
-        } else if (*cursor == '.') {
-            if (end == 0u || module_path[end - 1u] == '/') {
-                return false;
-            }
-            module_path[end++] = '/';
-            ++cursor;
         } else if (isalnum((unsigned char)*cursor) ||
+                   (unsigned char)*cursor >= 0x80u ||
                    *cursor == '_' || *cursor == '/') {
             module_path[end++] = *cursor++;
         } else {
-            break;
+            return false;
         }
     }
     while (end != 0u && module_path[end - 1u] == '/') {
@@ -1647,6 +1976,12 @@ vitte_main_module_resolve_path(
         return false;
     }
     module_path[end] = '\0';
+
+    if (vitte_main_module_import_path_is_well_formed(
+            requested, NULL, NULL, NULL, NULL) !=
+        VITTE_MAIN_MODULE_PATH_VALID) {
+        return false;
+    }
 
     if (vitte_filesystem_path_is_absolute(importer_path)) {
         written = snprintf(
@@ -1685,6 +2020,10 @@ vitte_main_module_resolve_path(
     }
 
     for (depth = 0u; depth < 12u; ++depth) {
+        vitte_main_module_trace_root(
+            lookup_roots,
+            lookup_roots_capacity,
+            ancestor);
         if (vitte_main_module_try_candidate(
                 ancestor,
                 module_path,
@@ -1704,6 +2043,13 @@ vitte_main_module_resolve_path(
             "%s%s.vitte/modules",
             ancestor,
             path_separator);
+        if (written >= 0 &&
+            (size_t)written < sizeof(project_modules)) {
+            vitte_main_module_trace_root(
+                lookup_roots,
+                lookup_roots_capacity,
+                project_modules);
+        }
         if (written >= 0 &&
             (size_t)written < sizeof(project_modules) &&
             vitte_main_module_try_candidate(
@@ -1731,7 +2077,9 @@ vitte_main_module_resolve_path(
     return vitte_main_module_resolve_installed(
         module_path,
         resolved,
-        resolved_capacity);
+        resolved_capacity,
+        lookup_roots,
+        lookup_roots_capacity);
 }
 
 #define VITTE_MAIN_MODULE_SUGGESTION_COUNT 3u
@@ -1780,8 +2128,7 @@ vitte_main_module_normalize_name(
             output[output_length++] = ':';
             output[output_length++] = ':';
             input_index += 2u;
-        } else if (input[input_index] == '.' ||
-                   input[input_index] == '/') {
+        } else if (input[input_index] == '/') {
             if (output_length == 0u ||
                 output_length + 2u >= output_capacity ||
                 output[output_length - 1u] == ':') {
@@ -1791,7 +2138,8 @@ vitte_main_module_normalize_name(
             output[output_length++] = ':';
             ++input_index;
         } else if (isalnum((unsigned char)input[input_index]) ||
-                   input[input_index] == '_') {
+                   input[input_index] == '_' ||
+                   (unsigned char)input[input_index] >= 0x80u) {
             if (output_length + 1u >= output_capacity) {
                 return false;
             }
@@ -1806,6 +2154,779 @@ vitte_main_module_normalize_name(
     }
     output[output_length] = '\0';
     return true;
+}
+
+static vitte_main_module_path_status_t
+vitte_main_module_import_path_is_well_formed(
+    const char *path,
+    size_t *error_begin,
+    size_t *error_end,
+    uint32_t *error_codepoint,
+    vitte_unicode_error_t *unicode_error)
+{
+    size_t length;
+    size_t index;
+    bool expect_segment;
+
+    if (error_begin != NULL) {
+        *error_begin = 0u;
+    }
+    if (error_end != NULL) {
+        *error_end = 0u;
+    }
+    if (error_codepoint != NULL) {
+        *error_codepoint = 0u;
+    }
+    if (unicode_error != NULL) {
+        *unicode_error = VITTE_UNICODE_ERROR_NONE;
+    }
+    if (path == NULL || path[0] == '\0') {
+        return VITTE_MAIN_MODULE_PATH_MALFORMED;
+    }
+
+    length = strlen(path);
+    index = 0u;
+    expect_segment = true;
+    while (index < length) {
+        if (expect_segment) {
+            size_t segment_start = index;
+            vitte_unicode_result_t decoded = vitte_unicode_decode_utf8(
+                (const unsigned char *)path + index,
+                length - index);
+            if (decoded.error != VITTE_UNICODE_ERROR_NONE) {
+                if (error_begin != NULL) {
+                    *error_begin = index;
+                }
+                if (error_end != NULL) {
+                    *error_end = index + (decoded.length != 0u
+                        ? decoded.length : 1u);
+                }
+                if (unicode_error != NULL) {
+                    *unicode_error = decoded.error;
+                }
+                return VITTE_MAIN_MODULE_PATH_INVALID_UTF8;
+            }
+            if (!vitte_unicode_is_identifier_start(decoded.codepoint)) {
+                if (error_begin != NULL) {
+                    *error_begin = index;
+                }
+                if (error_end != NULL) {
+                    *error_end = index + decoded.length;
+                }
+                if (error_codepoint != NULL) {
+                    *error_codepoint = decoded.codepoint;
+                }
+                return (decoded.codepoint >= 0x80u ||
+                        vitte_unicode_is_identifier_continue(decoded.codepoint))
+                    ? VITTE_MAIN_MODULE_PATH_INVALID_IDENTIFIER
+                    : VITTE_MAIN_MODULE_PATH_MALFORMED;
+            }
+            index += decoded.length;
+
+            while (index < length) {
+                if (path[index] == '/' || path[index] == ':') {
+                    break;
+                }
+                decoded = vitte_unicode_decode_utf8(
+                    (const unsigned char *)path + index,
+                    length - index);
+                if (decoded.error != VITTE_UNICODE_ERROR_NONE) {
+                    if (error_begin != NULL) {
+                        *error_begin = index;
+                    }
+                    if (error_end != NULL) {
+                        *error_end = index + (decoded.length != 0u
+                            ? decoded.length : 1u);
+                    }
+                    if (unicode_error != NULL) {
+                        *unicode_error = decoded.error;
+                    }
+                    return VITTE_MAIN_MODULE_PATH_INVALID_UTF8;
+                }
+                if (!vitte_unicode_is_identifier_continue(decoded.codepoint)) {
+                    if (error_begin != NULL) {
+                        *error_begin = index;
+                    }
+                    if (error_end != NULL) {
+                        *error_end = index + decoded.length;
+                    }
+                    if (error_codepoint != NULL) {
+                        *error_codepoint = decoded.codepoint;
+                    }
+                    return decoded.codepoint >= 0x80u
+                        ? VITTE_MAIN_MODULE_PATH_INVALID_IDENTIFIER
+                        : VITTE_MAIN_MODULE_PATH_MALFORMED;
+                }
+                index += decoded.length;
+            }
+
+            {
+                vitte_token_kind_t keyword_kind = vitte_lexer_keyword_kind(
+                    path + segment_start,
+                    index - segment_start);
+                bool permitted_reserved = keyword_kind ==
+                        VITTE_TOKEN_KW_RESERVED &&
+                    ((index - segment_start == 8u &&
+                      memcmp(path + segment_start, "compiler", 8u) == 0) ||
+                     (index - segment_start == 10u &&
+                      memcmp(path + segment_start, "diagnostic", 10u) == 0));
+                if (keyword_kind != VITTE_TOKEN_IDENTIFIER &&
+                    !permitted_reserved) {
+                    if (error_begin != NULL) {
+                        *error_begin = segment_start;
+                    }
+                    if (error_end != NULL) {
+                        *error_end = index;
+                    }
+                    return VITTE_MAIN_MODULE_PATH_MALFORMED;
+                }
+            }
+            expect_segment = false;
+            continue;
+        }
+
+        if (path[index] == '/') {
+            size_t separator_start = index++;
+            expect_segment = true;
+            if (index == length) {
+                if (error_begin != NULL) {
+                    *error_begin = separator_start;
+                }
+                if (error_end != NULL) {
+                    *error_end = index;
+                }
+                return VITTE_MAIN_MODULE_PATH_MALFORMED;
+            }
+        } else if (path[index] == ':' && index + 1u < length &&
+                   path[index + 1u] == ':') {
+            size_t separator_start = index;
+            index += 2u;
+            expect_segment = true;
+            if (index == length) {
+                if (error_begin != NULL) {
+                    *error_begin = separator_start;
+                }
+                if (error_end != NULL) {
+                    *error_end = index;
+                }
+                return VITTE_MAIN_MODULE_PATH_MALFORMED;
+            }
+        } else {
+            if (error_begin != NULL) {
+                *error_begin = index;
+            }
+            if (error_end != NULL) {
+                *error_end = index + 1u;
+            }
+            return VITTE_MAIN_MODULE_PATH_MALFORMED;
+        }
+    }
+    return expect_segment
+        ? VITTE_MAIN_MODULE_PATH_MALFORMED
+        : VITTE_MAIN_MODULE_PATH_VALID;
+}
+
+static bool
+vitte_main_module_package_dependency(
+    const char *importer_path,
+    const char *package_name,
+    char *version,
+    size_t version_capacity)
+{
+    char directory[VITTE_MAIN_MODULE_PATH_MAX];
+    char manifest_path[VITTE_MAIN_MODULE_PATH_MAX];
+    char working_directory[VITTE_MAIN_MODULE_PATH_MAX];
+    size_t depth;
+    int written;
+
+    if (importer_path == NULL || package_name == NULL ||
+        package_name[0] == '\0' || version == NULL ||
+        version_capacity == 0u) {
+        return false;
+    }
+    version[0] = '\0';
+    if (vitte_filesystem_path_is_absolute(importer_path)) {
+        written = snprintf(
+            directory,
+            sizeof(directory),
+            "%s",
+            importer_path);
+    } else if (vitte_platform_getcwd(
+                   working_directory,
+                   sizeof(working_directory))) {
+        written = snprintf(
+            directory,
+            sizeof(directory),
+            "%s/%s",
+            working_directory,
+            importer_path);
+    } else {
+        return false;
+    }
+    if (written < 0 || (size_t)written >= sizeof(directory)) {
+        return false;
+    }
+    {
+        char *slash = strrchr(directory, '/');
+        if (slash == NULL) {
+            memcpy(directory, ".", 2u);
+        } else if (slash == directory) {
+            directory[1] = '\0';
+        } else {
+            *slash = '\0';
+        }
+    }
+
+    for (depth = 0u; depth < 64u; ++depth) {
+        vitte_main_file_t manifest;
+        int manifest_written = snprintf(
+            manifest_path,
+            sizeof(manifest_path),
+            "%s/vitte.packages.toml",
+            directory);
+        if (manifest_written >= 0 &&
+            (size_t)manifest_written < sizeof(manifest_path) &&
+            vitte_filesystem_is_file(manifest_path)) {
+            size_t line_start = 0u;
+            memset(&manifest, 0, sizeof(manifest));
+            if (vitte_main_read_file(manifest_path, &manifest) &&
+                manifest.data != NULL) {
+                while (line_start < manifest.length) {
+                    size_t line_end = line_start;
+                    size_t cursor;
+                    size_t name_length = strlen(package_name);
+                    while (line_end < manifest.length &&
+                           manifest.data[line_end] != '\n') {
+                        ++line_end;
+                    }
+                    cursor = line_start;
+                    while (cursor < line_end &&
+                           (manifest.data[cursor] == ' ' ||
+                            manifest.data[cursor] == '\t' ||
+                            manifest.data[cursor] == '\r')) {
+                        ++cursor;
+                    }
+                    if (line_end - cursor >= 11u + name_length &&
+                        memcmp(manifest.data + cursor, "dependency.", 11u) == 0 &&
+                        memcmp(manifest.data + cursor + 11u,
+                               package_name,
+                               name_length) == 0) {
+                        size_t after_name = cursor + 11u + name_length;
+                        while (after_name < line_end &&
+                               (manifest.data[after_name] == ' ' ||
+                                manifest.data[after_name] == '\t')) {
+                            ++after_name;
+                        }
+                        if (after_name < line_end &&
+                            manifest.data[after_name] == '=') {
+                            size_t value_start;
+                            size_t value_end;
+                            ++after_name;
+                            while (after_name < line_end &&
+                                   (manifest.data[after_name] == ' ' ||
+                                    manifest.data[after_name] == '\t')) {
+                                ++after_name;
+                            }
+                            if (after_name < line_end &&
+                                manifest.data[after_name] == '"') {
+                                value_start = ++after_name;
+                                value_end = value_start;
+                                while (value_end < line_end &&
+                                       manifest.data[value_end] != '"') {
+                                    ++value_end;
+                                }
+                                if (value_end - value_start < version_capacity) {
+                                    memcpy(version,
+                                           manifest.data + value_start,
+                                           value_end - value_start);
+                                    version[value_end - value_start] = '\0';
+                                }
+                            }
+                            free(manifest.data);
+                            return true;
+                        }
+                    }
+                    line_start = line_end < manifest.length
+                        ? line_end + 1u : line_end;
+                }
+                free(manifest.data);
+            } else {
+                free(manifest.data);
+            }
+        }
+        if (strcmp(directory, "/") == 0 || strcmp(directory, ".") == 0) {
+            break;
+        }
+        {
+            char *slash = strrchr(directory, '/');
+            if (slash == NULL) {
+                memcpy(directory, ".", 2u);
+            } else if (slash == directory) {
+                directory[1] = '\0';
+            } else {
+                *slash = '\0';
+            }
+        }
+    }
+    return false;
+}
+
+static bool
+vitte_main_module_package_root_at(
+    const char *root,
+    const char *package_name)
+{
+    char package_root[VITTE_MAIN_MODULE_PATH_MAX];
+    int written;
+
+    if (root == NULL || root[0] == '\0' || package_name == NULL ||
+        package_name[0] == '\0') {
+        return false;
+    }
+    written = snprintf(
+        package_root,
+        sizeof(package_root),
+        "%s/%s",
+        root,
+        package_name);
+    return written >= 0 && (size_t)written < sizeof(package_root) &&
+        vitte_filesystem_is_directory(package_root);
+}
+
+static bool
+vitte_main_module_package_exists(
+    const char *importer_path,
+    const char *package_name)
+{
+    char directory[VITTE_MAIN_MODULE_PATH_MAX];
+    char root[VITTE_MAIN_MODULE_PATH_MAX];
+    char package_modules[VITTE_MAIN_MODULE_PATH_MAX];
+    char executable_directory[VITTE_MAIN_MODULE_PATH_MAX];
+    char *slash;
+    const char *configured_paths;
+    const char *cursor;
+    size_t depth;
+    int written;
+
+    if (importer_path == NULL || package_name == NULL) {
+        return false;
+    }
+    if (vitte_filesystem_path_is_absolute(importer_path)) {
+        written = snprintf(directory, sizeof(directory), "%s", importer_path);
+    } else {
+        char working_directory[VITTE_MAIN_MODULE_PATH_MAX];
+        if (!vitte_platform_getcwd(working_directory, sizeof(working_directory))) {
+            return false;
+        }
+        written = snprintf(directory, sizeof(directory), "%s/%s",
+                           working_directory, importer_path);
+    }
+    if (written < 0 || (size_t)written >= sizeof(directory)) {
+        return false;
+    }
+    slash = strrchr(directory, '/');
+    if (slash == NULL) {
+        memcpy(directory, ".", 2u);
+    } else if (slash == directory) {
+        directory[1] = '\0';
+    } else {
+        *slash = '\0';
+    }
+
+    for (depth = 0u; depth < 12u; ++depth) {
+        if (vitte_main_module_package_root_at(directory, package_name)) {
+            return true;
+        }
+        written = snprintf(package_modules, sizeof(package_modules),
+                           "%s/.vitte/modules", directory);
+        if (written >= 0 && (size_t)written < sizeof(package_modules) &&
+            vitte_main_module_package_root_at(package_modules, package_name)) {
+            return true;
+        }
+        if (strcmp(directory, "/") == 0 || strcmp(directory, ".") == 0) {
+            break;
+        }
+        slash = strrchr(directory, '/');
+        if (slash == NULL) {
+            memcpy(directory, ".", 2u);
+        } else if (slash == directory) {
+            directory[1] = '\0';
+        } else {
+            *slash = '\0';
+        }
+    }
+
+    configured_paths = getenv("VITTE_MODULE_PATH");
+    cursor = configured_paths;
+    while (cursor != NULL && *cursor != '\0') {
+        const char *separator = strchr(
+            cursor, vitte_platform_path_list_separator());
+        size_t length = separator != NULL
+            ? (size_t)(separator - cursor) : strlen(cursor);
+        if (length != 0u && length < sizeof(root)) {
+            memcpy(root, cursor, length);
+            root[length] = '\0';
+            if (vitte_main_module_package_root_at(root, package_name)) {
+                return true;
+            }
+        }
+        if (separator == NULL) {
+            break;
+        }
+        cursor = separator + 1;
+    }
+
+#if defined(_WIN32)
+    {
+        const char *user_data = getenv("LOCALAPPDATA");
+        if (user_data != NULL && user_data[0] != '\0') {
+            written = snprintf(root, sizeof(root), "%s/Vitte/modules", user_data);
+        } else {
+            written = -1;
+        }
+    }
+#else
+    {
+        const char *user_data = getenv("XDG_DATA_HOME");
+        if (user_data != NULL && user_data[0] != '\0') {
+            written = snprintf(root, sizeof(root), "%s/vitte/modules", user_data);
+        } else {
+            user_data = getenv("HOME");
+            written = user_data != NULL && user_data[0] != '\0'
+                ? snprintf(root, sizeof(root), "%s/.local/share/vitte/modules",
+                           user_data)
+                : -1;
+        }
+    }
+#endif
+    if (written >= 0 && (size_t)written < sizeof(root) &&
+        vitte_main_module_package_root_at(root, package_name)) {
+        return true;
+    }
+
+    if (vitte_main_executable_path[0] != '\0' &&
+        strlen(vitte_main_executable_path) < sizeof(executable_directory)) {
+        memcpy(executable_directory, vitte_main_executable_path,
+               strlen(vitte_main_executable_path) + 1u);
+        slash = strrchr(executable_directory, '/');
+        if (slash != NULL) {
+            *slash = '\0';
+            slash = strrchr(executable_directory, '/');
+            if (slash != NULL &&
+                (strcmp(slash + 1, "bin") == 0 ||
+                 strcmp(slash + 1, "sbin") == 0)) {
+                *slash = '\0';
+            }
+            written = snprintf(root, sizeof(root),
+                               "%s/share/vitte/modules", executable_directory);
+            if (written >= 0 && (size_t)written < sizeof(root) &&
+                vitte_main_module_package_root_at(root, package_name)) {
+                return true;
+            }
+        }
+    }
+    return vitte_main_module_package_root_at(
+               "/usr/local/share/vitte/modules", package_name) ||
+        vitte_main_module_package_root_at(
+               "/usr/share/vitte/modules", package_name);
+}
+
+static bool
+vitte_main_module_declared_name(
+    const unsigned char *source,
+    size_t source_length,
+    char *name,
+    size_t name_capacity,
+    size_t *name_begin,
+    size_t *name_end)
+{
+    size_t header_begin;
+    size_t header_end;
+    size_t cursor;
+    size_t end;
+
+    if (source == NULL || name == NULL || name_capacity == 0u ||
+        name_begin == NULL || name_end == NULL ||
+        !vitte_main_module_root_header_range(
+            source, source_length, &header_begin, &header_end)) {
+        return false;
+    }
+    cursor = header_begin;
+    while (cursor < header_end &&
+           (source[cursor] == ' ' || source[cursor] == '\t' ||
+            source[cursor] == '\r')) {
+        ++cursor;
+    }
+    if (header_end - cursor < 5u ||
+        memcmp(source + cursor, "space", 5u) != 0) {
+        return false;
+    }
+    cursor += 5u;
+    while (cursor < header_end &&
+           (source[cursor] == ' ' || source[cursor] == '\t')) {
+        ++cursor;
+    }
+    *name_begin = cursor;
+    end = cursor;
+    while (end < header_end && source[end] != ';' &&
+           source[end] != '{' && source[end] != '\n' &&
+           source[end] != '\r' && source[end] != ' ' &&
+           source[end] != '\t') {
+        ++end;
+    }
+    if (end == cursor || end - cursor >= name_capacity) {
+        return false;
+    }
+    cursor = end;
+    while (cursor < header_end &&
+           (source[cursor] == ' ' || source[cursor] == '\t')) {
+        ++cursor;
+    }
+    if (cursor >= header_end ||
+        (source[cursor] != ';' && source[cursor] != '{')) {
+        return false;
+    }
+    memcpy(name, source + *name_begin, end - *name_begin);
+    name[end - *name_begin] = '\0';
+    *name_end = end;
+    return true;
+}
+
+static bool
+vitte_main_module_validate_import_name(
+    const char *importer_path,
+    const unsigned char *importer_source,
+    size_t importer_source_length,
+    uint32_t importer_file_id,
+    size_t import_path_begin,
+    size_t import_path_end,
+    const char *resolved_path,
+    const char *requested_name)
+{
+    vitte_main_file_t imported;
+    char declared_name[VITTE_MAIN_MODULE_NAME_MAX];
+    char normalized_declared[VITTE_MAIN_MODULE_NAME_MAX];
+    char normalized_requested[VITTE_MAIN_MODULE_NAME_MAX];
+    size_t declared_begin;
+    size_t declared_end;
+    if (importer_path == NULL || importer_source == NULL ||
+        resolved_path == NULL || requested_name == NULL) {
+        return true;
+    }
+    memset(&imported, 0, sizeof(imported));
+    if (!vitte_main_read_file(resolved_path, &imported) ||
+        imported.data == NULL) {
+        free(imported.data);
+        return true;
+    }
+    if (!vitte_main_module_declared_name(
+            imported.data,
+            imported.length,
+            declared_name,
+            sizeof(declared_name),
+            &declared_begin,
+            &declared_end) ||
+        !vitte_main_module_normalize_name(
+            declared_name,
+            normalized_declared,
+            sizeof(normalized_declared)) ||
+        !vitte_main_module_normalize_name(
+            requested_name,
+            normalized_requested,
+            sizeof(normalized_requested)) ||
+        strcmp(normalized_declared, normalized_requested) == 0) {
+        free(imported.data);
+        return true;
+    }
+
+    {
+        char details[VITTE_CLI_DIAGNOSTIC_DETAILS_CAPACITY];
+        char primary_label[512];
+        vitte_import_span_t primary_span;
+        vitte_import_span_t related_span;
+        vitte_cli_diagnostic_location_t related;
+        int written;
+
+        written = snprintf(
+            details,
+            sizeof(details),
+            "the resolved source declares module `%s`, but this import requests `%s`",
+            declared_name,
+            requested_name);
+        if (written < 0 || (size_t)written >= sizeof(details)) {
+            free(imported.data);
+            return false;
+        }
+        (void)snprintf(
+            primary_label,
+            sizeof(primary_label),
+            "declares `%s`, but the import expects `%s`",
+            declared_name,
+            requested_name);
+        primary_span = vitte_main_import_span_make(
+            0u,
+            imported.data,
+            imported.length,
+            declared_begin,
+            declared_end);
+        related_span = vitte_main_import_span_make(
+            importer_file_id,
+            importer_source,
+            importer_source_length,
+            import_path_begin,
+            import_path_end);
+        memset(&related, 0, sizeof(related));
+        related.kind = VITTE_CLI_DIAGNOSTIC_LOCATION_RELATED;
+        related.label = "import requests this module path";
+        related.span.valid = related_span.valid;
+        related.span.file_id = related_span.file_id;
+        related.span.source_id = VITTE_SOURCE_INVALID_ID;
+        related.span.source_name = importer_path;
+        related.span.start_offset = related_span.begin;
+        related.span.end_offset = related_span.end;
+        related.span.start_line = related_span.line != 0u
+            ? related_span.line - 1u : 0u;
+        related.span.start_column = related_span.column != 0u
+            ? related_span.column - 1u : 0u;
+        related.span.end_line = related_span.end_line != 0u
+            ? related_span.end_line - 1u : related.span.start_line;
+        related.span.end_column = related_span.end_column != 0u
+            ? related_span.end_column - 1u : related.span.start_column;
+        vitte_main_report_process_error_span_related(
+            "VITTE_IMPORT_E_MODULE_PATH_MISMATCH",
+            "module name does not match import path",
+            details,
+            resolved_path,
+            &primary_span,
+            "module import path mismatch",
+            requested_name,
+            declared_name,
+            "import graph",
+            primary_label,
+            &related,
+            1u);
+    }
+    free(imported.data);
+    return false;
+}
+
+static void
+vitte_main_report_invalid_import_path(
+    const char *source_name,
+    const unsigned char *source,
+    size_t source_length,
+    uint32_t file_id,
+    size_t begin,
+    size_t end,
+    const char *path)
+{
+    vitte_import_span_t span = vitte_main_import_span_make(
+        file_id, source, source_length, begin, end);
+    char label[512];
+    (void)snprintf(label, sizeof(label), "invalid module path `%s`",
+                   path != NULL ? path : "<path>");
+    vitte_main_report_process_error_span_related(
+        "VITTE_PARSER_E_INVALID_MODULE_PATH",
+        "malformed module path",
+        "Use identifier path segments separated by `::` or `/`; remove leading, repeated or trailing separators and unsupported punctuation.",
+        source_name,
+        &span,
+        "use declaration",
+        path,
+        NULL,
+        "import graph",
+        label,
+        NULL,
+        0u);
+}
+
+static void
+vitte_main_report_invalid_import_unicode(
+    const char *source_name,
+    const unsigned char *source,
+    size_t source_length,
+    uint32_t file_id,
+    size_t begin,
+    size_t end,
+    vitte_main_module_path_status_t status,
+    uint32_t codepoint,
+    vitte_unicode_error_t unicode_error)
+{
+    vitte_import_span_t span = vitte_main_import_span_make(
+        file_id, source, source_length, begin, end);
+    char details[512];
+    char label[128];
+    const char *code;
+    const char *title;
+
+    if (status == VITTE_MAIN_MODULE_PATH_INVALID_UTF8) {
+        const char *encoding_name = vitte_unicode_error_name(unicode_error);
+        code = "VITTE_LEXER_E_INVALID_UNICODE";
+        title = "invalid Unicode sequence";
+        (void)snprintf(
+            details,
+            sizeof(details),
+            "malformed UTF-8 in module path (%s); offending byte range [%zu, %zu)",
+            encoding_name != NULL ? encoding_name : "encoding error",
+            begin,
+            end);
+        (void)snprintf(label, sizeof(label), "malformed UTF-8 sequence");
+    } else {
+        code = "VITTE_LEXER_E_INVALID_IDENTIFIER";
+        title = "invalid identifier";
+        (void)snprintf(
+            details,
+            sizeof(details),
+            "Unicode scalar U+%04X is not allowed in this module-path identifier; offending byte range [%zu, %zu)",
+            (unsigned int)codepoint,
+            begin,
+            end);
+        (void)snprintf(
+            label,
+            sizeof(label),
+            "invalid identifier scalar U+%04X",
+            (unsigned int)codepoint);
+    }
+
+    vitte_main_report_process_error_span_related(
+        code,
+        title,
+        details,
+        source_name,
+        &span,
+        "module path",
+        NULL,
+        NULL,
+        "lexer",
+        label,
+        NULL,
+        0u);
+}
+
+static void
+vitte_main_report_empty_use_path(
+    const char *source_name,
+    const unsigned char *source,
+    size_t source_length,
+    uint32_t file_id,
+    size_t directive_begin,
+    size_t directive_end)
+{
+    vitte_import_span_t span = vitte_main_import_span_make(
+        file_id, source, source_length, directive_begin, directive_end);
+    vitte_main_report_process_error_span_related(
+        "VITTE_PARSER_E_INVALID_USE_DECLARATION",
+        "malformed use declaration",
+        "A `use` declaration needs a module path after the keyword.",
+        source_name,
+        &span,
+        "use declaration",
+        NULL,
+        NULL,
+        "import graph",
+        "expected a module path",
+        NULL,
+        0u);
 }
 
 static size_t
@@ -2117,21 +3238,28 @@ static void
 vitte_main_report_missing_module(
     const char *importer_path,
     const char *requested,
-    const vitte_import_span_t *span)
+    const vitte_import_span_t *span,
+    const char *lookup_roots)
 {
     vitte_main_module_scan_t scan;
     char normalized_requested[VITTE_MAIN_MODULE_NAME_MAX];
+    char requested_package[128];
+    char package_version[128];
     char absolute_importer[VITTE_MAIN_MODULE_PATH_MAX];
     char root[VITTE_MAIN_MODULE_PATH_MAX];
     char installed_root[VITTE_MAIN_MODULE_PATH_MAX];
     char executable_directory[VITTE_MAIN_MODULE_PATH_MAX];
     char local_modules[VITTE_MAIN_MODULE_PATH_MAX];
     char global_modules[VITTE_MAIN_MODULE_PATH_MAX];
-    char details[1024];
+    char details[VITTE_CLI_DIAGNOSTIC_DETAILS_CAPACITY];
+    char primary_label[512];
     char *slash;
     const char *configured_paths;
     const char *cursor;
     size_t depth;
+    size_t package_length;
+    const char *package_separator;
+    bool package_declared;
     int written;
 
     if (importer_path == NULL || requested == NULL ||
@@ -2141,6 +3269,36 @@ vitte_main_report_missing_module(
             sizeof(normalized_requested))) {
         vitte_main_error_argument("cannot resolve imported module", requested);
         return;
+    }
+
+    package_separator = strstr(requested, "::");
+    {
+        const char *slash_separator = strchr(requested, '/');
+        if (slash_separator != NULL &&
+            (package_separator == NULL || slash_separator < package_separator)) {
+            package_separator = slash_separator;
+        }
+    }
+    package_length = package_separator != NULL
+        ? (size_t)(package_separator - requested)
+        : strlen(requested);
+    package_declared = false;
+    requested_package[0] = '\0';
+    package_version[0] = '\0';
+    if (package_length != 0u && package_length < sizeof(requested_package)) {
+        memcpy(requested_package, requested, package_length);
+        requested_package[package_length] = '\0';
+        package_declared = vitte_main_module_package_dependency(
+            importer_path,
+            requested_package,
+            package_version,
+            sizeof(package_version));
+        if (package_declared &&
+            vitte_main_module_package_exists(
+                importer_path,
+                requested_package)) {
+            package_declared = false;
+        }
     }
 
     memset(&scan, 0, sizeof(scan));
@@ -2292,37 +3450,51 @@ vitte_main_report_missing_module(
     vitte_main_module_scan_root(&scan, "/usr/local/share/vitte/modules");
     vitte_main_module_scan_root(&scan, "/usr/share/vitte/modules");
 
-    if (scan.candidate_count == 0u) {
-        if (strchr(requested, '.') != NULL) {
-            (void)snprintf(
-                details,
-                sizeof(details),
-                "imported from `%s`; module path: `%s`; suggestion: use `::` between import path segments",
-                importer_path,
-                requested);
-        } else {
-            (void)snprintf(
-                details,
-                sizeof(details),
-                "imported from `%s`; module path: `%s`",
-                importer_path,
-                requested);
-        }
-    } else {
-        size_t used;
-        size_t candidate_index;
-
+    if (package_declared && package_version[0] != '\0') {
         written = snprintf(
             details,
             sizeof(details),
-            "imported from `%s`; module path: `%s`; similar existing module paths: ",
+            "declared package `%s` version `%s` is unavailable; requested module path `%s` from `%s`; candidate module paths: `<module path>.vit`, `<module path>.vitte`, `<module path>/mod.vit`, and `<module path>/mod.vitte`; package directories checked as `<root>/<package>`; search roots checked in order: %s",
+            requested_package,
+            package_version,
+            requested,
             importer_path,
-            requested);
-        if (written < 0 || (size_t)written >= sizeof(details)) {
-            vitte_main_error_argument("cannot resolve imported module", requested);
-            return;
-        }
-        used = (size_t)written;
+            lookup_roots != NULL && lookup_roots[0] != '\0'
+                ? lookup_roots : "none");
+    } else if (package_declared) {
+        written = snprintf(
+            details,
+            sizeof(details),
+            "declared package `%s` is unavailable; requested module path `%s` from `%s`; candidate module paths: `<module path>.vit`, `<module path>.vitte`, `<module path>/mod.vit`, and `<module path>/mod.vitte`; package directories checked as `<root>/<package>`; search roots checked in order: %s",
+            requested_package,
+            requested,
+            importer_path,
+            lookup_roots != NULL && lookup_roots[0] != '\0'
+                ? lookup_roots : "none");
+    } else {
+        written = snprintf(
+            details,
+            sizeof(details),
+            "module path `%s` imported from `%s` was not found; candidate paths under each root: `<module path>.vit`, `<module path>.vitte`, `<module path>/mod.vit`, and `<module path>/mod.vitte`; when a package manifest matches the first path segment, the resolver also checks the remaining path under that package source root; search roots checked in order: %s",
+            requested,
+            importer_path,
+            lookup_roots != NULL && lookup_roots[0] != '\0'
+                ? lookup_roots : "none");
+    }
+    if (written < 0 || (size_t)written >= sizeof(details)) {
+        (void)snprintf(details, sizeof(details),
+                       "module path `%s` from `%s` could not be resolved; candidate suffixes: `.vit`, `.vitte`, `/mod.vit`, `/mod.vitte`; search roots: %s",
+                       requested, importer_path,
+                       lookup_roots != NULL && lookup_roots[0] != '\0'
+                           ? lookup_roots : "none");
+    }
+    if (scan.candidate_count != 0u) {
+        size_t used = strlen(details);
+        size_t candidate_index;
+        written = snprintf(details + used, sizeof(details) - used,
+                           "; nearby module paths: ");
+        if (written > 0 && (size_t)written < sizeof(details) - used) {
+            used += (size_t)written;
         for (candidate_index = 0u;
              candidate_index < scan.candidate_count;
              ++candidate_index) {
@@ -2337,27 +3509,32 @@ vitte_main_report_missing_module(
             }
             used += (size_t)written;
         }
-        if (strchr(requested, '.') != NULL &&
-            used < sizeof(details)) {
-            written = snprintf(
-                details + used,
-                sizeof(details) - used,
-                "; suggestion: use `::` between import path segments");
-            if (written > 0 && (size_t)written < sizeof(details) - used) {
-                used += (size_t)written;
-            }
         }
     }
-    vitte_main_report_process_error_span(
-        "VITTE_IMPORT_E_MODULE_NOT_FOUND",
-        "cannot resolve imported module",
+    (void)snprintf(
+        primary_label,
+        sizeof(primary_label),
+        package_declared
+            ? "package `%s` source directory was not found"
+            : "module path `%s` was not found",
+        package_declared ? requested_package : requested);
+    vitte_main_report_process_error_span_related(
+        package_declared
+            ? "VITTE_IMPORT_E_PACKAGE_NOT_FOUND"
+            : "VITTE_IMPORT_E_MODULE_NOT_FOUND",
+        package_declared
+            ? "package not found"
+            : "cannot resolve imported module",
         details,
         importer_path,
         span,
-        "use declaration",
+        package_declared ? "package dependency" : "use declaration",
         requested,
         NULL,
-        "import graph");
+        "import graph",
+        primary_label,
+        NULL,
+        0u);
 }
 
 bool
@@ -2458,6 +3635,9 @@ vitte_main_expand_module(
     size_t path_index;
     size_t offset;
     size_t namespace_depth;
+    size_t root_header_begin = SIZE_MAX;
+    size_t root_header_end = SIZE_MAX;
+    bool root_header_copied = false;
 
     if (modules == NULL || path == NULL ||
         depth > VITTE_MAIN_MODULE_DEPTH_MAX) {
@@ -2502,6 +3682,33 @@ vitte_main_expand_module(
         return false;
     }
 
+    if (namespace_name == NULL &&
+        vitte_main_module_root_header_range(
+            file.data,
+            file.length,
+            &root_header_begin,
+            &root_header_end)) {
+        size_t combined_begin = modules->source_length;
+        size_t header_length = root_header_end - root_header_begin;
+
+        if (!vitte_main_buffer_append(
+                &modules->source,
+                &modules->source_length,
+                &modules->source_capacity,
+                file.data + root_header_begin,
+                header_length) ||
+            !vitte_main_module_record_origin(
+                modules,
+                path,
+                combined_begin,
+                root_header_begin,
+                header_length)) {
+            free(file.data);
+            return false;
+        }
+        root_header_copied = true;
+    }
+
     /*
      * Expand dependencies before emitting this module's declarations so
      * imported module scopes remain siblings rather than nested scopes.
@@ -2524,7 +3731,8 @@ vitte_main_expand_module(
         }
 
         if (line_end - directive_start < 4u ||
-            memcmp(file.data + directive_start, "use ", 4u) != 0) {
+            memcmp(file.data + directive_start, "use", 3u) != 0 ||
+            !isspace(file.data[directive_start + 3u])) {
             offset = line_end < file.length ? line_end + 1u : line_end;
             continue;
         }
@@ -2535,23 +3743,33 @@ vitte_main_expand_module(
             ++directive_end;
         }
         if (directive_end == file.length) {
+            vitte_main_report_empty_use_path(
+                path,
+                file.data,
+                file.length,
+                (uint32_t)(path_index + 1u),
+                line_end,
+                line_end);
             free(file.data);
-            vitte_main_error_argument(
-                "unterminated module directive in",
-                path);
             return false;
         }
 
         {
             char requested[VITTE_MAIN_MODULE_PATH_MAX];
             char imported_path[VITTE_MAIN_MODULE_PATH_MAX];
+            char lookup_roots[VITTE_CLI_DIAGNOSTIC_DETAILS_CAPACITY];
             size_t name_start;
             size_t name_end;
             size_t name_length;
+            size_t path_error_begin;
+            size_t path_error_end;
+            uint32_t path_error_codepoint;
+            vitte_unicode_error_t path_unicode_error;
+            vitte_main_module_path_status_t path_status;
             size_t imported_path_index;
-            vitte_import_span_t directive_span;
+            vitte_import_span_t path_span;
 
-            name_start = directive_start + 4u;
+            name_start = directive_start + 3u;
             while (name_start < directive_end &&
                    isspace(file.data[name_start])) {
                 ++name_start;
@@ -2563,40 +3781,142 @@ vitte_main_expand_module(
                    !isspace(file.data[name_end])) {
                 ++name_end;
             }
-            while (name_end > name_start &&
-                   (file.data[name_end - 1u] == ':' ||
-                    file.data[name_end - 1u] == '*')) {
-                --name_end;
+            if (name_end < directive_end && file.data[name_end] == '{' &&
+                name_end >= name_start + 2u &&
+                file.data[name_end - 1u] == ':' &&
+                file.data[name_end - 2u] == ':') {
+                name_end -= 2u;
+            } else if (name_end >= name_start + 3u &&
+                       file.data[name_end - 1u] == '*' &&
+                       file.data[name_end - 2u] == ':' &&
+                       file.data[name_end - 3u] == ':') {
+                name_end -= 3u;
             }
             name_length = name_end - name_start;
-            if (name_length == 0u ||
-                name_length >= sizeof(requested)) {
+            if (name_length == 0u) {
+                vitte_main_report_empty_use_path(
+                    path,
+                    file.data,
+                    file.length,
+                    (uint32_t)(path_index + 1u),
+                    directive_end,
+                    directive_end + 1u);
                 free(file.data);
-                vitte_main_error_argument(
-                    "invalid module path in",
-                    path);
                 return false;
+            }
+            path_span = vitte_main_import_span_make(
+                (uint32_t)(path_index + 1u),
+                file.data,
+                file.length,
+                name_start,
+                name_end);
+            if (name_length >= sizeof(requested)) {
+                vitte_main_report_invalid_import_path(
+                    path,
+                    file.data,
+                    file.length,
+                    (uint32_t)(path_index + 1u),
+                    name_start,
+                    name_end,
+                    "<path exceeds supported length>");
+                free(file.data);
+                return false;
+            }
+            {
+                const unsigned char *nul_byte = (const unsigned char *)memchr(
+                    file.data + name_start,
+                    '\0',
+                    name_length);
+                if (nul_byte != NULL) {
+                    size_t nul_offset = (size_t)(nul_byte - file.data);
+                    vitte_main_report_invalid_import_path(
+                        path,
+                        file.data,
+                        file.length,
+                        (uint32_t)(path_index + 1u),
+                        nul_offset,
+                        nul_offset + 1u,
+                        "NUL byte");
+                    free(file.data);
+                    return false;
+                }
             }
 
             memcpy(requested, file.data + name_start, name_length);
             requested[name_length] = '\0';
-            directive_span = vitte_main_import_span_make(
-                (uint32_t)(path_index + 1u),
-                file.data,
-                file.length,
-                directive_start,
-                directive_end + 1u);
+            path_status = vitte_main_module_import_path_is_well_formed(
+                requested,
+                &path_error_begin,
+                &path_error_end,
+                &path_error_codepoint,
+                &path_unicode_error);
+            if (path_status != VITTE_MAIN_MODULE_PATH_VALID) {
+                if (path_error_end <= path_error_begin ||
+                    path_error_end > name_length) {
+                    path_error_begin = 0u;
+                    path_error_end = name_length;
+                }
+                if (path_status == VITTE_MAIN_MODULE_PATH_INVALID_UTF8 ||
+                    path_status == VITTE_MAIN_MODULE_PATH_INVALID_IDENTIFIER) {
+                    vitte_main_report_invalid_import_unicode(
+                        path,
+                        file.data,
+                        file.length,
+                        (uint32_t)(path_index + 1u),
+                        name_start + path_error_begin,
+                        name_start + path_error_end,
+                        path_status,
+                        path_error_codepoint,
+                        path_unicode_error);
+                    free(file.data);
+                    return false;
+                }
+                char invalid_token[16];
+                size_t invalid_length;
+                invalid_length = path_error_end - path_error_begin;
+                if (invalid_length >= sizeof(invalid_token)) {
+                    invalid_length = sizeof(invalid_token) - 1u;
+                }
+                memcpy(invalid_token, requested + path_error_begin,
+                       invalid_length);
+                invalid_token[invalid_length] = '\0';
+                vitte_main_report_invalid_import_path(
+                    path,
+                    file.data,
+                    file.length,
+                    (uint32_t)(path_index + 1u),
+                    name_start + path_error_begin,
+                    name_start + path_error_end,
+                    invalid_token);
+                free(file.data);
+                return false;
+            }
 
             if (!vitte_main_module_resolve_path(
                     path,
                     requested,
                     imported_path,
-                    sizeof(imported_path))) {
-                free(file.data);
+                    sizeof(imported_path),
+                    lookup_roots,
+                    sizeof(lookup_roots))) {
                 vitte_main_report_missing_module(
                     path,
                     requested,
-                    &directive_span);
+                    &path_span,
+                    lookup_roots);
+                free(file.data);
+                return false;
+            }
+            if (!vitte_main_module_validate_import_name(
+                    path,
+                    file.data,
+                    file.length,
+                    (uint32_t)(path_index + 1u),
+                    name_start,
+                    name_end,
+                    imported_path,
+                    requested)) {
+                free(file.data);
                 return false;
             }
             if (!vitte_main_expand_module(
@@ -2619,6 +3939,7 @@ vitte_main_expand_module(
                     file.data,
                     directive_start,
                     directive_end,
+                    name_start,
                     name_end)) {
                 free(file.data);
                 return false;
@@ -2668,6 +3989,49 @@ vitte_main_expand_module(
                        "space ",
                        6u) == 0) {
             keyword = "space";
+        }
+
+        if (keyword != NULL && strcmp(keyword, "space") == 0 &&
+            namespace_name == NULL &&
+            (!root_header_copied || offset != root_header_begin)) {
+            size_t combined_begin = modules->source_length;
+            size_t line_length = line_end - offset;
+
+            if (!vitte_main_buffer_append(
+                    &modules->source,
+                    &modules->source_length,
+                    &modules->source_capacity,
+                    file.data + offset,
+                    line_length) ||
+                !vitte_main_module_record_origin(
+                    modules,
+                    path,
+                    combined_begin,
+                    offset,
+                    line_length)) {
+                free(file.data);
+                return false;
+            }
+            if (line_end < file.length) {
+                combined_begin = modules->source_length;
+                if (!vitte_main_buffer_append(
+                        &modules->source,
+                        &modules->source_length,
+                        &modules->source_capacity,
+                        (const unsigned char *)"\n",
+                        1u) ||
+                    !vitte_main_module_record_origin(
+                        modules,
+                        path,
+                        combined_begin,
+                        line_end,
+                        1u)) {
+                    free(file.data);
+                    return false;
+                }
+            }
+            offset = line_end < file.length ? line_end + 1u : line_end;
+            continue;
         }
 
         if (keyword == NULL) {

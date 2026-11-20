@@ -53,10 +53,13 @@ space_body ::= "{" { declaration } "}" ;
 
 use_declaration ::= "use" module_path
                     [ "as" identifier
-                    | "::" ( "*" | "{" [ import_items ] "}" )
+                    | "::" ( "*" | "{" import_items "}" )
                     ] ";" ;
 
-import_items ::= path_alias { "," path_alias } [ "," ] ;
+import_items ::= import_item { "," import_item } [ "," ] ;
+
+import_item ::= path_alias
+              | module_path "::" "{" import_items "}" ;
 
 path_alias ::= module_path [ "as" identifier ] ;
 
@@ -296,7 +299,8 @@ assignment_expression ::= coalesce_expression
                           [ assignment_operator assignment_expression ] ;
 
 assignment_operator ::= "=" | "+=" | "-=" | "*=" | "/=" | "%="
-                      | "&=" | "|=" | "^=" | "<<=" | ">>=" ;
+                        | "&=" | "|=" | "^=" | "<<=" | ">>="
+                      ;
 
 coalesce_expression ::= logical_or_expression
                         [ "??" coalesce_expression ] ;

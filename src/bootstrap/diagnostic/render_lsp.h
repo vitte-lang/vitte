@@ -164,6 +164,9 @@ typedef bool
  * or UTF-32 scalar values according to the negotiated encoding.  Offsets on
  * CR/LF bytes are clamped to the end of the preceding LSP line; the offset
  * immediately after the newline maps to the start of the next line.
+ * UTF-8 positions accept offsets inside a multibyte sequence because their
+ * character unit is a byte. UTF-16/32 positions reject offsets that split a
+ * valid scalar; malformed bytes count as one replacement scalar.
  */
 bool
 vitte_diagnostic_lsp_source_position_converter(

@@ -1127,6 +1127,22 @@ vitte_api_lexer_diagnostic_code(vitte_lexer_error_t error)
             return "VITTE_LEXER_E_INVALID_IDENTIFIER";
         case VITTE_LEXER_ERROR_INVALID_NUMBER:
             return "VITTE_LEXER_E_INVALID_NUMBER";
+        case VITTE_LEXER_ERROR_INVALID_INTEGER:
+            return "VITTE_LEXER_E_INVALID_INTEGER";
+        case VITTE_LEXER_ERROR_INVALID_FLOAT:
+            return "VITTE_LEXER_E_INVALID_FLOAT";
+        case VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL:
+            return "VITTE_LEXER_E_INVALID_CHARACTER_LITERAL";
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR:
+            return "VITTE_LEXER_E_INVALID_NUMERIC_SEPARATOR";
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE:
+            return "VITTE_LEXER_E_INVALID_NUMERIC_BASE";
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_SUFFIX:
+            return "VITTE_LEXER_E_INVALID_NUMERIC_SUFFIX";
+        case VITTE_LEXER_ERROR_INVALID_EXPONENT:
+            return "VITTE_LEXER_E_INVALID_EXPONENT";
+        case VITTE_LEXER_ERROR_INVALID_OPERATOR:
+            return "VITTE_LEXER_E_INVALID_OPERATOR";
         case VITTE_LEXER_ERROR_INVALID_ESCAPE:
             return "VITTE_LEXER_E_INVALID_ESCAPE";
         case VITTE_LEXER_ERROR_UNTERMINATED_STRING:
@@ -1159,6 +1175,181 @@ vitte_api_lexer_diagnostic_code(vitte_lexer_error_t error)
     return "VITTE_INFRA_E_PHASE";
 }
 
+static bool
+vitte_api_lexer_append_literal_byte(
+    char *buffer,
+    size_t capacity,
+    size_t *length,
+    unsigned char byte)
+{
+    char escaped[5];
+    const char *text;
+    size_t text_length;
+
+    if (buffer == NULL || length == NULL || *length >= capacity) {
+        return false;
+    }
+
+    text = NULL;
+    switch (byte) {
+        case '\\': text = "\\\\"; break;
+        case '`': text = "\\`"; break;
+        case '\n': text = "\\n"; break;
+        case '\r': text = "\\r"; break;
+        case '\t': text = "\\t"; break;
+        case '\f': text = "\\f"; break;
+        case '\v': text = "\\v"; break;
+        case '\b': text = "\\b"; break;
+        case '\a': text = "\\a"; break;
+        default:
+            if (byte >= 0x20u && byte <= 0x7eu) {
+                escaped[0] = (char)byte;
+                escaped[1] = '\0';
+                text = escaped;
+            } else {
+                const int written = snprintf(
+                    escaped,
+                    sizeof(escaped),
+                    "\\x%02X",
+                    (unsigned)byte);
+                if (written < 0 || (size_t)written >= sizeof(escaped)) {
+                    return false;
+                }
+                text = escaped;
+            }
+            break;
+    }
+
+    text_length = strlen(text);
+    if (text_length >= capacity - *length) {
+        return false;
+    }
+    memcpy(buffer + *length, text, text_length);
+    *length += text_length;
+    buffer[*length] = '\0';
+    return true;
+}
+
+static bool
+vitte_api_format_lexer_literal_details(
+    vitte_lexer_error_t error,
+    const char *source,
+    size_t source_length,
+    const vitte_lexer_span_t *span,
+    char *details,
+    size_t capacity)
+{
+    const char *prefix;
+    const char *suffix;
+    size_t begin;
+    size_t end;
+    size_t length;
+    size_t index;
+    bool truncated;
+    int written;
+
+    if (source == NULL || span == NULL || details == NULL || capacity == 0u ||
+        !span->valid || span->begin > span->end || span->end > source_length) {
+        return false;
+    }
+
+    begin = span->begin;
+    end = span->end;
+    prefix = NULL;
+    suffix = NULL;
+    switch (error) {
+        case VITTE_LEXER_ERROR_INVALID_NUMBER:
+            prefix = "invalid numeric literal `";
+            suffix = "`";
+            break;
+        case VITTE_LEXER_ERROR_INVALID_INTEGER:
+            prefix = "malformed integer literal `";
+            suffix = "` at UTF-8 byte range [%zu, %zu)";
+            break;
+        case VITTE_LEXER_ERROR_INVALID_FLOAT:
+            prefix = "malformed floating-point literal `";
+            suffix = "` at UTF-8 byte range [%zu, %zu)";
+            break;
+        case VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL:
+            prefix = "malformed character literal `";
+            suffix = "`; expected exactly one Unicode scalar value or one supported escape sequence at UTF-8 byte range [%zu, %zu)";
+            break;
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR:
+            prefix = "invalid numeric separator in literal `";
+            suffix = "`; underscores must occur singly between digits at UTF-8 byte range [%zu, %zu)";
+            break;
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE:
+            prefix = "invalid digit or missing digits in based integer literal `";
+            suffix = "`; expected digits valid for the literal's base at UTF-8 byte range [%zu, %zu)";
+            if (end > begin + 1u) {
+                const unsigned char base_prefix = (unsigned char)source[begin + 1u];
+                if (base_prefix == (unsigned char)'b' || base_prefix == (unsigned char)'B') {
+                    prefix = "invalid digit or missing digits in base-2 integer literal `";
+                    suffix = "`; expected binary digits 0-1 at UTF-8 byte range [%zu, %zu)";
+                } else if (base_prefix == (unsigned char)'o' || base_prefix == (unsigned char)'O') {
+                    prefix = "invalid digit or missing digits in base-8 integer literal `";
+                    suffix = "`; expected octal digits 0-7 at UTF-8 byte range [%zu, %zu)";
+                } else if (base_prefix == (unsigned char)'x' || base_prefix == (unsigned char)'X') {
+                    prefix = "invalid digit or missing digits in base-16 integer literal `";
+                    suffix = "`; expected hexadecimal digits 0-9 or A-F at UTF-8 byte range [%zu, %zu)";
+                }
+            }
+            break;
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_SUFFIX:
+            prefix = "unsupported numeric suffix in literal `";
+            suffix = "`; Vitte numeric literals do not define suffixes at UTF-8 byte range [%zu, %zu)";
+            break;
+        case VITTE_LEXER_ERROR_INVALID_EXPONENT:
+            prefix = "invalid exponent in literal `";
+            suffix = "`; decimal exponents use `e` and hexadecimal exponents use `p`, followed by decimal digits at UTF-8 byte range [%zu, %zu)";
+            break;
+        case VITTE_LEXER_ERROR_NUMBER_OVERFLOW:
+            prefix = "integer literal `";
+            suffix = "` exceeds the supported unsigned 64-bit range [0, 18446744073709551615] (u64) at UTF-8 byte range [%zu, %zu)";
+            break;
+        case VITTE_LEXER_ERROR_INVALID_OPERATOR:
+            prefix = "invalid or incomplete operator/punctuation sequence `";
+            suffix = "` is not a supported Vitte operator at UTF-8 byte range [%zu, %zu)";
+            break;
+        default:
+            return false;
+    }
+
+    written = snprintf(details, capacity, "%s", prefix);
+    if (written < 0 || (size_t)written >= capacity) {
+        return false;
+    }
+    length = (size_t)written;
+    truncated = false;
+    for (index = begin; index < end; ++index) {
+        /* Keep room for a visible truncation marker and the diagnostic range. */
+        if (capacity - length < 320u ||
+            !vitte_api_lexer_append_literal_byte(
+                details,
+                capacity,
+                &length,
+                (unsigned char)source[index])) {
+            truncated = true;
+            break;
+        }
+    }
+    if (truncated && capacity - length > 4u) {
+        memcpy(details + length, "...", 4u);
+        length += 3u;
+    }
+    if (error == VITTE_LEXER_ERROR_INVALID_NUMBER) {
+        written = snprintf(details + length, capacity - length, "%s", suffix);
+    } else {
+        written = snprintf(
+            details + length,
+            capacity - length,
+            suffix,
+            begin,
+            end);
+    }
+    return written >= 0 && (size_t)written < capacity - length;
+}
+
 static const char *
 vitte_api_parser_diagnostic_code(vitte_parser_error_t error)
 {
@@ -1175,6 +1366,190 @@ vitte_api_parser_diagnostic_code(vitte_parser_error_t error)
         case VITTE_PARSER_ERROR_UNEXPECTED_TOKEN:
         case VITTE_PARSER_ERROR_EXPECTED_STATEMENT:
             return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
+        case VITTE_PARSER_ERROR_INVALID_MODULE_PATH:
+            return "VITTE_PARSER_E_INVALID_MODULE_PATH";
+        case VITTE_PARSER_ERROR_DUPLICATE_MODULE_HEADER:
+            return "VITTE_PARSER_E_DUPLICATE_MODULE_HEADER";
+        case VITTE_PARSER_ERROR_MISPLACED_MODULE_HEADER:
+            return "VITTE_PARSER_E_MISPLACED_MODULE_HEADER";
+        case VITTE_PARSER_ERROR_INVALID_USE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_USE_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_USE_ALIAS:
+            return "VITTE_PARSER_E_INVALID_USE_ALIAS";
+        case VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP:
+            return "VITTE_PARSER_E_INVALID_IMPORT_GROUP";
+        case VITTE_PARSER_ERROR_INVALID_GLOB_IMPORT:
+            return "VITTE_PARSER_E_INVALID_GLOB_IMPORT";
+        case VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_EXPORT_CLAUSE";
+        case VITTE_PARSER_ERROR_EMPTY_EXPORT_GROUP:
+            return "VITTE_PARSER_E_EMPTY_EXPORT_GROUP";
+        case VITTE_PARSER_ERROR_INVALID_EXPORT_ALIAS:
+            return "VITTE_PARSER_E_INVALID_EXPORT_ALIAS";
+        case VITTE_PARSER_ERROR_TRAILING_TOKENS:
+            return "VITTE_PARSER_E_TRAILING_TOKENS";
+        case VITTE_PARSER_ERROR_MISSING_MODULE_HEADER:
+            return "VITTE_PARSER_E_MISSING_MODULE_HEADER";
+        case VITTE_PARSER_ERROR_INVALID_VALUE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_VALUE_DECLARATION";
+        case VITTE_PARSER_ERROR_MISSING_VALUE_INITIALIZER:
+            return "VITTE_PARSER_E_MISSING_VALUE_INITIALIZER";
+        case VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_TYPE_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_OPAQUE_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_FORM_DECLARATION";
+        case VITTE_PARSER_ERROR_DUPLICATE_FORM_FIELD:
+            return "VITTE_PARSER_E_DUPLICATE_FORM_FIELD";
+        case VITTE_PARSER_ERROR_INVALID_FORM_FIELD_SEPARATOR:
+            return "VITTE_PARSER_E_INVALID_FORM_FIELD_SEPARATOR";
+        case VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_PICK_DECLARATION";
+        case VITTE_PARSER_ERROR_DUPLICATE_PICK_VARIANT:
+            return "VITTE_PARSER_E_DUPLICATE_PICK_VARIANT";
+        case VITTE_PARSER_ERROR_INVALID_PICK_VARIANT_PAYLOAD:
+            return "VITTE_PARSER_E_INVALID_PICK_VARIANT_PAYLOAD";
+        case VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_TRAIT_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_IMPL_DECLARATION";
+        case VITTE_PARSER_ERROR_MISSING_IMPL_TARGET_TYPE:
+            return "VITTE_PARSER_E_MISSING_IMPL_TARGET_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_IMPL_FOR_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_IMPL_FOR_CLAUSE";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_PARAMETERS";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_RETURN_TYPE:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_RETURN_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_MODIFIER:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_MODIFIER";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_BODY_FORM";
+        case VITTE_PARSER_ERROR_INVALID_EXTERNAL_PROCEDURE:
+            return "VITTE_PARSER_E_INVALID_EXTERNAL_PROCEDURE";
+        case VITTE_PARSER_ERROR_INVALID_INTRINSIC_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_INTRINSIC_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_ABI_STRING_LITERAL:
+            return "VITTE_PARSER_E_INVALID_ABI_STRING_LITERAL";
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_PARAMETER_LIST:
+            return "VITTE_PARSER_E_INVALID_GENERIC_PARAMETER_LIST";
+        case VITTE_PARSER_ERROR_INVALID_CONST_GENERIC_PARAMETER:
+            return "VITTE_PARSER_E_INVALID_CONST_GENERIC_PARAMETER";
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_BOUND:
+            return "VITTE_PARSER_E_INVALID_GENERIC_BOUND";
+        case VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_WHERE_CLAUSE";
+        case VITTE_PARSER_ERROR_INVALID_REQUIRES_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_REQUIRES_CLAUSE";
+        case VITTE_PARSER_ERROR_INVALID_ENSURES_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_ENSURES_CLAUSE";
+        case VITTE_PARSER_ERROR_INVALID_MACRO_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_MACRO_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_MACRO_PARAMETERS:
+            return "VITTE_PARSER_E_INVALID_MACRO_PARAMETERS";
+        case VITTE_PARSER_ERROR_INVALID_TEST_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_TEST_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_DECLARATION_MODIFIER_ORDER:
+            return "VITTE_PARSER_E_INVALID_DECLARATION_MODIFIER_ORDER";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE:
+            return "VITTE_PARSER_E_INVALID_ATTRIBUTE";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_NAME:
+            return "VITTE_PARSER_E_INVALID_ATTRIBUTE_NAME";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_ARGUMENTS:
+            return "VITTE_PARSER_E_INVALID_ATTRIBUTE_ARGUMENTS";
+        case VITTE_PARSER_ERROR_MISSING_ATTRIBUTE_VALUE:
+            return "VITTE_PARSER_E_MISSING_ATTRIBUTE_VALUE";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_LITERAL:
+            return "VITTE_PARSER_E_INVALID_ATTRIBUTE_LITERAL";
+        case VITTE_PARSER_ERROR_UNEXPECTED_DECLARATION:
+            return "VITTE_PARSER_E_UNEXPECTED_DECLARATION";
+        case VITTE_PARSER_ERROR_UNEXPECTED_STATEMENT:
+            return "VITTE_PARSER_E_UNEXPECTED_STATEMENT";
+        case VITTE_PARSER_ERROR_UNEXPECTED_EXPRESSION:
+            return "VITTE_PARSER_E_UNEXPECTED_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_TYPE:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_REFERENCE_TYPE:
+            return "VITTE_PARSER_E_INVALID_REFERENCE_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_POINTER_TYPE:
+            return "VITTE_PARSER_E_INVALID_POINTER_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_ARRAY_TYPE:
+            return "VITTE_PARSER_E_INVALID_ARRAY_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_SLICE_TYPE:
+            return "VITTE_PARSER_E_INVALID_SLICE_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_OPTIONAL_TYPE:
+            return "VITTE_PARSER_E_INVALID_OPTIONAL_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_TYPE_PATH:
+            return "VITTE_PARSER_E_INVALID_TYPE_PATH";
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS:
+            return "VITTE_PARSER_E_INVALID_GENERIC_ARGUMENTS";
+        case VITTE_PARSER_ERROR_INVALID_LET_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_LET_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_SET_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_SET_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_OPERATOR:
+            return "VITTE_PARSER_E_INVALID_ASSIGNMENT_OPERATOR";
+        case VITTE_PARSER_ERROR_INVALID_RETURN_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_RETURN_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_JUMP_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_DEFER_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_DEFER_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_ASSERT_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_ASSERT_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_UNSAFE_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_UNSAFE_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_ASM_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_ASM_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_CONTROL_FLOW_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_MATCH_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_MATCH_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_MATCH_ARM:
+            return "VITTE_PARSER_E_INVALID_MATCH_ARM";
+        case VITTE_PARSER_ERROR_INVALID_PATTERN:
+            return "VITTE_PARSER_E_INVALID_PATTERN";
+        case VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN:
+            return "VITTE_PARSER_E_INVALID_RANGE_PATTERN";
+        case VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_ASSIGNMENT_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_COALESCING_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_COALESCING_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_LOGICAL_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_LOGICAL_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_BITWISE_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_BITWISE_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_COMPARISON_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_COMPARISON_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_SHIFT_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_SHIFT_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_ARITHMETIC_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_ARITHMETIC_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_RANGE_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_RANGE_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_UNARY_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_UNARY_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_CAST_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_CAST_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_POSTFIX_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_IF_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_IF_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_BLOCK_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_BLOCK_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_ARRAY_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_ARRAY_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_SIZEOF_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_SIZEOF_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_ALIGNOF_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_ALIGNOF_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_NULL_CONSTRUCTION:
+            return "VITTE_PARSER_E_INVALID_NULL_CONSTRUCTION";
+        case VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST:
+            return "VITTE_PARSER_E_INVALID_EXPRESSION_LIST";
         case VITTE_PARSER_ERROR_NONE:
         case VITTE_PARSER_ERROR_INVALID_ARGUMENT:
         case VITTE_PARSER_ERROR_INVALID_CONTEXT:
@@ -1203,10 +1578,20 @@ vitte_api_sema_diagnostic_code(vitte_sema_diagnostic_code_t code)
     switch (code) {
         case VITTE_SEMA_DIAGNOSTIC_UNRESOLVED_NAME:
             return "VITTE_RESOLVE_E_UNKNOWN_SYMBOL";
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME:
+            return "VITTE_RESOLVE_E_AMBIGUOUS_SYMBOL";
+        case VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT:
+            return "VITTE_IMPORT_E_DUPLICATE";
         case VITTE_SEMA_DIAGNOSTIC_PRIVATE_SYMBOL:
             return "VITTE_RESOLVE_E_PRIVATE";
         case VITTE_SEMA_DIAGNOSTIC_DUPLICATE_DECLARATION:
             return "VITTE_RESOLVE_E_REDECLARATION";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_SCOPE:
+            return "VITTE_RESOLVE_E_INVALID_SCOPE";
+        case VITTE_SEMA_DIAGNOSTIC_DUPLICATE_BINDING:
+            return "VITTE_RESOLVE_E_DUPLICATE_BINDING";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT:
+            return "VITTE_RESOLVE_E_INVALID_EXPORT";
         case VITTE_SEMA_DIAGNOSTIC_SHADOWED_DECLARATION:
             return "VITTE_WARNING_SHADOWING";
         case VITTE_SEMA_DIAGNOSTIC_NOT_CALLABLE:
@@ -1215,10 +1600,27 @@ vitte_api_sema_diagnostic_code(vitte_sema_diagnostic_code_t code)
             return "VITTE_CALL_E_ARITY";
         case VITTE_SEMA_DIAGNOSTIC_INVALID_ARGUMENT_TYPE:
             return "VITTE_CALL_E_ARGUMENT_TYPE";
+        case VITTE_SEMA_DIAGNOSTIC_NO_MATCHING_PROCEDURE:
+            return "VITTE_CALL_E_NO_CANDIDATE";
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_CALL:
+            return "VITTE_CALL_E_AMBIGUOUS";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_MODIFIER:
+            return "VITTE_CALL_E_MODIFIER";
+        case VITTE_SEMA_DIAGNOSTIC_ASYNC_CONTEXT:
+            return "VITTE_ASYNC_E_AWAIT_CONTEXT";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_TASK_TYPE:
+            return "VITTE_ASYNC_E_TASK_TYPE";
+
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_PARAMETER:
+            return "VITTE_CALL_E_PARAMETER";
         case VITTE_SEMA_DIAGNOSTIC_UNKNOWN_TYPE:
             return "VITTE_TYPE_E_UNKNOWN_TYPE";
         case VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE:
             return "VITTE_TYPE_E_NOT_A_TYPE";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_CAST:
+            return "VITTE_TYPE_E_INVALID_CAST";
+        case VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE:
+            return "VITTE_TYPE_E_NOT_A_VALUE";
         case VITTE_SEMA_DIAGNOSTIC_INVALID_UNARY_OPERAND:
         case VITTE_SEMA_DIAGNOSTIC_INVALID_BINARY_OPERANDS:
             return "VITTE_TYPE_E_INVALID_OPERAND";
@@ -1230,6 +1632,34 @@ vitte_api_sema_diagnostic_code(vitte_sema_diagnostic_code_t code)
             return "VITTE_TYPE_E_INVALID_INDEX";
         case VITTE_SEMA_DIAGNOSTIC_UNKNOWN_MEMBER:
             return "VITTE_TYPE_E_NO_MEMBER";
+        case VITTE_SEMA_DIAGNOSTIC_INCOMPLETE_TYPE:
+            return "VITTE_TYPE_E_INCOMPLETE";
+        case VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE:
+            return "VITTE_TYPE_E_RECURSIVE";
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_BOUND_UNSATISFIED:
+            return "VITTE_GENERIC_E_BOUND";
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_COUNT:
+            return "VITTE_GENERIC_E_ARGUMENT_COUNT";
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_KIND:
+            return "VITTE_GENERIC_E_ARGUMENT_KIND";
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT:
+            return "VITTE_GENERIC_E_INFERENCE_CONFLICT";
+        case VITTE_SEMA_DIAGNOSTIC_TRAIT_NOT_IMPLEMENTED:
+            return "VITTE_TRAIT_E_NOT_IMPLEMENTED";
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_IMPL:
+            return "VITTE_TRAIT_E_AMBIGUOUS_IMPL";
+        case VITTE_SEMA_DIAGNOSTIC_CONFLICTING_IMPL:
+            return "VITTE_TRAIT_E_CONFLICTING_IMPL";
+        case VITTE_SEMA_DIAGNOSTIC_MISSING_TRAIT_MEMBER:
+            return "VITTE_TRAIT_E_MISSING_MEMBER";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_TRAIT_MEMBER:
+            return "VITTE_TRAIT_E_INVALID_MEMBER";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_IMPL_TARGET:
+            return "VITTE_TRAIT_E_INVALID_IMPL_TARGET";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE:
+            return "VITTE_TRAIT_E_INVALID_WHERE_PREDICATE";
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_METHOD:
+            return "VITTE_TRAIT_E_AMBIGUOUS_METHOD";
         case VITTE_SEMA_DIAGNOSTIC_CONTRACT_REQUIRES:
             return "VITTE_CONTRACT_E_REQUIRES";
         case VITTE_SEMA_DIAGNOSTIC_CONTRACT_ENSURES:
@@ -1252,6 +1682,12 @@ vitte_api_sema_diagnostic_code(vitte_sema_diagnostic_code_t code)
             return "VITTE_MEMORY_E_INVALID_ACCESS";
         case VITTE_SEMA_DIAGNOSTIC_CONTRACT_EFFECT:
             return "VITTE_CONTRACT_E_EFFECT";
+        case VITTE_SEMA_DIAGNOSTIC_CONTRACT_OLD_VALUE:
+            return "VITTE_CONTRACT_E_OLD_VALUE";
+        case VITTE_SEMA_DIAGNOSTIC_CONSTANT_NOT_CONSTANT:
+            return "VITTE_CONST_E_NOT_CONSTANT";
+        case VITTE_SEMA_DIAGNOSTIC_CONSTANT_REMAINDER_BY_ZERO:
+            return "VITTE_CONST_E_REMAINDER_BY_ZERO";
         case VITTE_SEMA_DIAGNOSTIC_MATCH_NON_EXHAUSTIVE:
             return "VITTE_PATTERN_E_NON_EXHAUSTIVE";
         case VITTE_SEMA_DIAGNOSTIC_MATCH_UNREACHABLE:
@@ -1260,8 +1696,20 @@ vitte_api_sema_diagnostic_code(vitte_sema_diagnostic_code_t code)
             return "VITTE_CONST_E_CYCLE";
         case VITTE_SEMA_DIAGNOSTIC_MATCH_TYPE:
             return "VITTE_PATTERN_E_TYPE";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_PATTERN_BINDINGS:
+            return "VITTE_PATTERN_E_BINDING";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_DEFER_CONTROL_FLOW:
+            return "VITTE_CONTROL_E_INVALID_DEFER";
+        case VITTE_SEMA_DIAGNOSTIC_OVERLAPPING_PATTERN:
+            return "VITTE_WARNING_OVERLAPPING_PATTERN";
         case VITTE_SEMA_DIAGNOSTIC_UNSAFE_REQUIRED:
             return "VITTE_UNSAFE_E_REQUIRED";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_ASM:
+            return "VITTE_UNSAFE_E_INVALID_ASM";
+        case VITTE_SEMA_DIAGNOSTIC_FFI_ABI:
+            return "VITTE_FFI_E_ABI";
+        case VITTE_SEMA_DIAGNOSTIC_FFI_TYPE:
+            return "VITTE_FFI_E_TYPE";
         case VITTE_SEMA_DIAGNOSTIC_REFERENCE_ESCAPE:
             return "VITTE_MEMORY_E_REFERENCE_ESCAPE";
         case VITTE_SEMA_DIAGNOSTIC_BORROW_CONFLICT:
@@ -1272,6 +1720,8 @@ vitte_api_sema_diagnostic_code(vitte_sema_diagnostic_code_t code)
             return "VITTE_MEMORY_E_MOVE_BORROWED";
         case VITTE_SEMA_DIAGNOSTIC_USE_AFTER_MOVE:
             return "VITTE_MEMORY_E_USE_AFTER_MOVE";
+        case VITTE_SEMA_DIAGNOSTIC_CANNOT_INFER:
+            return "VITTE_TYPE_E_CANNOT_INFER";
         case VITTE_SEMA_DIAGNOSTIC_CONDITION_NOT_BOOL:
             return "VITTE_TYPE_E_CONDITION_NOT_BOOL";
         case VITTE_SEMA_DIAGNOSTIC_RETURN_TYPE_MISMATCH:
@@ -1294,6 +1744,166 @@ vitte_api_sema_diagnostic_code(vitte_sema_diagnostic_code_t code)
     }
 
     return "VITTE_INFRA_E_FALLBACK";
+}
+
+static bool
+vitte_api_type_append(
+    char *buffer,
+    size_t capacity,
+    size_t *length,
+    const char *text)
+{
+    size_t text_length;
+    if (buffer == NULL || length == NULL || text == NULL || *length >= capacity) {
+        return false;
+    }
+    text_length = strlen(text);
+    if (text_length >= capacity - *length) {
+        return false;
+    }
+    memcpy(buffer + *length, text, text_length);
+    *length += text_length;
+    buffer[*length] = '\0';
+    return true;
+}
+
+static bool
+vitte_api_type_append_size(
+    char *buffer,
+    size_t capacity,
+    size_t *length,
+    size_t value)
+{
+    char digits[32];
+    int written = snprintf(digits, sizeof(digits), "%zu", value);
+    return written >= 0 && (size_t)written < sizeof(digits) &&
+        vitte_api_type_append(buffer, capacity, length, digits);
+}
+
+static bool
+vitte_api_format_type_inner(
+    const vitte_sema_t *sema,
+    vitte_sema_type_id_t type_id,
+    char *buffer,
+    size_t capacity,
+    size_t *length,
+    size_t depth)
+{
+    const vitte_sema_type_t *type;
+    const char *kind_name;
+    size_t index;
+
+    if (depth > 16u) {
+        return vitte_api_type_append(buffer, capacity, length, "...");
+    }
+    type = vitte_sema_get_type(sema, type_id);
+    if (type == NULL) {
+        return vitte_api_type_append(buffer, capacity, length, "unknown");
+    }
+    switch (type->kind) {
+        case VITTE_SEMA_TYPE_POINTER:
+            if (!vitte_api_type_append(buffer, capacity, length,
+                    type->is_mutable ? "*mut " : "*const ")) return false;
+            return vitte_api_format_type_inner(sema, type->element_type,
+                buffer, capacity, length, depth + 1u);
+        case VITTE_SEMA_TYPE_REFERENCE:
+            if (!vitte_api_type_append(buffer, capacity, length,
+                    type->is_mutable ? "&mut " : "&")) return false;
+            return vitte_api_format_type_inner(sema, type->element_type,
+                buffer, capacity, length, depth + 1u);
+        case VITTE_SEMA_TYPE_OPTIONAL:
+            if (!vitte_api_type_append(buffer, capacity, length, "?")) return false;
+            return vitte_api_format_type_inner(sema, type->element_type,
+                buffer, capacity, length, depth + 1u);
+        case VITTE_SEMA_TYPE_ARRAY:
+            if (!vitte_api_type_append(buffer, capacity, length, "[" ) ||
+                !vitte_api_format_type_inner(sema, type->element_type,
+                    buffer, capacity, length, depth + 1u) ||
+                !vitte_api_type_append(buffer, capacity, length, "; ") ||
+                !vitte_api_type_append_size(buffer, capacity, length,
+                    type->array_length)) return false;
+            return vitte_api_type_append(buffer, capacity, length, "]");
+        case VITTE_SEMA_TYPE_SLICE:
+            if (!vitte_api_type_append(buffer, capacity, length, "[" ) ||
+                !vitte_api_format_type_inner(sema, type->element_type,
+                    buffer, capacity, length, depth + 1u)) return false;
+            return vitte_api_type_append(buffer, capacity, length, "]");
+        case VITTE_SEMA_TYPE_RANGE:
+        case VITTE_SEMA_TYPE_TASK:
+            if (!vitte_api_type_append(buffer, capacity, length,
+                    type->kind == VITTE_SEMA_TYPE_RANGE ? "Range[" : "Task[" ) ||
+                !vitte_api_format_type_inner(sema, type->element_type,
+                    buffer, capacity, length, depth + 1u)) return false;
+            return vitte_api_type_append(buffer, capacity, length, "]");
+        case VITTE_SEMA_TYPE_FUNCTION:
+            if (!vitte_api_type_append(buffer, capacity, length, "proc(")) return false;
+            for (index = 0u; index < type->function_parameter_count; ++index) {
+                if (index != 0u && !vitte_api_type_append(buffer, capacity,
+                        length, ", ")) return false;
+                if (!vitte_api_format_type_inner(sema,
+                        type->function_parameter_types[index], buffer,
+                        capacity, length, depth + 1u)) return false;
+            }
+            if (!vitte_api_type_append(buffer, capacity, length, ") -> ")) return false;
+            return vitte_api_format_type_inner(sema, type->return_type,
+                buffer, capacity, length, depth + 1u);
+        case VITTE_SEMA_TYPE_NAMED:
+        case VITTE_SEMA_TYPE_GENERIC_PARAMETER:
+        case VITTE_SEMA_TYPE_DYN:
+            if (type->symbol_id != VITTE_SCOPE_INVALID_SYMBOL_ID) {
+                const vitte_symbol_t *symbol = vitte_scope_get_symbol(
+                    &sema->scopes, type->symbol_id);
+                if (symbol != NULL && symbol->name != NULL) {
+                    size_t name_length = symbol->name_length;
+                    if (name_length >= capacity - *length) return false;
+                    memcpy(buffer + *length, symbol->name, name_length);
+                    *length += name_length;
+                    buffer[*length] = '\0';
+                } else if (!vitte_api_type_append(buffer, capacity, length,
+                               type->kind == VITTE_SEMA_TYPE_DYN ? "dyn" : "type")) {
+                    return false;
+                }
+            } else if (!vitte_api_type_append(buffer, capacity, length,
+                           type->kind == VITTE_SEMA_TYPE_DYN ? "dyn" : "type")) {
+                return false;
+            }
+            if (type->kind == VITTE_SEMA_TYPE_DYN) return true;
+            if (type->generic_argument_count != 0u) {
+                if (!vitte_api_type_append(buffer, capacity, length, "<")) return false;
+                for (index = 0u; index < type->generic_argument_count; ++index) {
+                    if (index != 0u && !vitte_api_type_append(buffer, capacity,
+                            length, ", ")) return false;
+                    if (!vitte_api_format_type_inner(sema,
+                            type->generic_arguments[index], buffer,
+                            capacity, length, depth + 1u)) return false;
+                }
+                if (!vitte_api_type_append(buffer, capacity, length, ">")) return false;
+            }
+            return true;
+        default:
+            kind_name = vitte_sema_type_kind_name(type->kind);
+            return vitte_api_type_append(buffer, capacity, length, kind_name);
+    }
+}
+
+static const char *
+vitte_api_format_type(
+    const vitte_sema_t *sema,
+    vitte_sema_type_id_t type_id,
+    char *buffer,
+    size_t capacity)
+{
+    size_t length = 0u;
+    if (buffer == NULL || capacity == 0u || type_id == VITTE_SEMA_INVALID_TYPE_ID) {
+        return NULL;
+    }
+    buffer[0] = '\0';
+    if (!vitte_api_format_type_inner(sema, type_id, buffer, capacity,
+            &length, 0u)) {
+        buffer[0] = '\0';
+        return NULL;
+    }
+    return buffer;
 }
 
 static vitte_diagnostic_severity_t
@@ -1392,7 +2002,9 @@ vitte_api_capture_parser_diagnostics(
                 sizeof(details),
                 "expected %s, found %s",
                 vitte_token_kind_name(item->expected),
-                vitte_token_kind_name(item->found));
+                item->found == VITTE_TOKEN_EOF
+                    ? "end of file"
+                    : vitte_token_kind_name(item->found));
             if (details_length < 0 || (size_t)details_length >= sizeof(details)) {
                 details[0] = '\0';
             }
@@ -1453,6 +2065,7 @@ vitte_api_capture_sema_diagnostics(
         code = vitte_api_sema_diagnostic_code(item->code);
         origin = item->code == VITTE_SEMA_DIAGNOSTIC_UNRESOLVED_NAME ||
                  item->code == VITTE_SEMA_DIAGNOSTIC_PRIVATE_SYMBOL ||
+                 item->code == VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME ||
                  item->code == VITTE_SEMA_DIAGNOSTIC_DUPLICATE_DECLARATION ||
                  item->code == VITTE_SEMA_DIAGNOSTIC_SHADOWED_DECLARATION
             ? VITTE_DIAGNOSTIC_ORIGIN_NAME_RESOLUTION
@@ -1504,6 +2117,89 @@ vitte_api_capture_sema_diagnostics(
                 vitte_diagnostic_bag_t *bag = vitte_context_diagnostics_mut(&api->context);
                 vitte_diagnostic_t *diagnostic = bag != NULL && bag->count > count_before
                     ? &bag->storage[bag->count - 1u] : NULL;
+                if (diagnostic != NULL &&
+                    (item->code == VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME ||
+                     item->code == VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT ||
+                     item->code == VITTE_SEMA_DIAGNOSTIC_PRIVATE_SYMBOL ||
+                     item->code == VITTE_SEMA_DIAGNOSTIC_DUPLICATE_DECLARATION ||
+                     item->code == VITTE_SEMA_DIAGNOSTIC_DUPLICATE_BINDING ||
+                     item->code == VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT ||
+                     item->code == VITTE_SEMA_DIAGNOSTIC_SHADOWED_DECLARATION ||
+                     item->code == VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE ||
+                     item->code == VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE ||
+                     item->type_context == VITTE_SEMA_TYPE_CONTEXT_INFERENCE ||
+                     item->type_context == VITTE_SEMA_TYPE_CONTEXT_ARGUMENT ||
+                     item->type_context == VITTE_SEMA_TYPE_CONTEXT_ASSIGNMENT) &&
+                    (item->context_symbol_id != VITTE_SCOPE_INVALID_SYMBOL_ID ||
+                     item->symbol_id != VITTE_SCOPE_INVALID_SYMBOL_ID)) {
+                    vitte_symbol_id_t related_symbol_id =
+                        (item->type_context == VITTE_SEMA_TYPE_CONTEXT_ARGUMENT ||
+                         item->type_context == VITTE_SEMA_TYPE_CONTEXT_ASSIGNMENT ||
+                         item->type_context == VITTE_SEMA_TYPE_CONTEXT_INFERENCE) &&
+                        item->context_symbol_id != VITTE_SCOPE_INVALID_SYMBOL_ID
+                            ? item->context_symbol_id : item->symbol_id;
+                    const vitte_symbol_t *related_symbol =
+                        vitte_scope_get_symbol(&sema->scopes, item->symbol_id);
+                    if (related_symbol_id != item->symbol_id) {
+                        related_symbol = vitte_scope_get_symbol(
+                            &sema->scopes, related_symbol_id);
+                    }
+                    if (item->code == VITTE_SEMA_DIAGNOSTIC_SHADOWED_DECLARATION &&
+                        related_symbol != NULL &&
+                        related_symbol->shadowed_symbol !=
+                            VITTE_SCOPE_INVALID_SYMBOL_ID) {
+                        related_symbol = vitte_scope_get_symbol(
+                            &sema->scopes,
+                            related_symbol->shadowed_symbol);
+                    }
+                    vitte_ast_span_t related_span;
+                    if (!item->related_span.valid &&
+                        related_symbol != NULL && related_symbol->span.valid &&
+                        vitte_api_make_diagnostic_span(
+                            source_name,
+                            source,
+                            source_length,
+                            source_id,
+                            related_symbol->span.file_id,
+                            related_symbol->span.begin,
+                            related_symbol->span.end,
+                            related_symbol->span.line,
+                            related_symbol->span.column,
+                            &related_span)) {
+                        const char *label =
+                            item->type_context == VITTE_SEMA_TYPE_CONTEXT_ARGUMENT
+                                ? "parameter declared here"
+                            : item->type_context == VITTE_SEMA_TYPE_CONTEXT_ASSIGNMENT
+                                ? "assignment target is declared here"
+                            : item->type_context == VITTE_SEMA_TYPE_CONTEXT_INFERENCE
+                                ? "generic procedure declared here"
+                            : item->code == VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE
+                                ? "value declaration is here"
+                            : item->code == VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE
+                                ? "type declaration is here"
+                            : item->code == VITTE_SEMA_DIAGNOSTIC_PRIVATE_SYMBOL
+                                ? "private declaration is here"
+                                : item->code == VITTE_SEMA_DIAGNOSTIC_DUPLICATE_DECLARATION
+                                    ? "previous declaration is here"
+                                    : item->code == VITTE_SEMA_DIAGNOSTIC_DUPLICATE_BINDING
+                                        ? "previous binding is here"
+                                        : item->code == VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT
+                                            ? related_symbol->kind == VITTE_SYMBOL_KIND_SPACE
+                                                ? "imported module is bound here"
+                                                : "imported declaration originates here"
+                                        : item->code == VITTE_SEMA_DIAGNOSTIC_SHADOWED_DECLARATION
+                                            ? "earlier shadowed declaration is here"
+                                        : item->code == VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME
+                                            ? "other imported candidate is declared here"
+                                            : "earlier identical import is here";
+                        status = vitte_diagnostic_add_location(
+                            diagnostic,
+                            VITTE_DIAGNOSTIC_LOCATION_RELATED,
+                            &related_span,
+                            label);
+                        if (status != VITTE_STATUS_OK) return status;
+                    }
+                }
                 if (diagnostic != NULL && item->contract_span.valid &&
                     item->contract_span.begin <= item->contract_span.end && item->contract_span.end <= source_length) {
                     char expression[VITTE_DIAGNOSTIC_CONTRACT_EXPRESSION_CAPACITY];
@@ -1531,14 +2227,130 @@ vitte_api_capture_sema_diagnostics(
                         if (status != VITTE_STATUS_OK) return status;
                     }
                 }
+                if (diagnostic != NULL && item->related_span.valid &&
+                    item->related_span.file_id == source_id &&
+                    item->related_span.begin <= item->related_span.end &&
+                    item->related_span.end <= source_length) {
+                    vitte_ast_span_t related_span;
+                    const char *label = item->related_label[0] != '\0'
+                        ? item->related_label : "related declaration is here";
+                    if (vitte_api_make_diagnostic_span(
+                            source_name,
+                            source,
+                            source_length,
+                            source_id,
+                            item->related_span.file_id,
+                            item->related_span.begin,
+                            item->related_span.end,
+                            item->related_span.line,
+                            item->related_span.column,
+                            &related_span)) {
+                        status = vitte_diagnostic_add_location(
+                            diagnostic,
+                            VITTE_DIAGNOSTIC_LOCATION_RELATED,
+                            &related_span,
+                            label);
+                        if (status != VITTE_STATUS_OK) return status;
+                    }
+                }
                 if (diagnostic != NULL) {
                     const vitte_sema_type_t *expected_type = vitte_sema_get_type(sema, item->expected_type);
                     const vitte_sema_type_t *found_type = vitte_sema_get_type(sema, item->found_type);
-                    const char *expected = expected_type != NULL ? vitte_sema_type_kind_name(expected_type->kind) : NULL;
-                    const char *found = found_type != NULL ? vitte_sema_type_kind_name(found_type->kind) : NULL;
+                    char expected_buffer[256];
+                    char found_buffer[256];
+                    char context_buffer[256];
+                    const char *expected = expected_type != NULL
+                        ? vitte_api_format_type(sema, item->expected_type,
+                            expected_buffer, sizeof(expected_buffer)) : NULL;
+                    const char *found = found_type != NULL
+                        ? vitte_api_format_type(sema, item->found_type,
+                            found_buffer, sizeof(found_buffer)) : NULL;
+                    const vitte_symbol_t *context_symbol =
+                        item->context_symbol_id != VITTE_SCOPE_INVALID_SYMBOL_ID
+                            ? vitte_scope_get_symbol(&sema->scopes,
+                                item->context_symbol_id) : NULL;
+                    const char *context_name = context_symbol != NULL
+                        ? context_symbol->name : NULL;
+                    const char *context_text = NULL;
                     char help[VITTE_DIAGNOSTIC_MESSAGE_CAPACITY];
-                    vitte_diagnostic_set_subject(diagnostic, NULL, expected, found);
+                    context_buffer[0] = '\0';
+                    switch (item->type_context) {
+                        case VITTE_SEMA_TYPE_CONTEXT_ARGUMENT:
+                            (void)snprintf(context_buffer, sizeof(context_buffer),
+                                "argument %zu / parameter%s%.*s%s",
+                                item->context_index == SIZE_MAX
+                                    ? 0u : item->context_index + 1u,
+                                context_name != NULL ? " `" : "",
+                                context_name != NULL ? (int)(context_symbol->name_length > 128u ? 128u : context_symbol->name_length) : 0,
+                                context_name != NULL ? context_name : "",
+                                context_name != NULL ? "`" : "");
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_FIELD:
+                            context_text = "field value / declared field type";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_RETURN:
+                            context_text = "return value / declared return type";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_ASSIGNMENT:
+                            context_text = "assigned value / target type";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_CONDITION:
+                            context_text = "condition / expected bool";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_CAST:
+                            context_text = "cast expression / source and target types";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_OPERANDS:
+                            context_text = "operator operands";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_CALL:
+                            context_text = "call target / callable type";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_INDEX:
+                            context_text = "indexed value / index expression";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_MEMBER:
+                            context_text = "member access / receiver type";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_TYPE:
+                            context_text = item->code == VITTE_SEMA_DIAGNOSTIC_INCOMPLETE_TYPE ||
+                                item->code == VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE
+                                    ? "type use / originating type declaration"
+                                    : "type expression / resolved name";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_VALUE:
+                            context_text = "value expression / type name";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_INFERENCE:
+                            context_text = "type inference / unresolved expression or binding";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_BOUND:
+                            context_text = item->code == VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE
+                                ? "where predicate / generic declaration"
+                                : "concrete type / required trait bound";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_GENERIC_ARGUMENT:
+                            context_text = item->code == VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT
+                                ? "conflicting arguments / inferred generic parameter"
+                                : "generic arguments / declaration parameters";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_TRAIT_MEMBER:
+                            context_text = "trait / implementation candidate";
+                            break;
+                        case VITTE_SEMA_TYPE_CONTEXT_EXPRESSION:
+                            context_text = "expression";
+                            break;
+                        default:
+                            break;
+                    }
+                    if (context_buffer[0] != '\0') context_text = context_buffer;
+                    vitte_diagnostic_set_subject(diagnostic, context_name,
+                        expected, found);
                     vitte_diagnostic_set_expected_found(diagnostic, expected, found);
+                    if (context_text != NULL) {
+                        vitte_diagnostic_set_context(diagnostic, NULL, NULL,
+                            context_name, context_text);
+                    }
                     if (item->help[0] != '\0') {
                         status = vitte_diagnostic_add_help(diagnostic, item->help, span_pointer);
                     } else if (vitte_diagnostic_format_help(diagnostic, bag->options.sources, help, sizeof(help))) {
@@ -1857,71 +2669,104 @@ vitte_api_run_pipeline(
     lexer_initialized = true;
 
     if (!vitte_lexer_run(&lexer)) {
-        vitte_lexer_error_t error;
-        vitte_lexer_span_t lexer_span;
-        vitte_ast_span_t span;
-        const vitte_ast_span_t *span_pointer;
-        const char *code;
-        char details[256];
-        int details_length;
-        vitte_status_t diagnostic_status;
+        size_t diagnostic_count = vitte_lexer_diagnostic_count(&lexer);
+        size_t diagnostic_index;
+        if (diagnostic_count == 0u) {
+            diagnostic_count = 1u;
+        }
+        status = VITTE_STATUS_ERROR_PARSE;
+        for (diagnostic_index = 0u;
+             diagnostic_index < diagnostic_count;
+             ++diagnostic_index) {
+            vitte_lexer_diagnostic_t lexer_diagnostic;
+            vitte_lexer_error_t error;
+            vitte_lexer_span_t lexer_span;
+            vitte_ast_span_t span;
+            const vitte_ast_span_t *span_pointer;
+            const char *code;
+            char details[2048];
+            int details_length;
+            vitte_status_t diagnostic_status;
 
-        error = vitte_lexer_last_error(&lexer);
-        lexer_span = vitte_lexer_error_span(&lexer);
-        code = vitte_api_lexer_diagnostic_code(error);
-        span_pointer = NULL;
-        if (lexer_span.valid && vitte_api_make_diagnostic_span(
-                source_name,
-                source,
-                source_length,
-                source_id,
-                lexer_span.file_id,
-                lexer_span.begin,
-                lexer_span.end,
-                0u,
-                0u,
-                &span)) {
-            span_pointer = &span;
-        }
-        details_length = snprintf(
-            details,
-            sizeof(details),
-            "lexing failed: %s",
-            vitte_lexer_error_name(error));
-        if (details_length < 0 || (size_t)details_length >= sizeof(details)) {
-            details[0] = '\0';
-        }
-        diagnostic_status = vitte_api_emit_pipeline_diagnostic(
-            api,
-            VITTE_DIAGNOSTIC_ERROR,
-            VITTE_DIAGNOSTIC_ORIGIN_LEXER,
-            code,
-            vitte_api_diagnostic_title(code),
-            details[0] != '\0' ? details : NULL,
-            span_pointer);
-        if (diagnostic_status != VITTE_STATUS_OK) {
-            status = diagnostic_status;
-        } else if (error == VITTE_LEXER_ERROR_OUT_OF_MEMORY) {
-            status = vitte_api_out_of_memory(api);
-        } else if (error == VITTE_LEXER_ERROR_INVALID_ARGUMENT ||
-                   error == VITTE_LEXER_ERROR_INVALID_CONTEXT ||
-                   error == VITTE_LEXER_ERROR_INVALID_STATE ||
-                   error == VITTE_LEXER_ERROR_VALIDATION ||
-                   error == VITTE_LEXER_ERROR_INTERNAL ||
-                   error == VITTE_LEXER_ERROR_NONE ||
-                   error == VITTE_LEXER_ERROR_COUNT) {
-            status = vitte_api_fail(
+            if (vitte_lexer_diagnostic_count(&lexer) != 0u) {
+                if (!vitte_lexer_diagnostic_at(
+                        &lexer,
+                        diagnostic_index,
+                        &lexer_diagnostic)) {
+                    status = VITTE_STATUS_ERROR_INTERNAL;
+                    break;
+                }
+                error = lexer_diagnostic.error;
+                lexer_span = lexer_diagnostic.span;
+            } else {
+                error = vitte_lexer_last_error(&lexer);
+                lexer_span = vitte_lexer_error_span(&lexer);
+            }
+
+            code = vitte_api_lexer_diagnostic_code(error);
+            span_pointer = NULL;
+            if (lexer_span.valid && vitte_api_make_diagnostic_span(
+                    source_name,
+                    source,
+                    source_length,
+                    source_id,
+                    lexer_span.file_id,
+                    lexer_span.begin,
+                    lexer_span.end,
+                    0u,
+                    0u,
+                    &span)) {
+                span_pointer = &span;
+            }
+            if (!vitte_api_format_lexer_literal_details(
+                    error,
+                    source,
+                    source_length,
+                    &lexer_span,
+                    details,
+                    sizeof(details))) {
+                details_length = snprintf(
+                    details,
+                    sizeof(details),
+                    "lexing failed: %s",
+                    vitte_lexer_error_name(error));
+                if (details_length < 0 ||
+                    (size_t)details_length >= sizeof(details)) {
+                    details[0] = '\0';
+                }
+            }
+            diagnostic_status = vitte_api_emit_pipeline_diagnostic(
                 api,
-                VITTE_STATUS_ERROR_INTERNAL,
-                "VITTE_API_PIPELINE_FAILURE",
-                vitte_lexer_error_name(error));
-            (void)vitte_context_set_failure(
-                &api->context,
-                status,
-                "VITTE_API_PIPELINE_FAILURE",
-                vitte_lexer_error_name(error));
-        } else {
-            status = VITTE_STATUS_ERROR_PARSE;
+                VITTE_DIAGNOSTIC_ERROR,
+                VITTE_DIAGNOSTIC_ORIGIN_LEXER,
+                code,
+                vitte_api_diagnostic_title(code),
+                details[0] != '\0' ? details : NULL,
+                span_pointer);
+            if (diagnostic_status != VITTE_STATUS_OK) {
+                status = diagnostic_status;
+                break;
+            }
+            if (error == VITTE_LEXER_ERROR_OUT_OF_MEMORY) {
+                status = vitte_api_out_of_memory(api);
+            } else if (error == VITTE_LEXER_ERROR_INVALID_ARGUMENT ||
+                       error == VITTE_LEXER_ERROR_INVALID_CONTEXT ||
+                       error == VITTE_LEXER_ERROR_INVALID_STATE ||
+                       error == VITTE_LEXER_ERROR_VALIDATION ||
+                       error == VITTE_LEXER_ERROR_INTERNAL ||
+                       error == VITTE_LEXER_ERROR_NONE ||
+                       error == VITTE_LEXER_ERROR_COUNT) {
+                status = vitte_api_fail(
+                    api,
+                    VITTE_STATUS_ERROR_INTERNAL,
+                    "VITTE_API_PIPELINE_FAILURE",
+                    vitte_lexer_error_name(error));
+                (void)vitte_context_set_failure(
+                    &api->context,
+                    status,
+                    "VITTE_API_PIPELINE_FAILURE",
+                    vitte_lexer_error_name(error));
+            }
         }
         goto cleanup;
     }

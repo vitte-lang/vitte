@@ -14,14 +14,18 @@ const LEXER_DEFAULT_MAX_TOKENS: usize = 16777216;
 const LEXER_DEFAULT_MAX_SOURCE_BYTES: usize = 1073741824;
 const LEXER_DEFAULT_MAX_COMMENT_DEPTH: usize = 4096;
 const LEXER_DEFAULT_INITIAL_CAPACITY: usize = 128;
+const LEXER_DEFAULT_MAX_DIAGNOSTICS: usize = 256;
 const LEXER_OPERATORS: [string] = ["<<=", ">>=", "..=", "::", "->", "=>", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>", "&&", "||", "??", "..", "(", ")", "{", "}", "[", "]", ",", ";", ":", ".", "!", "+", "-", "*", "/", "%", "&", "|", "^", "~", "=", "<", ">", "?", "#", "@", "$" ];
+const LEXER_INVALID_OPERATORS: [string] = ["!==", "===", "&&=", "||=", "<<==", ">>==", "..==", "...", ":::", "<<<", ">>>", "<=>", "=<", ":=", "?=", ".="];
 
 export pick LexerError {
     None, InvalidArgument, InvalidContext, InvalidState, InvalidUtf8,
     InvalidToken, InvalidNumber, InvalidEscape, InvalidCharacter,
     UnterminatedString, UnterminatedComment, CommentDepth, TokenLimit,
     SourceTooLarge, Overflow, OutOfMemory, Validation, Internal,
-    InvalidIdentifier, NumberOverflow, Count
+    InvalidIdentifier, NumberOverflow, InvalidInteger, InvalidFloat,
+    InvalidCharacterLiteral, InvalidNumericSeparator, InvalidNumericBase,
+    InvalidNumericSuffix, InvalidExponent, InvalidOperator, Count
 }
 
 export pick LexerState { Invalid, Ready, Lexing, Done, Failed, Destroyed, Count }
@@ -56,6 +60,8 @@ export form Token {
     length: usize
 }
 
+export form LexerDiagnostic { error: LexerError, span: LexerSpan }
+
 export form LexerStats {
     runs: u64, failed_runs: u64, source_bytes: u64, tokens_emitted: u64,
     identifiers: u64, keywords: u64, integer_literals: u64, float_literals: u64,
@@ -78,6 +84,8 @@ export form Lexer {
     tokens: [Token],
     token_count: usize,
     token_capacity: usize,
+    diagnostics: [LexerDiagnostic],
+    diagnostic_count: usize,
     error_span: LexerSpan,
     max_tokens: usize,
     max_source_bytes: usize,
@@ -96,6 +104,7 @@ proc lexer_context_valid(lexer: ?&Lexer) -> bool {
     if lexer.state == LexerState.Invalid  or  lexer.state == LexerState.Destroyed  or  lexer.state == LexerState.Count { return false; }
     if lexer.source_length > lexer.source.length  or  lexer.offset > lexer.source_length { return false; }
     if lexer.token_count > lexer.token_capacity  or  lexer.token_count > lexer.tokens.length { return false; }
+    if lexer.diagnostic_count > lexer.diagnostics.length  or  lexer.diagnostic_count > LEXER_DEFAULT_MAX_DIAGNOSTICS { return false; }
     return true;
 }
 
@@ -103,12 +112,44 @@ proc lexer_fail(lexer: ?&mut Lexer, error: LexerError, begin: usize, end: usize)
     if lexer != null {
         let context = lexer?;
         if (*context).magic == LEXER_MAGIC {
-            set (*context).last_error = error;
-            set (*context).error_span = LexerSpan { file_id: (*context).file_id, begin: begin, end: end, valid: begin <= end };
+            let span: LexerSpan = LexerSpan { file_id: (*context).file_id, begin: begin, end: end, valid: begin <= end };
+            if (*context).diagnostic_count == 0 {
+                set (*context).last_error = error;
+                set (*context).error_span = span;
+            }
+            if (*context).diagnostic_count < LEXER_DEFAULT_MAX_DIAGNOSTICS {
+                if (*context).diagnostics.push(LexerDiagnostic { error: error, span: span }) {
+                    set (*context).diagnostic_count += 1;
+                } else {
+                    if (*context).diagnostic_count == 0 {
+                        set (*context).last_error = LexerError.OutOfMemory;
+                        set (*context).error_span = span;
+                    }
+                    set (*context).stats.allocation_failures = lexer_sat_add((*context).stats.allocation_failures, 1);
+                }
+            }
             set (*context).stats.errors = lexer_sat_add((*context).stats.errors, 1);
         }
     }
     return false;
+}
+
+proc lexer_advance_to(lexer: &mut Lexer, end: usize) {
+    while lexer.offset < end and not lexer_eof(lexer) { lexer_advance_byte(lexer); }
+}
+
+proc lexer_skip_quoted_remainder(lexer: &mut Lexer, quote: u8) {
+    while not lexer_eof(lexer) {
+        let byte: u8 = lexer_peek(lexer, 0);
+        if byte == 10 or byte == 13 { return; }
+        if byte == 92 {
+            lexer_advance_byte(lexer);
+            if not lexer_eof(lexer) { lexer_advance_byte(lexer); }
+        } else {
+            lexer_advance_byte(lexer);
+            if byte == quote { return; }
+        }
+    }
 }
 
 proc lexer_is_mutable(lexer: ?&mut Lexer) -> bool {
@@ -186,6 +227,22 @@ proc lexer_utf8_at(lexer: &Lexer, offset: usize, codepoint: &mut u64, width: &mu
     return true;
 }
 
+proc lexer_utf8_error_width(lexer: &Lexer, offset: usize) -> usize {
+    if offset >= lexer.source_length { return 0; }
+    let first: u8 = lexer.source[offset] as u8;
+    let mut expected: usize = 1 as usize;
+    if first >= 194 and first <= 223 { set expected = 2 as usize; }
+    elif first >= 224 and first <= 239 { set expected = 3 as usize; }
+    elif first >= 240 and first <= 244 { set expected = 4 as usize; }
+    let mut width: usize = 1;
+    while width < expected and width < lexer.source_length - offset {
+        let byte: u8 = lexer.source[offset + width] as u8;
+        if (byte & 192) != 128 { break; }
+        set width += 1;
+    }
+    return width;
+}
+
 proc lexer_reserve_tokens(lexer: &mut Lexer, required: usize) -> bool {
     if required > lexer.max_tokens { return lexer_fail(lexer, LexerError.TokenLimit, lexer.offset, lexer.offset); }
     if required <= lexer.token_capacity { return true; }
@@ -247,11 +304,14 @@ proc lexer_release_token_lexemes(lexer: &mut Lexer) {
 proc lexer_release_owned_storage(lexer: &mut Lexer) {
     deallocate(lexer.source.as_ptr() as *mut u8);
     deallocate(lexer.tokens.as_ptr() as *mut u8);
+    deallocate(lexer.diagnostics.as_ptr() as *mut u8);
     set lexer.source = "";
     set lexer.source_length = 0;
     set lexer.tokens = [];
     set lexer.token_count = 0;
     set lexer.token_capacity = 0;
+    set lexer.diagnostics = [];
+    set lexer.diagnostic_count = 0;
 }
 
 proc lexer_emit(lexer: &mut Lexer, kind: TokenKind, begin: usize, end: usize, line: usize, column: usize) -> bool {
@@ -365,10 +425,16 @@ proc lexer_skip_line_comment(lexer: &mut Lexer) -> bool {
 proc lexer_skip_block_comment(lexer: &mut Lexer) -> bool {
     let begin: usize = lexer.offset;
     let mut depth: usize = 1;
+    let mut depth_reported: bool = false;
     lexer_advance_n(lexer, 2);
     while not lexer_eof(lexer) {
         if lexer_peek(lexer, 0) == 47 and lexer_peek(lexer, 1) == 42 {
-            if depth >= lexer.max_comment_depth { return lexer_fail(lexer, LexerError.CommentDepth, begin, lexer.offset + 2); }
+            if depth >= lexer.max_comment_depth and not depth_reported {
+                let diagnostic_count: usize = lexer.diagnostic_count;
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.CommentDepth, lexer.offset, lexer.offset + 2);
+                if lexer.diagnostic_count == diagnostic_count { return false; }
+                set depth_reported = true;
+            }
             set depth += 1;
             lexer_advance_n(lexer, 2);
         } else if lexer_peek(lexer, 0) == 42 and lexer_peek(lexer, 1) == 47 {
@@ -408,7 +474,10 @@ proc lexer_scan_identifier(lexer: &mut Lexer) -> bool {
     } else {
         let mut codepoint: u64 = 0;
         let mut width: usize = 0;
-        if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) { return lexer_fail(lexer, LexerError.InvalidUtf8, lexer.offset, lexer.offset + 1); }
+        if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) {
+            let error_width = lexer_utf8_error_width(lexer, lexer.offset);
+            return lexer_fail(lexer, LexerError.InvalidUtf8, lexer.offset, lexer.offset + error_width);
+        }
         if not vitte_unicode_is_identifier_start(codepoint) { return false; }
         lexer_advance_n(lexer, width);
     }
@@ -420,7 +489,15 @@ proc lexer_scan_identifier(lexer: &mut Lexer) -> bool {
         } else {
             let mut codepoint: u64 = 0;
             let mut width: usize = 0;
-            if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) { return lexer_fail(lexer, LexerError.InvalidUtf8, lexer.offset, lexer.offset + 1); }
+            if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) {
+                let error_width = lexer_utf8_error_width(lexer, lexer.offset);
+                let invalid_end: usize = lexer.offset + error_width;
+                let diagnostic_count: usize = lexer.diagnostic_count;
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidUtf8, lexer.offset, invalid_end);
+                if lexer.diagnostic_count == diagnostic_count { return false; }
+                lexer_advance_to(lexer, invalid_end);
+                return true;
+            }
             if not vitte_unicode_is_identifier_continue(codepoint) { break; }
             lexer_advance_n(lexer, width);
         }
@@ -454,6 +531,47 @@ proc lexer_scan_digit_sequence(lexer: &mut Lexer, base: usize, saw_digit: &mut b
     if previous_underscore { return false; }
     set *saw_digit = digit;
     return true;
+}
+
+proc lexer_number_error_end(lexer: &Lexer) -> usize {
+    let mut end: usize = lexer.offset;
+    while end < lexer.source_length {
+        let byte: u8 = lexer.source[end] as u8;
+        if lexer_decimal_digit(byte) or
+           (byte >= 65 and byte <= 90) or (byte >= 97 and byte <= 122) or
+           byte == 95 or byte >= 128 {
+            set end += 1;
+        } else { break; }
+    }
+    return end;
+}
+
+proc lexer_number_separator_error(lexer: &Lexer) -> bool {
+    if lexer.offset > 0 and (lexer.source[lexer.offset - 1] as u8) == 95 {
+        return true;
+    }
+    return not lexer_eof(lexer) and lexer_peek(lexer, 0) == 95;
+}
+
+proc lexer_number_fail(lexer: &mut Lexer, error: LexerError, begin: usize) -> bool {
+    let end = lexer_number_error_end(lexer);
+    let diagnostic_count: usize = lexer.diagnostic_count;
+    let _ = lexer_fail(lexer as ?&mut Lexer, error, begin, end);
+    if lexer.diagnostic_count == diagnostic_count { return false; }
+    lexer_advance_to(lexer, end);
+    return true;
+}
+
+proc lexer_character_error_end(lexer: &Lexer, begin: usize) -> usize {
+    if begin >= lexer.source_length { return begin; }
+    let mut end: usize = begin + 1;
+    while end < lexer.source_length {
+        let byte: u8 = lexer.source[end] as u8;
+        if byte == 10 or byte == 13 { break; }
+        set end += 1;
+        if byte == 39 { break; }
+    }
+    return end;
 }
 
 proc lexer_integer_fits_u64(
@@ -509,44 +627,58 @@ proc lexer_scan_number(lexer: &mut Lexer) -> bool {
     if lexer_peek(lexer, 0) == 48  and  (lexer_peek(lexer, 1) == 120  or  lexer_peek(lexer, 1) == 88) {
         set base = 16;
         lexer_advance_n(lexer, 2);
-        if not lexer_scan_digit_sequence(lexer, 16, &mut digits)  or  not digits { return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset); }
+        if not lexer_scan_digit_sequence(lexer, 16, &mut digits)  or  not digits {
+            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidNumericBase }, begin);
+        }
         if lexer_peek(lexer, 0) == 46  and  lexer_peek(lexer, 1) != 46 {
             set is_float = true; lexer_advance_byte(lexer);
-            if not lexer_scan_digit_sequence(lexer, 16, &mut digits) { return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset); }
+            if not lexer_scan_digit_sequence(lexer, 16, &mut digits) { return lexer_number_fail(lexer, LexerError.InvalidNumericSeparator, begin); }
         }
         if lexer_peek(lexer, 0) == 112  or  lexer_peek(lexer, 0) == 80 {
             set is_float = true; lexer_advance_byte(lexer);
             if lexer_peek(lexer, 0) == 43  or  lexer_peek(lexer, 0) == 45 { lexer_advance_byte(lexer); }
-            if not lexer_scan_digit_sequence(lexer, 10, &mut digits)  or  not digits { return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset); }
-        } else if is_float { return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset); }
+            if not lexer_scan_digit_sequence(lexer, 10, &mut digits)  or  not digits {
+                return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidExponent }, begin);
+            }
+        } else if is_float { return lexer_number_fail(lexer, LexerError.InvalidExponent, begin); }
     } else if lexer_peek(lexer, 0) == 48  and  (lexer_peek(lexer, 1) == 98  or  lexer_peek(lexer, 1) == 66) {
         set base = 2; lexer_advance_n(lexer, 2);
-        if not lexer_scan_digit_sequence(lexer, 2, &mut digits)  or  not digits { return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset); }
+        if not lexer_scan_digit_sequence(lexer, 2, &mut digits)  or  not digits {
+            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidNumericBase }, begin);
+        }
     } else if lexer_peek(lexer, 0) == 48  and  (lexer_peek(lexer, 1) == 111  or  lexer_peek(lexer, 1) == 79) {
         set base = 8; lexer_advance_n(lexer, 2);
-        if not lexer_scan_digit_sequence(lexer, 8, &mut digits)  or  not digits { return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset); }
+        if not lexer_scan_digit_sequence(lexer, 8, &mut digits)  or  not digits {
+            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidNumericBase }, begin);
+        }
     } else {
-        if not lexer_scan_digit_sequence(lexer, 10, &mut digits) { return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset); }
+        if not lexer_scan_digit_sequence(lexer, 10, &mut digits) {
+            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidInteger }, begin);
+        }
     }
     if base == 10 {
         if lexer_peek(lexer, 0) == 46  and  lexer_peek(lexer, 1) != 46 {
             set is_float = true; lexer_advance_byte(lexer);
-            if not lexer_scan_digit_sequence(lexer, 10, &mut digits) { return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset); }
+            if not lexer_scan_digit_sequence(lexer, 10, &mut digits) {
+                return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidFloat }, begin);
+            }
         }
         if lexer_peek(lexer, 0) == 101  or  lexer_peek(lexer, 0) == 69 {
             set is_float = true; lexer_advance_byte(lexer);
             if lexer_peek(lexer, 0) == 43  or  lexer_peek(lexer, 0) == 45 { lexer_advance_byte(lexer); }
-            if not lexer_scan_digit_sequence(lexer, 10, &mut digits)  or  not digits { return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset); }
+            if not lexer_scan_digit_sequence(lexer, 10, &mut digits)  or  not digits {
+                return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidExponent }, begin);
+            }
         }
     }
     if not lexer_eof(lexer) {
         let next: u8 = lexer_peek(lexer, 0);
         if lexer_identifier_start_ascii(next)  or  next >= 128  or  (base != 10  and  lexer_decimal_digit(next)) {
-            return lexer_fail(lexer, LexerError.InvalidNumber, begin, lexer.offset + 1);
+            return lexer_number_fail(lexer, if base != 10 and lexer_decimal_digit(next) { LexerError.InvalidNumericBase } else { LexerError.InvalidNumericSuffix }, begin);
         }
     }
     if not is_float and not lexer_integer_fits_u64(lexer, begin, lexer.offset, base) {
-        return lexer_fail(lexer, LexerError.NumberOverflow, begin, lexer.offset);
+        return lexer_number_fail(lexer, LexerError.NumberOverflow, begin);
     }
     let kind: TokenKind = if is_float { TokenKind.FloatLiteral } else { TokenKind.IntegerLiteral };
     if not lexer_emit(lexer, kind, begin, lexer.offset, line, column) { return false; }
@@ -581,49 +713,109 @@ proc lexer_scan_escape(lexer: &mut Lexer) -> bool {
 
 proc lexer_scan_string(lexer: &mut Lexer) -> bool {
     let begin: usize = lexer.offset; let line: usize = lexer.line; let column: usize = lexer.column;
+    let mut malformed: bool = false;
     lexer_advance_byte(lexer);
     while not lexer_eof(lexer) {
         let byte: u8 = lexer_peek(lexer, 0);
         if byte == 34 {
             lexer_advance_byte(lexer);
+            if malformed { return true; }
             if not lexer_emit(lexer, TokenKind.StringLiteral, begin, lexer.offset, line, column) { return false; }
             set lexer.stats.string_literals = lexer_sat_add(lexer.stats.string_literals, 1);
             return true;
         }
-        if byte == 10  or  byte == 13 { return lexer_fail(lexer, LexerError.UnterminatedString, begin, lexer.offset); }
+        if byte == 10  or  byte == 13 {
+            if not malformed {
+                let diagnostic_count: usize = lexer.diagnostic_count;
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.UnterminatedString, begin, lexer.offset);
+                if lexer.diagnostic_count == diagnostic_count { return false; }
+            }
+            return true;
+        }
         if byte == 92 {
             let escape_begin: usize = lexer.offset;
             if not lexer_scan_escape(lexer) {
-                let escape_end = if lexer_eof(lexer) { lexer.offset } else { lexer.offset + 1 };
-                return lexer_fail(lexer, LexerError.InvalidEscape, escape_begin, escape_end);
+                let next_byte = lexer_peek(lexer, 0);
+                let escape_end: usize = if lexer_eof(lexer) or next_byte == 34 or
+                    next_byte == 39 or next_byte == 10 or next_byte == 13 {
+                    lexer.offset
+                } else { lexer.offset + 1 };
+                let diagnostic_count: usize = lexer.diagnostic_count;
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidEscape, escape_begin, escape_end);
+                if lexer.diagnostic_count == diagnostic_count { return false; }
+                set malformed = true;
+                lexer_advance_to(lexer, escape_end);
             }
         } else if byte >= 128 {
             let mut codepoint: u64 = 0; let mut width: usize = 0;
-            if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) { return lexer_fail(lexer, LexerError.InvalidUtf8, lexer.offset, lexer.offset + 1); }
+            if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) {
+                let error_width = lexer_utf8_error_width(lexer, lexer.offset);
+                let invalid_end: usize = lexer.offset + error_width;
+                let diagnostic_count: usize = lexer.diagnostic_count;
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidUtf8, lexer.offset, invalid_end);
+                if lexer.diagnostic_count == diagnostic_count { return false; }
+                set malformed = true;
+                lexer_advance_to(lexer, invalid_end);
+                continue;
+            }
             lexer_advance_n(lexer, width);
         } else { lexer_advance_byte(lexer); }
     }
-    return lexer_fail(lexer, LexerError.UnterminatedString, begin, lexer.offset);
+    if not malformed {
+        let diagnostic_count: usize = lexer.diagnostic_count;
+        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.UnterminatedString, begin, lexer.offset);
+        if lexer.diagnostic_count == diagnostic_count { return false; }
+    }
+    return true;
 }
 
 proc lexer_scan_character(lexer: &mut Lexer) -> bool {
     let begin: usize = lexer.offset; let line: usize = lexer.line; let column: usize = lexer.column;
     lexer_advance_byte(lexer);
     if lexer_eof(lexer)  or  lexer_peek(lexer, 0) == 10  or  lexer_peek(lexer, 0) == 13  or  lexer_peek(lexer, 0) == 39 {
-        return lexer_fail(lexer, LexerError.InvalidCharacter, begin, lexer.offset);
+        let end: usize = lexer_character_error_end(lexer, begin);
+        let diagnostic_count: usize = lexer.diagnostic_count;
+        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidCharacterLiteral, begin, end);
+        if lexer.diagnostic_count == diagnostic_count { return false; }
+        lexer_advance_to(lexer, end);
+        return true;
     }
     if lexer_peek(lexer, 0) == 92 {
         let escape_begin: usize = lexer.offset;
         if not lexer_scan_escape(lexer) {
-            let escape_end = if lexer_eof(lexer) { lexer.offset } else { lexer.offset + 1 };
-            return lexer_fail(lexer, LexerError.InvalidEscape, escape_begin, escape_end);
+            let next_byte = lexer_peek(lexer, 0);
+            let escape_end: usize = if lexer_eof(lexer) or next_byte == 34 or
+                next_byte == 39 or next_byte == 10 or next_byte == 13 {
+                lexer.offset
+            } else { lexer.offset + 1 };
+            let diagnostic_count: usize = lexer.diagnostic_count;
+            let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidEscape, escape_begin, escape_end);
+            if lexer.diagnostic_count == diagnostic_count { return false; }
+            lexer_skip_quoted_remainder(lexer, 39);
+            return true;
         }
     } else if lexer_peek(lexer, 0) >= 128 {
         let mut codepoint: u64 = 0; let mut width: usize = 0;
-        if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) { return lexer_fail(lexer, LexerError.InvalidUtf8, lexer.offset, lexer.offset + 1); }
+        if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) {
+            let error_width = lexer_utf8_error_width(lexer, lexer.offset);
+            let invalid_end: usize = lexer.offset + error_width;
+            let diagnostic_count: usize = lexer.diagnostic_count;
+            let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidUtf8, lexer.offset, invalid_end);
+            if lexer.diagnostic_count == diagnostic_count { return false; }
+            lexer_advance_to(lexer, invalid_end);
+            lexer_skip_quoted_remainder(lexer, 39);
+            return true;
+        }
         lexer_advance_n(lexer, width);
     } else { lexer_advance_byte(lexer); }
-    if lexer_eof(lexer)  or  lexer_peek(lexer, 0) != 39 { return lexer_fail(lexer, LexerError.InvalidCharacter, begin, lexer.offset); }
+    if lexer_eof(lexer)  or  lexer_peek(lexer, 0) != 39 {
+        let end: usize = lexer_character_error_end(lexer, begin);
+        let diagnostic_count: usize = lexer.diagnostic_count;
+        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidCharacterLiteral, begin, end);
+        if lexer.diagnostic_count == diagnostic_count { return false; }
+        lexer_advance_to(lexer, end);
+        return true;
+    }
     lexer_advance_byte(lexer);
     if not lexer_emit(lexer, TokenKind.CharacterLiteral, begin, lexer.offset, line, column) { return false; }
     set lexer.stats.character_literals = lexer_sat_add(lexer.stats.character_literals, 1);
@@ -687,7 +879,26 @@ proc lexer_operator_kind(text: string) -> TokenKind {
 
 proc lexer_scan_operator(lexer: &mut Lexer) -> bool {
     let begin: usize = lexer.offset; let line: usize = lexer.line; let column: usize = lexer.column;
+    if lexer_peek(lexer, 0) == 63 and lexer_peek(lexer, 1) == 63 and lexer_peek(lexer, 2) == 61 {
+        let diagnostic_count: usize = lexer.diagnostic_count;
+        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidOperator, begin, begin + 3);
+        if lexer.diagnostic_count == diagnostic_count { return false; }
+        lexer_advance_n(lexer, 3);
+        return true;
+    }
     let mut index: usize = 0;
+    while index < LEXER_INVALID_OPERATORS.length {
+        let invalid: string = LEXER_INVALID_OPERATORS[index];
+        if lexer_starts_with(lexer, invalid) {
+            let diagnostic_count: usize = lexer.diagnostic_count;
+            let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidOperator, begin, begin + invalid.length);
+            if lexer.diagnostic_count == diagnostic_count { return false; }
+            lexer_advance_n(lexer, invalid.length);
+            return true;
+        }
+        set index += 1;
+    }
+    set index = 0;
     while index < LEXER_OPERATORS.length {
         if lexer_starts_with(lexer, LEXER_OPERATORS[index]) {
             let kind: TokenKind = lexer_operator_kind(LEXER_OPERATORS[index]);
@@ -708,8 +919,23 @@ proc lexer_scan_one(lexer: &mut Lexer) -> bool {
     if lexer_identifier_start_ascii(byte)  or  byte >= 128 {
         if byte >= 128 {
             let mut codepoint: u64 = 0; let mut width: usize = 0;
-            if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) { return lexer_fail(lexer, LexerError.InvalidUtf8, lexer.offset, lexer.offset + 1); }
-            if not vitte_unicode_is_identifier_start(codepoint) { return lexer_fail(lexer, LexerError.InvalidIdentifier, lexer.offset, lexer.offset + width); }
+            if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) {
+                let error_width = lexer_utf8_error_width(lexer, lexer.offset);
+                let invalid_end: usize = lexer.offset + error_width;
+                let diagnostic_count: usize = lexer.diagnostic_count;
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidUtf8, lexer.offset, invalid_end);
+                if lexer.diagnostic_count == diagnostic_count { return false; }
+                lexer_advance_to(lexer, invalid_end);
+                return true;
+            }
+            if not vitte_unicode_is_identifier_start(codepoint) {
+                let invalid_end: usize = lexer.offset + width;
+                let diagnostic_count: usize = lexer.diagnostic_count;
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidIdentifier, lexer.offset, invalid_end);
+                if lexer.diagnostic_count == diagnostic_count { return false; }
+                lexer_advance_to(lexer, invalid_end);
+                return true;
+            }
         }
         return lexer_scan_identifier(lexer);
     }
@@ -717,7 +943,12 @@ proc lexer_scan_one(lexer: &mut Lexer) -> bool {
     if byte == 34 { return lexer_scan_string(lexer); }
     if byte == 39 { return lexer_scan_character(lexer); }
     if lexer_scan_operator(lexer) { return true; }
-    return lexer_fail(lexer, LexerError.InvalidToken, lexer.offset, lexer.offset + 1);
+    let begin: usize = lexer.offset;
+    let diagnostic_count: usize = lexer.diagnostic_count;
+    let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidToken, begin, begin + 1);
+    if lexer.diagnostic_count == diagnostic_count { return false; }
+    lexer_advance_to(lexer, begin + 1);
+    return true;
 }
 
 export proc vitte_token_kind_name(kind: TokenKind) -> string {
@@ -753,7 +984,15 @@ export proc vitte_lexer_error_name(error: LexerError) -> string {
         case LexerError.InvalidCharacter => return "invalid_character"; case LexerError.UnterminatedString => return "unterminated_string"; case LexerError.UnterminatedComment => return "unterminated_comment";
         case LexerError.CommentDepth => return "comment_depth"; case LexerError.TokenLimit => return "token_limit"; case LexerError.SourceTooLarge => return "source_too_large"; case LexerError.Overflow => return "overflow";
         case LexerError.OutOfMemory => return "out_of_memory"; case LexerError.Validation => return "validation"; case LexerError.Internal => return "internal";
-        case LexerError.InvalidIdentifier => return "invalid_identifier"; case LexerError.NumberOverflow => return "number_overflow"; case LexerError.Count => return "count";
+        case LexerError.InvalidIdentifier => return "invalid_identifier"; case LexerError.NumberOverflow => return "number_overflow";
+        case LexerError.InvalidInteger => return "invalid_integer"; case LexerError.InvalidFloat => return "invalid_float";
+        case LexerError.InvalidCharacterLiteral => return "invalid_character_literal";
+        case LexerError.InvalidNumericSeparator => return "invalid_numeric_separator";
+        case LexerError.InvalidNumericBase => return "invalid_numeric_base";
+        case LexerError.InvalidNumericSuffix => return "invalid_numeric_suffix";
+        case LexerError.InvalidExponent => return "invalid_exponent";
+        case LexerError.InvalidOperator => return "invalid_operator";
+        case LexerError.Count => return "count";
     }
 }
 
@@ -772,6 +1011,7 @@ export proc vitte_lexer_init(lexer: &mut Lexer, source: ?str, source_length: usi
         magic: LEXER_MAGIC, state: LexerState.Ready, last_error: LexerError.None,
         source: input.slice(0, source_length), source_length: source_length, file_id: file_id,
         offset: vitte_unicode_skip_utf8_bom(input, source_length), line: 1, column: 1, tokens: [], token_count: 0, token_capacity: 0,
+        diagnostics: [], diagnostic_count: 0,
         error_span: LexerSpan { file_id: file_id, begin: 0, end: 0, valid: false },
         max_tokens: LEXER_DEFAULT_MAX_TOKENS, max_source_bytes: LEXER_DEFAULT_MAX_SOURCE_BYTES,
         max_comment_depth: LEXER_DEFAULT_MAX_COMMENT_DEPTH, stats: LexerStats {}, generation: 1
@@ -790,6 +1030,7 @@ export proc vitte_lexer_destroy(lexer: &mut Lexer) {
     }
     set lexer.offset = 0; set lexer.line = 0; set lexer.column = 0;
     set lexer.error_span = LexerSpan { file_id: 0, begin: 0, end: 0, valid: false };
+    set lexer.diagnostics = []; set lexer.diagnostic_count = 0;
     set lexer.magic = LEXER_DEAD_MAGIC; set lexer.state = LexerState.Destroyed; set lexer.last_error = LexerError.None;
     set lexer.file_id = 0; set lexer.max_tokens = 0; set lexer.max_source_bytes = 0; set lexer.max_comment_depth = 0;
     set lexer.generation = 0; set lexer.stats = LexerStats {};
@@ -806,6 +1047,7 @@ export proc vitte_lexer_reset(lexer: &mut Lexer, source: ?str, source_length: us
     set lexer.source = input.slice(0, source_length); set lexer.source_length = source_length; set lexer.file_id = file_id;
     set lexer.offset = vitte_unicode_skip_utf8_bom(lexer.source, source_length); set lexer.line = 1; set lexer.column = 1;
     set lexer.error_span = LexerSpan { file_id: file_id, begin: 0, end: 0, valid: false };
+    set lexer.diagnostics = []; set lexer.diagnostic_count = 0;
     set lexer.max_tokens = max_tokens; set lexer.max_source_bytes = max_bytes; set lexer.max_comment_depth = max_depth;
     set lexer.stats = LexerStats {}; set lexer.last_error = LexerError.None; set lexer.state = LexerState.Ready; set lexer.generation = generation;
     if source_length > max_bytes { set lexer.state = LexerState.Failed; set lexer.last_error = LexerError.SourceTooLarge; return false; }
@@ -826,6 +1068,12 @@ export proc vitte_lexer_run(lexer: &mut Lexer) -> bool {
             set lexer.state = LexerState.Failed; lexer_fail(lexer, LexerError.Internal, before, lexer.offset);
             set lexer.stats.failed_runs = lexer_sat_add(lexer.stats.failed_runs, 1); return false;
         }
+    }
+    if lexer.diagnostic_count != 0 {
+        set lexer.state = LexerState.Failed;
+        set lexer.stats.failed_runs = lexer_sat_add(lexer.stats.failed_runs, 1);
+        set lexer.stats.source_bytes = lexer_sat_add(lexer.stats.source_bytes, lexer.source_length as u64);
+        return false;
     }
     set lexer.state = LexerState.Done; set lexer.last_error = LexerError.None;
     set lexer.stats.source_bytes = lexer_sat_add(lexer.stats.source_bytes, lexer.source_length as u64);
@@ -988,6 +1236,16 @@ export proc vitte_lexer_last_error(lexer: ?&Lexer) -> LexerError {
 export proc vitte_lexer_error_span(lexer: ?&Lexer) -> LexerSpan {
     if lexer == null  or  lexer.magic != LEXER_MAGIC { return vitte_lexer_span_invalid(); }
     return lexer.error_span;
+}
+
+export proc vitte_lexer_diagnostic_count(lexer: ?&Lexer) -> usize {
+    if not lexer_context_valid(lexer) { return 0; }
+    return lexer.diagnostic_count;
+}
+
+export proc vitte_lexer_diagnostic_at(lexer: ?&Lexer, index: usize) -> ?&LexerDiagnostic {
+    if not lexer_context_valid(lexer) or index >= lexer.diagnostic_count { return null; }
+    return &lexer.diagnostics[index];
 }
 
 export proc vitte_lexer_generation(lexer: ?&Lexer) -> u64 {

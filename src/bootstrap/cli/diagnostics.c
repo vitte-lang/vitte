@@ -68,7 +68,38 @@ vitte_main_report_process_error_span(
     const char *symbol_name,
     const char *procedure_name)
 {
+    vitte_main_report_process_error_span_related(
+        code,
+        message,
+        details,
+        source_name,
+        span,
+        diagnostic_context,
+        module_name,
+        symbol_name,
+        procedure_name,
+        NULL,
+        NULL,
+        0u);
+}
+
+void
+vitte_main_report_process_error_span_related(
+    const char *code,
+    const char *message,
+    const char *details,
+    const char *source_name,
+    const vitte_import_span_t *span,
+    const char *diagnostic_context,
+    const char *module_name,
+    const char *symbol_name,
+    const char *procedure_name,
+    const char *primary_label,
+    const vitte_cli_diagnostic_location_t *related,
+    size_t related_count)
+{
     vitte_cli_diagnostic_t diagnostic;
+    vitte_cli_diagnostic_label_t label;
     vitte_cli_diagnostic_render_options_t options;
     vitte_cli_diagnostic_format_t format;
     bool has_span;
@@ -118,6 +149,25 @@ vitte_main_report_process_error_span(
     diagnostic.context = diagnostic_context != NULL
         ? diagnostic_context
         : "use declaration";
+    if (has_span && primary_label != NULL) {
+        memset(&label, 0, sizeof(label));
+        label.style = VITTE_CLI_DIAGNOSTIC_LABEL_PRIMARY;
+        label.span.valid = true;
+        label.span.file_id = span->file_id;
+        label.span.source_id = VITTE_SOURCE_INVALID_ID;
+        label.span.source_name = source_name;
+        label.span.start_offset = span->begin;
+        label.span.end_offset = span->end;
+        label.span.start_line = start_line;
+        label.span.start_column = start_column;
+        label.span.end_line = end_line;
+        label.span.end_column = end_column;
+        label.message = primary_label;
+        diagnostic.labels = &label;
+        diagnostic.label_count = 1u;
+    }
+    diagnostic.related = related;
+    diagnostic.related_count = related_count;
 
     vitte_cli_diagnostic_render_options_init(&options);
     options.format = format;

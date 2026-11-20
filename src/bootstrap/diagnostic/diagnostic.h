@@ -1719,7 +1719,7 @@ vitte_diagnostic_poisons_analysis(
  * E0000-E0099  compiler infrastructure
  * E0100-E0199  lexer
  * E0200-E0299  parser
- * E0300-E0399  modules/imports/packages
+ * E0300-E0399  modules/imports/packages; E0308-E0311 extend parser syntax
  * E0400-E0499  names/scopes
  * E0500-E0599  types
  * E0600-E0699  calls/procedures

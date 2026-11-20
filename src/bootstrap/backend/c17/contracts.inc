@@ -87,6 +87,105 @@ vitte_c17_ast_contract_literal(vitte_c17_ast_emitter_t *emitter,
 }
 
 static void
+vitte_c17_ast_emit_contract_source(vitte_c17_ast_emitter_t *emitter,
+                                   const vitte_ast_node_t *clause)
+{
+    size_t token_index;
+    for (token_index = 0u; token_index < emitter->parser->token_count; ++token_index) {
+        const vitte_token_t *token = &emitter->parser->tokens[token_index];
+        if (token->span.begin >= clause->span.begin &&
+            token->span.end <= clause->span.end && token->length != 0u) {
+            vitte_c17_ast_contract_literal(emitter, token->lexeme, token->length);
+            vitte_c17_ast_contract_literal(emitter, " ", 1u);
+        }
+    }
+}
+
+static void
+vitte_c17_ast_emit_contract_value(vitte_c17_ast_emitter_t *emitter,
+    const char *name, size_t name_length, const char *value,
+    const vitte_ast_node_t *type,
+    unsigned int indent)
+{
+    vitte_c17_ast_indent(emitter, indent);
+    vitte_c17_ast_write(emitter, "fputs(");
+    vitte_c17_ast_contract_literal(emitter, "  value: ", sizeof("  value: ") - 1u);
+    vitte_c17_ast_write(emitter, ", stderr);\n");
+    vitte_c17_ast_indent(emitter, indent);
+    vitte_c17_ast_write(emitter, "fputs(");
+    vitte_c17_ast_contract_literal(emitter, name, name_length);
+    vitte_c17_ast_write(emitter, ", stderr);\n");
+    vitte_c17_ast_indent(emitter, indent);
+    vitte_c17_ast_write(emitter, "fputs(\"=\", stderr);\n");
+    vitte_c17_ast_indent(emitter, indent);
+    if (type != NULL && (type->kind == VITTE_AST_NODE_REFERENCE_TYPE ||
+                         type->kind == VITTE_AST_NODE_POINTER_TYPE)) {
+        vitte_c17_ast_write(emitter, "(void)fprintf(stderr, \"%p\", (void *)");
+        vitte_c17_ast_write(emitter, value);
+        vitte_c17_ast_write(emitter, ");\n");
+    } else if (vitte_c17_ast_type_is_named(emitter, type, "bool")) {
+        vitte_c17_ast_write(emitter, "(void)fprintf(stderr, \"%s\", ");
+        vitte_c17_ast_write(emitter, value);
+        vitte_c17_ast_write(emitter, " ? \"true\" : \"false\");\n");
+    } else if (vitte_c17_ast_type_is_named(emitter, type, "f32") ||
+               vitte_c17_ast_type_is_named(emitter, type, "f64") ||
+               vitte_c17_ast_type_is_named(emitter, type, "float") ||
+               vitte_c17_ast_type_is_named(emitter, type, "double")) {
+        vitte_c17_ast_write(emitter, "(void)fprintf(stderr, \"%g\", (double)");
+        vitte_c17_ast_write(emitter, value);
+        vitte_c17_ast_write(emitter, ");\n");
+    } else if (vitte_c17_ast_type_is_named(emitter, type, "u8") ||
+               vitte_c17_ast_type_is_named(emitter, type, "u16") ||
+               vitte_c17_ast_type_is_named(emitter, type, "u32") ||
+               vitte_c17_ast_type_is_named(emitter, type, "u64") ||
+               vitte_c17_ast_type_is_named(emitter, type, "usize")) {
+        vitte_c17_ast_write(emitter, "(void)fprintf(stderr, \"%llu\", (unsigned long long)");
+        vitte_c17_ast_write(emitter, value);
+        vitte_c17_ast_write(emitter, ");\n");
+    } else if (vitte_c17_ast_type_is_named(emitter, type, "i8") ||
+               vitte_c17_ast_type_is_named(emitter, type, "i16") ||
+               vitte_c17_ast_type_is_named(emitter, type, "i32") ||
+               vitte_c17_ast_type_is_named(emitter, type, "i64") ||
+               vitte_c17_ast_type_is_named(emitter, type, "int") ||
+               vitte_c17_ast_type_is_named(emitter, type, "isize")) {
+        vitte_c17_ast_write(emitter, "(void)fprintf(stderr, \"%lld\", (long long)");
+        vitte_c17_ast_write(emitter, value);
+        vitte_c17_ast_write(emitter, ");\n");
+    } else {
+        vitte_c17_ast_write(emitter, "fputs(\"<composite value>\", stderr);\n");
+    }
+    vitte_c17_ast_indent(emitter, indent);
+    vitte_c17_ast_write(emitter, "fputc('\\n', stderr);\n");
+}
+
+static void
+vitte_c17_ast_emit_contract_values(vitte_c17_ast_emitter_t *emitter,
+    const char *result, unsigned int indent)
+{
+    size_t index;
+    for (index = 0u; index < emitter->function->child_count; ++index) {
+        const vitte_ast_node_t *parameter = vitte_c17_ast_child(emitter, emitter->function, index);
+        const vitte_ast_node_t *type, *name_node;
+        const vitte_token_t *name;
+        char snapshot[128];
+        if (parameter == NULL || parameter->kind != VITTE_AST_NODE_PARAMETER) continue;
+        type = vitte_c17_ast_child(emitter, parameter, 1u);
+        name_node = vitte_c17_ast_child(emitter, parameter, 0u);
+        name = vitte_c17_ast_token(emitter, name_node);
+        if (name == NULL || !vitte_c17_ast_contract_name(
+                emitter, parameter, "parameter", snapshot, sizeof(snapshot))) continue;
+        vitte_c17_ast_emit_contract_value(emitter, name->lexeme, name->length,
+            snapshot, type, indent);
+    }
+    if (result != NULL) {
+        const vitte_ast_node_t *type = vitte_c17_ast_function_return_type(
+            emitter, emitter->function);
+        vitte_c17_ast_emit_contract_value(emitter, "result", sizeof("result") - 1u,
+            result, type, indent);
+    }
+}
+
+static void
 vitte_c17_ast_emit_contracts(vitte_c17_ast_emitter_t *emitter,
     vitte_ast_flags_t flag, const char *result, unsigned int indent)
 {
@@ -135,10 +234,29 @@ vitte_c17_ast_emit_contracts(vitte_c17_ast_emitter_t *emitter,
             }
         }
         vitte_c17_ast_contract_literal(emitter, "`\n", 2u);
+        vitte_c17_ast_write(emitter, ", stderr);\n");
+        vitte_c17_ast_indent(emitter, indent + 1u);
+        vitte_c17_ast_write(emitter, "fputs(");
+        vitte_c17_ast_contract_literal(emitter, "  failed condition: ",
+            sizeof("  failed condition: ") - 1u);
+        vitte_c17_ast_emit_contract_source(emitter, clause);
+        vitte_c17_ast_contract_literal(emitter, "\n  context: ", sizeof("\n  context: ") - 1u);
+        vitte_c17_ast_contract_literal(emitter,
+            requires ? "procedure entry after call" : "procedure return",
+            requires ? sizeof("procedure entry after call") - 1u
+                      : sizeof("procedure return") - 1u);
+        vitte_c17_ast_contract_literal(emitter, "\n", sizeof("\n") - 1u);
+        vitte_c17_ast_write(emitter, ", stderr);\n");
+        vitte_c17_ast_indent(emitter, indent + 1u);
+        vitte_c17_ast_write(emitter, "fputs(\"  values:\\n\", stderr);\n");
+        vitte_c17_ast_emit_contract_values(emitter, requires ? NULL : result,
+            indent + 1u);
+        vitte_c17_ast_indent(emitter, indent + 1u);
+        vitte_c17_ast_write(emitter, "fputs(");
         {
             const char *help = requires
-                ? "  help: Ensure the arguments and program state satisfy this requires clause before calling the procedure.\n"
-                : "  help: Ensure every normal return satisfies this ensures clause after deferred actions have completed.\n";
+                ? "  help: Check the argument values at procedure entry against this requires clause.\n"
+                : "  help: Check the returned value and resulting state against this ensures clause.\n";
             vitte_c17_ast_contract_literal(emitter, help, strlen(help));
         }
         vitte_c17_ast_write(emitter, ", stderr);\n");

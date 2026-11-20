@@ -900,12 +900,17 @@ vitte_json_annotations(
 {
     size_t index;
     char help[VITTE_DIAGNOSTIC_MESSAGE_CAPACITY];
-    bool generated = !vitte_diagnostic_has_help(diagnostic) &&
-        vitte_diagnostic_format_help(diagnostic, NULL, help, sizeof(help));
+    bool has_explicit_help = vitte_diagnostic_has_help(diagnostic);
+    bool formatted = vitte_diagnostic_format_help(
+        diagnostic, NULL, help, sizeof(help));
+    bool replace_explicit_help = has_explicit_help && formatted;
+    bool append_generated_help = !has_explicit_help && formatted;
+    bool emitted_explicit_help = false;
     size_t count = diagnostic != NULL ? diagnostic->annotation_count : 0u;
+    size_t emitted = 0u;
 
     vitte_json_putc(writer, '[');
-    if (count == 0u && !generated) {
+    if (count == 0u && !append_generated_help) {
         vitte_json_putc(writer, ']');
         return;
     }
@@ -914,15 +919,31 @@ vitte_json_annotations(
         vitte_json_newline(writer);
     }
     for (index = 0u; index < count; ++index) {
-        if (index != 0u) vitte_json_after_comma(writer);
-        vitte_json_annotation(writer, &diagnostic->annotations[index]);
+        const vitte_diagnostic_annotation_t *annotation =
+            &diagnostic->annotations[index];
+        vitte_diagnostic_annotation_t contextual_annotation;
+
+        if (annotation->kind == VITTE_DIAGNOSTIC_ANNOTATION_HELP &&
+            replace_explicit_help) {
+            if (emitted_explicit_help) {
+                continue;
+            }
+            contextual_annotation = *annotation;
+            contextual_annotation.message = help;
+            annotation = &contextual_annotation;
+            emitted_explicit_help = true;
+        }
+
+        if (emitted != 0u) vitte_json_after_comma(writer);
+        vitte_json_annotation(writer, annotation);
+        emitted++;
     }
-    if (generated) {
+    if (append_generated_help) {
         vitte_diagnostic_annotation_t annotation;
         memset(&annotation, 0, sizeof(annotation));
         annotation.kind = VITTE_DIAGNOSTIC_ANNOTATION_HELP;
         annotation.message = help;
-        if (count != 0u) vitte_json_after_comma(writer);
+        if (emitted != 0u) vitte_json_after_comma(writer);
         vitte_json_annotation(writer, &annotation);
     }
     if (writer->pretty) {

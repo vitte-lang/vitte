@@ -159,8 +159,22 @@ vitte_lexer_context_valid(const vitte_lexer_t *lexer)
         return false;
     }
 
+    if (lexer->diagnostic_count > lexer->diagnostic_capacity ||
+        lexer->diagnostic_count > lexer->max_diagnostics ||
+        (lexer->diagnostic_count != 0u && lexer->diagnostics == NULL)) {
+        return false;
+    }
+
     return true;
 }
+
+static void
+vitte_lexer_advance_to(vitte_lexer_t *lexer, size_t end);
+
+static bool
+vitte_lexer_reserve_diagnostics(
+    vitte_lexer_t *lexer,
+    size_t required);
 
 static bool
 vitte_lexer_mutable(const vitte_lexer_t *lexer)
@@ -177,12 +191,39 @@ vitte_lexer_fail(
     size_t end)
 {
     if (lexer != NULL && lexer->magic == VITTE_LEXER_MAGIC) {
-        lexer->last_error = error;
+        vitte_lexer_span_t span;
 
-        lexer->error_span.file_id = lexer->file_id;
-        lexer->error_span.begin = begin;
-        lexer->error_span.end = end;
-        lexer->error_span.valid = begin <= end;
+        span.file_id = lexer->file_id;
+        span.begin = begin;
+        span.end = end;
+        span.valid = begin <= end;
+
+        if (lexer->diagnostic_count == 0u) {
+            lexer->last_error = error;
+            lexer->error_span = span;
+        }
+
+        if (lexer->diagnostic_count < lexer->max_diagnostics) {
+            size_t required;
+            if (!vitte_lexer_size_add(
+                    lexer->diagnostic_count,
+                    1u,
+                    &required) ||
+                !vitte_lexer_reserve_diagnostics(lexer, required)) {
+                if (lexer->diagnostic_count == 0u) {
+                    lexer->last_error = VITTE_LEXER_ERROR_OUT_OF_MEMORY;
+                    lexer->error_span = span;
+                }
+                lexer->stats.allocation_failures =
+                    vitte_lexer_u64_add_sat(
+                        lexer->stats.allocation_failures,
+                        UINT64_C(1));
+            } else {
+                lexer->diagnostics[lexer->diagnostic_count].error = error;
+                lexer->diagnostics[lexer->diagnostic_count].span = span;
+                ++lexer->diagnostic_count;
+            }
+        }
 
         lexer->stats.errors =
             vitte_lexer_u64_add_sat(
@@ -429,6 +470,37 @@ vitte_lexer_utf8_decode(
     return false;
 }
 
+/* Return the malformed UTF-8 subpart that starts at the current byte. */
+static size_t
+vitte_lexer_utf8_error_width(
+    const char *data,
+    size_t length)
+{
+    const unsigned char *bytes = (const unsigned char *)data;
+    size_t expected;
+    size_t width;
+
+    if (data == NULL || length == 0u) {
+        return 0u;
+    }
+    if (bytes[0] >= 0xc2u && bytes[0] <= 0xdfu) {
+        expected = 2u;
+    } else if (bytes[0] >= 0xe0u && bytes[0] <= 0xefu) {
+        expected = 3u;
+    } else if (bytes[0] >= 0xf0u && bytes[0] <= 0xf4u) {
+        expected = 4u;
+    } else {
+        return 1u;
+    }
+
+    width = 1u;
+    while (width < expected && width < length &&
+           (bytes[width] & 0xc0u) == 0x80u) {
+        ++width;
+    }
+    return width;
+}
+
 static bool
 vitte_lexer_unicode_identifier_start(uint32_t cp)
 {
@@ -537,6 +609,62 @@ vitte_lexer_reserve_tokens(
     lexer->tokens = tokens;
     lexer->token_capacity = capacity;
 
+    return true;
+}
+
+static bool
+vitte_lexer_reserve_diagnostics(
+    vitte_lexer_t *lexer,
+    size_t required)
+{
+    size_t capacity;
+    size_t bytes;
+    vitte_lexer_diagnostic_t *diagnostics;
+
+    if (lexer == NULL || required > lexer->max_diagnostics) {
+        return false;
+    }
+    if (required <= lexer->diagnostic_capacity) {
+        return true;
+    }
+
+    capacity = lexer->diagnostic_capacity == 0u
+        ? (size_t)8u
+        : lexer->diagnostic_capacity;
+    while (capacity < required) {
+        size_t doubled;
+        if (!vitte_lexer_size_mul(capacity, (size_t)2u, &doubled) ||
+            doubled <= capacity) {
+            capacity = required;
+            break;
+        }
+        capacity = doubled;
+    }
+    if (capacity > lexer->max_diagnostics) {
+        capacity = lexer->max_diagnostics;
+    }
+    if (capacity < required ||
+        !vitte_lexer_size_mul(capacity, sizeof(*diagnostics), &bytes)) {
+        return false;
+    }
+
+    diagnostics = (vitte_lexer_diagnostic_t *)realloc(
+        lexer->diagnostics,
+        bytes);
+    if (diagnostics == NULL) {
+        return false;
+    }
+    if (lexer->diagnostics == NULL) {
+        lexer->stats.allocations = vitte_lexer_u64_add_sat(
+            lexer->stats.allocations,
+            UINT64_C(1));
+    } else {
+        lexer->stats.reallocations = vitte_lexer_u64_add_sat(
+            lexer->stats.reallocations,
+            UINT64_C(1));
+    }
+    lexer->diagnostics = diagnostics;
+    lexer->diagnostic_capacity = capacity;
     return true;
 }
 
@@ -726,7 +854,7 @@ static const vitte_lexer_keyword_entry_t vitte_lexer_keywords[] = {
 
 #undef VITTE_KW
 
-static vitte_token_kind_t
+vitte_token_kind_t
 vitte_lexer_keyword_kind(const char *text, size_t length)
 {
     size_t i;
@@ -814,6 +942,7 @@ vitte_lexer_skip_block_comment(vitte_lexer_t *lexer)
 {
     size_t begin;
     size_t depth;
+    bool depth_reported;
 
     if (!vitte_lexer_starts_with(lexer, "/*", 2u)) {
         return false;
@@ -821,6 +950,7 @@ vitte_lexer_skip_block_comment(vitte_lexer_t *lexer)
 
     begin = lexer->offset;
     depth = 1u;
+    depth_reported = false;
 
     vitte_lexer_advance_n(lexer, 2u);
 
@@ -834,14 +964,26 @@ vitte_lexer_skip_block_comment(vitte_lexer_t *lexer)
                     lexer->offset);
             }
 
-            ++depth;
-
-            if (depth > lexer->max_comment_depth) {
+            if (depth == SIZE_MAX) {
                 return vitte_lexer_fail(
                     lexer,
-                    VITTE_LEXER_ERROR_COMMENT_DEPTH,
+                    VITTE_LEXER_ERROR_OVERFLOW,
                     begin,
                     lexer->offset);
+            }
+            ++depth;
+
+            if (depth > lexer->max_comment_depth && !depth_reported) {
+                const size_t diagnostic_count = lexer->diagnostic_count;
+                (void)vitte_lexer_fail(
+                    lexer,
+                    VITTE_LEXER_ERROR_COMMENT_DEPTH,
+                    lexer->offset,
+                    lexer->offset + 2u);
+                if (lexer->diagnostic_count == diagnostic_count) {
+                    return false;
+                }
+                depth_reported = true;
             }
 
             vitte_lexer_advance_n(lexer, 2u);
@@ -971,11 +1113,21 @@ vitte_lexer_scan_identifier(vitte_lexer_t *lexer)
                 lexer->source_length - lexer->offset,
                 &cp,
                 &consumed)) {
-            return vitte_lexer_fail(
+            const size_t invalid_end = lexer->offset +
+                vitte_lexer_utf8_error_width(
+                    lexer->source + lexer->offset,
+                    lexer->source_length - lexer->offset);
+            const size_t diagnostic_count = lexer->diagnostic_count;
+            (void)vitte_lexer_fail(
                 lexer,
                 VITTE_LEXER_ERROR_INVALID_UTF8,
                 lexer->offset,
-                lexer->offset + 1u);
+                invalid_end);
+            if (lexer->diagnostic_count == diagnostic_count) {
+                return false;
+            }
+            vitte_lexer_advance_to(lexer, invalid_end);
+            return true;
         }
 
         if (!vitte_lexer_unicode_identifier_continue(cp)) {
@@ -1093,6 +1245,63 @@ vitte_lexer_scan_digit_sequence(
     return true;
 }
 
+static size_t
+vitte_lexer_number_error_end(const vitte_lexer_t *lexer)
+{
+    size_t end;
+
+    if (lexer == NULL || lexer->source == NULL) {
+        return 0u;
+    }
+
+    end = lexer->offset;
+    while (end < lexer->source_length) {
+        const unsigned char byte =
+            (unsigned char)lexer->source[end];
+        if ((byte >= (unsigned char)'0' && byte <= (unsigned char)'9') ||
+            (byte >= (unsigned char)'a' && byte <= (unsigned char)'z') ||
+            (byte >= (unsigned char)'A' && byte <= (unsigned char)'Z') ||
+            byte == (unsigned char)'_' || byte >= 0x80u) {
+            ++end;
+        } else {
+            break;
+        }
+    }
+
+    return end;
+}
+
+static bool
+vitte_lexer_number_separator_error(const vitte_lexer_t *lexer)
+{
+    if (lexer == NULL || lexer->source == NULL) {
+        return false;
+    }
+    if (lexer->offset > 0u &&
+        lexer->source[lexer->offset - 1u] == '_') {
+        return true;
+    }
+    return !vitte_lexer_eof(lexer) &&
+           vitte_lexer_peek(lexer, 0u) == (unsigned char)'_';
+}
+
+static bool
+vitte_lexer_number_fail(
+    vitte_lexer_t *lexer,
+    vitte_lexer_error_t error,
+    size_t begin)
+{
+    const size_t diagnostic_count = lexer->diagnostic_count;
+    const size_t end = vitte_lexer_number_error_end(lexer);
+
+    (void)vitte_lexer_fail(lexer, error, begin, end);
+    if (lexer->diagnostic_count == diagnostic_count) {
+        return false;
+    }
+    vitte_lexer_advance_n(lexer, end > lexer->offset ? end - lexer->offset : 0u);
+    return true;
+}
+
 static bool
 vitte_lexer_integer_fits_u64(
     const vitte_lexer_t *lexer,
@@ -1188,11 +1397,12 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                     16,
                     &digits) ||
                 !digits) {
-                return vitte_lexer_fail(
+                return vitte_lexer_number_fail(
                     lexer,
-                    VITTE_LEXER_ERROR_INVALID_NUMBER,
-                    begin,
-                    lexer->offset);
+                    vitte_lexer_number_separator_error(lexer)
+                        ? VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR
+                        : VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE,
+                    begin);
             }
 
             if (vitte_lexer_peek(lexer, 0u) ==
@@ -1206,11 +1416,10 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                         lexer,
                         16,
                         &digits)) {
-                    return vitte_lexer_fail(
+                    return vitte_lexer_number_fail(
                         lexer,
-                        VITTE_LEXER_ERROR_INVALID_NUMBER,
-                        begin,
-                        lexer->offset);
+                        VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR,
+                        begin);
                 }
             }
 
@@ -1234,11 +1443,12 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                         10,
                         &digits) ||
                     !digits) {
-                    return vitte_lexer_fail(
+                    return vitte_lexer_number_fail(
                         lexer,
-                        VITTE_LEXER_ERROR_INVALID_NUMBER,
-                        begin,
-                        lexer->offset);
+                        vitte_lexer_number_separator_error(lexer)
+                            ? VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR
+                            : VITTE_LEXER_ERROR_INVALID_EXPONENT,
+                        begin);
                 }
             }
 
@@ -1263,11 +1473,10 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                 }
 
                 if (!exponent_found) {
-                    return vitte_lexer_fail(
+                    return vitte_lexer_number_fail(
                         lexer,
-                        VITTE_LEXER_ERROR_INVALID_NUMBER,
-                        begin,
-                        lexer->offset);
+                        VITTE_LEXER_ERROR_INVALID_EXPONENT,
+                        begin);
                 }
             }
         } else if (next == (unsigned char)'b' ||
@@ -1280,11 +1489,12 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                     2,
                     &digits) ||
                 !digits) {
-                return vitte_lexer_fail(
+                return vitte_lexer_number_fail(
                     lexer,
-                    VITTE_LEXER_ERROR_INVALID_NUMBER,
-                    begin,
-                    lexer->offset);
+                    vitte_lexer_number_separator_error(lexer)
+                        ? VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR
+                        : VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE,
+                    begin);
             }
         } else if (next == (unsigned char)'o' ||
                    next == (unsigned char)'O') {
@@ -1296,22 +1506,24 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                     8,
                     &digits) ||
                 !digits) {
-                return vitte_lexer_fail(
+                return vitte_lexer_number_fail(
                     lexer,
-                    VITTE_LEXER_ERROR_INVALID_NUMBER,
-                    begin,
-                    lexer->offset);
+                    vitte_lexer_number_separator_error(lexer)
+                        ? VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR
+                        : VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE,
+                    begin);
             }
         } else {
             if (!vitte_lexer_scan_digit_sequence(
                     lexer,
                     10,
                     &digits)) {
-                return vitte_lexer_fail(
+                return vitte_lexer_number_fail(
                     lexer,
-                    VITTE_LEXER_ERROR_INVALID_NUMBER,
-                    begin,
-                    lexer->offset);
+                    vitte_lexer_number_separator_error(lexer)
+                        ? VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR
+                        : VITTE_LEXER_ERROR_INVALID_INTEGER,
+                    begin);
             }
         }
     } else {
@@ -1319,11 +1531,12 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                 lexer,
                 10,
                 &digits)) {
-            return vitte_lexer_fail(
+            return vitte_lexer_number_fail(
                 lexer,
-                VITTE_LEXER_ERROR_INVALID_NUMBER,
-                begin,
-                lexer->offset);
+                vitte_lexer_number_separator_error(lexer)
+                    ? VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR
+                    : VITTE_LEXER_ERROR_INVALID_INTEGER,
+                begin);
         }
     }
 
@@ -1339,11 +1552,12 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                     lexer,
                     10,
                     &digits)) {
-                return vitte_lexer_fail(
+                return vitte_lexer_number_fail(
                     lexer,
-                    VITTE_LEXER_ERROR_INVALID_NUMBER,
-                    begin,
-                    lexer->offset);
+                    vitte_lexer_number_separator_error(lexer)
+                        ? VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR
+                        : VITTE_LEXER_ERROR_INVALID_FLOAT,
+                    begin);
             }
         }
 
@@ -1366,11 +1580,12 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
                     10,
                     &digits) ||
                 !digits) {
-                return vitte_lexer_fail(
+                return vitte_lexer_number_fail(
                     lexer,
-                    VITTE_LEXER_ERROR_INVALID_NUMBER,
-                    begin,
-                    lexer->offset);
+                    vitte_lexer_number_separator_error(lexer)
+                        ? VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR
+                        : VITTE_LEXER_ERROR_INVALID_EXPONENT,
+                    begin);
             }
         }
     }
@@ -1393,11 +1608,12 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
             c >= 0x80u ||
             (base != 10 &&
              vitte_lexer_is_decimal_digit(c))) {
-            return vitte_lexer_fail(
+            return vitte_lexer_number_fail(
                 lexer,
-                VITTE_LEXER_ERROR_INVALID_NUMBER,
-                begin,
-                lexer->offset + 1u);
+                base != 10 && vitte_lexer_is_decimal_digit(c)
+                    ? VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE
+                    : VITTE_LEXER_ERROR_INVALID_NUMERIC_SUFFIX,
+                begin);
         }
     }
 
@@ -1407,11 +1623,10 @@ vitte_lexer_scan_number(vitte_lexer_t *lexer)
             begin,
             lexer->offset,
             (unsigned int)base)) {
-        return vitte_lexer_fail(
+        return vitte_lexer_number_fail(
             lexer,
             VITTE_LEXER_ERROR_NUMBER_OVERFLOW,
-            begin,
-            lexer->offset);
+            begin);
     }
 
     if (!vitte_lexer_emit(
@@ -1520,12 +1735,52 @@ vitte_lexer_scan_escape(vitte_lexer_t *lexer)
 /* Strings                                                                   */
 /* ========================================================================= */
 
+static void
+vitte_lexer_advance_to(vitte_lexer_t *lexer, size_t end)
+{
+    if (lexer == NULL || end > lexer->source_length) {
+        return;
+    }
+    while (lexer->offset < end) {
+        vitte_lexer_advance_byte(lexer);
+    }
+}
+
+static size_t
+vitte_lexer_skip_quoted_remainder(
+    vitte_lexer_t *lexer,
+    unsigned char quote)
+{
+    if (lexer == NULL) {
+        return 0u;
+    }
+    while (!vitte_lexer_eof(lexer)) {
+        const unsigned char byte = vitte_lexer_peek(lexer, 0u);
+        if (byte == (unsigned char)'\n' || byte == (unsigned char)'\r') {
+            break;
+        }
+        if (byte == (unsigned char)'\\') {
+            vitte_lexer_advance_byte(lexer);
+            if (!vitte_lexer_eof(lexer)) {
+                vitte_lexer_advance_byte(lexer);
+            }
+            continue;
+        }
+        vitte_lexer_advance_byte(lexer);
+        if (byte == quote) {
+            break;
+        }
+    }
+    return lexer->offset;
+}
+
 static bool
 vitte_lexer_scan_string(vitte_lexer_t *lexer)
 {
     size_t begin;
     size_t line;
     size_t column;
+    bool malformed;
 
     if (vitte_lexer_peek(lexer, 0u) !=
         (unsigned char)'"') {
@@ -1535,6 +1790,7 @@ vitte_lexer_scan_string(vitte_lexer_t *lexer)
     begin = lexer->offset;
     line = lexer->line;
     column = lexer->column;
+    malformed = false;
 
     vitte_lexer_advance_byte(lexer);
 
@@ -1545,6 +1801,10 @@ vitte_lexer_scan_string(vitte_lexer_t *lexer)
 
         if (c == (unsigned char)'"') {
             vitte_lexer_advance_byte(lexer);
+
+            if (malformed) {
+                return true;
+            }
 
             if (!vitte_lexer_emit(
                     lexer,
@@ -1566,11 +1826,18 @@ vitte_lexer_scan_string(vitte_lexer_t *lexer)
 
         if (c == (unsigned char)'\n' ||
             c == (unsigned char)'\r') {
-            return vitte_lexer_fail(
-                lexer,
-                VITTE_LEXER_ERROR_UNTERMINATED_STRING,
-                begin,
-                lexer->offset);
+            if (!malformed) {
+                const size_t diagnostic_count = lexer->diagnostic_count;
+                (void)vitte_lexer_fail(
+                    lexer,
+                    VITTE_LEXER_ERROR_UNTERMINATED_STRING,
+                    begin,
+                    lexer->offset);
+                if (lexer->diagnostic_count == diagnostic_count) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         if (c == (unsigned char)'\\') {
@@ -1579,11 +1846,24 @@ vitte_lexer_scan_string(vitte_lexer_t *lexer)
             escape_begin = lexer->offset;
 
             if (!vitte_lexer_scan_escape(lexer)) {
-                return vitte_lexer_fail(
+                size_t escape_end = lexer->offset;
+                const size_t diagnostic_count = lexer->diagnostic_count;
+                if (!vitte_lexer_eof(lexer) &&
+                    vitte_lexer_peek(lexer, 0u) != (unsigned char)'"' &&
+                    vitte_lexer_peek(lexer, 0u) != (unsigned char)'\n' &&
+                    vitte_lexer_peek(lexer, 0u) != (unsigned char)'\r') {
+                    ++escape_end;
+                }
+                (void)vitte_lexer_fail(
                     lexer,
                     VITTE_LEXER_ERROR_INVALID_ESCAPE,
                     escape_begin,
-                    lexer->offset);
+                    escape_end);
+                if (lexer->diagnostic_count == diagnostic_count) {
+                    return false;
+                }
+                malformed = true;
+                vitte_lexer_advance_to(lexer, escape_end);
             }
 
             continue;
@@ -1598,11 +1878,22 @@ vitte_lexer_scan_string(vitte_lexer_t *lexer)
                     lexer->source_length - lexer->offset,
                     &cp,
                     &consumed)) {
-                return vitte_lexer_fail(
+                const size_t invalid_end = lexer->offset +
+                    vitte_lexer_utf8_error_width(
+                        lexer->source + lexer->offset,
+                        lexer->source_length - lexer->offset);
+                const size_t diagnostic_count = lexer->diagnostic_count;
+                (void)vitte_lexer_fail(
                     lexer,
                     VITTE_LEXER_ERROR_INVALID_UTF8,
                     lexer->offset,
-                    lexer->offset + 1u);
+                    invalid_end);
+                if (lexer->diagnostic_count == diagnostic_count) {
+                    return false;
+                }
+                malformed = true;
+                vitte_lexer_advance_to(lexer, invalid_end);
+                continue;
             }
 
             (void)cp;
@@ -1612,17 +1903,51 @@ vitte_lexer_scan_string(vitte_lexer_t *lexer)
 
         vitte_lexer_advance_byte(lexer);
     }
-
-    return vitte_lexer_fail(
-        lexer,
-        VITTE_LEXER_ERROR_UNTERMINATED_STRING,
-        begin,
-        lexer->offset);
+    if (!malformed) {
+        const size_t diagnostic_count = lexer->diagnostic_count;
+        (void)vitte_lexer_fail(
+            lexer,
+            VITTE_LEXER_ERROR_UNTERMINATED_STRING,
+            begin,
+            lexer->offset);
+        if (lexer->diagnostic_count == diagnostic_count) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /* ========================================================================= */
 /* Character literals                                                        */
 /* ========================================================================= */
+
+static size_t
+vitte_lexer_character_error_end(
+    const vitte_lexer_t *lexer,
+    size_t begin)
+{
+    size_t end;
+
+    if (lexer == NULL || lexer->source == NULL ||
+        begin >= lexer->source_length) {
+        return begin;
+    }
+
+    end = begin + 1u;
+    while (end < lexer->source_length) {
+        const unsigned char byte =
+            (unsigned char)lexer->source[end];
+        if (byte == (unsigned char)'\n' ||
+            byte == (unsigned char)'\r') {
+            break;
+        }
+        ++end;
+        if (byte == (unsigned char)'\'') {
+            break;
+        }
+    }
+    return end;
+}
 
 static bool
 vitte_lexer_scan_character(vitte_lexer_t *lexer)
@@ -1649,11 +1974,18 @@ vitte_lexer_scan_character(vitte_lexer_t *lexer)
             (unsigned char)'\r' ||
         vitte_lexer_peek(lexer, 0u) ==
             (unsigned char)'\'') {
-        return vitte_lexer_fail(
+        const size_t diagnostic_count = lexer->diagnostic_count;
+        const size_t end = vitte_lexer_character_error_end(lexer, begin);
+        (void)vitte_lexer_fail(
             lexer,
-            VITTE_LEXER_ERROR_INVALID_CHARACTER,
+            VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL,
             begin,
-            lexer->offset);
+            end);
+        if (lexer->diagnostic_count == diagnostic_count) {
+            return false;
+        }
+        vitte_lexer_advance_to(lexer, end);
+        return true;
     }
 
     if (vitte_lexer_peek(lexer, 0u) ==
@@ -1663,11 +1995,26 @@ vitte_lexer_scan_character(vitte_lexer_t *lexer)
         escape_begin = lexer->offset;
 
         if (!vitte_lexer_scan_escape(lexer)) {
-            return vitte_lexer_fail(
+            size_t escape_end = lexer->offset;
+            const size_t diagnostic_count = lexer->diagnostic_count;
+            if (!vitte_lexer_eof(lexer) &&
+                vitte_lexer_peek(lexer, 0u) != (unsigned char)'\'' &&
+                vitte_lexer_peek(lexer, 0u) != (unsigned char)'\n' &&
+                vitte_lexer_peek(lexer, 0u) != (unsigned char)'\r') {
+                ++escape_end;
+            }
+            (void)vitte_lexer_fail(
                 lexer,
                 VITTE_LEXER_ERROR_INVALID_ESCAPE,
                 escape_begin,
-                lexer->offset);
+                escape_end);
+            if (lexer->diagnostic_count == diagnostic_count) {
+                return false;
+            }
+            (void)vitte_lexer_skip_quoted_remainder(
+                lexer,
+                (unsigned char)'\'');
+            return true;
         }
     } else if (vitte_lexer_peek(lexer, 0u) >= 0x80u) {
         uint32_t cp;
@@ -1678,11 +2025,24 @@ vitte_lexer_scan_character(vitte_lexer_t *lexer)
                 lexer->source_length - lexer->offset,
                 &cp,
                 &consumed)) {
-            return vitte_lexer_fail(
+            const size_t invalid_end = lexer->offset +
+                vitte_lexer_utf8_error_width(
+                    lexer->source + lexer->offset,
+                    lexer->source_length - lexer->offset);
+            const size_t diagnostic_count = lexer->diagnostic_count;
+            (void)vitte_lexer_fail(
                 lexer,
                 VITTE_LEXER_ERROR_INVALID_UTF8,
                 lexer->offset,
-                lexer->offset + 1u);
+                invalid_end);
+            if (lexer->diagnostic_count == diagnostic_count) {
+                return false;
+            }
+            vitte_lexer_advance_to(lexer, invalid_end);
+            (void)vitte_lexer_skip_quoted_remainder(
+                lexer,
+                (unsigned char)'\'');
+            return true;
         }
 
         (void)cp;
@@ -1694,11 +2054,18 @@ vitte_lexer_scan_character(vitte_lexer_t *lexer)
     if (vitte_lexer_eof(lexer) ||
         vitte_lexer_peek(lexer, 0u) !=
             (unsigned char)'\'') {
-        return vitte_lexer_fail(
+        const size_t diagnostic_count = lexer->diagnostic_count;
+        const size_t end = vitte_lexer_character_error_end(lexer, begin);
+        (void)vitte_lexer_fail(
             lexer,
-            VITTE_LEXER_ERROR_INVALID_CHARACTER,
+            VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL,
             begin,
-            lexer->offset);
+            end);
+        if (lexer->diagnostic_count == diagnostic_count) {
+            return false;
+        }
+        vitte_lexer_advance_to(lexer, end);
+        return true;
     }
 
     vitte_lexer_advance_byte(lexer);
@@ -1730,6 +2097,11 @@ typedef struct vitte_lexer_operator_entry {
     size_t length;
     vitte_token_kind_t kind;
 } vitte_lexer_operator_entry_t;
+
+static const char *const vitte_lexer_invalid_operators[] = {
+    "!==", "===", "&&=", "||=", ("?" "?="), "<<==", ">>==", "..==",
+    "...", ":::", "<<<", ">>>", "<=>", "=<", ":=", "?=", ".="
+};
 
 #define VITTE_OP(text_, kind_) \
     { (text_), sizeof(text_) - 1u, (kind_) }
@@ -1805,7 +2177,9 @@ static const vitte_lexer_operator_entry_t vitte_lexer_operators[] = {
     VITTE_OP(">", VITTE_TOKEN_GREATER),
 
     VITTE_OP("?", VITTE_TOKEN_QUESTION),
-    VITTE_OP("#", VITTE_TOKEN_HASH)
+    VITTE_OP("@", VITTE_TOKEN_AT),
+    VITTE_OP("#", VITTE_TOKEN_HASH),
+    VITTE_OP("$", VITTE_TOKEN_DOLLAR)
 };
 
 #undef VITTE_OP
@@ -1821,6 +2195,27 @@ vitte_lexer_scan_operator(vitte_lexer_t *lexer)
     begin = lexer->offset;
     line = lexer->line;
     column = lexer->column;
+
+    for (i = 0u;
+         i < sizeof(vitte_lexer_invalid_operators) /
+             sizeof(vitte_lexer_invalid_operators[0]);
+         ++i) {
+        const char *text = vitte_lexer_invalid_operators[i];
+        const size_t length = strlen(text);
+        if (vitte_lexer_starts_with(lexer, text, length)) {
+            const size_t diagnostic_count = lexer->diagnostic_count;
+            (void)vitte_lexer_fail(
+                lexer,
+                VITTE_LEXER_ERROR_INVALID_OPERATOR,
+                begin,
+                begin + length);
+            if (lexer->diagnostic_count == diagnostic_count) {
+                return false;
+            }
+            vitte_lexer_advance_n(lexer, length);
+            return true;
+        }
+    }
 
     for (i = 0u;
          i < sizeof(vitte_lexer_operators) /
@@ -2017,6 +2412,14 @@ vitte_lexer_error_name(vitte_lexer_error_t error)
         case VITTE_LEXER_ERROR_INTERNAL: return "internal";
         case VITTE_LEXER_ERROR_INVALID_IDENTIFIER: return "invalid_identifier";
         case VITTE_LEXER_ERROR_NUMBER_OVERFLOW: return "number_overflow";
+        case VITTE_LEXER_ERROR_INVALID_INTEGER: return "invalid_integer";
+        case VITTE_LEXER_ERROR_INVALID_FLOAT: return "invalid_float";
+        case VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL: return "invalid_character_literal";
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR: return "invalid_numeric_separator";
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE: return "invalid_numeric_base";
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_SUFFIX: return "invalid_numeric_suffix";
+        case VITTE_LEXER_ERROR_INVALID_EXPONENT: return "invalid_exponent";
+        case VITTE_LEXER_ERROR_INVALID_OPERATOR: return "invalid_operator";
         case VITTE_LEXER_ERROR_COUNT: return "count";
     }
 
@@ -2082,19 +2485,36 @@ vitte_lexer_scan_one(vitte_lexer_t *lexer)
                     lexer->source_length - lexer->offset,
                     &cp,
                     &consumed)) {
-                return vitte_lexer_fail(
+                const size_t invalid_end = lexer->offset +
+                    vitte_lexer_utf8_error_width(
+                        lexer->source + lexer->offset,
+                        lexer->source_length - lexer->offset);
+                const size_t diagnostic_count = lexer->diagnostic_count;
+                (void)vitte_lexer_fail(
                     lexer,
                     VITTE_LEXER_ERROR_INVALID_UTF8,
                     lexer->offset,
-                    lexer->offset + 1u);
+                    invalid_end);
+                if (lexer->diagnostic_count == diagnostic_count) {
+                    return false;
+                }
+                vitte_lexer_advance_to(lexer, invalid_end);
+                return true;
             }
 
             if (!vitte_lexer_unicode_identifier_start(cp)) {
-                return vitte_lexer_fail(
+                const size_t invalid_end = lexer->offset + consumed;
+                const size_t diagnostic_count = lexer->diagnostic_count;
+                (void)vitte_lexer_fail(
                     lexer,
                     VITTE_LEXER_ERROR_INVALID_IDENTIFIER,
                     lexer->offset,
-                    lexer->offset + consumed);
+                    invalid_end);
+                if (lexer->diagnostic_count == diagnostic_count) {
+                    return false;
+                }
+                vitte_lexer_advance_to(lexer, invalid_end);
+                return true;
             }
         }
 
@@ -2117,11 +2537,21 @@ vitte_lexer_scan_one(vitte_lexer_t *lexer)
         return true;
     }
 
-    return vitte_lexer_fail(
-        lexer,
-        VITTE_LEXER_ERROR_INVALID_TOKEN,
-        lexer->offset,
-        lexer->offset + 1u);
+    {
+        begin = lexer->offset;
+        const size_t end = begin + 1u;
+        const size_t diagnostic_count = lexer->diagnostic_count;
+        (void)vitte_lexer_fail(
+            lexer,
+            VITTE_LEXER_ERROR_INVALID_TOKEN,
+            begin,
+            end);
+        if (lexer->diagnostic_count == diagnostic_count) {
+            return false;
+        }
+        vitte_lexer_advance_to(lexer, end);
+        return true;
+    }
 }
 
 /* ========================================================================= */
@@ -2159,6 +2589,7 @@ vitte_lexer_init(
     lexer->max_tokens = VITTE_LEXER_DEFAULT_MAX_TOKENS;
     lexer->max_source_bytes = VITTE_LEXER_DEFAULT_MAX_SOURCE_BYTES;
     lexer->max_comment_depth = VITTE_LEXER_DEFAULT_MAX_COMMENT_DEPTH;
+    lexer->max_diagnostics = VITTE_LEXER_DEFAULT_MAX_DIAGNOSTICS;
 
     lexer->generation = UINT64_C(1);
 
@@ -2185,6 +2616,7 @@ vitte_lexer_destroy(vitte_lexer_t *lexer)
 
     if (lexer->magic == VITTE_LEXER_MAGIC) {
         free(lexer->tokens);
+        free(lexer->diagnostics);
     }
 
     memset(lexer, 0, sizeof(*lexer));
@@ -2203,6 +2635,7 @@ vitte_lexer_reset(
     size_t max_tokens;
     size_t max_source_bytes;
     size_t max_comment_depth;
+    size_t max_diagnostics;
     uint64_t generation;
 
     if (lexer == NULL ||
@@ -2214,13 +2647,18 @@ vitte_lexer_reset(
     max_tokens = lexer->max_tokens;
     max_source_bytes = lexer->max_source_bytes;
     max_comment_depth = lexer->max_comment_depth;
+    max_diagnostics = lexer->max_diagnostics;
     generation = lexer->generation;
 
     free(lexer->tokens);
+    free(lexer->diagnostics);
 
     lexer->tokens = NULL;
     lexer->token_count = 0u;
     lexer->token_capacity = 0u;
+    lexer->diagnostics = NULL;
+    lexer->diagnostic_count = 0u;
+    lexer->diagnostic_capacity = 0u;
 
     memset(&lexer->stats, 0, sizeof(lexer->stats));
 
@@ -2237,6 +2675,7 @@ vitte_lexer_reset(
     lexer->max_tokens = max_tokens;
     lexer->max_source_bytes = max_source_bytes;
     lexer->max_comment_depth = max_comment_depth;
+    lexer->max_diagnostics = max_diagnostics;
 
     lexer->state = VITTE_LEXER_STATE_READY;
     lexer->last_error = VITTE_LEXER_ERROR_NONE;
@@ -2338,6 +2777,17 @@ vitte_lexer_run(vitte_lexer_t *lexer)
         }
     }
 
+    if (lexer->diagnostic_count != 0u) {
+        lexer->state = VITTE_LEXER_STATE_FAILED;
+        lexer->stats.failed_runs = vitte_lexer_u64_add_sat(
+            lexer->stats.failed_runs,
+            UINT64_C(1));
+        lexer->stats.source_bytes = vitte_lexer_u64_add_sat(
+            lexer->stats.source_bytes,
+            (uint64_t)lexer->source_length);
+        return false;
+    }
+
     lexer->state = VITTE_LEXER_STATE_DONE;
     lexer->last_error = VITTE_LEXER_ERROR_NONE;
 
@@ -2374,6 +2824,30 @@ vitte_lexer_token_count(const vitte_lexer_t *lexer)
     }
 
     return lexer->token_count;
+}
+
+size_t
+vitte_lexer_diagnostic_count(const vitte_lexer_t *lexer)
+{
+    if (!vitte_lexer_context_valid(lexer)) {
+        return 0u;
+    }
+    return lexer->diagnostic_count;
+}
+
+bool
+vitte_lexer_diagnostic_at(
+    const vitte_lexer_t *lexer,
+    size_t index,
+    vitte_lexer_diagnostic_t *diagnostic)
+{
+    if (!vitte_lexer_context_valid(lexer) ||
+        diagnostic == NULL ||
+        index >= lexer->diagnostic_count) {
+        return false;
+    }
+    *diagnostic = lexer->diagnostics[index];
+    return true;
 }
 
 /* ========================================================================= */

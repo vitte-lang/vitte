@@ -29,7 +29,6 @@
 #define VITTE_TERMINAL_DEFAULT_TAB_WIDTH        4u
 #define VITTE_TERMINAL_DEFAULT_CONTEXT_LINES    1u
 #define VITTE_TERMINAL_MAX_RENDER_WIDTH         160u
-#define VITTE_TERMINAL_MAX_SOURCE_LINE          16384u
 
 #define VITTE_TERM_RESET            "\x1b[0m"
 #define VITTE_TERM_BOLD             "\x1b[1m"
@@ -856,91 +855,260 @@ vitte_terminal_visual_column(
     size_t tab_width
 )
 {
+    size_t index;
     size_t visual;
+    size_t limit;
 
     if (text == NULL) {
         return byte_column;
     }
 
+    limit = byte_column < length ? byte_column : length;
+    index = 0u;
     visual = 0u;
-    (void)vitte_unicode_utf8_display_width(text,
-        byte_column < length ? byte_column : length,
-        tab_width, 0u, &visual, NULL);
+    while (index < limit) {
+        uint32_t codepoint;
+        size_t byte_width;
+        size_t column_width;
+        vitte_unicode_result_t decoded;
+
+        if ((unsigned char)text[index] == '\t') {
+            column_width = vitte_terminal_tab_advance(visual, tab_width);
+            byte_width = 1u;
+        } else {
+            decoded = vitte_unicode_decode_utf8(
+                (const unsigned char *)text + index, length - index);
+            if (decoded.error == VITTE_UNICODE_ERROR_NONE) {
+                codepoint = decoded.codepoint;
+                byte_width = decoded.length;
+            } else {
+                codepoint = UINT32_C(0xfffd);
+                byte_width = 1u;
+            }
+            if (byte_width > limit - index) {
+                break;
+            }
+            {
+                int display_width = vitte_unicode_display_width(codepoint);
+                column_width = display_width > 0
+                    ? (size_t)display_width : 0u;
+            }
+        }
+        if (visual > SIZE_MAX - column_width) {
+            return SIZE_MAX;
+        }
+        visual += column_width;
+        index += byte_width;
+    }
 
     return visual;
 }
 
 static void
-vitte_terminal_write_source_text(
+vitte_terminal_adjust_excerpt_window(
+    const char *text,
+    size_t length,
+    size_t tab_width,
+    size_t *start_column,
+    size_t *end_column
+)
+{
+    size_t index = 0u;
+    size_t visual = 0u;
+
+    while (text != NULL && index < length) {
+        size_t byte_width;
+        size_t column_width;
+        uint32_t codepoint;
+
+        if (text[index] == '\n' || text[index] == '\r') {
+            break;
+        }
+        if (text[index] == '\t') {
+            byte_width = 1u;
+            column_width = vitte_terminal_tab_advance(visual, tab_width);
+        } else {
+            vitte_unicode_result_t decoded = vitte_unicode_decode_utf8(
+                (const unsigned char *)text + index, length - index);
+            if (decoded.error == VITTE_UNICODE_ERROR_NONE) {
+                codepoint = decoded.codepoint;
+                byte_width = decoded.length;
+            } else {
+                codepoint = UINT32_C(0xfffd);
+                byte_width = 1u;
+            }
+            {
+                int display_width = vitte_unicode_display_width(codepoint);
+                column_width = display_width > 0
+                    ? (size_t)display_width : 0u;
+            }
+            if (column_width > 1u) {
+                size_t next_visual = visual + column_width;
+                if (start_column != NULL && *start_column > visual &&
+                    *start_column < next_visual) {
+                    *start_column = next_visual;
+                }
+                if (end_column != NULL && *end_column > visual &&
+                    *end_column < next_visual) {
+                    *end_column = visual;
+                }
+            }
+        }
+        visual += column_width;
+        index += byte_width;
+    }
+    if (end_column != NULL && start_column != NULL &&
+        *end_column < *start_column) {
+        *end_column = *start_column;
+    }
+}
+
+static void
+vitte_terminal_write_source_window(
     FILE *stream,
     const char *text,
     size_t length,
-    size_t tab_width
+    size_t tab_width,
+    size_t window_start,
+    size_t window_end
 )
 {
-    size_t index;
-    size_t visual;
+    size_t index = 0u;
+    size_t visual = 0u;
 
-    if (text == NULL) {
+    while (text != NULL && index < length) {
+        size_t byte_width;
+        size_t column_width;
+        uint32_t codepoint;
+        bool printable = true;
+
+        if (text[index] == '\n' || text[index] == '\r') {
+            break;
+        }
+        if (text[index] == '\t') {
+            size_t cell;
+            byte_width = 1u;
+            column_width = vitte_terminal_tab_advance(visual, tab_width);
+            for (cell = visual; cell < visual + column_width; ++cell) {
+                if (cell >= window_start && cell < window_end) {
+                    (void)fputc(' ', stream);
+                }
+            }
+        } else {
+            vitte_unicode_result_t decoded = vitte_unicode_decode_utf8(
+                (const unsigned char *)text + index, length - index);
+            if (decoded.error == VITTE_UNICODE_ERROR_NONE) {
+                codepoint = decoded.codepoint;
+                byte_width = decoded.length;
+            } else {
+                codepoint = UINT32_C(0xfffd);
+                byte_width = 1u;
+            }
+            {
+                int display_width = vitte_unicode_display_width(codepoint);
+                column_width = display_width > 0
+                    ? (size_t)display_width : 0u;
+                printable = display_width >= 0;
+            }
+            if (!printable) {
+                /* Do not let source control characters affect the terminal. */
+            } else if (column_width == 0u) {
+                if (visual >= window_start && visual <= window_end) {
+                    (void)fwrite(text + index, 1u, byte_width, stream);
+                }
+            } else if (visual >= window_start &&
+                       visual + column_width <= window_end) {
+                if (codepoint == UINT32_C(0xfffd) && byte_width == 1u &&
+                    (unsigned char)text[index] >= 0x80u) {
+                    (void)fputc('?', stream);
+                } else {
+                    (void)fwrite(text + index, 1u, byte_width, stream);
+                }
+            }
+        }
+        visual += column_width;
+        index += byte_width;
+    }
+}
+
+static void
+vitte_terminal_write_source_excerpt(
+    FILE *stream,
+    const vitte_terminal_source_line_t *line,
+    size_t start_byte,
+    size_t end_byte,
+    size_t tab_width,
+    size_t *marker_start,
+    size_t *marker_end
+)
+{
+    size_t line_width;
+    size_t start_visual;
+    size_t end_visual;
+    size_t window_start = 0u;
+    size_t window_end;
+    size_t window_width;
+    size_t span_width;
+    size_t margin;
+    bool left_ellipsis;
+    bool right_ellipsis;
+
+    if (line == NULL || line->text == NULL || marker_start == NULL ||
+        marker_end == NULL) {
         return;
     }
 
-    index = 0u;
-    visual = 0u;
+    start_visual = vitte_terminal_visual_column(line->text, line->length,
+        start_byte, tab_width);
+    end_visual = vitte_terminal_visual_column(line->text, line->length,
+        end_byte, tab_width);
+    if (end_visual < start_visual) {
+        end_visual = start_visual;
+    }
+    line_width = vitte_terminal_visual_column(line->text, line->length,
+        line->length, tab_width);
 
-    while (index < length) {
-        unsigned char character;
-
-        character =
-            (unsigned char)text[index];
-
-        if (character == '\n' ||
-            character == '\r') {
-            break;
+    if (line_width > VITTE_TERMINAL_MAX_RENDER_WIDTH) {
+        window_width = VITTE_TERMINAL_MAX_RENDER_WIDTH - 2u;
+        span_width = end_visual > start_visual
+            ? end_visual - start_visual : 1u;
+        margin = span_width < window_width
+            ? (window_width - span_width) / 3u : 0u;
+        window_start = start_visual > margin ? start_visual - margin : 0u;
+        if (window_start > line_width - window_width) {
+            window_start = line_width - window_width;
         }
+        window_end = window_start + window_width;
+        vitte_terminal_adjust_excerpt_window(line->text, line->length,
+            tab_width, &window_start, &window_end);
+    } else {
+        window_end = line_width;
+    }
 
-        if (character == '\t') {
-            size_t spaces;
-            size_t space_index;
+    left_ellipsis = window_start != 0u;
+    right_ellipsis = window_end < line_width;
+    if (left_ellipsis) {
+        (void)fputs("…", stream);
+    }
+    vitte_terminal_write_source_window(stream, line->text, line->length,
+        tab_width, window_start, window_end);
+    if (right_ellipsis) {
+        (void)fputs("…", stream);
+    }
 
-            spaces =
-                vitte_terminal_tab_advance(
-                    visual,
-                    tab_width
-                );
-
-            for (space_index = 0u;
-                 space_index < spaces;
-                 space_index++) {
-
-                (void)fputc(
-                    ' ',
-                    stream
-                );
-            }
-
-            visual += spaces;
-            index++;
-            continue;
-        }
-
-        {
-            vitte_unicode_result_t decoded = vitte_unicode_decode_utf8(
-                (const unsigned char *)text + index, length - index);
-            int width;
-            if (decoded.error != VITTE_UNICODE_ERROR_NONE) {
-                (void)fputc('?', stream);
-                visual++;
-                index++;
-                continue;
-            }
-            width = vitte_unicode_display_width(decoded.codepoint);
-            if (width >= 0) {
-                (void)fwrite(text + index, 1u, decoded.length, stream);
-                visual += (size_t)width;
-            }
-            index += decoded.length;
-        }
+    *marker_start = start_visual > window_start
+        ? start_visual - window_start : 0u;
+    *marker_end = end_visual > window_start
+        ? end_visual - window_start : 0u;
+    if (left_ellipsis) {
+        ++*marker_start;
+        ++*marker_end;
+    }
+    if (*marker_start > window_end - window_start + (left_ellipsis ? 1u : 0u)) {
+        *marker_start = window_end - window_start + (left_ellipsis ? 1u : 0u);
+    }
+    if (*marker_end > window_end - window_start + (left_ellipsis ? 1u : 0u)) {
+        *marker_end = window_end - window_start + (left_ellipsis ? 1u : 0u);
     }
 }
 
@@ -1189,6 +1357,8 @@ vitte_terminal_render_single_line_span(
     vitte_terminal_source_line_t source_line;
     size_t line_number;
     size_t gutter_width;
+    size_t start_byte;
+    size_t end_byte;
     size_t visual_start;
     size_t visual_end;
 
@@ -1224,6 +1394,11 @@ vitte_terminal_render_single_line_span(
             line_number
         );
 
+    start_byte = span->start_offset >= source_line.start_offset
+        ? span->start_offset - source_line.start_offset : 0u;
+    end_byte = span->end_offset >= source_line.start_offset
+        ? span->end_offset - source_line.start_offset : 0u;
+
     vitte_terminal_render_empty_gutter(
         stream,
         gutter_width,
@@ -1237,35 +1412,14 @@ vitte_terminal_render_single_line_span(
         options
     );
 
-    vitte_terminal_write_source_text(
-        stream,
-        source_line.text,
-        source_line.length,
-        options->tab_width
-    );
+    vitte_terminal_write_source_excerpt(
+        stream, &source_line, start_byte, end_byte, options->tab_width,
+        &visual_start, &visual_end);
 
     (void)fputc(
         '\n',
         stream
     );
-
-    visual_start =
-        vitte_terminal_visual_column(
-            source_line.text,
-            source_line.length,
-            span->start_offset >= source_line.start_offset
-                ? span->start_offset - source_line.start_offset : 0u,
-            options->tab_width
-        );
-
-    visual_end =
-        vitte_terminal_visual_column(
-            source_line.text,
-            source_line.length,
-            span->end_offset >= source_line.start_offset
-                ? span->end_offset - source_line.start_offset : 0u,
-            options->tab_width
-        );
 
     if (visual_end < visual_start) {
         visual_end =
@@ -1327,15 +1481,16 @@ vitte_terminal_render_multiline_span(
         rendered = true;
         vitte_terminal_render_source_gutter(stream, gutter_width,
             line_index + 1u, options);
-        vitte_terminal_write_source_text(stream, source_line.text,
-            source_line.length, options->tab_width);
-        (void)fputc('\n', stream);
-        vitte_terminal_render_marker_line(stream, gutter_width,
-            vitte_terminal_visual_column(source_line.text, source_line.length,
-                start, options->tab_width),
-            vitte_terminal_visual_column(source_line.text, source_line.length,
-                end, options->tab_width),
-            line_index == last_line ? message : NULL, primary, options);
+        {
+            size_t marker_start;
+            size_t marker_end;
+            vitte_terminal_write_source_excerpt(stream, &source_line,
+                start, end, options->tab_width, &marker_start, &marker_end);
+            (void)fputc('\n', stream);
+            vitte_terminal_render_marker_line(stream, gutter_width,
+                marker_start, marker_end,
+                line_index == last_line ? message : NULL, primary, options);
+        }
     }
     return rendered;
 }
@@ -1699,7 +1854,7 @@ vitte_terminal_render_registry_help(
     char help[VITTE_DIAGNOSTIC_MESSAGE_CAPACITY];
     if (options == NULL || !options->show_help ||
         vitte_diagnostic_has_help(diagnostic)) return;
-    if (vitte_diagnostic_format_help(diagnostic, options->sources, help, sizeof(help))) {
+    if (vitte_diagnostic_format_help(diagnostic, NULL, help, sizeof(help))) {
         (void)fprintf(stream, "  help: %s\n", help);
     }
 }
@@ -2003,12 +2158,27 @@ vitte_terminal_render_annotations(
 )
 {
     size_t index;
+    char formatted_help[VITTE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    bool replace_explicit_help;
+    bool rendered_explicit_help;
+
+    replace_explicit_help =
+        kind == VITTE_DIAGNOSTIC_ANNOTATION_HELP &&
+        vitte_diagnostic_has_help(diagnostic) &&
+        vitte_diagnostic_format_help(
+            diagnostic,
+            NULL,
+            formatted_help,
+            sizeof(formatted_help)
+        );
+    rendered_explicit_help = false;
 
     for (index = 0u;
          index < diagnostic->annotation_count;
          index++) {
 
         const vitte_diagnostic_annotation_t *annotation;
+        vitte_diagnostic_annotation_t contextual_annotation;
         const char *name;
         const char *color;
 
@@ -2017,6 +2187,17 @@ vitte_terminal_render_annotations(
 
         if (annotation->kind != kind) {
             continue;
+        }
+
+        if (replace_explicit_help &&
+            annotation->kind == VITTE_DIAGNOSTIC_ANNOTATION_HELP) {
+            if (rendered_explicit_help) {
+                continue;
+            }
+            contextual_annotation = *annotation;
+            contextual_annotation.message = formatted_help;
+            annotation = &contextual_annotation;
+            rendered_explicit_help = true;
         }
 
         switch (annotation->kind) {
@@ -3319,8 +3500,26 @@ vitte_diagnostic_render_cli_batch_ex(
         const char *message;
         const char *details;
         char message_storage[VITTE_DIAGNOSTIC_MESSAGE_CAPACITY];
+        bool has_explicit_primary_label;
 
         input = &diagnostics[index];
+        has_explicit_primary_label = false;
+        if (input->label_count > VITTE_CLI_DIAGNOSTIC_MAX_LABELS ||
+            (input->label_count != 0u && input->labels == NULL)) {
+            goto cleanup;
+        }
+        if (input->labels != NULL) {
+            size_t label_index;
+            for (label_index = 0u;
+                 label_index < input->label_count;
+                 ++label_index) {
+                if (input->labels[label_index].style ==
+                        VITTE_CLI_DIAGNOSTIC_LABEL_PRIMARY) {
+                    has_explicit_primary_label = true;
+                    break;
+                }
+            }
+        }
         if (input->code == NULL ||
             input->end_offset < input->start_offset) {
             goto cleanup;
@@ -3443,7 +3642,7 @@ vitte_diagnostic_render_cli_batch_ex(
                     input->has_span
                 ? ""
                 : details != NULL ? details : "";
-        if (span_pointer != NULL &&
+        if (span_pointer != NULL && !has_explicit_primary_label &&
             (vitte_terminal_text_present(input->details) ||
              (entry != NULL &&
               vitte_terminal_text_present(entry->explanation)))) {
@@ -3568,7 +3767,7 @@ vitte_diagnostic_render_cli_batch_ex(
             char help[VITTE_DIAGNOSTIC_MESSAGE_CAPACITY];
             if (vitte_terminal_text_present(input->help)) {
                 status = vitte_diagnostic_add_help(diagnostic, input->help, span_pointer);
-            } else if (vitte_diagnostic_format_help(diagnostic, sources, help, sizeof(help))) {
+            } else if (vitte_diagnostic_format_help(diagnostic, NULL, help, sizeof(help))) {
                 status = vitte_diagnostic_add_help(diagnostic, help, span_pointer);
             }
             if (status != VITTE_STATUS_OK) goto cleanup;

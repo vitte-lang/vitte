@@ -63,6 +63,16 @@ def grammar_keyword_entries(grammar: str) -> set[str]:
     return set(re.findall(r'"([^"\\]+)"', production.group(1)))
 
 
+def grammar_lexer_only_operator_entries(grammar: str) -> set[str]:
+    production = re.search(
+        r"(?ms)^lexer_only_operator\s*::=\s*(.*?);",
+        grammar,
+    )
+    if production is None:
+        return set()
+    return set(re.findall(r'"([^"\\]+)"', production.group(1)))
+
+
 def grammar_syntax_terminals(grammar: str, grammar_keywords: set[str]) -> set[str]:
     syntax = grammar.split("EOF ::=", 1)[0]
     terminals = set(re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', syntax))
@@ -106,6 +116,7 @@ def main() -> int:
     native_lexer = NATIVE_LEXER.read_text(encoding="utf-8")
     token_test = TOKEN_TEST.read_text(encoding="utf-8")
     grammar_keywords = grammar_keyword_entries(grammar)
+    lexer_only_operators = grammar_lexer_only_operator_entries(grammar)
     grammar_syntax_tokens = grammar_syntax_terminals(grammar, grammar_keywords)
     tested_keywords = tested_keyword_entries(token_test)
     tested_operators = tested_operator_spellings(token_test)
@@ -140,7 +151,7 @@ def main() -> int:
                 errors.append(f"{label} lexer operator missing from EBNF: {text}")
 
         for text, token_kind in keywords + operators:
-            if token_kind not in parser:
+            if text not in lexer_only_operators and token_kind not in parser:
                 errors.append(
                     f"{label} lexer token is not referenced by parser: "
                     f"{token_kind} ({text})"

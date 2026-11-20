@@ -164,12 +164,15 @@ def test_import_alias_span(root: Path) -> None:
     position = conflict["position"]
     assert position["source"] == str(main), conflict
     assert position["start_line"] == 2, conflict
-    assert position["start_column"] == 0, conflict
+    assert position["start_column"] == len("use alias::b as "), conflict
+    assert position["end_column"] == position["start_column"] + len("same"), conflict
     assert "alias::b" in conflict["details"], conflict
     assert "alias `same`" in conflict["details"], conflict
     assert conflict["context"]["module"] == "alias::b", conflict
     assert conflict["context"]["symbol"] == "same", conflict
     assert conflict["context"]["context"] == "use declaration", conflict
+    assert len(conflict["related_locations"]) == 1, conflict
+    assert conflict["related_locations"][0]["label"] == "earlier import binds this alias", conflict
 
     sarif = run(main, "sarif")
     assert isinstance(sarif, dict)
@@ -181,7 +184,8 @@ def test_import_alias_span(root: Path) -> None:
     location = result["locations"][0]["physicalLocation"]
     assert location["artifactLocation"]["uri"] == str(main), result
     assert location["region"]["startLine"] == 3, result
-    assert location["region"]["startColumn"] == 1, result
+    assert location["region"]["startColumn"] == position["start_column"] + 1, result
+    assert location["region"]["endColumn"] == position["end_column"] + 1, result
 
 
 def test_missing_import_span(root: Path) -> None:

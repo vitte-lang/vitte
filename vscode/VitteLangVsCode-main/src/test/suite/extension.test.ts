@@ -2,6 +2,7 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { storeCompilerSuggestions } from "../../utils/compilerDiagnostics";
 
 const EXTENSION_ID = "VitteStudio.vitte-studio";
 
@@ -805,6 +806,19 @@ suite("Vitte extension", () => {
     );
   });
 
+  test("Compiler-provided remediation is shown once without a second help lookup", async () => {
+    const help = "Insert the missing comma at this argument boundary.";
+    const rendered = await vscode.commands.executeCommand<string>(
+      "vitte.test.renderDiagnosticMessage",
+      "E0311",
+      "missing comma\nhelp: Insert the missing comma at this argument boundary.",
+      { help },
+    );
+    assert.equal(typeof rendered, "string");
+    assert.equal((rendered?.match(/help:\s*Insert the missing comma at this argument boundary\./g) ?? []).length, 1);
+    assert.ok(!rendered?.includes("source-aide: external"));
+  });
+
   test("E2E: missing vitte binary falls back to local help", async () => {
     const rendered = await vscode.commands.executeCommand<string>(
       "vitte.test.renderDiagnosticMessage",
@@ -860,7 +874,7 @@ suite("Vitte extension", () => {
     assert.equal(typeof after.localOnlyRate, "number");
   });
 
-  test("Code actions expose syntax fixAll, explain diagnostic, open diagnostics doc, and copy explain command", async () => {
+  test("Code actions explain compiler diagnostics without inventing syntax edits", async () => {
     const document = await vscode.workspace.openTextDocument({
       content: "}\n",
       language: "vitte",
@@ -961,30 +975,75 @@ suite("Vitte extension", () => {
       }, 4000, 60);
       assert.ok(copyExplainCommandAction, "La code action Copy explain command est absente");
 
-      let syntaxFixAllAction: vscode.CodeAction | undefined;
-      await waitUntil(async () => {
-        try {
-          const actions =
-            (await vscode.commands.executeCommand<(vscode.CodeAction | vscode.Command)[]>(
-              "vscode.executeCodeActionProvider",
-              document.uri,
-              range,
-              vscode.CodeActionKind.SourceFixAll.value,
-            )) ?? [];
-          const isSyntaxFixAllCodeAction = (a: vscode.CodeAction | vscode.Command): a is vscode.CodeAction =>
-            a instanceof vscode.CodeAction
-            && a.command?.command === "vitte.syntax.fixAllPreview"
-            && (a.kind?.value ?? "").includes("source.fixAll.vitte.syntax");
-          syntaxFixAllAction = actions.find(
-            isSyntaxFixAllCodeAction,
-          );
-          return Boolean(syntaxFixAllAction);
-        } catch {
-          return false;
-        }
-      }, 4000, 60);
-      assert.ok(syntaxFixAllAction, "La code action source.fixAll.vitte.syntax est absente");
+      const actions =
+        (await vscode.commands.executeCommand<(vscode.CodeAction | vscode.Command)[]>(
+          "vscode.executeCodeActionProvider",
+          document.uri,
+          range,
+          vscode.CodeActionKind.QuickFix.value,
+        )) ?? [];
+      assert.equal(
+        actions.some((action) => action instanceof vscode.CodeAction && action.edit !== undefined),
+        false,
+        "A syntax diagnostic without a compiler-proven edit must not get an invented fix.",
+      );
     } finally {
+      testCollection.delete(document.uri);
+      testCollection.dispose();
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+  });
+
+  test("Code actions apply only compiler-marked machine-applicable edits", async () => {
+    const text = "proc main() { call(1 2); }";
+    const insertion = text.indexOf("2");
+    const document = await vscode.workspace.openTextDocument({ content: text, language: "vitte" });
+    await vscode.window.showTextDocument(document, { preview: false });
+    const range = new vscode.Range(document.positionAt(insertion), document.positionAt(insertion));
+    const testCollection = vscode.languages.createDiagnosticCollection("vitte-test-safe-fix");
+    const diagnostic = new vscode.Diagnostic(range, "missing comma", vscode.DiagnosticSeverity.Error);
+    diagnostic.code = "PARSE:E0311";
+    diagnostic.source = "vitte";
+    storeCompilerSuggestions(document.uri.toString(), [{
+      start: insertion,
+      end: insertion,
+      source: document.uri.fsPath,
+      code: "E0311",
+      message: "Insert the missing comma",
+      title: "missing comma",
+      labels: [],
+      related: [],
+      help: "Separate arguments with a comma.",
+      suggestions: [
+        { start: insertion, end: insertion, source: document.uri.fsPath, message: "Insert the missing comma", replacement: ",", applicability: "machine-applicable" },
+        { start: insertion, end: insertion, source: document.uri.fsPath, message: "Try a different argument", replacement: "value", applicability: "maybe-incorrect" },
+      ],
+    }]);
+    testCollection.set(document.uri, [diagnostic]);
+
+    try {
+      await waitUntil(() => vscode.languages.getDiagnostics(document.uri).some((d) => d.code === "PARSE:E0311"), 3000, 30);
+      const actions =
+        (await vscode.commands.executeCommand<(vscode.CodeAction | vscode.Command)[]>(
+          "vscode.executeCodeActionProvider",
+          document.uri,
+          range,
+          vscode.CodeActionKind.QuickFix.value,
+        )) ?? [];
+      assert.ok(actions.some((action) => action instanceof vscode.CodeAction && action.command?.command === "vitte.diagnostics.explain"),
+        "Every registered compiler diagnostic family should expose the compiler's full remediation command.");
+      const fixes = actions.filter((action): action is vscode.CodeAction =>
+        action instanceof vscode.CodeAction && action.edit !== undefined && action.title.includes("missing comma"));
+      assert.equal(fixes.length, 1, "Only the compiler's machine-applicable replacement should be exposed.");
+      const edit = fixes[0]?.edit;
+      assert.ok(edit);
+      const entries = edit.entries();
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0]?.[1][0]?.newText, ",");
+      assert.deepEqual(entries[0]?.[1][0]?.range.start, document.positionAt(insertion));
+      assert.deepEqual(entries[0]?.[1][0]?.range.end, document.positionAt(insertion));
+    } finally {
+      storeCompilerSuggestions(document.uri.toString(), []);
       testCollection.delete(document.uri);
       testCollection.dispose();
       await vscode.commands.executeCommand("workbench.action.closeActiveEditor");

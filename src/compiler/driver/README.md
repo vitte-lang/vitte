@@ -167,6 +167,20 @@ the default is `clang`. Set `VITTE_LLVM_TARGET` to pass one target triple using
 Clang's `--target` option. A failed or missing toolchain is reported at the
 `LLVMEmit` host-tool stage. Ordinary C17 compilation continues to use `CC`.
 
+For ordinary C17 builds, the native host-tools driver runs `CC` (default
+`cc`) once to compile generated C into an object and again to link that object.
+The diagnostic identifies which phase failed and shows the command shape;
+compiler and linker stdout/stderr remain attached to the invoking terminal.
+`CC` is an executable path, not a shell command with embedded flags. The
+bootstrap-only fallback invokes `cc` from `PATH` directly. The CLI currently
+retains `--target` in configuration but does not forward it to the C17 host
+toolchain, so it reports E1901 with the requested value and host architecture,
+platform, pointer width, selected compiler, and a note that the exact compiler
+triple/ABI was not probed instead of silently producing a binary for an
+unverified target. Cross-target output requires a backend path that selects or
+forwards the requested triple; setting `CC` alone does not make `--target`
+effective.
+
 ## Minimal Example
 
 ```c

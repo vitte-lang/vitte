@@ -18,7 +18,7 @@
  *   E0000-E0099  compiler / infrastructure
  *   E0100-E0199  lexer
  *   E0200-E0299  parser
- *   E0300-E0399  modules / imports / packages
+ *   E0300-E0399  modules / imports / packages; E0308-E0311 extend parser syntax
  *   E0400-E0499  names / scopes
  *   E0500-E0599  types
  *   E0600-E0699  calls / procedures
@@ -306,7 +306,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_LEXER,
         "lexer",
         "numeric literal overflow",
-        "The numeric literal exceeds the range accepted by its lexical representation."
+        "The integer magnitude must fit the supported unsigned 64-bit literal range [0, 18446744073709551615]; an annotated target type may impose a narrower range."
     ),
 
     ENTRY(
@@ -337,6 +337,86 @@ vitte_registry_entries[] = {
         "unicode",
         "invalid Unicode sequence",
         "The source contains malformed or unsupported Unicode data."
+    ),
+
+    ENTRY(
+        "VITTE_LEXER_E_INVALID_INTEGER",
+        "E0109",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_LEXER,
+        "lexer",
+        "malformed integer literal",
+        "An integer literal does not conform to the Vitte grammar for digits, bases, separators, or suffixes."
+    ),
+
+    ENTRY(
+        "VITTE_LEXER_E_INVALID_FLOAT",
+        "E0110",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_LEXER,
+        "lexer",
+        "malformed floating-point literal",
+        "A floating-point literal does not conform to the Vitte grammar for mantissas, separators, or exponents."
+    ),
+
+    ENTRY(
+        "VITTE_LEXER_E_INVALID_CHARACTER_LITERAL",
+        "E0111",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_LEXER,
+        "lexer",
+        "malformed character literal",
+        "A character literal must contain exactly one Unicode scalar value or one valid escape sequence."
+    ),
+
+    ENTRY(
+        "VITTE_LEXER_E_INVALID_NUMERIC_SEPARATOR",
+        "E0112",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_LEXER,
+        "lexer",
+        "invalid numeric separator",
+        "Digit separators must be single underscores placed between digits."
+    ),
+
+    ENTRY(
+        "VITTE_LEXER_E_INVALID_NUMERIC_BASE",
+        "E0113",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_LEXER,
+        "lexer",
+        "invalid integer base or digit",
+        "A based integer is missing digits or contains a digit that is not valid in its base."
+    ),
+
+    ENTRY(
+        "VITTE_LEXER_E_INVALID_NUMERIC_SUFFIX",
+        "E0114",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_LEXER,
+        "lexer",
+        "unsupported numeric suffix",
+        "Vitte numeric literal forms do not define suffixes."
+    ),
+
+    ENTRY(
+        "VITTE_LEXER_E_INVALID_EXPONENT",
+        "E0115",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_LEXER,
+        "lexer",
+        "malformed exponent",
+        "A decimal exponent uses e or E and a hexadecimal exponent uses p or P; both require decimal digits."
+    ),
+
+    ENTRY(
+        "VITTE_LEXER_E_INVALID_OPERATOR",
+        "E0116",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_LEXER,
+        "lexer",
+        "invalid or incomplete operator",
+        "The punctuation sequence is not a supported Vitte operator; a multi-character operator may be incomplete or misspelled."
     ),
 
     /* ===================================================================== */
@@ -433,9 +513,128 @@ vitte_registry_entries[] = {
         "A declaration modifier is not permitted in this syntactic context."
     ),
 
+    ENTRY(
+        "VITTE_PARSER_E_UNSUPPORTED_SYNTAX",
+        "E0210",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_PARSER,
+        "syntax",
+        "unsupported syntax",
+        "The parser recognized a syntactic position but does not support this source form."
+    ),
+
+    ENTRY(
+        "VITTE_PARSER_E_RESERVED_WORD_AS_NAME",
+        "E0211",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_PARSER,
+        "syntax",
+        "reserved word used as a name",
+        "A reserved word cannot be used where the grammar requires an identifier."
+    ),
+
+    ENTRY("VITTE_PARSER_E_INVALID_MODULE_PATH", "E0212", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed module path", "A module path must contain nonempty identifier segments separated by `::` or `/`; a separator cannot be first, repeated or final."),
+    ENTRY("VITTE_PARSER_E_DUPLICATE_MODULE_HEADER", "E0213", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "duplicate module header", "A source file may declare at most one top-level module header with `space path`."),
+    ENTRY("VITTE_PARSER_E_MISPLACED_MODULE_HEADER", "E0214", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "misplaced module header", "A top-level module header must appear before imports and other declarations."),
+    ENTRY("VITTE_PARSER_E_INVALID_USE_DECLARATION", "E0215", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed use declaration", "A `use` declaration requires a module path followed by an optional alias, terminal glob, or nonempty grouped import, and must end with `;`."),
+    ENTRY("VITTE_PARSER_E_INVALID_USE_ALIAS", "E0216", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid import alias", "The `as` clause in a use declaration must be followed by an identifier."),
+    ENTRY("VITTE_PARSER_E_INVALID_IMPORT_GROUP", "E0217", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed import group", "A grouped import must contain comma-separated paths, may nest groups after a path, and must close every opening brace."),
+    ENTRY("VITTE_PARSER_E_INVALID_GLOB_IMPORT", "E0218", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid glob import", "A glob import uses terminal `::*`; it cannot appear inside a group or be followed by an alias or another path segment."),
+    ENTRY("VITTE_PARSER_E_INVALID_EXPORT_CLAUSE", "E0219", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed export clause", "An export clause must be `export path [as name];`, `export { paths };`, or `export *;`."),
+    ENTRY("VITTE_PARSER_E_EMPTY_EXPORT_GROUP", "E0220", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "empty export group", "An export group must contain at least one path to re-export."),
+    ENTRY("VITTE_PARSER_E_INVALID_EXPORT_ALIAS", "E0221", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid export alias", "The `as` clause in an export must be followed by an identifier."),
+    ENTRY("VITTE_PARSER_E_TRAILING_TOKENS", "E0222", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "unexpected trailing tokens", "The declaration is complete, but extra tokens appear before its required terminator."),
+    ENTRY("VITTE_PARSER_E_MISSING_MODULE_HEADER", "E0223", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "missing module header", "A source file with a module import or export must begin with one top-level `space path;` header."),
+    ENTRY("VITTE_PARSER_E_INVALID_VALUE_DECLARATION", "E0224", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed const or static declaration", "A `const` or `static` declaration requires a name, an optional type annotation, an initializer, and a terminating semicolon."),
+    ENTRY("VITTE_PARSER_E_MISSING_VALUE_INITIALIZER", "E0225", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "missing const or static initializer", "A `const` or `static` declaration must provide `= expression` after its name and optional type."),
+    ENTRY("VITTE_PARSER_E_INVALID_TYPE_DECLARATION", "E0226", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed type declaration", "A type declaration requires a name, complete bounds and aliases, and a terminating semicolon."),
+    ENTRY("VITTE_PARSER_E_INVALID_OPAQUE_DECLARATION", "E0227", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed opaque declaration", "An opaque declaration requires a name; an optional aliased type must follow `=`, and bounds are not allowed."),
+    ENTRY("VITTE_PARSER_E_INVALID_FORM_DECLARATION", "E0228", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed form declaration", "A form declaration requires a name, braces, and fields written as `name: Type`."),
+    ENTRY("VITTE_PARSER_E_DUPLICATE_FORM_FIELD", "E0229", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "duplicate form field", "Field names must be unique within a form declaration."),
+    ENTRY("VITTE_PARSER_E_INVALID_FORM_FIELD_SEPARATOR", "E0230", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "missing form field separator", "Adjacent form fields must be separated by a comma or semicolon."),
+    ENTRY("VITTE_PARSER_E_INVALID_PICK_DECLARATION", "E0231", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed pick declaration", "A `pick` declaration needs a name, optional generic parameters and constraints, and a braced list of variants separated by commas."),
+    ENTRY("VITTE_PARSER_E_DUPLICATE_PICK_VARIANT", "E0232", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "duplicate pick variant", "Variant names must be unique within one pick declaration."),
+    ENTRY("VITTE_PARSER_E_INVALID_PICK_VARIANT_PAYLOAD", "E0233", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid pick variant payload", "A variant payload is an optional parenthesized, comma-separated list of types; an empty list is allowed."),
+    ENTRY("VITTE_PARSER_E_INVALID_TRAIT_DECLARATION", "E0234", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed trait declaration", "A trait declaration needs a name, optional generic parameters and constraints, and a declaration block."),
+    ENTRY("VITTE_PARSER_E_INVALID_IMPL_DECLARATION", "E0235", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed implementation declaration", "An implementation needs a target type or a trait type followed by `for` and a target type, then a declaration block."),
+    ENTRY("VITTE_PARSER_E_MISSING_IMPL_TARGET_TYPE", "E0236", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "missing implementation target type", "A trait implementation must provide a target type after `for`."),
+    ENTRY("VITTE_PARSER_E_INVALID_IMPL_FOR_CLAUSE", "E0237", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid implementation `for` clause", "A trait implementation clause must contain one trait type, `for`, and one target type before its optional constraints and block."),
+    ENTRY("VITTE_PARSER_E_INVALID_PROCEDURE_DECLARATION", "E0238", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed procedure declaration", "A procedure declaration needs a name, a parameter list, optional return type and constraints, and a valid body or terminator."),
+    ENTRY("VITTE_PARSER_E_INVALID_PROCEDURE_PARAMETERS", "E0239", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed procedure parameter list", "Procedure parameters must be enclosed in parentheses and use comma-separated `pattern: Type` entries."),
+    ENTRY("VITTE_PARSER_E_INVALID_PROCEDURE_RETURN_TYPE", "E0240", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid procedure return type", "A return arrow must be followed by a valid type expression."),
+    ENTRY("VITTE_PARSER_E_INVALID_PROCEDURE_MODIFIER", "E0241", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid procedure modifier", "The `async`, `unsafe`, and `comptime` modifiers may appear once and apply only to procedure declarations."),
+    ENTRY("VITTE_PARSER_E_INVALID_PROCEDURE_BODY_FORM", "E0242", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid procedure body form", "A normal procedure ends with a block or semicolon; an external or intrinsic procedure must end with a semicolon and cannot have a body."),
+    ENTRY("VITTE_PARSER_E_INVALID_EXTERNAL_PROCEDURE", "E0243", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed external procedure declaration", "An external procedure uses `extern`, an optional nonempty ABI string literal, a complete procedure signature, optional constraints, and a terminating semicolon."),
+    ENTRY("VITTE_PARSER_E_INVALID_INTRINSIC_DECLARATION", "E0244", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed intrinsic declaration", "An intrinsic declaration requires a name, a complete signature and constraints, and a terminating semicolon; it has no ABI string or body."),
+    ENTRY("VITTE_PARSER_E_INVALID_ABI_STRING_LITERAL", "E0245", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid ABI string literal", "An ABI literal after `extern` must be a nonempty string literal naming the calling convention."),
+    ENTRY("VITTE_PARSER_E_INVALID_GENERIC_PARAMETER_LIST", "E0246", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed generic parameter list", "A generic parameter list uses angle brackets and comma-separated parameters, with an optional trailing comma."),
+    ENTRY("VITTE_PARSER_E_INVALID_CONST_GENERIC_PARAMETER", "E0247", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed const generic parameter", "A const generic parameter requires an identifier and may have one or more type bounds."),
+    ENTRY("VITTE_PARSER_E_INVALID_GENERIC_BOUND", "E0248", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed generic bound", "A generic bound after `:` or `+` must be a valid type expression."),
+    ENTRY("VITTE_PARSER_E_INVALID_WHERE_CLAUSE", "E0249", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed where clause", "A where clause requires one or more valid comma-separated bounds or relational predicates."),
+    ENTRY("VITTE_PARSER_E_INVALID_REQUIRES_CLAUSE", "E0250", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed requires clause", "A requires clause needs an expression followed by a semicolon."),
+    ENTRY("VITTE_PARSER_E_INVALID_ENSURES_CLAUSE", "E0251", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed ensures clause", "An ensures clause needs an expression followed by a semicolon."),
+    ENTRY("VITTE_PARSER_E_INVALID_MACRO_DECLARATION", "E0252", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed macro declaration", "A macro declaration requires a name, an optional typed parameter list, and a body."),
+    ENTRY("VITTE_PARSER_E_INVALID_MACRO_PARAMETERS", "E0253", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed macro parameter list", "Macro parameters must be enclosed in parentheses and use comma-separated `pattern: Type` entries."),
+    ENTRY("VITTE_PARSER_E_INVALID_TEST_DECLARATION", "E0254", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed test declaration", "A test declaration accepts an optional identifier or string name followed by a body."),
+    ENTRY("VITTE_PARSER_E_INVALID_DECLARATION_MODIFIER_ORDER", "E0255", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid declaration modifier order or combination", "At most one visibility modifier (`pub` or prefix `export`) may precede a declaration and must come before procedure modifiers; visibility modifiers cannot be applied to export clauses."),
+    ENTRY("VITTE_PARSER_E_INVALID_ATTRIBUTE", "E0256", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed attribute", "An attribute requires a bracketed name and balanced delimiters around any arguments."),
+    ENTRY("VITTE_PARSER_E_INVALID_ATTRIBUTE_NAME", "E0257", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "missing or invalid attribute name", "An attribute name requires an identifier or keyword after `#[` or `#![` and after each `::`."),
+    ENTRY("VITTE_PARSER_E_INVALID_ATTRIBUTE_ARGUMENTS", "E0258", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed attribute arguments", "Attribute arguments are comma-separated names or literals; a named argument uses `name = literal`."),
+    ENTRY("VITTE_PARSER_E_MISSING_ATTRIBUTE_VALUE", "E0259", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "missing attribute value", "A named attribute argument must have a literal value after `=`."),
+    ENTRY("VITTE_PARSER_E_INVALID_ATTRIBUTE_LITERAL", "E0260", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid attribute literal", "Attribute values must be integer, float, string, character, boolean, or `null` literals."),
+    ENTRY("VITTE_PARSER_E_UNEXPECTED_DECLARATION", "E0261", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "unexpected declaration", "A declaration is not valid in this statement or expression position."),
+    ENTRY("VITTE_PARSER_E_UNEXPECTED_STATEMENT", "E0262", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "unexpected statement", "A statement is not valid in this declaration or expression position."),
+    ENTRY("VITTE_PARSER_E_UNEXPECTED_EXPRESSION", "E0263", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "unexpected expression", "An expression is not valid at this declaration position."),
+    ENTRY("VITTE_PARSER_E_INVALID_PROCEDURE_TYPE", "E0264", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed procedure type", "A procedure type uses `proc(Type, Type)`, may name its parameters, and may add `-> ReturnType`; parameter types need commas and the list needs a closing `)`."),
+    ENTRY("VITTE_PARSER_E_INVALID_REFERENCE_TYPE", "E0265", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed reference type", "A reference type is `&Type`, `&mut Type`, `ref Type` or `ref mut Type` and requires a complete pointee type."),
+    ENTRY("VITTE_PARSER_E_INVALID_POINTER_TYPE", "E0266", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed pointer type", "A pointer type uses `*Type`, `*mut Type`, `*const Type`, `*volatile Type` or `*const volatile Type` and requires one complete pointee type."),
+    ENTRY("VITTE_PARSER_E_INVALID_ARRAY_TYPE", "E0267", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed array type", "An array type is `[Type; length]` or `[length] Type`, with a valid length expression, closing bracket and element type."),
+    ENTRY("VITTE_PARSER_E_INVALID_SLICE_TYPE", "E0268", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed slice type", "A slice type is `[ElementType]` and requires a complete element type and closing bracket."),
+    ENTRY("VITTE_PARSER_E_INVALID_OPTIONAL_TYPE", "E0269", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed optional type", "An optional type is `?Type` and requires a complete type after `?`."),
+    ENTRY("VITTE_PARSER_E_INVALID_TYPE_PATH", "E0270", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed type path", "A type path uses nonempty identifier or permitted keyword segments separated by `::` or `/`; every separator must have a segment on both sides and a single `:` is not a path separator."),
+    ENTRY("VITTE_PARSER_E_INVALID_GENERIC_ARGUMENTS", "E0271", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed generic arguments", "Generic arguments require at least one comma-separated type in `<Type, Type>` or `[Type, Type]`, with the matching closing delimiter; a trailing comma is allowed."),
+    ENTRY("VITTE_PARSER_E_INVALID_LET_STATEMENT", "E0272", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed let binding statement", "A `let` statement requires a binding pattern and `;`; its optional type and initializer must each be complete. If the initializer is omitted, semantic analysis requires a type to be inferable or explicitly annotated."),
+    ENTRY("VITTE_PARSER_E_INVALID_SET_STATEMENT", "E0273", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed set statement", "A `set` statement requires an assignment target, a valid assignment operator, a complete value expression and a terminating `;`."),
+    ENTRY("VITTE_PARSER_E_INVALID_ASSIGNMENT_OPERATOR", "E0274", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "invalid assignment operator", "Use one of `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` or `>>=` after the assignment target; comparison and arithmetic operators do not assign."),
+    ENTRY("VITTE_PARSER_E_INVALID_RETURN_STATEMENT", "E0275", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed return statement", "A return statement may contain an expression and may omit its semicolon only when the expression is immediately followed by `}` or end of file; procedure placement is validated by semantic analysis."),
+    ENTRY("VITTE_PARSER_E_INVALID_JUMP_STATEMENT", "E0276", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed jump statement", "`break` and `continue` statements require a terminating `;`; their placement inside a loop is validated by semantic analysis."),
+    ENTRY("VITTE_PARSER_E_INVALID_DEFER_STATEMENT", "E0277", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed defer statement", "A defer statement is `defer { ... }` or `defer expression;`; the expression form requires its terminating semicolon."),
+    ENTRY("VITTE_PARSER_E_INVALID_ASSERT_STATEMENT", "E0278", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed assert statement", "An assert statement requires `assert(expression);` with balanced parentheses and a final semicolon."),
+    ENTRY("VITTE_PARSER_E_INVALID_UNSAFE_STATEMENT", "E0279", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed unsafe statement", "An unsafe statement requires the form `unsafe { ... }` with a complete block."),
+    ENTRY("VITTE_PARSER_E_INVALID_ASM_STATEMENT", "E0280", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed assembly statement", "An assembly statement uses `asm(expression, ...);` or `asm(\"template\");`, with balanced delimiters and a terminating semicolon."),
+    ENTRY("VITTE_PARSER_E_INVALID_CONTROL_FLOW_STATEMENT", "E0281", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed control-flow statement", "If and elif require a condition and block; else must follow an if/elif chain and requires a block or chained conditional; while requires a condition and block; loop requires a block; for requires a pattern, `in`, an iterable and a block."),
+    ENTRY("VITTE_PARSER_E_INVALID_MATCH_STATEMENT", "E0282", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed match statement", "A match statement requires a subject expression and braces; every arm present must be complete and comma-separated."),
+    ENTRY("VITTE_PARSER_E_INVALID_MATCH_ARM", "E0283", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed match arm", "A match arm uses `[case] pattern [if guard] => body`; adjacent arms require commas and each arm needs a complete body."),
+    ENTRY("VITTE_PARSER_E_INVALID_PATTERN", "E0284", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed pattern", "Patterns may be bindings or paths, literals, tuple or array patterns, variant constructors, or struct patterns; nested items are comma-separated."),
+    ENTRY("VITTE_PARSER_E_INVALID_RANGE_PATTERN", "E0285", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed range pattern", "A range pattern is `lower..upper` or `lower..=upper`; both endpoints must be integer, float or character literals of the same kind."),
+    ENTRY("VITTE_PARSER_E_INVALID_ASSIGNMENT_EXPRESSION", "E0286", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed assignment expression", "An assignment expression requires a complete target, assignment operator and right-hand expression."),
+    ENTRY("VITTE_PARSER_E_INVALID_COALESCING_EXPRESSION", "E0287", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed coalescing expression", "A coalescing expression uses `left ?? fallback` and requires a complete expression on both sides."),
+    ENTRY("VITTE_PARSER_E_INVALID_LOGICAL_EXPRESSION", "E0288", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed logical expression", "Logical `and`, `or`, `&&` and `||` operators require complete expressions on both sides."),
+    ENTRY("VITTE_PARSER_E_INVALID_BITWISE_EXPRESSION", "E0289", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed bitwise expression", "Bitwise `&`, `|` and `^` operators require complete expressions on both sides."),
+    ENTRY("VITTE_PARSER_E_INVALID_COMPARISON_EXPRESSION", "E0290", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed comparison expression", "Comparison operators `==`, `!=`, `<`, `<=`, `>` and `>=` require complete expressions on both sides."),
+    ENTRY("VITTE_PARSER_E_INVALID_SHIFT_EXPRESSION", "E0291", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed shift expression", "Shift operators `<<` and `>>` require a complete value and shift count."),
+    ENTRY("VITTE_PARSER_E_INVALID_ARITHMETIC_EXPRESSION", "E0292", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed arithmetic expression", "Arithmetic operators `+`, `-`, `*`, `/` and `%` require complete expressions on both sides."),
+    ENTRY("VITTE_PARSER_E_INVALID_RANGE_EXPRESSION", "E0293", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed range expression", "A range expression uses `start..end` or `start..=end` with a complete expression at each endpoint."),
+    ENTRY("VITTE_PARSER_E_INVALID_UNARY_EXPRESSION", "E0294", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed unary expression", "A unary operator such as `-`, `not`, `&`, `*`, `move` or `await` must be followed by one complete operand."),
+    ENTRY("VITTE_PARSER_E_INVALID_CAST_EXPRESSION", "E0295", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed cast expression", "A cast uses `value as Type` and requires a complete type after `as`."),
+    ENTRY("VITTE_PARSER_E_INVALID_POSTFIX_EXPRESSION", "E0296", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed postfix expression", "A postfix expression requires a complete call `callee(arguments)`, index `value[index]`, field access `value.field`, optional postfix `value?`, generic form or variant suffix, or form initializer `Type { field: value }`. Generic arguments must be nonempty and well formed."),
+    ENTRY("VITTE_PARSER_E_INVALID_IF_EXPRESSION", "E0297", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed if expression", "An if expression requires a condition, a block, and an else branch (`if condition { value } else { fallback }`); `elif` may continue the chain."),
+    ENTRY("VITTE_PARSER_E_INVALID_BLOCK_EXPRESSION", "E0298", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed block expression", "A block expression uses `{ statements [final_expression] }`, with complete statements and a matching closing brace."),
+    ENTRY("VITTE_PARSER_E_INVALID_ARRAY_EXPRESSION", "E0299", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed array expression", "An array expression is `[]` or `[expression_list]`; each element must be complete, elements are comma-separated, and the closing `]` is required."),
+
     /* ===================================================================== */
-    /* E0300-E0399: module/import/package                                    */
+    /* E0300-E0399: module/import/package, plus parser syntax extensions      */
     /* ===================================================================== */
+
+    ENTRY(
+        "VITTE_IMPORT_E_MODULE_PATH_MISMATCH",
+        "E0300",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_IMPORT,
+        "module",
+        "module name does not match import path",
+        "The resolved source declares a different module path than the import requests."
+    ),
 
     ENTRY(
         "VITTE_IMPORT_E_MODULE_NOT_FOUND",
@@ -444,7 +643,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_IMPORT,
         "module",
         "module not found",
-        "The requested module could not be resolved."
+        "The requested module path could not be resolved under the import roots checked by the compiler."
     ),
 
     ENTRY(
@@ -484,7 +683,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_IMPORT,
         "package",
         "package not found",
-        "The requested package could not be located."
+        "The project declares this package dependency, but its package source directory was not found under the import roots checked by the compiler."
     ),
 
     ENTRY(
@@ -507,6 +706,11 @@ vitte_registry_entries[] = {
         "The resolved import graph failed structural validation, indicating corrupt or inconsistent compiler state."
     ),
 
+    ENTRY("VITTE_PARSER_E_INVALID_SIZEOF_EXPRESSION", "E0308", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed sizeof expression", "A sizeof expression uses `sizeof(Type)` or `sizeof(expression)` and requires one complete operand and matching parentheses."),
+    ENTRY("VITTE_PARSER_E_INVALID_ALIGNOF_EXPRESSION", "E0309", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed alignof expression", "An alignof expression uses `alignof(Type)` and requires one complete type and matching parentheses."),
+    ENTRY("VITTE_PARSER_E_INVALID_NULL_CONSTRUCTION", "E0310", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed null construction", "A null construction uses `null()` or `null(expression_list)` and requires matching parentheses."),
+    ENTRY("VITTE_PARSER_E_INVALID_EXPRESSION_LIST", "E0311", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_PARSER, "syntax", "malformed expression list", "An expression list contains complete expressions separated by commas; a trailing comma is allowed, but empty elements and missing separators are invalid."),
+
     /* ===================================================================== */
     /* E0400-E0499: names/scopes                                             */
     /* ===================================================================== */
@@ -527,7 +731,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ERROR,
         VITTE_DIAGNOSTIC_ORIGIN_NAME_RESOLUTION,
         "name-resolution",
-        "symbol redeclared",
+        "duplicate declaration",
         "A symbol conflicts with an existing declaration in the same namespace."
     ),
 
@@ -558,7 +762,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_NAME_RESOLUTION,
         "scope",
         "invalid scope",
-        "The referenced declaration is not valid in the current lexical or semantic scope."
+        "An export clause is only valid at the root or module scope."
     ),
 
     ENTRY(
@@ -569,6 +773,16 @@ vitte_registry_entries[] = {
         "scope",
         "duplicate binding",
         "A pattern or declaration introduces the same binding more than once."
+    ),
+
+    ENTRY(
+        "VITTE_RESOLVE_E_INVALID_EXPORT",
+        "E0407",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_NAME_RESOLUTION,
+        "export",
+        "invalid export target",
+        "An export clause must name a declaration in the current module; re-exporting imported symbols is unsupported."
     ),
 
     /* ===================================================================== */
@@ -725,6 +939,16 @@ vitte_registry_entries[] = {
         "A control-flow condition must evaluate to a boolean value."
     ),
 
+    ENTRY(
+        "VITTE_TYPE_E_NOT_A_VALUE",
+        "E0516",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
+        "type",
+        "type name used as a value",
+        "The name resolves to a type, which cannot be evaluated as a value."
+    ),
+
     /* ===================================================================== */
     /* E0600-E0699: calls/procedures                                         */
     /* ===================================================================== */
@@ -799,6 +1023,16 @@ vitte_registry_entries[] = {
         "A return statement is only valid inside a procedure body."
     ),
 
+    ENTRY(
+        "VITTE_CALL_E_PARAMETER",
+        "E0608",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
+        "parameter",
+        "invalid procedure parameter",
+        "A procedure parameter uses a refutable binding pattern or a mode the compiler does not support."
+    ),
+
     /* ===================================================================== */
     /* E0700-E0799: contracts                                                */
     /* ===================================================================== */
@@ -870,7 +1104,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_CONTRACT,
         "contract",
         "invalid old value",
-        "A contract attempts to reference a previous value that is not available."
+        "A contract references a previous value for which no entry-state snapshot is available."
     ),
 
     ENTRY(
@@ -977,6 +1211,9 @@ vitte_registry_entries[] = {
         "The generic declaration requires a different number of arguments."
     ),
 
+    ENTRY("VITTE_GENERIC_E_ARGUMENT_KIND", "E0803", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "generic", "incorrect generic argument kind or order", "Generic arguments must match the declared type and const parameter kinds in declaration order."),
+    ENTRY("VITTE_GENERIC_E_INFERENCE_CONFLICT", "E0804", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "generic", "conflicting generic inference", "The call provides arguments that require incompatible substitutions for the same generic parameter."),
+
     ENTRY(
         "VITTE_TRAIT_E_NOT_IMPLEMENTED",
         "E0810",
@@ -1006,6 +1243,12 @@ vitte_registry_entries[] = {
         "conflicting implementation",
         "Two implementations overlap in a way that violates coherence rules."
     ),
+
+    ENTRY("VITTE_TRAIT_E_MISSING_MEMBER", "E0813", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "trait", "missing trait member", "The implementation is missing a required trait member without a default implementation."),
+    ENTRY("VITTE_TRAIT_E_INVALID_MEMBER", "E0814", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "trait", "invalid trait member", "An implementation member does not match a trait declaration or is not permitted in this trait."),
+    ENTRY("VITTE_TRAIT_E_INVALID_IMPL_TARGET", "E0815", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "trait", "invalid implementation target", "An implementation target must name a valid trait and target type in the supported implementation form."),
+    ENTRY("VITTE_TRAIT_E_INVALID_WHERE_PREDICATE", "E0816", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "generic", "invalid where predicate", "A where predicate must refer to a declared generic parameter and a valid trait bound."),
+    ENTRY("VITTE_TRAIT_E_AMBIGUOUS_METHOD", "E0817", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "trait", "ambiguous method", "More than one visible trait or implementation method matches this member access."),
 
     /* ===================================================================== */
     /* E0900-E0999: C17 backend                                              */
@@ -1048,7 +1291,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_C_COMPILER,
         "backend",
         "external C compiler failure",
-        "The generated C source was rejected by the external C compiler."
+        "The host C compiler could not be started or returned a failure status while compiling generated C; the driver reports the phase, command shape and compiler output."
     ),
 
     ENTRY(
@@ -1078,7 +1321,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_LINKER,
         "linker",
         "native linking failure",
-        "The generated object could not be linked into the requested executable."
+        "The host linker could not be started or returned a failure status; the driver reports the link command context and preserves linker output."
     ),
 
     ENTRY(
@@ -1136,6 +1379,16 @@ vitte_registry_entries[] = {
     ),
 
     ENTRY(
+        "VITTE_IR_E_UNSUPPORTED",
+        "E1004",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_IR,
+        "unsupported",
+        "unsupported IR lowering",
+        "The source form is valid, but the IR lowerer does not implement it."
+    ),
+
+    ENTRY(
         "VITTE_HIR_E_INVALID",
         "E1010",
         VITTE_DIAGNOSTIC_FATAL,
@@ -1153,6 +1406,16 @@ vitte_registry_entries[] = {
         "lowering",
         "HIR lowering failure",
         "The compiler could not lower or validate a source construct in high-level IR."
+    ),
+
+    ENTRY(
+        "VITTE_HIR_E_UNSUPPORTED",
+        "E1012",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_HIR,
+        "unsupported",
+        "unsupported HIR lowering",
+        "The source form is valid, but the HIR lowerer does not implement it."
     ),
 
     /* ===================================================================== */
@@ -1197,6 +1460,16 @@ vitte_registry_entries[] = {
         "control-flow",
         "unreachable operation",
         "A required operation cannot be reached through valid control flow."
+    ),
+
+    ENTRY(
+        "VITTE_CONTROL_E_INVALID_DEFER",
+        "E1105",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
+        "control-flow",
+        "invalid deferred control flow",
+        "Deferred work cannot return, use an early-exit operator, break or continue an enclosing loop, or register another deferred action."
     ),
 
     /* ===================================================================== */
@@ -1250,7 +1523,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
         "memory",
         "reference lifetime cannot be verified",
-        "The owner does not outlive the reference, or the bootstrap cannot determine the reference origin."
+        "The owner does not outlive the reference, or the compiler cannot determine the reference origin."
     ),
 
     ENTRY(
@@ -1337,8 +1610,8 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ERROR,
         VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
         "abi",
-        "unsupported ABI",
-        "The requested application binary interface is unsupported."
+        "unsupported ABI or calling convention",
+        "The selected target backend cannot implement the calling convention requested by this external declaration."
     ),
 
     ENTRY(
@@ -1347,8 +1620,8 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ERROR,
         VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
         "ffi",
-        "FFI-incompatible type",
-        "A type cannot safely or correctly cross the selected foreign interface."
+        "unsupported FFI type",
+        "This type does not have a supported representation in the external procedure's ABI signature."
     ),
 
     ENTRY(
@@ -1402,7 +1675,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_CONSTANT_EVAL,
         "const-eval",
         "division by zero",
-        "A constant expression attempts to divide by zero."
+        "A compile-time division operation has a zero divisor."
     ),
 
     ENTRY(
@@ -1423,6 +1696,16 @@ vitte_registry_entries[] = {
         "const-eval",
         "constant evaluation limit reached",
         "Compile-time evaluation exceeded a configured resource or recursion limit."
+    ),
+
+    ENTRY(
+        "VITTE_CONST_E_REMAINDER_BY_ZERO",
+        "E1506",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_CONSTANT_EVAL,
+        "const-eval",
+        "remainder by zero",
+        "A compile-time remainder operation has a zero divisor."
     ),
 
     /* ===================================================================== */
@@ -1568,7 +1851,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_DRIVER,
         "target",
         "unsupported target",
-        "The requested compilation target is not supported."
+        "The requested target triple, platform, architecture or ABI cannot be honored by the selected backend/toolchain; diagnostics include the request, known host properties, and whether the compiler's exact target values were queried."
     ),
 
     ENTRY(
@@ -1721,6 +2004,15 @@ vitte_registry_entries[] = {
         "redundant",
         "redundant condition",
         "The condition is statically known or duplicates an existing condition."
+    ),
+
+    WARNING_ENTRY(
+        "VITTE_WARNING_OVERLAPPING_PATTERN",
+        "W0052",
+        VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
+        "pattern",
+        "overlapping match patterns",
+        "This pattern matches some values that an earlier match arm can also match."
     ),
 
     WARNING_ENTRY(
@@ -2327,6 +2619,16 @@ vitte_diagnostic_registry_origin_matches_range(
             entry->public_code
         );
 
+    /* These four syntax diagnostics are reserved in the module code band. */
+    if (range == VITTE_DIAGNOSTIC_RANGE_MODULE &&
+        entry->origin == VITTE_DIAGNOSTIC_ORIGIN_PARSER &&
+        (strcmp(entry->public_code, "E0308") == 0 ||
+         strcmp(entry->public_code, "E0309") == 0 ||
+         strcmp(entry->public_code, "E0310") == 0 ||
+         strcmp(entry->public_code, "E0311") == 0)) {
+        return true;
+    }
+
     switch (range) {
         case VITTE_DIAGNOSTIC_RANGE_LEXER:
             return entry->origin ==
@@ -2392,7 +2694,8 @@ vitte_diagnostic_registry_entry_valid(
         entry->title == NULL ||
         entry->title[0] == '\0' ||
         entry->explanation == NULL ||
-        entry->explanation[0] == '\0') {
+        entry->explanation[0] == '\0' ||
+        strcmp(entry->title, entry->explanation) == 0) {
         return false;
     }
 

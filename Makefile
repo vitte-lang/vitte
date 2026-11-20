@@ -645,9 +645,9 @@ test-diagnostic: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN) $(LIB_OBJECTS)
 		--quiet --no-color 2>&1`; \
 	rc=$$?; \
 	test "$$rc" -eq 1 && \
-	printf '%s\n' "$$output" | grep -F 'E0203' >/dev/null && \
+	printf '%s\n' "$$output" | grep -F 'E0272' >/dev/null && \
 	printf '%s\n' "$$output" | grep -F 'phase: parser' >/dev/null && \
-	printf '%s\n' "$$output" | grep -F 'help: Provide a valid expression' >/dev/null
+	printf '%s\n' "$$output" | grep -F 'help: Write `let' >/dev/null
 	@set +e; \
 	output=`$(BOOTSTRAP_TARGET_BIN) lex \
 		$(TEST_DIR)/diagnostic_lexer_invalid.vit \
@@ -694,9 +694,16 @@ test-diagnostic-help: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
 test-diagnostic-parity: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
 	$(PYTHON) $(TEST_DIR)/diagnostic_parity_test.py $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
 
+.PHONY: test-diagnostic-recovery
+test-diagnostic-recovery: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+	$(PYTHON) $(TEST_DIR)/diagnostic_recovery_test.py $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+
 .PHONY: test-diagnostic-contract
 test-diagnostic-contract: $(BOOTSTRAP_TARGET_BIN)
 	$(PYTHON) $(TEST_DIR)/diagnostic_contract_test.py $(BOOTSTRAP_TARGET_BIN)
+
+.PHONY: test-diagnostic-matrix
+test-diagnostic-matrix: test-diagnostic test-diagnostic-contract test-diagnostic-help test-diagnostic-parity test-diagnostic-recovery
 
 .PHONY: test-native-bootstrap-parity
 NATIVE_BOOTSTRAP_PARITY_TEST_BIN := $(BIN_DIR)/native_bootstrap_parity_test
@@ -797,7 +804,7 @@ test-diagnostic-formats: $(BOOTSTRAP_TARGET_BIN)
 	rc=$$?; \
 	test "$$rc" -eq 1 && \
 	printf '%s\n' "$$output" | grep -F '"schema": "vitte-diagnostics"' >/dev/null && \
-	printf '%s\n' "$$output" | grep -F '"code": "E0203"' >/dev/null && \
+	printf '%s\n' "$$output" | grep -F '"code": "E0272"' >/dev/null && \
 	printf '%s\n' "$$output" | grep -F '"kind": "help"' >/dev/null && \
 	test "$$(printf '%s\n' "$$output" | tail -n 1)" = '}'
 	@set +e; \
@@ -818,7 +825,7 @@ test-diagnostic-formats: $(BOOTSTRAP_TARGET_BIN)
 	rc=$$?; \
 	test "$$rc" -eq 1 && \
 	printf '%s\n' "$$output" | grep -F '"version": "2.1.0"' >/dev/null && \
-	printf '%s\n' "$$output" | grep -F '"ruleId": "E0203"' >/dev/null && \
+	printf '%s\n' "$$output" | grep -F '"ruleId": "E0272"' >/dev/null && \
 	test "$$(printf '%s\n' "$$output" | tail -n 1)" = '}'
 	@set +e; \
 	output=`$(BOOTSTRAP_TARGET_BIN) compile \
@@ -1377,7 +1384,7 @@ test-compiler-regressions: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
 test-integration: test-compiler-integration
 
 .PHONY: test-regressions
-test-regressions: test-compiler-regressions test-bootstrap-regressions test-bootstrap-semantics test-diagnostic-golden test-diagnostic-parity
+test-regressions: test-compiler-regressions test-bootstrap-regressions test-bootstrap-semantics test-diagnostic-golden test-diagnostic-parity test-diagnostic-recovery
 
 # The standalone bootstrap and native codegen copies must agree on target ABI
 # enum ordinals, host defaults, and architecture/OS compatibility checks.
@@ -1455,6 +1462,7 @@ compiler-power-gate: \
 	test-diagnostic-formats \
 	test-diagnostic-help \
 	test-diagnostic-parity \
+	test-diagnostic-recovery \
 	test-diagnostic-contract \
 	test-bootstrap-regressions \
 	test-bootstrap-semantics \
@@ -1689,6 +1697,7 @@ test: \
 	test-diagnostic-formats \
 	test-diagnostic-help \
 	test-diagnostic-parity \
+	test-diagnostic-recovery \
 	test-diagnostic-contract \
 	test-bootstrap-regressions \
 	test-bootstrap-semantics \
@@ -2021,7 +2030,8 @@ help:
 		'  make test-concurrent        Run repeated concurrent compilation tests' \
 		'  make test-scale              Compile large Vitte source stress cases' \
 		'  make test-runtime            Build runtime test programs' \
-		'  make test-diagnostic-parity  Compare diagnostic output formats and explain codes' \
+		'  make test-diagnostic-parity  Compare bootstrap/native diagnostics and output formats' \
+		'  make test-diagnostic-recovery Check multi-error recovery and stable order' \
 		'  make test-diagnostic-contract Check exact bootstrap error codes, phases and byte spans' \
 		'  make test-build-invalidation Check incremental rebuild dependencies' \
 		'  make test-packaging-matrix     Check cross-platform package targets' \

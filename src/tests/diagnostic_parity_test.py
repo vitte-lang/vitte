@@ -125,6 +125,7 @@ def check_explain_for_every_public_code():
             codes.append(code)
     assert codes, "the diagnostic registry contains no public codes"
 
+    guidance_by_code = {}
     for code in codes:
         explanations = []
         for executable in (binary, format_binary):
@@ -159,6 +160,9 @@ def check_explain_for_every_public_code():
                 code,
                 entry["guidance"],
             )
+            assert entry["guidance"].strip() not in {
+                entry["title"].strip(), entry["explanation"].strip(),
+            }, (executable, code, entry)
             assert entry["severity"] in {"error", "fatal", "warning", "note", "help"}, (
                 executable,
                 code,
@@ -176,6 +180,16 @@ def check_explain_for_every_public_code():
         assert tuple(explanations[0][field] for field in fields) == tuple(
             explanations[1][field] for field in fields
         ), (code, explanations)
+
+        canonical_guidance = explanations[0]["guidance"].strip()
+        prior_code = guidance_by_code.get(canonical_guidance)
+        assert prior_code is None, (
+            "registered diagnostics should have code-specific remediation guidance",
+            prior_code,
+            code,
+            canonical_guidance,
+        )
+        guidance_by_code[canonical_guidance] = code
 
         text = subprocess.run(
             [str(binary), "explain", code],
@@ -280,7 +294,7 @@ def check_format_parity():
             'proc main() -> int { let value = "bad\\q"; }\n',
             "E0103",
             "lexer",
-            "supported escape sequence",
+            "2 hex digits",
         )
         check_native_structured_case(
             path,
@@ -310,6 +324,121 @@ def check_format_parity():
         assert related_lsp["location"]["range"]["start"]["character"] == related_json["start_column"]
 
 
+def check_frontend_user_information_parity():
+    """Compare user-facing information for a construct accepted by both frontends.
+
+    The JSON renderers have different envelopes, so compare their common
+    contract and verify related-location/help content at the terminal boundary.
+    """
+    source = (
+        "proc add(a: int) -> int { return a; }\n"
+        'proc main() -> int { return add("42"); }\n'
+    )
+    shared_help = "Argument 1 does not match parameter `a` of procedure `add`"
+
+    with tempfile.TemporaryDirectory(prefix="vitte-frontend-diagnostic-parity-") as directory:
+        path = Path(directory) / "parity_case.vit"
+        path.write_text(source, encoding="utf-8")
+        outputs = []
+        for executable in (format_binary, binary):
+            structured = run_diagnostic(path, "json", executable)
+            diagnostic = first_json_diagnostic(structured, "E0602")
+            terminal = run_diagnostic(path, "terminal", executable)
+            outputs.append((diagnostic, terminal))
+
+        bootstrap, native = outputs
+        bootstrap_diagnostic, bootstrap_terminal = bootstrap
+        native_diagnostic, native_terminal = native
+
+        def phase(diagnostic):
+            return diagnostic["phase"].replace("_", "-")
+
+        assert bootstrap_diagnostic["code"] == native_diagnostic["code"] == "E0602"
+        assert bootstrap_diagnostic["internal_code"] == native_diagnostic["internal_code"]
+        assert bootstrap_diagnostic["severity"] == native_diagnostic["severity"] == "error"
+        assert phase(bootstrap_diagnostic) == phase(native_diagnostic) == "type-check"
+        assert bootstrap_diagnostic["message"] == native_diagnostic["message"] == "invalid argument type"
+        assert bootstrap_diagnostic["details"] == native_diagnostic["details"] == "expected i64, found string"
+
+        bootstrap_position = bootstrap_diagnostic["position"]
+        native_location = native_diagnostic["location"]
+        assert (
+            bootstrap_position["start_line"], bootstrap_position["start_column"],
+            bootstrap_position["end_line"], bootstrap_position["end_column"],
+        ) == (
+            native_location["start"]["line"], native_location["start"]["column"],
+            native_location["end"]["line"], native_location["end"]["column"],
+        )
+
+        # Both help policies identify the call, parameter, and procedure. The
+        # expected and actual types are present in structured details and the
+        # annotated source in both frontends, even when the prose differs.
+        bootstrap_help = " ".join(
+            annotation["message"]
+            for annotation in bootstrap_diagnostic["annotations"]
+            if annotation["kind"] == "help"
+        )
+        native_help = native_diagnostic["help"]
+        for help_text in (bootstrap_help, native_help):
+            assert shared_help in help_text, help_text
+        for terminal in (bootstrap_terminal, native_terminal):
+            assert "phase: type-check" in terminal
+            assert "category: call" in terminal
+            assert "expected i64, found string" in terminal
+            assert shared_help in terminal
+            # The argument is line 2, column 33; its parameter declaration is
+            # line 1, column 10. Both renderers should retain both locations.
+            locations = set(re.findall(r"parity_case\.vit:(\d+):(\d+)", terminal))
+            assert {("2", "33"), ("1", "10")} <= locations, terminal
+            assert "parameter" in terminal and "declared here" in terminal
+
+        related = bootstrap_diagnostic["related_locations"]
+        assert len(related) == 1, bootstrap_diagnostic
+        related_span = related[0]["span"]
+        assert (related_span["start_line"], related_span["start_column"]) == (0, 9)
+
+    typo_source = "proc main() -> int { let user_count = 1; return user_coutn; }\n"
+    with tempfile.TemporaryDirectory(prefix="vitte-name-help-parity-") as directory:
+        path = Path(directory) / "parity_typo.vit"
+        path.write_text(typo_source, encoding="utf-8")
+        outputs = []
+        for executable in (format_binary, binary):
+            document = run_diagnostic(path, "json", executable)
+            diagnostic = first_json_diagnostic(document, "E0401")
+            terminal = run_diagnostic(path, "terminal", executable)
+            outputs.append((diagnostic, terminal))
+
+        bootstrap_diagnostic, bootstrap_terminal = outputs[0]
+        native_diagnostic, native_terminal = outputs[1]
+        assert bootstrap_diagnostic["code"] == native_diagnostic["code"] == "E0401"
+        assert bootstrap_diagnostic["internal_code"] == native_diagnostic["internal_code"]
+        assert bootstrap_diagnostic["severity"] == native_diagnostic["severity"] == "error"
+        assert bootstrap_diagnostic["message"] == native_diagnostic["message"] == (
+            "unknown symbol `user_coutn`"
+        )
+        assert phase(bootstrap_diagnostic) == phase(native_diagnostic) == "name-resolution"
+        bootstrap_help = next(
+            item["message"] for item in bootstrap_diagnostic["annotations"]
+            if item["kind"] == "help"
+        )
+        assert bootstrap_help == native_diagnostic["help"]
+        assert "Did you mean `user_count` instead of `user_coutn`?" in bootstrap_help
+        bootstrap_position = bootstrap_diagnostic["position"]
+        native_location = native_diagnostic["location"]
+        assert (
+            bootstrap_position["start_line"], bootstrap_position["start_column"],
+            bootstrap_position["end_line"], bootstrap_position["end_column"],
+        ) == (
+            native_location["start"]["line"], native_location["start"]["column"],
+            native_location["end"]["line"], native_location["end"]["column"],
+        )
+        for terminal in (bootstrap_terminal, native_terminal):
+            assert "category: name-resolution" in terminal
+            assert bootstrap_help in terminal
+            assert "parity_typo.vit:1:49" in terminal
+
+
 check_explain_for_every_public_code()
 check_format_parity()
-print("Diagnostic parity: explain, terminal, JSON, SARIF and LSP passed.")
+check_frontend_user_information_parity()
+print("Diagnostic parity: bootstrap/native user information, explain, terminal, JSON, SARIF and LSP passed.")

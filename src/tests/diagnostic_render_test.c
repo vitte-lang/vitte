@@ -398,15 +398,17 @@ test_contextual_help(void)
     assert(vitte_diagnostic_bag_init(&bag, storage, 1u) == VITTE_STATUS_OK);
     for (i = 0u; i < vitte_diagnostic_registry_count(); ++i) {
         const vitte_diagnostic_registry_entry_t *entry = vitte_diagnostic_registry_at(i);
+        const char *policy;
         if (entry->default_severity < VITTE_DIAGNOSTIC_WARNING) continue;
         /* A new registered diagnostic must ship an actionable help policy. */
-        assert(vitte_diagnostic_help_for_code(entry->public_code) != NULL);
+        policy = vitte_diagnostic_help_for_code(entry->public_code);
+        assert(policy != NULL);
         assert(vitte_diagnostic_emit(&bag, entry->default_severity, entry->origin,
             entry->internal_code, entry->title, NULL) == VITTE_STATUS_OK);
         d = vitte_diagnostic_at_mut(&bag, 0u);
         assert(vitte_diagnostic_format_help(d, NULL, help, sizeof(help)));
         assert(strstr(help, "No verified correction") == NULL);
-        assert(strstr(help, entry->public_code) != NULL);
+        assert(strstr(help, policy) != NULL);
         vitte_diagnostic_bag_reset(&bag);
     }
     memset(&span, 0, sizeof(span));
@@ -422,7 +424,7 @@ test_contextual_help(void)
     vitte_diagnostic_set_subject(d, "count", "i64", "string");
     assert(vitte_diagnostic_format_help(d, NULL, help, sizeof(help)));
     assert(strstr(help, "`i64` instead of `string`") != NULL);
-    assert(strstr(help, "parse it as a numeric value and handle invalid input") != NULL);
+    assert(strstr(help, "parse it and handle failure before using it") != NULL);
     /* All public rendering paths carry help even without the CLI bridge. */
     for (i = 0u; i < 4u; ++i) {
         static const vitte_diagnostic_format_t formats[] = {
@@ -451,7 +453,32 @@ test_contextual_help(void)
     assert(strstr(help, "numeric") == NULL);
     assert(vitte_diagnostic_add_help(d, "Use the selected overload instead.", NULL) == VITTE_STATUS_OK);
     assert(vitte_diagnostic_format_help(d, NULL, help, sizeof(help)));
-    assert(strcmp(help, "Use the selected overload instead.") == 0);
+    assert(strncmp(help, "Use the selected overload instead.",
+        strlen("Use the selected overload instead.")) == 0);
+    assert(strstr(help, "Required type: `image`.") != NULL);
+    assert(strstr(help, "Actual type: `string`.") != NULL);
+    for (i = 0u; i < 4u; ++i) {
+        static const vitte_diagnostic_format_t formats[] = {
+            VITTE_DIAGNOSTIC_FORMAT_TERMINAL, VITTE_DIAGNOSTIC_FORMAT_JSON,
+            VITTE_DIAGNOSTIC_FORMAT_SARIF, VITTE_DIAGNOSTIC_FORMAT_LSP
+        };
+        FILE *stream = tmpfile();
+        size_t bytes;
+        assert(stream != NULL);
+        if (formats[i] == VITTE_DIAGNOSTIC_FORMAT_LSP) {
+            vitte_diagnostic_lsp_options_t options;
+            vitte_diagnostic_lsp_options_init(&options);
+            options.position_converter = ascii_position;
+            assert(vitte_diagnostic_render_lsp_array(stream, &bag, NULL, &options) == VITTE_STATUS_OK);
+        } else {
+            assert(vitte_diagnostic_write_all_format(stream, &bag, formats[i]) == VITTE_STATUS_OK);
+        }
+        rewind(stream);
+        bytes = fread(output, 1u, sizeof(output) - 1u, stream);
+        output[bytes] = '\0';
+        assert(strstr(output, help) != NULL);
+        assert(fclose(stream) == 0);
+    }
     {
         char guard[4] = {'a', 'b', 'c', 'd'};
         assert(!vitte_diagnostic_format_help(d, NULL, guard + 1, 1u));
@@ -468,7 +495,7 @@ test_contextual_help(void)
     assert(vitte_diagnostic_format_help(d, NULL, help, sizeof(help)));
     assert(strstr(help, "No verified correction") != NULL);
     assert(strstr(help, "operand list missing") != NULL);
-    assert(strstr(help, "vitte explain E????") != NULL);
+    assert(strstr(help, "Preserve the original command") != NULL);
     d->severity = VITTE_DIAGNOSTIC_NOTE;
     assert(!vitte_diagnostic_format_help(d, NULL, help, sizeof(help)));
     assert(help[0] == '\0');
@@ -563,6 +590,19 @@ test_lsp_source_positions_and_explanations(void)
         "unicode.vit", 5u, VITTE_DIAGNOSTIC_LSP_POSITION_UTF32,
         &position, &sources));
     assert(position.valid && position.line == 0u && position.character == 2u);
+    /* UTF-8 positions are byte based, including offsets within a scalar. */
+    assert(vitte_diagnostic_lsp_source_position_converter(source_id,
+        "unicode.vit", 2u, VITTE_DIAGNOSTIC_LSP_POSITION_UTF8,
+        &position, &sources));
+    assert(position.valid && position.line == 0u && position.character == 2u);
+    assert(!vitte_diagnostic_lsp_source_position_converter(source_id,
+        "unicode.vit", 2u, VITTE_DIAGNOSTIC_LSP_POSITION_UTF16,
+        &position, &sources));
+    assert(!position.valid);
+    assert(!vitte_diagnostic_lsp_source_position_converter(source_id,
+        "unicode.vit", 2u, VITTE_DIAGNOSTIC_LSP_POSITION_UTF32,
+        &position, &sources));
+    assert(!position.valid);
     /* Newline bytes map to the end of the preceding LSP line. */
     assert(vitte_diagnostic_lsp_source_position_converter(source_id,
         "unicode.vit", 6u, VITTE_DIAGNOSTIC_LSP_POSITION_UTF16,
@@ -652,6 +692,84 @@ test_generic_lsp_dispatch_with_sources(void)
 }
 
 static void
+test_terminal_long_unicode_multiline_excerpt(void)
+{
+    static const char emoji[] = "😀";
+    static const char first_marker[] = "target";
+    static const char second_marker[] = "finish";
+    char source_text[1024];
+    size_t length = 0u;
+    size_t second_line_start;
+    vitte_source_context_t sources;
+    vitte_source_id_t source_id;
+    vitte_diagnostic_t storage[1];
+    vitte_diagnostic_bag_t bag;
+    vitte_ast_span_t span;
+    vitte_diagnostic_terminal_options_t options;
+    FILE *stream;
+    char output[4096];
+    size_t bytes;
+
+    memset(source_text + length, 'a', 220u);
+    length += 220u;
+    memcpy(source_text + length, emoji, sizeof(emoji) - 1u);
+    length += sizeof(emoji) - 1u;
+    memcpy(source_text + length, first_marker, sizeof(first_marker) - 1u);
+    length += sizeof(first_marker) - 1u;
+    memset(source_text + length, 'b', 220u);
+    length += 220u;
+    source_text[length++] = '\n';
+    second_line_start = length;
+    memset(source_text + length, 'c', 100u);
+    length += 100u;
+    memcpy(source_text + length, second_marker, sizeof(second_marker) - 1u);
+    length += sizeof(second_marker) - 1u;
+    memset(source_text + length, 'd', 220u);
+    length += 220u;
+    source_text[length++] = '\n';
+    source_text[length] = '\0';
+
+    assert(vitte_source_init(&sources));
+    assert(vitte_source_add(&sources, "long-unicode.vit", "long-unicode.vit",
+        source_text, length, &source_id));
+    memset(&span, 0, sizeof(span));
+    span.source_id = source_id;
+    span.source_name = "long-unicode.vit";
+    span.start_offset = 220u;
+    span.end_offset = second_line_start + 106u;
+    span.start_line = 0u;
+    span.start_column = 220u;
+    span.end_line = 1u;
+    span.end_column = 106u;
+    span.valid = true;
+
+    assert(vitte_diagnostic_bag_init(&bag, storage, 1u) == VITTE_STATUS_OK);
+    bag.options.sources = &sources;
+    assert(vitte_diagnostic_emit(&bag, VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "E0501", "long source span",
+        &span) == VITTE_STATUS_OK);
+    vitte_diagnostic_terminal_options_init(&options);
+    options.color = false;
+    options.sources = &sources;
+
+    stream = tmpfile();
+    assert(stream != NULL);
+    assert(vitte_diagnostic_render_terminal(stream, &bag, &options) ==
+        VITTE_STATUS_OK);
+    rewind(stream);
+    bytes = fread(output, 1u, sizeof(output) - 1u, stream);
+    output[bytes] = '\0';
+    assert(bytes < sizeof(output) - 1u);
+    assert(strstr(output, "…😀target") != NULL);
+    assert(strstr(output, "finish") != NULL);
+    assert(strstr(output, "^") != NULL);
+    assert(strchr(output, '\x1b') == NULL);
+    assert(fclose(stream) == 0);
+    vitte_diagnostic_bag_reset(&bag);
+    vitte_source_destroy(&sources);
+}
+
+static void
 test_format_parity_metadata(void)
 {
     static const vitte_diagnostic_format_t formats[] = {
@@ -734,6 +852,7 @@ main(void)
     test_cli_bridge_consistency();
     test_lsp_source_positions_and_explanations();
     test_generic_lsp_dispatch_with_sources();
+    test_terminal_long_unicode_multiline_excerpt();
     test_format_parity_metadata();
     static const char source_name[] = "sample.vit";
     static const char source_text[] =
@@ -944,7 +1063,7 @@ main(void)
     bytes = fread(output, 1u, sizeof(output) - 1u, stream);
     output[bytes] = '\0';
     assert(strstr(output, "help: Provide a valid expression at this position") != NULL);
-    assert(strstr(output, "vitte explain E0203") != NULL);
+    assert(strstr(output, "such as a literal") != NULL);
     assert(strstr(output, "help: Verify the source value's range before conversion") != NULL);
     assert(fclose(stream) == 0);
 

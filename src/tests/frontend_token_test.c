@@ -479,7 +479,7 @@ test_maximal_munch_operators(void)
 {
     static const char source[] =
         "( ) { } [ ] , ; : :: . .. ..= -> => + - * / % & | ^ ~ ! = == != "
-        "< <= > >= << >> += -= *= /= %= &= |= ^= <<= >>= && || ? ?? #";
+        "< <= > >= << >> += -= *= /= %= &= |= ^= <<= >>= && || ? ?? # @ $";
     static const vitte_token_kind_t kinds[] = {
         VITTE_TOKEN_LEFT_PAREN, VITTE_TOKEN_RIGHT_PAREN,
         VITTE_TOKEN_LEFT_BRACE, VITTE_TOKEN_RIGHT_BRACE,
@@ -501,6 +501,7 @@ test_maximal_munch_operators(void)
         VITTE_TOKEN_SHIFT_LEFT_EQUAL, VITTE_TOKEN_SHIFT_RIGHT_EQUAL,
         VITTE_TOKEN_AMP_AMP, VITTE_TOKEN_PIPE_PIPE, VITTE_TOKEN_QUESTION,
         VITTE_TOKEN_QUESTION_QUESTION, VITTE_TOKEN_HASH,
+        VITTE_TOKEN_AT, VITTE_TOKEN_DOLLAR,
         VITTE_TOKEN_EOF
     };
 

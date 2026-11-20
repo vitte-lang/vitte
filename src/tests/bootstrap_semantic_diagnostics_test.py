@@ -19,7 +19,9 @@ INVALID = (
     ("match_postcondition", "proc f(x: bool) -> int ensures result > 0; { match x { true => 1, false => -1, } }", ("E0702",)),
     ("signed_literal_overflow", "proc f() -> int { return 9223372036854775808; }", ("E1502",)),
     ("constant_cycle", "const A: int = A + 1; proc main() -> int { return 0; }", ("E1504",)),
+    ("unsupported_constant_call", "proc identity(x: int) -> int { return x; } const VALUE: int = identity(1); proc main() -> int { return VALUE; }", ("E1501",)),
     ("divide_unknown_numerator", "proc f(x: int) -> int { return x / 0; }", ("E1503",)),
+    ("remainder_unknown_numerator", "proc f(x: int) -> int { return x % 0; }", ("E1506",)),
     ("divide_named_zero", "const ZERO: int = 0; proc f() -> int { return 1 / ZERO; }", ("E1503",)),
     ("multiply_overflow", "proc f() -> int { return 9223372036854775807 * 2; }", ("E1502",)),
     ("subtract_overflow", "proc f() -> int { return -9223372036854775808 - 1; }", ("E1502",)),
@@ -36,9 +38,28 @@ INVALID = (
     ("while_break_missing_return", "proc f() -> int { while true { break; } }", ("E1101",)),
     ("unsafe_missing_return", "proc f() -> int { unsafe { let x = 1; } }", ("E1101",)),
     ("bool_match_missing_arm", "proc f(x: bool) -> int { match x { true => { return 1; }, } }", ("E1601",)),
+    ("pick_match_missing_variant", "pick Maybe { None, Some(i64) } proc f(value: Maybe) -> i64 { match value { Maybe::None => { return 0; } } }", ("E1601",)),
     ("bool_match_duplicate", "proc f(x: bool) -> int { match x { true => { return 1; }, true => { return 2; }, false => { return 0; }, } }", ("E1602",)),
     ("wildcard_match_unreachable", "proc f(x: int) -> int { match x { _ => { return 0; }, 1 => { return 1; }, } }", ("E1602",)),
+    ("duplicate_pick_variant_arm", "pick Maybe { None, Some(i64) } proc f(value: Maybe) -> i64 { match value { Maybe::None => { return 0; }, Maybe::None => { return 1; }, Maybe::Some(item) => { return item; } } }", ("E1602",)),
+    ("invalid_or_bindings_no_cascade", "pick Maybe { None, Some(i64) } proc f(value: Maybe) -> i64 { match value { Maybe::Some(item) | Maybe::None => { return 0; }, else => { return 1; } } }", ("E1604",)),
+    ("duplicate_pattern_binding", "pick Duo { Pair(i64, i64) } proc f(value: Duo) -> i64 { match value { Duo::Pair(item, item) => { return item; }, _ => { return 0; } } }", ("E0406",)),
+    ("tuple_pattern_unsupported", "proc f(value: i64) -> i64 { match value { (left, right) => { return left; }, _ => { return 0; } } }", ("E1603",)),
+    ("array_pattern_wrong_length", "proc f(value: [i64; 2]) -> i64 { match value { [only] => { return only; }, _ => { return 0; } } }", ("E1603",)),
+    ("array_pattern_wrong_subject", "proc f(value: i64) -> i64 { match value { [only] => { return only; }, _ => { return 0; } } }", ("E1603",)),
+    ("duplicate_struct_pattern_field", "form Point { x: i64, y: i64 } proc f(value: Point) -> i64 { match value { Point { x: first, x: second } => { return first; }, _ => { return 0; } } }", ("E1603",)),
+    ("wrong_struct_pattern_type", "form Point { x: i64 } form Other { x: i64 } proc f(value: Point) -> i64 { match value { Other { x: item } => { return item; }, _ => { return 0; } } }", ("E1603",)),
+    ("wrong_variant_payload_shape", "pick Maybe { Some(i64) } proc f(value: Maybe) -> i64 { match value { Maybe::Some() => { return 0; }, else => { return 1; } } }", ("E1603",)),
     ("match_guard_type", "proc f(x: bool) -> int { match x { true if 1 => { return 1; }, _ => { return 0; }, } }", ("E0515",)),
+    ("invalid_match_guard_no_exhaustive_cascade", "proc f(x: bool) -> int { match x { true if 1 => { return 1; } } }", ("E0515",)),
+    ("defer_return_exit", "proc f() -> i64 { defer { return 1; } return 0; }", ("E1105",)),
+    ("defer_enclosing_loop_exit", "proc f() { loop { defer { break; } break; } }", ("E1105",)),
+    ("defer_enclosing_loop_continue", "proc f() { loop { defer { continue; } break; } }", ("E1105",)),
+    ("defer_nested_action", "proc cleanup() {} proc f() { defer { defer cleanup(); } }", ("E1105",)),
+    ("defer_optional_exit", "proc f(value: ?i64) { defer { value?; } }", ("E1105",)),
+    ("defer_capture_move", "proc f() { let value = 1; defer { let copy = value; } let moved = move value; }", ("E1208",)),
+    ("irrefutable_binding_covers_match", "proc f(value: bool) -> int { match value { matched => { return 1; }, true => { return 2; } } }", ("E1602",)),
+    ("exhaustive_pick_match_unreachable_tail", "pick Choice { Left, Right } proc f(value: Choice) -> i64 { match value { Choice::Left => { return 0; }, Choice::Right => { return 1; }, _ => let ignored = 2; } }", ("E1602",)),
     ("match_implicit_return_type", 'proc f(x: bool) -> int { match x { true => "bad", false => 0, } }', ("E0605",)),
     ("contract_await_effect", "async proc ready() -> bool { return true; } async proc f() -> int requires await ready(); { return 0; }", ("E0710",)),
     ("reference_return_local", "proc bad() -> &int { let value = 1; return &value; }", ("E1205",)),
@@ -60,6 +81,7 @@ VALID = (
     ("dead_branch_arithmetic", "proc f() -> int { if false { return 1 / 0; } return 0; }"),
     ("dead_branch_postcondition", "proc f() -> int ensures result > 0; { if false { return -1; } return 1; }"),
     ("computed_condition_return", "proc f() -> int { if 1 < 2 { return 1; } }"),
+    ("exhaustive_pick_match_return", "pick Maybe { None, Some(i64) } proc f(value: Maybe) -> i64 { match value { Maybe::None => { return 0; }, Maybe::Some(item) => { return item; } } }"),
     ("infinite_loop", "proc f() -> int { loop { } }"),
     ("infinite_while", "proc f() -> int { while true { } }"),
     ("nested_loop_break", "proc f() -> int { loop { loop { break; } } }"),
@@ -67,6 +89,10 @@ VALID = (
     ("safe_array_index", "proc f() -> int { let a = [1, 2]; return a[1]; }"),
     ("unknown_array_index", "proc f(x: int) -> int { let a = [1, 2]; return a[x]; }"),
     ("bool_match_exhaustive", "proc f(x: bool) -> int { match x { true => { return 1; }, false => { return 0; }, } }"),
+    ("defer_local_loop_exit", "proc f() { defer { loop { break; } } }"),
+    ("defer_local_loop_continue", "proc f() { defer { loop { continue; } } }"),
+    ("bool_or_pattern_exhaustive", "proc f(x: bool) -> int { match x { true | false => { return 1; } } }"),
+    ("partial_overlapping_range", "proc f(x: i64) -> i64 { match x { 1..=5 => { return 0; }, 3..=8 => { return 1; }, _ => { return 2; } } }"),
     ("bool_match_guard_fallback", "proc f(x: bool) -> int { match x { true if x => { return 1; }, _ => { return 0; }, } }"),
     ("unknown_precondition", "proc positive(x: int) -> int requires x > 0; { return x; } proc f(x: int) -> int { return positive(x); }"),
     ("mutable_value_not_folded", "proc positive(x: int) -> int requires x > 0; { return x; } proc f() -> int { let mut x = -1; set x = 1; return positive(x); }"),
@@ -108,6 +134,25 @@ def check_source(directory, name, source, expected):
         assert "already covers this value" in result.stderr, (name, result.stderr)
     if name == "match_false_guard":
         assert "guard is always false" in result.stderr, (name, result.stderr)
+    if name == "pick_match_missing_variant":
+        assert "Maybe::Some(_, ...)" in result.stderr, (name, result.stderr)
+        assert "all variants are declared here" in result.stderr, (name, result.stderr)
+    if name == "wrong_variant_payload_shape":
+        assert "expects 1 payload pattern" in result.stderr, (name, result.stderr)
+        assert "variant payloads are declared here" in result.stderr, (name, result.stderr)
+    if name == "duplicate_pattern_binding":
+        assert "first binding declared here" in result.stderr, (name, result.stderr)
+    if name == "defer_capture_move":
+        assert "deferred action captures this value here" in result.stderr, (name, result.stderr)
+    if name == "partial_overlapping_range":
+        warning = next(
+            (item for item in diagnostics if item["code"] == "W0052"), None
+        )
+        assert warning is not None, (name, result.stderr)
+        assert any(
+            location["label"] == "earlier pattern overlaps this range"
+            for location in warning["related_locations"]
+        ), (name, result.stderr)
     for item in diagnostics:
         assert item["position"]["has_span"], (name, item)
         assert any(annotation["kind"] == "help" and annotation["message"] for annotation in item["annotations"]), (name, item)
@@ -131,8 +176,15 @@ with tempfile.TemporaryDirectory(prefix="vitte-bootstrap-semantics-") as tempora
         if code:
             assert ran.stderr.count(f"error[{code}]") == 1, (name, ran.stderr)
             assert "phase: contract" in ran.stderr and "contract:" in ran.stderr, (name, ran.stderr)
+            assert "failed condition:" in ran.stderr and "context:" in ran.stderr, (name, ran.stderr)
             assert "  help: " in ran.stderr, (name, ran.stderr)
             assert str(path) in ran.stderr, (name, ran.stderr)
+            if name == "runtime_requires":
+                assert "context: procedure entry after call" in ran.stderr, (name, ran.stderr)
+                assert "value: x=-1" in ran.stderr, (name, ran.stderr)
+            if name == "runtime_ensures":
+                assert "context: procedure return" in ran.stderr, (name, ran.stderr)
+                assert "value: x=-1" in ran.stderr and "value: result=-1" in ran.stderr, (name, ran.stderr)
         else:
             assert not ran.stderr, (name, ran.stderr)
 
