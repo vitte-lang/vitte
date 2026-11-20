@@ -1,0 +1,62 @@
+---
+title: Lire les diagnostics et choisir une correction
+permalink: /guides/diagnostics/
+section: Utiliser Vitte
+lead: Comprendre les codes, phases, emplacements, explications et suggestions de Vitte pour corriger la cause adaptée.
+description: Guide utilisateur des diagnostics Vitte : commandes, codes stables, aides de correction, récupérations syntaxiques, sorties JSON/SARIF/LSP et signalement d’un problème.
+summary: "Interpréter une erreur, utiliser vitte explain, choisir une correction sûre et partager un reproducer utile."
+keywords: diagnostic erreur code aide correction recovery récupération JSON SARIF LSP explain
+---
+
+<h2 id="commandes">Trouver l’explication d’un code</h2>
+<p>Conservez le code public affiché entre crochets, par exemple <code>E0602</code>. Il identifie la famille d’erreur et peut être recherché dans une issue ou expliqué directement par le compilateur :</p>
+<pre><code>vitte check src/main.vit --quiet --no-color
+vitte explain E0602
+vitte explain E0602 --diagnostic=json</code></pre>
+<p><code>vitte explain CODE</code> affiche l’aide générale associée au code, alignée sur celle du diagnostic normal. Il accepte aussi le nom symbolique lorsqu’il est connu. Si le message dépend du code source, la sortie normale ajoute des informations comme le nom de la procédure, le type reçu ou la position du token ; <code>explain</code> donne le conseil applicable sans contexte de programme.</p>
+
+<h2 id="lire">Lire les parties d’un diagnostic</h2>
+<ul>
+  <li><strong>Le titre et le code</strong> nomment le défaut. Le code public est utile pour les recherches et les rapports.</li>
+  <li><strong>La phase</strong> indique l’étape qui a détecté le problème : lexer, parser, import, résolution de nom, types, constantes, backend ou liaison.</li>
+  <li><strong>Le soulignement principal</strong> désigne l’expression, le nom ou le token en cause. Pour un délimiteur manquant, le curseur peut viser le point où le parser l’attend plutôt que le caractère absent.</li>
+  <li><strong>Les valeurs attendue et reçue</strong> relient l’expression au contexte, comme le type exigé par un paramètre.</li>
+  <li><strong>Les emplacements liés</strong> montrent une déclaration, un conflit, une origine d’import ou une autre source utile à la compréhension.</li>
+  <li><strong>L’aide</strong> donne une prochaine action. Elle peut être adaptée à votre code et à la construction qui a échoué.</li>
+</ul>
+<p>Corrigez d’abord le défaut le plus proche de sa cause, puis relancez la même commande. Un nom inconnu peut, par exemple, rendre les vérifications de son opérateur impossibles ; un diagnostic ultérieur peut alors dépendre du premier.</p>
+
+<h2 id="correction">Choisir une correction adaptée à l’intention</h2>
+<h3>Erreur de syntaxe</h3>
+<p>Suivez le token attendu et vérifiez les délimiteurs depuis leur ouverture. Pour un appel, une parenthèse qui manque doit être ajoutée à la liste d’arguments correspondante, pas à la prochaine expression voisine. Si plusieurs erreurs indépendantes sont affichées, corrigez-les dans l’ordre source et relancez le compilateur après les changements de structure.</p>
+
+<h3>Type ou appel incompatible</h3>
+<p>Comparez le type attendu, le type reçu, la signature et l’expression concernée. Dans cet exemple, le paramètre de <code>add</code> attend un entier :</p>
+<pre><code>proc add(value: i64) -&gt; i64 { return value; }
+proc main() -&gt; i64 { return add("42"); }</code></pre>
+<p>Si la chaîne représente une donnée textuelle, changez la signature et le traitement de <code>add</code> selon cette intention. Si la valeur doit être numérique, fournissez une valeur de type entier après avoir choisi comment traiter la conversion. Le diagnostic ne peut pas choisir cette décision à votre place.</p>
+
+<h3>Module ou nom introuvable</h3>
+<p>Vérifiez séparément le chemin logique du module, les racines de recherche, la déclaration <code>space</code>, l’orthographe du symbole et son export. <code>VITTE_MODULE_PATH</code> et <code>--project-root</code> configurent où chercher ; ils ne rendent pas visible un nom privé. Consultez le <a href="{{ '/guides/erreurs-courantes/' | relative_url }}#import">dépannage des imports</a> pour les vérifications détaillées.</p>
+
+<h3>Limite de backend ou de cible</h3>
+<p>Un diagnostic de backend ou de liaison peut signaler une fonctionnalité non prise en charge, une incompatibilité de cible ou un outil externe en échec. Gardez la commande complète, la cible demandée, la phase du message et la sortie de l’outil. Vérifiez ensuite la <a href="{{ '/reference/support/' | relative_url }}">matrice de support</a> avant de réécrire une construction acceptée par le frontend.</p>
+
+<h2 id="suggestions">Suggestions et changements automatiques</h2>
+<p>Une proposition marquée <em>machine-applicable</em> décrit un remplacement précis que l’outil peut appliquer sans inventer un choix de programme. Les mentions <em>manual</em>, <em>maybe-incorrect</em> ou <em>has-placeholders</em> indiquent une piste à examiner, pas une modification sûre. Une correction qui change le comportement, la visibilité, l’ownership ou les garanties de sécurité demande un choix explicite du développeur.</p>
+<p>Une suggestion de nom n’est utile que si un seul symbole visible correspond de façon suffisamment proche. En l’absence de proposition, recherchez le nom ou vérifiez ses imports et sa portée au lieu d’inventer une correction.</p>
+
+<h2 id="formats">Sorties pour terminal, outils et éditeurs</h2>
+<p>Le terminal est le format le plus lisible pour corriger le programme. Les formats machine peuvent transporter plusieurs diagnostics dans un seul document :</p>
+<pre><code>vitte check src/main.vit --quiet --no-color --diagnostic=json
+vitte check src/main.vit --quiet --no-color --diagnostic=sarif</code></pre>
+<p>JSON convient aux scripts et conserve les codes, phases, sévérités, informations de type et emplacements exposés par la version du compilateur. SARIF sert aux outils d’analyse de code qui lisent SARIF 2.1.0. LSP est destiné aux intégrations de langage qui consomment des plages de source et des informations liées ; utilisez <code>--diagnostic=lsp</code> avec un client LSP compatible.</p>
+<p>Les sorties terminal, JSON, SARIF et LSP représentent le même défaut sous des schémas différents. Un outil peut afficher les annotations ou les aides différemment ; pour le contenu complet, gardez aussi la sortie de <code>vitte explain CODE</code>.</p>
+
+<h2 id="recuperation">Plusieurs diagnostics et récupération</h2>
+<p>Quand il peut reprendre sans fabriquer d’arbre syntaxique trompeur, le compilateur continue après une erreur pour montrer des défauts indépendants plus loin dans le fichier. Une récupération sûre conserve leur ordre d’apparition dans le programme. Une erreur lexicale ou syntaxique qui empêche de déterminer la structure peut toutefois masquer les erreurs suivantes ; le nombre de diagnostics ne garantit pas que tout le fichier a été analysé.</p>
+<p>Une erreur peut entraîner des messages secondaires dans une étape ultérieure. Traitez la première cause qui invalide une expression ou une déclaration, puis relancez la vérification. Si le compilateur s’arrête, se répète ou produit un message interne au lieu de signaler le défaut source, réduisez le cas avant d’en tirer une conclusion.</p>
+
+<h2 id="signalement">Partager un problème reproductible</h2>
+<p>Pour un diagnostic inattendu ou une erreur du compilateur, incluez la version, la commande complète, le répertoire de lancement, le plus petit fichier ou ensemble de modules qui reproduit le cas, ainsi que la sortie intégrale avec <code>--no-color</code>. Pour un souci d’éditeur, ajoutez la version de Vitte, l’éditeur et le client utilisés. Retirez secrets et données confidentielles.</p>
+<p>Le <a href="{{ '/guides/erreurs-courantes/' | relative_url }}">guide des erreurs reproduites</a> détaille les codes fréquents. La <a href="{{ '/reference/cli/' | relative_url }}">référence CLI</a> décrit les commandes et options ; la <a href="{{ '/reference/support/' | relative_url }}">matrice de support</a> distingue les constructions analysées de celles validées jusqu’à l’exécution.</p>

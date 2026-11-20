@@ -124,7 +124,7 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E0014",
-        "Check the source with the command-line compiler for detailed parser and type diagnostics, then correct the reported source issue."
+        "The frontend API rejected this source without returning parser or semantic details. Run `vitte check FILE --diagnostic=terminal` to locate the source-level cause; if the CLI accepts the same file, reduce the input and report the API and compiler versions."
     },
 
     {
@@ -133,11 +133,11 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E0102",
-        "Close the string with the matching quote before the line ends; escape a quote that belongs inside the string."
+        "Close the string opened with `\"` before the line ends; escape a quote that belongs inside the string."
     },
     {
         "E0103",
-        "Replace the invalid escape with a supported escape sequence or escape the backslash when a literal backslash is intended."
+        "Use `\\\\`, `\\'`, `\\\"`, `\\0`, `\\a`, `\\b`, `\\f`, `\\n`, `\\r`, `\\t`, `\\v`, `\\xNN` (2 hex digits), `\\uNNNN` (4), or `\\UNNNNNNNN` (8); escape the backslash when it is literal."
     },
     {
         "E0104",
@@ -145,11 +145,11 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E0105",
-        "Reduce the numeric literal to a representable value; lexical overflow must be corrected before type conversion can occur."
+        "Keep the integer magnitude within the supported u64 range [0, 18446744073709551615]; an explicitly annotated target type may impose a narrower range."
     },
     {
         "E0106",
-        "Add the missing block-comment terminator, including the terminator of any nested comment that remains open."
+        "Close the block comment opened with `/*` using `*/`, including each nested comment that remains open."
     },
     {
         "E0107",
@@ -158,6 +158,38 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     {
         "E0108",
         "Replace the malformed Unicode sequence with valid UTF-8 source text before compiling again."
+    },
+    {
+        "E0109",
+        "Use decimal digits or a `0b`, `0o` or `0x` prefix with valid digits; place underscores singly between digits and omit suffixes."
+    },
+    {
+        "E0110",
+        "Use a decimal mantissa with optional `e`/`E` exponent, or a hexadecimal mantissa with required `p`/`P` exponent."
+    },
+    {
+        "E0111",
+        "Put exactly one Unicode scalar value or one supported escape sequence between the single quotes."
+    },
+    {
+        "E0112",
+        "Place a single underscore between two digits; do not start, end, or repeat a separator."
+    },
+    {
+        "E0113",
+        "Use only `0`-`1` after `0b`, `0`-`7` after `0o`, and hexadecimal digits after `0x`; include at least one digit."
+    },
+    {
+        "E0114",
+        "Remove the suffix; Vitte numeric literals do not define integer or floating-point suffixes."
+    },
+    {
+        "E0115",
+        "After `e`/`E` or `p`/`P` and an optional sign, provide one or more decimal digits."
+    },
+    {
+        "E0116",
+        "Check the reported punctuation run against Vitte's operators; use the complete spelling such as `->`, `=>`, `==`, `!=`, `<=`, `>=`, `&&`, `||`, `??`, `::`, `..`, or the supported compound assignments."
     },
 
     {
@@ -196,10 +228,110 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
         "E0209",
         "Remove this modifier or apply it only to a declaration kind that accepts it."
     },
+    {
+        "E0210",
+        "This token is recognized, but it has no supported grammar form here. Replace it with a construct valid in this position, or use a supported declaration such as `proc`, `form`, `pick`, `const`, or `type`."
+    },
+    {
+        "E0211",
+        "Rename this item; Vitte reserved words cannot be used as identifiers."
+    },
+    { "E0212", "Write each module path segment as an identifier and separate segments with `::` or `/`; remove leading, repeated or trailing separators." },
+    { "E0213", "Keep one top-level `space path` header in this file and remove the duplicate declaration." },
+    { "E0214", "Move `space path;` before the first import or other top-level declaration." },
+    { "E0215", "Use `use path;`, `use path as alias;`, `use path::*;` or `use path::{item, nested::{item}};`, then terminate the declaration with `;`." },
+    { "E0216", "Add an identifier after `as`, for example `use math::vector as vectors;`." },
+    { "E0217", "Add comma-separated import paths, close every brace, and put nested groups after a path such as `ops::{arithmetic::{add, sub}}`." },
+    { "E0218", "Place `::*` at the end of the import, for example `use math::*;`; remove any alias, group placement or following path segment." },
+    { "E0219", "Use `export path [as alias];`, `export {path, other};` or `export *;` and remove extra tokens." },
+    { "E0220", "Add at least one path inside the braces, for example `export {math::add};`." },
+    { "E0221", "Add an identifier after `as`, for example `export math::add as add;`." },
+    { "E0222", "Remove the extra token before the required semicolon or finish the clause in the form shown by the diagnostic." },
+    { "E0223", "Add one top-level `space path;` declaration before the first module import or export clause." },
+    { "E0224", "Give the declaration a name, put an optional type after `:`, add `= expression`, and finish with `;`." },
+    { "E0225", "Add `= expression` after the name and optional type, for example `const LIMIT: int = 10;`." },
+    { "E0226", "Complete the type name, each bound or aliased type, and the final `;`." },
+    { "E0227", "Give the opaque type a name, use `= Type` for an optional alias, and omit bounds." },
+    { "E0228", "Write a named form with `{}` and fields in the form `name: Type`." },
+    { "E0229", "Rename this field; every field in one form must have a unique name." },
+    { "E0230", "Separate fields with `,` or `;`, for example `form Point { x: int, y: int }`." },
+    { "E0231", "Write a named pick with braces and comma-separated variants, for example `pick Option { None, Some(int) }`." },
+    { "E0232", "Rename this variant; each variant name must be unique within its pick." },
+    { "E0233", "Put valid comma-separated types inside the variant parentheses, for example `Some(int, string)`; `()` is also valid." },
+    { "E0234", "Write `trait Name { ... }`, with optional generic parameters and a `where` clause before the block." },
+    { "E0235", "Write an inherent implementation as `impl Type { ... }` or a trait implementation as `impl Trait for Type { ... }`." },
+    { "E0236", "Add the type after `for`, for example `impl Display for Point { ... }`." },
+    { "E0237", "Use one trait type, `for`, one target type, then an optional `where` clause and the implementation block." },
+    { "E0238", "Write `proc name(parameters)`, then an optional `-> Type`, optional constraints, and a body or `;`." },
+    { "E0239", "Enclose parameters in `(...)`; each parameter needs a pattern, `:`, a type, commas between entries, and a closing `)`." },
+    { "E0240", "Put a valid type after `->`, for example `proc size() -> int;`." },
+    { "E0241", "Use `async`, `unsafe` or `comptime` at most once and only before a procedure declaration." },
+    { "E0242", "A normal procedure needs a block or `;`; an `extern` or `intrinsic` procedure must end with `;` and has no body." },
+    { "E0243", "Write `extern [\"ABI\"] proc name(parameters) [-> Type] [where ...] [requires ...;] [ensures ...;];`, for example `extern \"C\" proc write(fd: i32, data: *const u8) -> isize;`." },
+    { "E0244", "Write `intrinsic name(parameters) [-> Type] [where ...] [requires ...;] [ensures ...;];` without an ABI literal or body." },
+    { "E0245", "Use a nonempty quoted ABI name after `extern`, for example `extern \"C\" proc write();`." },
+    { "E0246", "Write `<T, U>` with comma-separated parameters and a closing `>`; a trailing comma is allowed." },
+    { "E0247", "Write a const parameter as `const NAME`, optionally followed by a type bound, for example `const N: usize`." },
+    { "E0248", "Add a valid type after `:` or `+`, for example `T: Display + Debug`." },
+    { "E0249", "Write comma-separated predicates after `where`, for example `proc bounded<const N: usize>() where N > 0 { ... }`; give each predicate a valid relation and complete right-hand expression." },
+    { "E0250", "Add a boolean expression and its semicolon, for example `proc positive(value: int) -> int requires value > 0; { return value; }`; `requires` checks callers before the body runs." },
+    { "E0251", "Add a boolean expression and its semicolon, for example `proc positive(value: int) -> int ensures result >= 0; { return value; }`; `ensures` checks the result after return." },
+    { "E0252", "Write `macro name` with an optional parameter list and a body, for example `macro log(value: string) { ... }`." },
+    { "E0253", "Use `(...)` with comma-separated `pattern: Type` parameters and a closing `)`." },
+    { "E0254", "Write `test { ... }`, `test test_name { ... }`, or `test \"description\" { ... }`." },
+    { "E0255", "Use at most one visibility modifier (`pub` or prefix `export`) before procedure modifiers; write export clauses without declaration modifiers." },
+    { "E0256", "Write an attribute as `#[name]` or `#![name]`; include the opening `[` and closing `]` and close any argument parentheses." },
+    { "E0257", "Provide an identifier or keyword after `#[` or `#![` and after each `::` in a qualified attribute name." },
+    { "E0258", "Use comma-separated names or literals in parentheses; write named arguments as `name = literal`." },
+    { "E0259", "Add a literal after `=`, for example `#[cfg(enabled = true)]`." },
+    { "E0260", "Use an integer, float, string, character, boolean, or `null` literal as the attribute value." },
+    { "E0261", "Move this declaration to a declaration position, such as the top level or a trait/implementation declaration block." },
+    { "E0262", "Move this statement into a block that accepts statements, such as a procedure body." },
+    { "E0263", "Move this expression into a statement or expression context; declarations require a declaration position." },
+    { "E0264", "Write `proc(Type, Type)`, optionally followed by `-> ReturnType`; separate parameters with commas and close the list with `)`." },
+    { "E0265", "Write `&Type`, `&mut Type`, `ref Type` or `ref mut Type`, with a complete type after the reference marker." },
+    { "E0266", "Write `*Type`, `*mut Type`, `*const Type`, `*volatile Type` or `*const volatile Type`; provide one complete pointee type." },
+    { "E0267", "Write `[Type; length]` or `[length] Type`, with a valid length expression, closing `]` and element type." },
+    { "E0268", "Write a slice as `[ElementType]` and include a complete element type before the closing `]`." },
+    { "E0269", "Write `?Type` and put a complete type after `?`." },
+    { "E0270", "Use nonempty path segments separated by `::` or `/`; use `::` instead of `:`, add a segment after every separator and remove repeated separators." },
+    { "E0271", "Provide at least one comma-separated type in `<Type, Type>` or `[Type, Type]`; close the list with the matching `>` or `]`." },
+    { "E0272", "Write `let [mut] pattern [: Type] [= expression];`. Add a type annotation when there is no initializer and the binding type cannot be inferred." },
+    { "E0273", "Write `set target assignment_operator expression;` and provide a complete target, value and terminating semicolon." },
+    { "E0274", "Use one of `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` or `>>=` after the assignment target." },
+    { "E0275", "Write `return;` or `return expression;`. The final return in a block may omit `;` before `}` or end of file; procedure placement and return type are checked semantically." },
+    { "E0276", "Write `break;` or `continue;` with a semicolon. A jump must appear inside a loop within a procedure." },
+    { "E0277", "Write `defer { ... }` or `defer expression;`; the expression form requires its terminating semicolon." },
+    { "E0278", "Write `assert(condition);` with a complete expression between matching parentheses and a final semicolon." },
+    { "E0279", "Write `unsafe { ... }` and close the block with `}`." },
+    { "E0280", "Write `asm(operand, ...);` or `asm(\"template\");`; close the operand list and terminate the statement with `;`." },
+    { "E0281", "Use `if condition { ... } [elif condition { ... }]* [else { ... }]`, `while condition { ... }`, `loop { ... }`, or `for pattern in values { ... }`; put `else` after an if/elif chain and use it only before a block or chained conditional." },
+    { "E0282", "Write a match statement with a subject and block bodies, for example `proc choose(option: Maybe) -> int { match option { case Maybe::Some(item) => { return item; }, case Maybe::None => { return 0; } } }`. Separate complete arms with commas." },
+    { "E0283", "Write `[case] pattern [if guard] => body`, separate adjacent arms with commas, and use a complete expression, statement or block as the body." },
+    { "E0284", "Use a path or binding, literal, `Path::Variant`, `Variant(pattern, ...)`, `Path { field: pattern, .. }`, `(pattern, ...)`, or `[pattern, ...]`; separate pattern items with commas." },
+    { "E0285", "Write `lower..upper` or `lower..=upper`; both endpoints must be integer, float or character literals of the same kind." },
+    { "E0286", "Write `target = value` or use a supported compound assignment operator; provide both a complete target and right-hand expression." },
+    { "E0287", "Write `value ?? fallback` and provide a complete expression on both sides of `??`." },
+    { "E0288", "Write both operands around `and`, `or`, `&&` or `||`; parenthesize nested conditions when needed." },
+    { "E0289", "Write both operands around `&`, `|` or `^`; use a complete expression on each side." },
+    { "E0290", "Write a complete left and right expression around `==`, `!=`, `<`, `<=`, `>` or `>=`." },
+    { "E0291", "Write a value and shift count around `<<` or `>>`." },
+    { "E0292", "Write complete operands around `+`, `-`, `*`, `/` or `%`; add parentheses to make grouping clear." },
+    { "E0293", "Write `start..end` for an exclusive range or `start..=end` for an inclusive range, with a complete expression at each endpoint." },
+    { "E0294", "Put one complete operand after the unary operator, for example `-value`, `not ready`, `&value` or `*pointer`." },
+    { "E0295", "Write `value as Type` and provide a complete type after `as`." },
+    { "E0296", "Complete the suffix: use `callee(arguments)`, `value[index]`, `value.field`, `value?`, or `Type { field: value }`; generic form and variant suffixes need nonempty, well-formed type arguments." },
+    { "E0297", "Write `if condition { value } else { fallback }`; an if expression needs an else branch, and `elif` may continue the chain." },
+    { "E0298", "Close the block with `}`; place complete statements before the optional final expression." },
+    { "E0299", "Write `[]` or `[expression, ...]`; provide complete elements separated by commas and close the array with `]`." },
 
     {
+        "E0300",
+        "Change the import to match the resolved file's `space` declaration, or change that declaration to match the imported path."
+    },
+    {
         "E0301",
-        "Match the module path to a source available under a configured import root, including its spelling and case."
+        "Check the exact module path and the search roots listed in the diagnostic; add the source file under one of those roots or correct the import."
     },
     {
         "E0302",
@@ -211,11 +343,11 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E0304",
-        "Remove the duplicate import or assign distinct aliases to imported declarations that would otherwise conflict."
+        "Remove the repeated import. If two imports would bind different declarations to the same local name, give the imported items distinct aliases."
     },
     {
         "E0305",
-        "Install or declare the missing package and make its source root available to import resolution."
+        "Install the declared package into the project or user module directory, or add its package directory to `VITTE_MODULE_PATH`."
     },
     {
         "E0306",
@@ -225,6 +357,10 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
         "E0307",
         "Preserve the import graph, failing validation detail and compiler version; this structural failure should be reported as a compiler defect."
     },
+    { "E0308", "Write `sizeof(Type)` or `sizeof(expression)` with one complete operand and matching parentheses." },
+    { "E0309", "Write `alignof(Type)` with a complete type and matching parentheses." },
+    { "E0310", "Write `null()` or `null(expression, ...)` and close the argument list with `)`." },
+    { "E0311", "Provide complete expressions separated by commas. A trailing comma is allowed, but empty items are invalid; a missing-comma insertion is suggested only when the next token clearly starts another item." },
 
     {
         "E0401",
@@ -236,28 +372,32 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E0403",
-        "Qualify the name with the intended module or use an alias that selects exactly one visible declaration."
+        "Use the candidate locations to identify the intended declaration. Replace conflicting glob imports with explicit grouped imports and distinct aliases, or qualify each use through its module."
     },
     {
         "E0404",
-        "Use an exported API or change the declaration's visibility when this access is intentionally permitted."
+        "Add `pub` to the declaration in its defining module, or add `export name;` there if the symbol belongs in that module's API."
     },
     {
         "E0405",
-        "Move the use into the declaration's valid scope or pass the required value into the procedure that needs it."
+        "Move the export clause to root or module scope. Inside a trait or impl, use `pub` on an individual declaration."
     },
     {
         "E0406",
         "Give every binding introduced by this pattern or declaration a distinct name."
     },
+    {
+        "E0407",
+        "Export a declaration defined in this module. Re-exports are unsupported; add `pub` to the declaration in its defining module, then import it with `use module::{name};`."
+    },
 
     {
         "E0501",
-        "Make the expression satisfy the required type; use an explicit conversion only when it preserves the intended value and semantics."
+        "Make the expression and its consumer agree on a type. If the consumer's type is intended, produce or validate a value of that type; if the expression's type is intended, correct the declaration or operation that requires the other type. Convert only when the value and precision remain valid."
     },
     {
         "E0502",
-        "Add an explicit type annotation or provide an initializer whose type determines the declaration unambiguously."
+        "Choose the intended type explicitly, for example `let count: i32 = 0;` for a signed count or `let count: usize = 0;` for an index, or provide an initializer with a uniquely known type."
     },
     {
         "E0503",
@@ -311,10 +451,14 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
         "E0515",
         "Use a boolean condition, normally by writing an explicit comparison; Vitte does not infer truthiness from unrelated value types."
     },
+    {
+        "E0516",
+        "Use this name in a type position, or construct a value with the type's supported constructor syntax."
+    },
 
     {
         "E0601",
-        "Match the number of supplied arguments to the selected procedure's parameter list."
+        "Compare this call with the procedure signature: add or remove arguments if the call is wrong, or change the parameter list if the declared API is wrong."
     },
     {
         "E0602",
@@ -338,7 +482,11 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E0607",
-        "Move `return` into a procedure body; a top-level declaration cannot return a procedure result."
+        "Place `return` inside a procedure body so it has a result to return."
+    },
+    {
+        "E0608",
+        "Use an irrefutable parameter binding such as `value: Type`; move refutable matching into the procedure body and use only a parameter mode documented by Vitte."
     },
 
     {
@@ -367,7 +515,7 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E0706",
-        "Capture the required entry value through a supported contract mechanism before referring to its previous value."
+        "`old(...)` needs a value captured at procedure entry. Entry-state snapshots are not available for this reference; remove it or express the condition using values supported by the contract."
     },
     {
         "E0707",
@@ -411,6 +559,14 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
         "Supply one type or value argument for every required generic parameter in declaration order."
     },
     {
+        "E0803",
+        "Match each supplied argument to the declared parameter kind and position; a type argument cannot fill a const parameter."
+    },
+    {
+        "E0804",
+        "Make the arguments agree on one concrete type for each generic parameter, or split the call into separately typed values."
+    },
+    {
         "E0810",
         "Implement the required trait for this type or use a type that already provides the required implementation."
     },
@@ -421,6 +577,26 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     {
         "E0812",
         "Remove or specialize the overlapping implementation so a trait/type relation resolves to exactly one implementation."
+    },
+    {
+        "E0813",
+        "Add the required method or associated member to this implementation, or provide a default in the trait."
+    },
+    {
+        "E0814",
+        "Match the trait member's name, parameter types, return type and allowed declaration form."
+    },
+    {
+        "E0815",
+        "Use `impl Trait for Type` for a trait implementation, or `impl Type` for an inherent implementation."
+    },
+    {
+        "E0816",
+        "Use a declared generic parameter on the left of `:` and one or more visible trait bounds on the right."
+    },
+    {
+        "E0817",
+        "Qualify the call through the intended trait or remove the competing visible method implementation."
     },
 
     {
@@ -437,7 +613,7 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E0904",
-        "Inspect the external C compiler's first error, verify C17 support and preserve the generated C for a reproducible report."
+        "Check the reported phase and command, identify the selected compiler (`CC` in native host-tools or `cc` on PATH in the bootstrap fallback), and confirm it accepts C17. Inspect its first output: errors in generated C may indicate a backend defect, while missing headers or SDK files are toolchain configuration issues."
     },
     {
         "E0905",
@@ -449,7 +625,7 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E0907",
-        "Verify linker availability, the selected target and library search paths, then inspect the first linker error and command."
+        "Use the reported link command and first linker error to check the selected compiler driver (`CC` in native host-tools or `cc` on PATH in the bootstrap fallback), target format, SDK/sysroot, library search paths and required symbols. Keep link failures separate from C compilation errors."
     },
     {
         "E0908",
@@ -473,12 +649,20 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
         "Preserve the verifier's first invariant failure and the corresponding IR dump in a compiler bug report."
     },
     {
+        "E1004",
+        "Use a source construct supported by the IR lowerer or select a compilation path that implements this valid construct."
+    },
+    {
         "E1010",
         "Report the invalid HIR construct and its originating source so frontend lowering can be corrected."
     },
     {
         "E1011",
         "Report the source construct and compiler version; the native frontend failed while building or validating its high-level representation."
+    },
+    {
+        "E1012",
+        "Use a source construct supported by the HIR lowerer or select a compilation path that implements this valid construct."
     },
 
     {
@@ -487,15 +671,19 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E1102",
-        "Move `break` into a breakable construct or use the appropriate control-flow operation for leaving the current context."
+        "Place `break` inside a loop body to exit that loop."
     },
     {
         "E1103",
-        "Move `continue` into a loop body; outside a loop there is no next iteration."
+        "Place `continue` inside a loop body to start its next iteration."
     },
     {
         "E1104",
         "Correct the preceding branch, termination or control-flow condition so this operation is reachable when it is intended to execute."
+    },
+    {
+        "E1105",
+        "Keep deferred work within its enclosing scope: remove `return`, `break`, `continue`, early-exit `?`, and nested `defer` from the deferred action."
     },
 
     {
@@ -537,7 +725,7 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
 
     {
         "E1301",
-        "Prefer a safe API; when this low-level operation is required, establish its safety invariants and place it in an explicit unsafe context."
+        "Review the operation's documented safety requirements and prove each invariant at this call site. Prefer a safe API when it provides the needed behavior; mark a context unsafe only when the caller can uphold those requirements."
     },
     {
         "E1302",
@@ -571,11 +759,11 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     },
     {
         "E1502",
-        "Reduce the constant operands or use a representable wider type before performing the overflowing operation."
+        "This compile-time arithmetic operation overflows `i64` in the underlined expression. Reduce the operands or use a wider representable type."
     },
     {
         "E1503",
-        "Change the zero divisor or guard the operation so constant evaluation never performs division by zero."
+        "The divisor of this compile-time division evaluates to zero in the underlined expression. Change the divisor or guard the operation."
     },
     {
         "E1504",
@@ -585,10 +773,14 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
         "E1505",
         "Reduce compile-time recursion or work and verify termination before increasing an evaluation limit."
     },
+    {
+        "E1506",
+        "The divisor of this compile-time remainder evaluates to zero in the underlined expression. Change the divisor or guard the operation."
+    },
 
     {
         "E1601",
-        "Add branches for the uncovered variants or a valid catch-all pattern when all remaining values should be handled uniformly."
+        "Add an arm for each listed missing variant or representative uncovered pattern, or use an unguarded `_` arm when all remaining values should be handled uniformly."
     },
     {
         "E1602",
@@ -639,23 +831,23 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
 
     {
         "E1901",
-        "Select a compilation target implemented by this compiler and supported by the installed toolchain."
+        "Compare the requested triple with the reported host architecture, platform and pointer width. Check the selected compiler's default target (for example with `-dumpmachine`) and its SDK/sysroot; this C17 path does not forward `--target`."
     },
     {
         "E1902",
-        "Choose a supported CPU architecture and ensure it matches the selected target and external toolchain."
+        "Compare the requested architecture with the target triple and the compiler's default target. Select a compiler configured for that architecture only when the backend can pass or otherwise honor the target."
     },
     {
         "E1903",
-        "Remove the unsupported target feature or select a CPU and toolchain providing that feature."
+        "Check the requested CPU feature against the selected architecture and compiler version; remove only a feature confirmed unavailable or choose a toolchain that supports it."
     },
     {
         "E1904",
-        "Select a target with a supported pointer width and verify pointer-sized assumptions in foreign interfaces."
+        "Compare the requested pointer width with the width supported by this compilation mode and with FFI declarations. Use a target-aware backend when the requested width differs from the host build."
     },
     {
         "E1905",
-        "Use an operation supporting the target byte order or explicitly encode and decode the required endianness."
+        "Check the target byte order reported by the toolchain and the operation's documented support. Preserve the source representation and inspect target-specific behavior before changing code."
     },
 
     {
@@ -705,6 +897,10 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     {
         "W0051",
         "Remove the redundant condition or correct the expression that makes its result constant."
+    },
+    {
+        "W0052",
+        "Review the earlier arm or narrow this pattern so the same value is not handled by both arms."
     },
     {
         "W0060",
@@ -1565,7 +1761,8 @@ vitte_help_primary_label(
     }
 
     for (index = 0u;
-         index < diagnostic->label_count;
+         index < diagnostic->label_count &&
+         index < VITTE_DIAGNOSTIC_MAX_LABELS;
          index++) {
 
         const vitte_diagnostic_label_t *label;
@@ -1598,7 +1795,8 @@ vitte_help_first_cause(
     }
 
     for (index = 0u;
-         index < diagnostic->cause_count;
+         index < diagnostic->cause_count &&
+         index < VITTE_DIAGNOSTIC_MAX_CAUSES;
          index++) {
 
         if (vitte_help_text_present(
@@ -1869,7 +2067,7 @@ vitte_help_format_type_mismatch(
 
         vitte_help_builder_append(
             builder,
-            "If the text represents user or file input, parse it as a numeric value and handle invalid input before using the result."
+            "If the value is text input, parse it and handle failure before using it; if text is intended, change the consumer or its declared type instead."
         );
 
         return true;
@@ -1884,7 +2082,7 @@ vitte_help_format_type_mismatch(
 
         vitte_help_builder_append(
             builder,
-            "Format the numeric value explicitly when textual representation is intended instead of relying on an unrelated cast."
+            "If text is intended, format the number explicitly; if the consumer needs a number, correct its declared type instead of converting the value to text."
         );
 
         return true;
@@ -1899,7 +2097,7 @@ vitte_help_format_type_mismatch(
 
         vitte_help_builder_append(
             builder,
-            "Check the value range and signedness before applying an explicit integer conversion."
+            "If the destination type is intended, check range and signedness before an explicit conversion; otherwise widen or correct the destination type to preserve the value."
         );
 
         return true;
@@ -1914,7 +2112,7 @@ vitte_help_format_type_mismatch(
 
         vitte_help_builder_append(
             builder,
-            "An integer conversion can discard a fractional component or exceed the destination range; make that behavior explicit only when it is intended."
+            "If an integer is intended, verify the value is integral and in range before converting; if the fraction matters, use a floating-point destination instead."
         );
 
         return true;
@@ -1929,7 +2127,7 @@ vitte_help_format_type_mismatch(
 
         vitte_help_builder_append(
             builder,
-            "Use an explicit numeric conversion when the destination representation is intentional and its precision is acceptable."
+            "If the floating-point destination is intended, convert explicitly after checking precision; if exact integer precision matters, keep an integer destination instead."
         );
 
         return true;
@@ -1949,7 +2147,7 @@ vitte_help_format_type_mismatch(
 
     vitte_help_builder_append(
         builder,
-        "Check the declaration establishing the required type and convert explicitly only when the conversion preserves the intended semantics."
+        "If the required type is intentional, produce a value of that type; if the actual type is intentional, correct the declaration or operation that requires a different type. Convert only when the conversion preserves the intended value."
     );
 
     return true;
@@ -2010,6 +2208,33 @@ vitte_help_format_parser_expectation(
         ". Match the expected element to the surrounding grammar and the nearest corresponding opening construct."
     );
 
+    return true;
+}
+
+static bool
+vitte_help_format_arity_mismatch(
+    vitte_help_builder_t *builder,
+    const vitte_diagnostic_t *diagnostic
+)
+{
+    if (builder == NULL || diagnostic == NULL ||
+        !vitte_help_text_present(diagnostic->expected) ||
+        !vitte_help_text_present(diagnostic->found)) {
+        return false;
+    }
+
+    vitte_help_builder_append(builder, "This call supplies ");
+    vitte_help_builder_append_quoted_fragment(
+        builder, diagnostic->found, VITTE_HELP_EXPECTED_TOKEN_LIMIT
+    );
+    vitte_help_builder_append(builder, ", while the selected signature requires ");
+    vitte_help_builder_append_quoted_fragment(
+        builder, diagnostic->expected, VITTE_HELP_EXPECTED_TOKEN_LIMIT
+    );
+    vitte_help_builder_append(
+        builder,
+        ". If the call is wrong, add or remove arguments to match the declaration; if the API is wrong, change its parameter list instead."
+    );
     return true;
 }
 
@@ -2180,11 +2405,132 @@ vitte_help_format_contract(
 /* Context enrichment                                                        */
 /* ========================================================================= */
 
+static bool vitte_help_code_has_prefix(
+    const char *code,
+    const char *prefix
+);
+
+static bool
+vitte_help_wants_context(
+    const char *code
+)
+{
+    return (code != NULL &&
+            (strcmp(code, "E0300") == 0 ||
+             strcmp(code, "E0301") == 0 ||
+             strcmp(code, "E0302") == 0 ||
+             strcmp(code, "E0303") == 0 ||
+             strcmp(code, "E0304") == 0 ||
+             strcmp(code, "E0305") == 0 ||
+             strcmp(code, "E0306") == 0 ||
+             strcmp(code, "E0307") == 0)) ||
+        vitte_help_code_has_prefix(code, "E04") ||
+        vitte_help_code_has_prefix(code, "E05") ||
+        vitte_help_code_has_prefix(code, "E06") ||
+        vitte_help_code_has_prefix(code, "E07") ||
+        vitte_help_code_has_prefix(code, "E08") ||
+        vitte_help_code_has_prefix(code, "E09") ||
+        vitte_help_code_has_prefix(code, "E10") ||
+        vitte_help_code_has_prefix(code, "E12") ||
+        vitte_help_code_has_prefix(code, "E19");
+}
+
+static bool
+vitte_help_wants_semantic_context(
+    const char *code
+)
+{
+    return vitte_help_code_has_prefix(code, "E04") ||
+        vitte_help_code_has_prefix(code, "E05") ||
+        vitte_help_code_has_prefix(code, "E06") ||
+        vitte_help_code_has_prefix(code, "E07") ||
+        vitte_help_code_has_prefix(code, "E08") ||
+        vitte_help_code_has_prefix(code, "E12");
+}
+
+static bool
+vitte_help_wants_related_context(
+    const char *code
+)
+{
+    return (code != NULL &&
+            (strcmp(code, "E0300") == 0 ||
+             strcmp(code, "E0301") == 0 ||
+             strcmp(code, "E0302") == 0 ||
+             strcmp(code, "E0303") == 0 ||
+             strcmp(code, "E0304") == 0 ||
+             strcmp(code, "E0305") == 0 ||
+             strcmp(code, "E0306") == 0 ||
+             strcmp(code, "E0307") == 0)) ||
+        vitte_help_code_has_prefix(code, "E04") ||
+        vitte_help_code_has_prefix(code, "E05") ||
+        vitte_help_code_has_prefix(code, "E06") ||
+        vitte_help_code_has_prefix(code, "E07") ||
+        vitte_help_code_has_prefix(code, "E08") ||
+        vitte_help_code_has_prefix(code, "E09") ||
+        vitte_help_code_has_prefix(code, "E10") ||
+        vitte_help_code_has_prefix(code, "E12") ||
+        vitte_help_code_has_prefix(code, "E19");
+}
+
+static bool
+vitte_help_builder_contains(
+    const vitte_help_builder_t *builder,
+    const char *text
+)
+{
+    return builder != NULL && builder->buffer != NULL &&
+        vitte_help_text_present(text) &&
+        strstr(builder->buffer, text) != NULL;
+}
+
+static bool
+vitte_help_subject_from_message(
+    const char *message,
+    const char *marker,
+    char *subject,
+    size_t capacity
+)
+{
+    const char *begin;
+    const char *end;
+    size_t length;
+
+    if (!vitte_help_text_present(message) ||
+        !vitte_help_text_present(marker) ||
+        subject == NULL || capacity == 0u) {
+        return false;
+    }
+
+    subject[0] = '\0';
+    begin = strstr(message, marker);
+    if (begin == NULL) {
+        return false;
+    }
+
+    begin += strlen(marker);
+    end = strchr(begin, '`');
+    if (end == NULL || end == begin) {
+        return false;
+    }
+
+    length = (size_t)(end - begin);
+    if (length >= capacity) {
+        return false;
+    }
+
+    memcpy(subject, begin, length);
+    subject[length] = '\0';
+    return true;
+}
+
 static void
 vitte_help_append_semantic_context(
     vitte_help_builder_t *builder,
     const vitte_diagnostic_t *diagnostic,
-    bool include_types
+    bool include_types,
+    bool include_symbol,
+    bool include_expected_found
 )
 {
     if (builder == NULL ||
@@ -2192,9 +2538,9 @@ vitte_help_append_semantic_context(
         return;
     }
 
-    if (vitte_help_text_present(
+    if (include_symbol && vitte_help_text_present(
             diagnostic->symbol
-        )) {
+        ) && !vitte_help_builder_contains(builder, diagnostic->symbol)) {
 
         vitte_help_builder_append(
             builder,
@@ -2216,6 +2562,8 @@ vitte_help_append_semantic_context(
     if (include_types) {
         if (vitte_help_text_present(
                 diagnostic->expected_type
+            ) && !vitte_help_builder_contains(
+                builder, diagnostic->expected_type
             )) {
 
             vitte_help_builder_append(
@@ -2237,6 +2585,8 @@ vitte_help_append_semantic_context(
 
         if (vitte_help_text_present(
                 diagnostic->actual_type
+            ) && !vitte_help_builder_contains(
+                builder, diagnostic->actual_type
             )) {
 
             vitte_help_builder_append(
@@ -2256,27 +2606,210 @@ vitte_help_append_semantic_context(
             );
         }
     }
+
+    if (include_expected_found &&
+        vitte_help_text_present(diagnostic->expected) &&
+        (!vitte_help_text_present(diagnostic->expected_type) ||
+         strcmp(diagnostic->expected, diagnostic->expected_type) != 0) &&
+        !vitte_help_builder_contains(builder, diagnostic->expected)) {
+        vitte_help_builder_append(builder, " Expected: ");
+        vitte_help_builder_append_quoted_fragment(
+            builder,
+            diagnostic->expected,
+            VITTE_HELP_REASON_LIMIT
+        );
+        vitte_help_builder_append(builder, ".");
+    }
+
+    if (include_expected_found &&
+        vitte_help_text_present(diagnostic->found) &&
+        (!vitte_help_text_present(diagnostic->actual_type) ||
+         strcmp(diagnostic->found, diagnostic->actual_type) != 0) &&
+        !vitte_help_builder_contains(builder, diagnostic->found)) {
+        vitte_help_builder_append(builder, " Found: ");
+        vitte_help_builder_append_quoted_fragment(
+            builder,
+            diagnostic->found,
+            VITTE_HELP_REASON_LIMIT
+        );
+        vitte_help_builder_append(builder, ".");
+    }
+}
+
+static void
+vitte_help_append_context_details(
+    vitte_help_builder_t *builder,
+    const vitte_diagnostic_t *diagnostic,
+    const char *source_text,
+    const char *reason,
+    bool include_source,
+    const char *public_code
+)
+{
+    const char *label;
+    const char *cause;
+    size_t index;
+    size_t shown;
+    bool cause_appended;
+
+    if (builder == NULL || diagnostic == NULL ||
+        !vitte_help_wants_context(public_code)) {
+        return;
+    }
+
+    if (include_source && vitte_help_text_present(source_text)) {
+        if (!vitte_help_builder_contains(builder, source_text)) {
+            vitte_help_builder_append(builder, " Source excerpt: ");
+            vitte_help_builder_append_quoted_fragment(
+                builder,
+                source_text,
+                VITTE_HELP_SUBJECT_LIMIT
+            );
+            vitte_help_builder_append(builder, ".");
+        }
+    }
+
+    label = vitte_help_primary_label(diagnostic);
+    if (vitte_help_text_present(label) &&
+        (!vitte_help_text_present(reason) || strcmp(label, reason) != 0) &&
+        !vitte_help_builder_contains(builder, label)) {
+        vitte_help_builder_append(builder, " Offending construct: ");
+        vitte_help_builder_append_quoted_fragment(
+            builder,
+            label,
+            VITTE_HELP_REASON_LIMIT
+        );
+        vitte_help_builder_append(builder, ".");
+    }
+
+    cause_appended = false;
+    if (vitte_help_text_present(diagnostic->probable_cause) &&
+        (!vitte_help_text_present(reason) ||
+         strcmp(diagnostic->probable_cause, reason) != 0) &&
+        !vitte_help_builder_contains(builder, diagnostic->probable_cause)) {
+        vitte_help_builder_append(builder, " Likely cause: ");
+        vitte_help_builder_append_quoted_fragment(
+            builder,
+            diagnostic->probable_cause,
+            VITTE_HELP_REASON_LIMIT
+        );
+        vitte_help_builder_append(builder, ".");
+        cause_appended = true;
+    }
+
+    if (vitte_help_text_present(diagnostic->context) &&
+        strcmp(diagnostic->context, "use declaration") != 0 &&
+        !vitte_help_builder_contains(builder, diagnostic->context)) {
+        vitte_help_builder_append(builder, " Diagnostic context: ");
+        vitte_help_builder_append_quoted_fragment(
+            builder,
+            diagnostic->context,
+            VITTE_HELP_REASON_LIMIT
+        );
+        vitte_help_builder_append(builder, ".");
+    }
+
+    cause = vitte_help_first_cause(diagnostic);
+    if (vitte_help_text_present(cause) &&
+        !cause_appended &&
+        (!vitte_help_text_present(reason) || strcmp(cause, reason) != 0) &&
+        (!vitte_help_text_present(diagnostic->probable_cause) ||
+         strcmp(cause, diagnostic->probable_cause) != 0) &&
+        !vitte_help_builder_contains(builder, cause)) {
+        vitte_help_builder_append(builder, " Failure cause: ");
+        vitte_help_builder_append_quoted_fragment(
+            builder,
+            cause,
+            VITTE_HELP_REASON_LIMIT
+        );
+        vitte_help_builder_append(builder, ".");
+    }
+
+    if (!vitte_help_wants_related_context(public_code)) {
+        return;
+    }
+
+    shown = 0u;
+    for (index = 0u;
+         index < diagnostic->related_count &&
+         index < VITTE_DIAGNOSTIC_MAX_RELATED &&
+         shown < 2u;
+         index++) {
+        const char *related_label = diagnostic->related[index].label;
+        if (!vitte_help_text_present(related_label) ||
+            vitte_help_builder_contains(builder, related_label)) {
+            continue;
+        }
+        vitte_help_builder_append(builder, " Related location: ");
+        vitte_help_builder_append_quoted_fragment(
+            builder,
+            related_label,
+            VITTE_HELP_REASON_LIMIT
+        );
+        vitte_help_builder_append(builder, ".");
+        shown++;
+    }
 }
 
 static void
 vitte_help_append_compilation_context(
     vitte_help_builder_t *builder,
-    const vitte_diagnostic_t *diagnostic
+    const vitte_diagnostic_t *diagnostic,
+    const char *public_code
 )
 {
+    bool show_module;
+    bool show_procedure;
+
     if (builder == NULL ||
-        diagnostic == NULL) {
+        diagnostic == NULL ||
+        !vitte_help_wants_context(public_code)) {
         return;
     }
 
-    if (vitte_help_text_present(
-            diagnostic->procedure
-        )) {
+    show_module = !diagnostic->has_span &&
+        ((public_code != NULL &&
+            (strcmp(public_code, "E0300") == 0 ||
+             strcmp(public_code, "E0301") == 0 ||
+             strcmp(public_code, "E0302") == 0 ||
+             strcmp(public_code, "E0303") == 0 ||
+             strcmp(public_code, "E0304") == 0 ||
+             strcmp(public_code, "E0305") == 0 ||
+             strcmp(public_code, "E0306") == 0 ||
+             strcmp(public_code, "E0307") == 0)) ||
+         vitte_help_code_has_prefix(public_code, "E04") ||
+         vitte_help_code_has_prefix(public_code, "E05"));
+    show_procedure = !diagnostic->has_span &&
+        (vitte_help_code_has_prefix(public_code, "E06") ||
+        vitte_help_code_has_prefix(public_code, "E07") ||
+        vitte_help_code_has_prefix(public_code, "E08") ||
+        vitte_help_code_has_prefix(public_code, "E12"));
 
-        vitte_help_builder_append(
+    if (show_module && vitte_help_text_present(diagnostic->package) &&
+        !vitte_help_builder_contains(builder, diagnostic->package)) {
+        vitte_help_builder_append(builder, " Module context: package ");
+        vitte_help_builder_append_quoted_fragment(
             builder,
-            " In procedure "
+            diagnostic->package,
+            VITTE_DIAGNOSTIC_PACKAGE_CAPACITY
         );
+        vitte_help_builder_append(builder, ".");
+    }
+
+    if (show_module && vitte_help_text_present(diagnostic->module) &&
+        !vitte_help_builder_contains(builder, diagnostic->module)) {
+        vitte_help_builder_append(builder, " Module context: module ");
+        vitte_help_builder_append_quoted_fragment(
+            builder,
+            diagnostic->module,
+            VITTE_DIAGNOSTIC_MODULE_CAPACITY
+        );
+        vitte_help_builder_append(builder, ".");
+    }
+
+    if (show_procedure && vitte_help_text_present(diagnostic->procedure) &&
+        !vitte_help_builder_contains(builder, diagnostic->procedure)) {
+        vitte_help_builder_append(builder, " Procedure context: ");
 
         vitte_help_builder_append_quoted_fragment(
             builder,
@@ -2284,64 +2817,118 @@ vitte_help_append_compilation_context(
             VITTE_DIAGNOSTIC_PROCEDURE_CAPACITY
         );
 
-        vitte_help_builder_append(
-            builder,
-            "."
-        );
-
-        return;
-    }
-
-    if (vitte_help_text_present(
-            diagnostic->module
-        )) {
-
-        vitte_help_builder_append(
-            builder,
-            " In module "
-        );
-
-        vitte_help_builder_append_quoted_fragment(
-            builder,
-            diagnostic->module,
-            VITTE_DIAGNOSTIC_MODULE_CAPACITY
-        );
-
-        vitte_help_builder_append(
-            builder,
-            "."
-        );
+        vitte_help_builder_append(builder, ".");
+    } else if (vitte_help_text_present(diagnostic->contract.procedure)) {
+        if (show_procedure && !vitte_help_builder_contains(
+                builder, diagnostic->contract.procedure
+            )) {
+            vitte_help_builder_append(builder, " Procedure context: ");
+            vitte_help_builder_append_quoted_fragment(
+                builder,
+                diagnostic->contract.procedure,
+                VITTE_DIAGNOSTIC_PROCEDURE_CAPACITY
+            );
+            vitte_help_builder_append(builder, ".");
+        }
     }
 }
 
+static bool
+vitte_help_code_has_prefix(
+    const char *code,
+    const char *prefix
+)
+{
+    return code != NULL && prefix != NULL &&
+        strncmp(code, prefix, strlen(prefix)) == 0;
+}
+
 static void
-vitte_help_append_reference(
+vitte_help_append_next_action(
     vitte_help_builder_t *builder,
+    const vitte_diagnostic_t *diagnostic,
     const char *public_code
 )
 {
-    if (builder == NULL ||
-        !vitte_help_text_present(
-            public_code
-        )) {
+    bool registered;
+    bool internal;
+    bool backend;
 
+    if (builder == NULL || diagnostic == NULL) {
         return;
     }
 
-    vitte_help_builder_append(
-        builder,
-        " See `vitte explain "
-    );
+    registered = vitte_help_text_present(public_code) &&
+        vitte_diagnostic_registry_find_public(public_code) != NULL;
+    if (!registered) {
+        if (!vitte_help_builder_contains(builder, "Preserve the original command")) {
+            vitte_help_builder_append(
+                builder,
+                " Preserve the original command, compiler version, source and phase for manual investigation."
+            );
+        }
+        return;
+    }
 
-    vitte_help_builder_append(
-        builder,
-        public_code
-    );
+    if (vitte_help_builder_contains(builder, "vitte ") ||
+        vitte_help_builder_contains(builder, "VITTE_BACKTRACE=1") ||
+        vitte_help_builder_contains(builder, "cc -dumpmachine")) {
+        return;
+    }
 
-    vitte_help_builder_append(
-        builder,
-        "`."
-    );
+    internal = diagnostic->is_internal ||
+        diagnostic->origin == VITTE_DIAGNOSTIC_ORIGIN_INTERNAL;
+    backend = vitte_help_code_has_prefix(public_code, "E09") ||
+        vitte_help_code_has_prefix(public_code, "E10") ||
+        vitte_help_code_has_prefix(public_code, "E19") ||
+        diagnostic->origin == VITTE_DIAGNOSTIC_ORIGIN_C17_BACKEND ||
+        diagnostic->origin == VITTE_DIAGNOSTIC_ORIGIN_C_COMPILER ||
+        diagnostic->origin == VITTE_DIAGNOSTIC_ORIGIN_LINKER ||
+        diagnostic->origin == VITTE_DIAGNOSTIC_ORIGIN_CODEGEN ||
+        diagnostic->origin == VITTE_DIAGNOSTIC_ORIGIN_IR;
+
+    if (vitte_help_text_present(public_code) &&
+        strcmp(public_code, "E0004") == 0) {
+        vitte_help_builder_append(
+            builder,
+            " Next: check memory and process limits, then retry with `vitte compile <file> --jobs=1` if parallel compilation may be exhausting resources."
+        );
+    } else if (vitte_help_text_present(public_code) &&
+               strcmp(public_code, "E0013") == 0) {
+        vitte_help_builder_append(
+            builder,
+            " Next: identify the unavailable component in the reported cause and install or configure it; preserve the reproducer if it is compiler-owned."
+        );
+    } else if (internal) {
+        vitte_help_builder_append(
+            builder,
+            " Next: rerun the original command with `VITTE_BACKTRACE=1` and preserve the smallest reproducing input."
+        );
+    } else if (vitte_help_text_present(public_code) &&
+               strcmp(public_code, "E0011") == 0) {
+        vitte_help_builder_append(
+            builder,
+            " Next: run `vitte --help` to check the supported options and their combinations."
+        );
+    } else if (vitte_help_code_has_prefix(public_code, "E19")) {
+        vitte_help_builder_append(
+            builder,
+            " Next: inspect the selected compiler's target with `cc -dumpmachine` when supported (or use the executable named by `CC`), then reproduce with `vitte compile <file>`."
+        );
+    } else if (backend) {
+        vitte_help_builder_append(
+            builder,
+            " Next: reproduce with `vitte compile <file>`; for C17 backend output, inspect `vitte compile <file> --emit-c`."
+        );
+    } else if (diagnostic->origin == VITTE_DIAGNOSTIC_ORIGIN_RUNTIME) {
+        vitte_help_builder_append(
+            builder,
+            " Next: rerun `vitte run <file>` with the same input and compare the reported procedure and values."
+        );
+    } else {
+        /* Registered source diagnostics already carry family-specific advice. */
+        return;
+    }
 }
 
 /* ========================================================================= */
@@ -2522,9 +3109,15 @@ vitte_diagnostic_format_help(
     char source_text[
         VITTE_HELP_EXCERPT_CAPACITY
     ];
+    char message_subject[
+        VITTE_HELP_SUBJECT_LIMIT
+    ];
 
     bool specialized;
     bool include_types;
+    bool include_symbol;
+    bool include_expected_found;
+    bool include_source;
 
     if (buffer == NULL ||
         capacity == 0u) {
@@ -2560,6 +3153,32 @@ vitte_diagnostic_format_help(
             &builder,
             explicit_help
         );
+
+        if (diagnostic->severity == VITTE_DIAGNOSTIC_WARNING ||
+            diagnostic->severity == VITTE_DIAGNOSTIC_ERROR ||
+            diagnostic->severity == VITTE_DIAGNOSTIC_FATAL) {
+            entry = vitte_help_registry_entry(diagnostic);
+            public_code = vitte_help_public_code(diagnostic, entry);
+            source_text[0] = '\0';
+            (void)vitte_help_source_excerpt(
+                diagnostic,
+                sources,
+                source_text,
+                sizeof(source_text)
+            );
+            if (vitte_help_wants_semantic_context(public_code)) {
+                vitte_help_append_semantic_context(
+                    &builder, diagnostic, true, true, true
+                );
+            }
+            vitte_help_append_context_details(
+                &builder, diagnostic, source_text,
+                vitte_help_detail(diagnostic), true, public_code
+            );
+            vitte_help_append_compilation_context(
+                &builder, diagnostic, public_code
+            );
+        }
 
         return !builder.failed &&
                builder.length != 0u;
@@ -2652,8 +3271,32 @@ vitte_diagnostic_format_help(
             : NULL
         );
 
+    message_subject[0] = '\0';
+    if (subject == NULL && public_code != NULL &&
+        strcmp(public_code, "E0401") == 0 &&
+        vitte_help_subject_from_message(
+            diagnostic->message,
+            "unknown symbol `",
+            message_subject,
+            sizeof(message_subject)
+        )) {
+        subject = message_subject;
+    } else if (subject == NULL && public_code != NULL &&
+               strcmp(public_code, "E0510") == 0 &&
+               vitte_help_subject_from_message(
+                   diagnostic->message,
+                   "unknown type `",
+                   message_subject,
+                   sizeof(message_subject)
+               )) {
+        subject = message_subject;
+    }
+
     specialized = false;
     include_types = true;
+    include_symbol = true;
+    include_expected_found = true;
+    include_source = true;
 
     /* --------------------------------------------------------------------- */
     /* Type mismatch / argument / return diagnostics                         */
@@ -2675,6 +3318,18 @@ vitte_diagnostic_format_help(
 
         if (specialized) {
             include_types = false;
+            include_source = false;
+        }
+    }
+
+    if (!specialized && public_code != NULL &&
+        strcmp(public_code, "E0601") == 0) {
+        specialized = vitte_help_format_arity_mismatch(
+            &builder,
+            diagnostic
+        );
+        if (specialized) {
+            include_expected_found = false;
         }
     }
 
@@ -2695,6 +3350,9 @@ vitte_diagnostic_format_help(
                 &builder,
                 reason
             );
+        if (specialized) {
+            include_expected_found = false;
+        }
     }
 
     /* --------------------------------------------------------------------- */
@@ -2704,12 +3362,28 @@ vitte_diagnostic_format_help(
     if (!specialized &&
         public_code != NULL &&
         strcmp(public_code, "E0401") == 0) {
-
-        specialized =
-            vitte_help_format_unresolved_name(
-                &builder,
-                subject
-            );
+        if (vitte_help_text_present(reason) &&
+            (entry == NULL || entry->explanation == NULL ||
+             strcmp(reason, entry->explanation) != 0)) {
+            vitte_help_builder_append(&builder, reason);
+            specialized = true;
+            include_symbol =
+                !vitte_help_text_present(diagnostic->symbol) ||
+                strstr(reason, diagnostic->symbol) == NULL;
+        } else {
+            specialized =
+                vitte_help_format_unresolved_name(
+                    &builder,
+                    subject
+                );
+            if (specialized) {
+                include_symbol = false;
+                if (subject != NULL && source_text[0] != '\0' &&
+                    strcmp(subject, source_text) == 0) {
+                    include_source = false;
+                }
+            }
+        }
     }
 
     /* --------------------------------------------------------------------- */
@@ -2725,6 +3399,13 @@ vitte_diagnostic_format_help(
                 &builder,
                 subject
             );
+        if (specialized) {
+            include_symbol = false;
+            if (subject != NULL && source_text[0] != '\0' &&
+                strcmp(subject, source_text) == 0) {
+                include_source = false;
+            }
+        }
     }
 
     /* --------------------------------------------------------------------- */
@@ -2783,11 +3464,21 @@ vitte_diagnostic_format_help(
     /* --------------------------------------------------------------------- */
 
     if (!specialized) {
-        vitte_help_format_fallback(
-            &builder,
-            diagnostic,
-            reason
-        );
+        if (entry != NULL &&
+            entry->origin != VITTE_DIAGNOSTIC_ORIGIN_INTERNAL) {
+            /* Registered user-facing diagnostics keep their own explanation
+             * if a policy-table regression is introduced. */
+            vitte_help_builder_append(
+                &builder,
+                entry->explanation
+            );
+        } else {
+            vitte_help_format_fallback(
+                &builder,
+                diagnostic,
+                reason
+            );
+        }
     } else {
         /*
          * Structured information augments generic help only when it has not
@@ -2818,31 +3509,36 @@ vitte_diagnostic_format_help(
             );
         }
 
-        /*
-         * Do not duplicate symbol information when the specialized unresolved
-         * name/type formatter already used it directly.
-         */
-        if (!(public_code != NULL &&
-              (
-                  strcmp(public_code, "E0401") == 0 ||
-                  strcmp(public_code, "E0510") == 0
-              ))) {
-
-            vitte_help_append_semantic_context(
-                &builder,
-                diagnostic,
-                include_types
-            );
-        }
     }
+
+    if (vitte_help_wants_semantic_context(public_code)) {
+        vitte_help_append_semantic_context(
+            &builder,
+            diagnostic,
+            include_types,
+            include_symbol,
+            include_expected_found
+        );
+    }
+
+    vitte_help_append_context_details(
+        &builder,
+        diagnostic,
+        source_text,
+        reason,
+        include_source,
+        public_code
+    );
 
     vitte_help_append_compilation_context(
         &builder,
-        diagnostic
+        diagnostic,
+        public_code
     );
 
-    vitte_help_append_reference(
+    vitte_help_append_next_action(
         &builder,
+        diagnostic,
         public_code
     );
 
@@ -2960,7 +3656,9 @@ vitte_diagnostic_help_validate_rules(
                     ].code
                 ) == 0) {
 
-                found = true;
+                found = vitte_help_text_present(
+                    vitte_help_rules[rule_index].help
+                );
                 break;
             }
         }

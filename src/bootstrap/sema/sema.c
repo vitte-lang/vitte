@@ -66,6 +66,24 @@
 
 #define VITTE_SEMA_PRIVATE_NO_INDEX SIZE_MAX
 
+static void
+vitte_sema_mark_unreachable_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *node);
+
+static bool
+vitte_sema_is_unreachable_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *node);
+
+static void
+vitte_sema_warn_unreachable_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *node,
+    const vitte_ast_node_t *cause,
+    const char *cause_label,
+    const char *help);
+
 static bool
 vitte_sema_space_scope_private(
     const vitte_sema_t *context,
@@ -82,6 +100,20 @@ vitte_sema_help_similar_name(
     size_t length,
     vitte_sema_diagnostic_code_t code,
     bool type_only);
+
+static bool
+vitte_sema_resolve_import_module(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *path,
+    vitte_scope_id_t requester_scope,
+    vitte_scope_id_t *module_scope);
+
+static bool
+vitte_sema_help_module_member_import(
+    vitte_sema_t *context,
+    vitte_scope_id_t requester_scope,
+    const char *name,
+    size_t name_length);
 
 /* ========================================================================= */
 /* Private arithmetic                                                        */
@@ -711,6 +743,41 @@ vitte_sema_node_token(
         node->token_index];
 }
 
+static vitte_parser_span_t
+vitte_sema_keyword_span_in_node_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *node,
+    const char *keyword)
+{
+    size_t index;
+    size_t keyword_length;
+    vitte_parser_span_t span;
+
+    memset(&span, 0, sizeof(span));
+    if (context == NULL || context->parser == NULL || node == NULL ||
+        keyword == NULL || !node->span.valid) {
+        return node != NULL ? node->span : span;
+    }
+    keyword_length = strlen(keyword);
+    for (index = 0u; index < context->parser->token_count; ++index) {
+        const vitte_token_t *token = &context->parser->tokens[index];
+        if (token->span.begin < node->span.begin ||
+            token->span.end > node->span.end ||
+            token->length != keyword_length || token->lexeme == NULL ||
+            memcmp(token->lexeme, keyword, keyword_length) != 0) {
+            continue;
+        }
+        span.file_id = node->span.file_id;
+        span.begin = token->span.begin;
+        span.end = token->span.end;
+        span.line = token->line;
+        span.column = token->column;
+        span.valid = true;
+        return span;
+    }
+    return node->span;
+}
+
 static bool
 vitte_sema_token_name(
     const vitte_token_t *token,
@@ -761,6 +828,33 @@ vitte_sema_add_diagnostic(
         return false;
     }
 
+    /* The same resolved type node can be visited by both declaration and
+     * body passes. Keep one public diagnostic for one offending name and
+     * retain the richer type information when the later pass has it. */
+    if (code == VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE) {
+        size_t index;
+        for (index = 0u; index < context->diagnostic_count; ++index) {
+            vitte_sema_diagnostic_t *previous =
+                &context->diagnostics[index];
+            if (previous->code != code ||
+                previous->symbol_id != symbol_id ||
+                previous->span.file_id != span.file_id ||
+                previous->span.begin != span.begin ||
+                previous->span.end != span.end) {
+                continue;
+            }
+            if (previous->expected_type == VITTE_SEMA_INVALID_TYPE_ID &&
+                expected_type != VITTE_SEMA_INVALID_TYPE_ID) {
+                previous->expected_type = expected_type;
+            }
+            if (previous->found_type == VITTE_SEMA_INVALID_TYPE_ID &&
+                found_type != VITTE_SEMA_INVALID_TYPE_ID) {
+                previous->found_type = found_type;
+            }
+            return index + 1u == context->diagnostic_count;
+        }
+    }
+
     if (context->diagnostic_count >=
         context->max_diagnostics) {
         context->last_error =
@@ -802,6 +896,69 @@ vitte_sema_add_diagnostic(
     diagnostic->expected_type = expected_type;
     diagnostic->found_type = found_type;
     diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_NONE;
+    switch (code) {
+        case VITTE_SEMA_DIAGNOSTIC_TYPE_MISMATCH:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_EXPRESSION;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_UNARY_OPERAND:
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_BINARY_OPERANDS:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_OPERANDS;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_CAST:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_CAST;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_TYPE;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_VALUE;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_CANNOT_INFER:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_INFERENCE;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_BOUND_UNSATISFIED:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_BOUND;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_COUNT:
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_KIND:
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_GENERIC_ARGUMENT;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_BOUND;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_MISSING_TRAIT_MEMBER:
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_TRAIT_MEMBER:
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_IMPL_TARGET:
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_METHOD:
+        case VITTE_SEMA_DIAGNOSTIC_TRAIT_NOT_IMPLEMENTED:
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_IMPL:
+        case VITTE_SEMA_DIAGNOSTIC_CONFLICTING_IMPL:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_TRAIT_MEMBER;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_INCOMPLETE_TYPE:
+        case VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_TYPE;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_NOT_ASSIGNABLE:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_ASSIGNMENT;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_NOT_CALLABLE:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_CALL;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_NOT_INDEXABLE:
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_INDEX_TYPE:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_INDEX;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_UNKNOWN_MEMBER:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_MEMBER;
+            break;
+        case VITTE_SEMA_DIAGNOSTIC_CONDITION_NOT_BOOL:
+            diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_CONDITION;
+            break;
+        default:
+            break;
+    }
     diagnostic->context_index = SIZE_MAX;
     diagnostic->context_symbol_id = VITTE_SCOPE_INVALID_SYMBOL_ID;
 
@@ -847,6 +1004,125 @@ vitte_sema_set_last_type_context(
     diagnostic->type_context = kind;
     diagnostic->context_index = index;
     diagnostic->context_symbol_id = symbol_id;
+}
+
+static void
+vitte_sema_set_last_related_location(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *node,
+    const char *label)
+{
+    vitte_sema_diagnostic_t *diagnostic;
+
+    if (context == NULL || node == NULL || label == NULL ||
+        context->diagnostic_count == 0u) {
+        return;
+    }
+    diagnostic = &context->diagnostics[context->diagnostic_count - 1u];
+    diagnostic->related_span = node->span;
+    (void)snprintf(diagnostic->related_label,
+        sizeof(diagnostic->related_label), "%s", label);
+}
+
+static bool
+vitte_sema_defer_control_error(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *node,
+    const char *help)
+{
+    const vitte_ast_node_t *defer_node;
+    if (context == NULL || node == NULL ||
+        context->current_defer_node_id == VITTE_AST_INVALID_ID ||
+        context->current_defer_node_id == 0u) {
+        return false;
+    }
+    if (!vitte_sema_add_diagnostic(context,
+            VITTE_SEMA_DIAGNOSTIC_ERROR,
+            VITTE_SEMA_DIAGNOSTIC_INVALID_DEFER_CONTROL_FLOW,
+            node->span, node->id,
+            VITTE_SCOPE_INVALID_SYMBOL_ID,
+            VITTE_SEMA_INVALID_TYPE_ID,
+            VITTE_SEMA_INVALID_TYPE_ID)) {
+        return true;
+    }
+    (void)snprintf(context->diagnostics[context->diagnostic_count - 1u].help,
+        sizeof(context->diagnostics[context->diagnostic_count - 1u].help),
+        "%s", help != NULL
+            ? help
+            : "Deferred work must complete within its enclosing scope and cannot transfer control out of it.");
+    defer_node = vitte_sema_node(context, context->current_defer_node_id);
+    vitte_sema_set_last_related_location(
+        context, defer_node, "deferred action is registered here");
+    return true;
+}
+
+static void
+vitte_sema_set_last_related_span_private(
+    vitte_sema_t *context,
+    vitte_parser_span_t span,
+    const char *label)
+{
+    vitte_sema_diagnostic_t *diagnostic;
+    if (context == NULL || context->diagnostic_count == 0u ||
+        !span.valid || label == NULL) {
+        return;
+    }
+    diagnostic = &context->diagnostics[context->diagnostic_count - 1u];
+    diagnostic->related_span = span;
+    (void)snprintf(diagnostic->related_label,
+        sizeof(diagnostic->related_label), "%s", label);
+}
+
+static const vitte_ast_node_t *
+vitte_sema_nearest_control_context_private(
+    const vitte_sema_t *context,
+    vitte_scope_id_t scope_id)
+{
+    size_t depth = 0u;
+
+    while (context != NULL &&
+           scope_id != VITTE_SCOPE_INVALID_SCOPE_ID &&
+           depth++ < 128u) {
+        const vitte_scope_entry_t *scope = vitte_scope_get_scope(
+            &context->scopes, scope_id);
+        const vitte_ast_node_t *owner;
+        bool is_procedure;
+        bool is_test;
+
+        if (scope == NULL) {
+            break;
+        }
+        owner = (const vitte_ast_node_t *)scope->payload;
+        is_procedure = scope->kind == VITTE_SCOPE_KIND_PROC &&
+            owner != NULL &&
+            (owner->kind == VITTE_AST_NODE_PROC_DECL ||
+             owner->kind == VITTE_AST_NODE_EXTERN_PROC_DECL);
+        is_test = scope->kind == VITTE_SCOPE_KIND_TEST &&
+            owner != NULL && owner->kind == VITTE_AST_NODE_TEST_DECL;
+        if (is_procedure || is_test) {
+            return owner;
+        }
+        scope_id = scope->parent_id;
+    }
+    return NULL;
+}
+
+static void
+vitte_sema_set_nearest_control_context_private(
+    vitte_sema_t *context,
+    vitte_scope_id_t scope_id,
+    const char *procedure_label,
+    const char *test_label)
+{
+    const vitte_ast_node_t *owner =
+        vitte_sema_nearest_control_context_private(
+            context, scope_id);
+    if (owner != NULL) {
+        vitte_sema_set_last_related_location(
+            context, owner,
+            owner->kind == VITTE_AST_NODE_TEST_DECL
+                ? test_label : procedure_label);
+    }
 }
 
 /* ========================================================================= */
@@ -1716,6 +1992,10 @@ vitte_sema_type_same_nominal_private(
         right_type->kind != VITTE_SEMA_TYPE_NAMED) {
         return false;
     }
+    if (left_type->symbol_id != VITTE_SCOPE_INVALID_SYMBOL_ID &&
+        left_type->symbol_id == right_type->symbol_id) {
+        return true;
+    }
 
     left_symbol =
         vitte_scope_get_symbol(
@@ -2560,6 +2840,7 @@ vitte_sema_contextualize_float_literal(
     }
 
     info = vitte_sema_node_info_mut_private(context, node_id);
+
     if (info == NULL) {
         return false;
     }
@@ -2677,10 +2958,27 @@ vitte_sema_help_private_symbol(
     vitte_sema_t *context,
     const vitte_symbol_t *symbol)
 {
-    vitte_sema_append_symbol_origin_help(
-        context,
-        symbol,
-        "The private");
+    vitte_sema_append_symbol_origin_help(context, symbol, "The private");
+    if (context != NULL && context->diagnostic_count != 0u &&
+        symbol != NULL && symbol->name != NULL) {
+        char addition[256];
+        int written;
+        size_t shown_length = symbol->name_length < 96u
+            ? symbol->name_length : 96u;
+        written = snprintf(
+            addition,
+            sizeof(addition),
+            " Add `pub` to the declaration of `%.*s` or add `export %.*s;` in the defining module.",
+            (int)shown_length,
+            symbol->name,
+            (int)shown_length,
+            symbol->name);
+        if (written > 0 && (size_t)written < sizeof(addition)) {
+            vitte_sema_append_diagnostic_help(
+                &context->diagnostics[context->diagnostic_count - 1u],
+                addition);
+        }
+    }
 }
 
 /*
@@ -2941,20 +3239,88 @@ vitte_sema_validate_generic_arguments_private(
     size_t argument_count)
 {
     const vitte_symbol_t *symbol;
+    const vitte_ast_node_t *declaration;
     size_t expected;
+    size_t index;
     vitte_sema_diagnostic_t *diagnostic;
+    size_t diagnostic_index;
+
+    if (context != NULL && type_node != NULL) {
+        for (diagnostic_index = 0u;
+             diagnostic_index < context->diagnostic_count;
+             ++diagnostic_index) {
+            const vitte_sema_diagnostic_t *prior =
+                &context->diagnostics[diagnostic_index];
+            if ((prior->code ==
+                     VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_COUNT &&
+                 prior->node_id == type_node->id) ||
+                ((prior->code ==
+                      VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_KIND) &&
+                 prior->span.file_id == type_node->span.file_id &&
+                 prior->span.begin >= type_node->span.begin &&
+                 prior->span.end <= type_node->span.end)) {
+                return false;
+            }
+        }
+    }
 
     expected = vitte_sema_generic_parameter_count_private(
         context,
         symbol_id);
     if (expected == argument_count) {
+        /* The current grammar accepts type arguments only. Keep this check
+         * here, next to arity validation, so a const generic is never
+         * silently treated as a type parameter. */
+        symbol = vitte_scope_get_symbol(&context->scopes, symbol_id);
+        declaration = symbol != NULL
+            ? (const vitte_ast_node_t *)symbol->payload
+            : NULL;
+        if (declaration != NULL && type_node != NULL) {
+            size_t argument_index = 0u;
+            for (index = 0u; index < declaration->child_count; ++index) {
+                const vitte_ast_node_t *parameter = vitte_sema_node(
+                    context, declaration->children[index]);
+                const vitte_ast_node_t *argument;
+                if (parameter == NULL ||
+                    parameter->kind != VITTE_AST_NODE_GENERIC_PARAM) {
+                    continue;
+                }
+                if (argument_index >= argument_count) { break; }
+                argument = vitte_sema_node(
+                    context, type_node->children[argument_index + 1u]);
+                if ((parameter->flags & VITTE_AST_FLAG_CONST_GENERIC) != 0u) {
+                    if (vitte_sema_add_diagnostic(
+                            context,
+                            VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_KIND,
+                            argument != NULL ? argument->span : type_node->span,
+                            argument != NULL ? argument->id : type_node->id,
+                            symbol_id,
+                            VITTE_SEMA_INVALID_TYPE_ID,
+                            VITTE_SEMA_INVALID_TYPE_ID)) {
+                        diagnostic = &context->diagnostics[
+                            context->diagnostic_count - 1u];
+                        (void)snprintf(
+                            diagnostic->help,
+                            sizeof(diagnostic->help),
+                            "Generic parameter %zu is a const parameter, but this syntax supplies a type argument. Const generic arguments are not supported in type applications yet.",
+                            argument_index + 1u);
+                        vitte_sema_set_last_related_location(
+                            context, parameter,
+                            "const generic parameter declared here");
+                    }
+                    return false;
+                }
+                ++argument_index;
+            }
+        }
         return true;
     }
 
     if (!vitte_sema_add_diagnostic(
             context,
             VITTE_SEMA_DIAGNOSTIC_ERROR,
-            VITTE_SEMA_DIAGNOSTIC_TYPE_MISMATCH,
+            VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_COUNT,
             type_node != NULL ? type_node->span : vitte_parser_span_invalid(),
             type_node != NULL ? type_node->id : VITTE_AST_INVALID_ID,
             symbol_id,
@@ -2984,7 +3350,51 @@ vitte_sema_validate_generic_arguments_private(
             expected == 1u ? "" : "s",
             argument_count);
     }
+    if (symbol != NULL && symbol->payload != NULL) {
+        vitte_sema_set_last_related_location(
+            context,
+            (const vitte_ast_node_t *)symbol->payload,
+            "generic parameters declared here");
+    }
     return false;
+}
+
+static bool
+vitte_sema_report_incomplete_type_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *use_node,
+    vitte_sema_type_id_t type_id)
+{
+    const vitte_sema_type_t *type;
+    const vitte_symbol_t *symbol;
+
+    if (context == NULL || use_node == NULL) { return false; }
+    type = vitte_sema_type_private(context, type_id);
+    if (type == NULL || type->kind != VITTE_SEMA_TYPE_NAMED) {
+        return false;
+    }
+    symbol = vitte_scope_get_symbol(&context->scopes, type->symbol_id);
+    if (symbol == NULL || symbol->kind != VITTE_SYMBOL_KIND_OPAQUE) {
+        return false;
+    }
+    if (vitte_sema_add_diagnostic(
+            context,
+            VITTE_SEMA_DIAGNOSTIC_ERROR,
+            VITTE_SEMA_DIAGNOSTIC_INCOMPLETE_TYPE,
+            use_node->span,
+            use_node->id,
+            type->symbol_id,
+            VITTE_SEMA_INVALID_TYPE_ID,
+            type_id)) {
+        vitte_sema_append_diagnostic_help(
+            &context->diagnostics[context->diagnostic_count - 1u],
+            "This operation requires the definition of the opaque type, but only its declaration is visible.");
+        vitte_sema_set_last_related_location(
+            context,
+            (const vitte_ast_node_t *)symbol->payload,
+            "opaque type declared here");
+    }
+    return true;
 }
 
 /* Instantiate the target of a generic type alias in a temporary child scope.
@@ -3010,6 +3420,23 @@ vitte_sema_expand_generic_alias_private(
     }
     if (context->recursion_depth >= context->max_recursion_depth) {
         context->last_error = VITTE_SEMA_ERROR_RECURSION_LIMIT;
+        if (vitte_sema_add_diagnostic(
+                context,
+                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE,
+                target->span,
+                target->id,
+                VITTE_SCOPE_INVALID_SYMBOL_ID,
+                VITTE_SEMA_INVALID_TYPE_ID,
+                VITTE_SEMA_INVALID_TYPE_ID)) {
+            vitte_sema_append_diagnostic_help(
+                &context->diagnostics[context->diagnostic_count - 1u],
+                "Expanding this generic type alias exceeds the supported recursion depth; remove the recursive alias cycle or introduce an indirection.");
+            vitte_sema_set_last_related_location(
+                context,
+                declaration,
+                "generic type alias declaration participating in the cycle");
+        }
         return context->type_error;
     }
     ++context->recursion_depth;
@@ -3103,13 +3530,21 @@ vitte_sema_apply_generic_arguments_private(
     vitte_sema_type_id_t *arguments;
     vitte_sema_type_id_t result;
 
+    const vitte_symbol_t *base_symbol;
+
     if (type_node == NULL ||
         type_node->kind != VITTE_AST_NODE_TYPE_EXPR ||
-        type_node->child_count <= 1u) {
+        type_node->child_count == 0u) {
         return base_type;
     }
 
     if (base_type == context->type_error) {
+        return base_type;
+    }
+
+    base_symbol = vitte_scope_get_symbol(&context->scopes, symbol_id);
+    if (base_symbol != NULL &&
+        base_symbol->kind == VITTE_SYMBOL_KIND_GENERIC_PARAMETER) {
         return base_type;
     }
 
@@ -3413,14 +3848,17 @@ vitte_sema_generic_call_type_contains_parameter_private(
 
 static bool
 vitte_sema_generic_call_bind_private(
-    const vitte_sema_t *context,
+    vitte_sema_t *context,
     vitte_sema_generic_call_binding_private_t *bindings,
     size_t *binding_count,
     size_t binding_capacity,
     vitte_sema_type_id_t parameter_type,
-    vitte_sema_type_id_t concrete_type)
+    vitte_sema_type_id_t concrete_type,
+    const vitte_ast_node_t *source_node,
+    bool report_conflicts)
 {
     size_t index;
+    size_t node_index;
 
     if (context == NULL || binding_count == NULL ||
         (binding_capacity != 0u && bindings == NULL)) {
@@ -3428,10 +3866,50 @@ vitte_sema_generic_call_bind_private(
     }
     for (index = 0u; index < *binding_count; ++index) {
         if (bindings[index].parameter_type == parameter_type) {
-            return vitte_sema_type_identical_private(
+            if (vitte_sema_type_identical_private(
                 context,
                 bindings[index].concrete_type,
-                concrete_type);
+                concrete_type)) {
+                return true;
+            }
+            if (report_conflicts &&
+                vitte_sema_add_diagnostic(
+                    context,
+                    VITTE_SEMA_DIAGNOSTIC_ERROR,
+                    VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT,
+                    source_node != NULL
+                        ? source_node->span
+                        : vitte_parser_span_invalid(),
+                    source_node != NULL
+                        ? source_node->id
+                        : VITTE_AST_INVALID_ID,
+                    VITTE_SCOPE_INVALID_SYMBOL_ID,
+                    bindings[index].concrete_type,
+                    concrete_type)) {
+                vitte_sema_diagnostic_t *diagnostic =
+                    &context->diagnostics[context->diagnostic_count - 1u];
+                (void)snprintf(
+                    diagnostic->help,
+                    sizeof(diagnostic->help),
+                    "This argument conflicts with an earlier argument that inferred a different type for the same generic parameter. Make the argument types agree or add an explicit type annotation.");
+                for (node_index = 0u;
+                     node_index < context->node_info_count;
+                     ++node_index) {
+                    const vitte_ast_node_t *parameter = vitte_sema_node(
+                        context, (vitte_ast_node_id_t)(node_index + 1u));
+                    if (parameter != NULL &&
+                        parameter->kind == VITTE_AST_NODE_GENERIC_PARAM &&
+                        context->node_info[node_index].type_id ==
+                            parameter_type) {
+                        vitte_sema_set_last_related_location(
+                            context,
+                            parameter,
+                            "generic parameter whose substitution conflicts");
+                        break;
+                    }
+                }
+            }
+            return false;
         }
     }
     if (*binding_count >= binding_capacity) { return false; }
@@ -3450,6 +3928,7 @@ vitte_sema_generic_call_unify_type_private(
     vitte_sema_type_id_t expected_id,
     vitte_sema_type_id_t actual_id,
     const vitte_ast_node_t *source_node,
+    bool report_conflicts,
     size_t depth)
 {
     vitte_sema_type_t expected;
@@ -3478,7 +3957,9 @@ vitte_sema_generic_call_unify_type_private(
             binding_count,
             binding_capacity,
             expected_id,
-            actual_id);
+            actual_id,
+            source_node,
+            report_conflicts);
     }
     if (!vitte_sema_generic_call_type_contains_parameter_private(
             context, expected_id, depth)) {
@@ -3514,6 +3995,7 @@ vitte_sema_generic_call_unify_type_private(
                     expected.generic_arguments[index],
                     actual.generic_arguments[index],
                     source_node,
+                    report_conflicts,
                     depth + 1u)) {
                 return false;
             }
@@ -3540,6 +4022,7 @@ vitte_sema_generic_call_unify_type_private(
             expected.element_type,
             actual.element_type,
             source_node,
+            report_conflicts,
             depth + 1u);
     }
 
@@ -3559,6 +4042,7 @@ vitte_sema_generic_call_unify_type_private(
                     expected.function_parameter_types[index],
                     actual.function_parameter_types[index],
                     source_node,
+                    report_conflicts,
                     depth + 1u)) {
                 return false;
             }
@@ -3571,6 +4055,7 @@ vitte_sema_generic_call_unify_type_private(
             expected.return_type,
             actual.return_type,
             source_node,
+            report_conflicts,
             depth + 1u);
     }
     return vitte_sema_accept_value_private(
@@ -3859,6 +4344,7 @@ vitte_sema_generic_trait_implemented_private(
                         implemented_trait,
                         trait_type_id,
                         header_types[0],
+                        false,
                         0u) &&
                     vitte_sema_generic_call_unify_type_private(
                         context,
@@ -3868,6 +4354,7 @@ vitte_sema_generic_trait_implemented_private(
                         implemented_type,
                         concrete_type_id,
                         header_types[1],
+                        false,
                         0u) &&
                     binding_count == generic_count;
             }
@@ -3988,6 +4475,467 @@ vitte_sema_implementation_scope_private(
         generic_info->flags |= VITTE_SEMA_NODE_FLAG_DECLARATION;
     }
     return implementation_scope;
+}
+
+static size_t
+vitte_sema_impl_generic_parameter_ordinal_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *implementation,
+    vitte_symbol_id_t symbol_id)
+{
+    size_t ordinal = 0u;
+    size_t index;
+    if (context == NULL || implementation == NULL ||
+        symbol_id == VITTE_SCOPE_INVALID_SYMBOL_ID) {
+        return SIZE_MAX;
+    }
+    for (index = 0u; index < implementation->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, implementation->children[index]);
+        if (child == NULL || child->kind != VITTE_AST_NODE_GENERIC_PARAM) {
+            continue;
+        }
+        {
+            const vitte_sema_node_info_t *info =
+                vitte_sema_node_info_private(context, child->id);
+            if (info != NULL && info->symbol_id == symbol_id) {
+                return ordinal;
+            }
+        }
+        ++ordinal;
+    }
+    return SIZE_MAX;
+}
+
+static bool
+vitte_sema_impl_type_pattern_identical_private(
+    vitte_sema_t *context,
+    vitte_sema_type_id_t left_id,
+    const vitte_ast_node_t *left_impl,
+    vitte_sema_type_id_t right_id,
+    const vitte_ast_node_t *right_impl,
+    size_t depth)
+{
+    const vitte_sema_type_t *left = vitte_sema_type_private(context, left_id);
+    const vitte_sema_type_t *right = vitte_sema_type_private(context, right_id);
+    size_t index;
+    if (left_id == right_id) { return true; }
+    if (left == NULL || right == NULL || left->kind != right->kind ||
+        depth >= context->max_recursion_depth) {
+        return false;
+    }
+    if (left->kind == VITTE_SEMA_TYPE_GENERIC_PARAMETER) {
+        size_t left_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+            context, left_impl, left->symbol_id);
+        size_t right_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+            context, right_impl, right->symbol_id);
+        return left_ordinal != SIZE_MAX && right_ordinal != SIZE_MAX &&
+               left_ordinal == right_ordinal;
+    }
+    if (left->kind == VITTE_SEMA_TYPE_NAMED) {
+        if (!vitte_sema_type_same_nominal_private(context, left_id, right_id) ||
+            left->generic_argument_count != right->generic_argument_count) {
+            return false;
+        }
+        for (index = 0u; index < left->generic_argument_count; ++index) {
+            if (!vitte_sema_impl_type_pattern_identical_private(
+                    context, left->generic_arguments[index], left_impl,
+                    right->generic_arguments[index], right_impl, depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (left->kind == VITTE_SEMA_TYPE_FUNCTION) {
+        if (left->function_parameter_count != right->function_parameter_count ||
+            !vitte_sema_impl_type_pattern_identical_private(
+                context, left->return_type, left_impl,
+                right->return_type, right_impl, depth + 1u)) {
+            return false;
+        }
+        for (index = 0u; index < left->function_parameter_count; ++index) {
+            if (!vitte_sema_impl_type_pattern_identical_private(
+                    context, left->function_parameter_types[index], left_impl,
+                    right->function_parameter_types[index], right_impl,
+                    depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    switch (left->kind) {
+        case VITTE_SEMA_TYPE_POINTER:
+        case VITTE_SEMA_TYPE_REFERENCE:
+        case VITTE_SEMA_TYPE_OPTIONAL:
+        case VITTE_SEMA_TYPE_ARRAY:
+        case VITTE_SEMA_TYPE_SLICE:
+        case VITTE_SEMA_TYPE_RANGE:
+        case VITTE_SEMA_TYPE_TASK:
+            return left->array_length == right->array_length &&
+                   left->is_mutable == right->is_mutable &&
+                   vitte_sema_impl_type_pattern_identical_private(
+                       context, left->element_type, left_impl,
+                       right->element_type, right_impl, depth + 1u);
+        default:
+            return true;
+    }
+}
+
+static bool
+vitte_sema_impl_type_occurs_private(
+    vitte_sema_t *context,
+    vitte_sema_type_id_t needle_id,
+    vitte_sema_type_id_t type_id,
+    const vitte_ast_node_t *current_impl,
+    const vitte_ast_node_t *candidate_impl,
+    const vitte_sema_type_id_t *current_substitutions,
+    const vitte_sema_type_id_t *candidate_substitutions,
+    size_t depth)
+{
+    const vitte_sema_type_t *type;
+    size_t index;
+    if (type_id == needle_id) { return true; }
+    if (depth >= context->max_recursion_depth) { return true; }
+    type = vitte_sema_type_private(context, type_id);
+    if (type == NULL) { return false; }
+    if (type->kind == VITTE_SEMA_TYPE_GENERIC_PARAMETER) {
+        size_t ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+            context, current_impl, type->symbol_id);
+        if (ordinal != SIZE_MAX && current_substitutions != NULL &&
+            current_substitutions[ordinal] != VITTE_SEMA_INVALID_TYPE_ID) {
+            return vitte_sema_impl_type_occurs_private(
+                context, needle_id, current_substitutions[ordinal],
+                current_impl, candidate_impl, current_substitutions,
+                candidate_substitutions, depth + 1u);
+        }
+        ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+            context, candidate_impl, type->symbol_id);
+        if (ordinal != SIZE_MAX && candidate_substitutions != NULL &&
+            candidate_substitutions[ordinal] != VITTE_SEMA_INVALID_TYPE_ID) {
+            return vitte_sema_impl_type_occurs_private(
+                context, needle_id, candidate_substitutions[ordinal],
+                current_impl, candidate_impl, current_substitutions,
+                candidate_substitutions, depth + 1u);
+        }
+        return false;
+    }
+    if (type->kind == VITTE_SEMA_TYPE_NAMED) {
+        for (index = 0u; index < type->generic_argument_count; ++index) {
+            if (vitte_sema_impl_type_occurs_private(
+                    context, needle_id, type->generic_arguments[index],
+                    current_impl, candidate_impl, current_substitutions,
+                    candidate_substitutions, depth + 1u)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (type->kind == VITTE_SEMA_TYPE_FUNCTION) {
+        if (vitte_sema_impl_type_occurs_private(
+                context, needle_id, type->return_type, current_impl,
+                candidate_impl, current_substitutions,
+                candidate_substitutions, depth + 1u)) {
+            return true;
+        }
+        for (index = 0u; index < type->function_parameter_count; ++index) {
+            if (vitte_sema_impl_type_occurs_private(
+                    context, needle_id, type->function_parameter_types[index],
+                    current_impl, candidate_impl, current_substitutions,
+                    candidate_substitutions, depth + 1u)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    switch (type->kind) {
+        case VITTE_SEMA_TYPE_POINTER:
+        case VITTE_SEMA_TYPE_REFERENCE:
+        case VITTE_SEMA_TYPE_OPTIONAL:
+        case VITTE_SEMA_TYPE_ARRAY:
+        case VITTE_SEMA_TYPE_SLICE:
+        case VITTE_SEMA_TYPE_RANGE:
+        case VITTE_SEMA_TYPE_TASK:
+            return vitte_sema_impl_type_occurs_private(
+                context, needle_id, type->element_type, current_impl,
+                candidate_impl, current_substitutions,
+                candidate_substitutions, depth + 1u);
+        default:
+            return false;
+    }
+}
+
+static bool
+vitte_sema_impl_types_overlap_private(
+    vitte_sema_t *context,
+    vitte_sema_type_id_t left_id,
+    const vitte_ast_node_t *current_impl,
+    vitte_sema_type_id_t right_id,
+    const vitte_ast_node_t *candidate_impl,
+    vitte_sema_type_id_t *current_substitutions,
+    vitte_sema_type_id_t *candidate_substitutions,
+    size_t depth)
+{
+    const vitte_sema_type_t *left;
+    const vitte_sema_type_t *right;
+    size_t left_current_ordinal = SIZE_MAX;
+    size_t left_candidate_ordinal = SIZE_MAX;
+    size_t right_current_ordinal = SIZE_MAX;
+    size_t right_candidate_ordinal = SIZE_MAX;
+    size_t index;
+
+    if (depth >= context->max_recursion_depth) { return false; }
+    for (index = 0u; index < depth + 1u; ++index) {
+        bool substituted = false;
+        left = vitte_sema_type_private(context, left_id);
+        right = vitte_sema_type_private(context, right_id);
+        if (left != NULL && left->kind == VITTE_SEMA_TYPE_GENERIC_PARAMETER) {
+            left_current_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+                context, current_impl, left->symbol_id);
+            left_candidate_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+                context, candidate_impl, left->symbol_id);
+            if (left_current_ordinal != SIZE_MAX && current_substitutions != NULL &&
+                current_substitutions[left_current_ordinal] != VITTE_SEMA_INVALID_TYPE_ID) {
+                left_id = current_substitutions[left_current_ordinal];
+                substituted = true;
+            } else if (left_candidate_ordinal != SIZE_MAX && candidate_substitutions != NULL &&
+                       candidate_substitutions[left_candidate_ordinal] != VITTE_SEMA_INVALID_TYPE_ID) {
+                left_id = candidate_substitutions[left_candidate_ordinal];
+                substituted = true;
+            }
+        }
+        if (right != NULL && right->kind == VITTE_SEMA_TYPE_GENERIC_PARAMETER) {
+            right_current_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+                context, current_impl, right->symbol_id);
+            right_candidate_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+                context, candidate_impl, right->symbol_id);
+            if (right_current_ordinal != SIZE_MAX && current_substitutions != NULL &&
+                current_substitutions[right_current_ordinal] != VITTE_SEMA_INVALID_TYPE_ID) {
+                right_id = current_substitutions[right_current_ordinal];
+                substituted = true;
+            } else if (right_candidate_ordinal != SIZE_MAX && candidate_substitutions != NULL &&
+                       candidate_substitutions[right_candidate_ordinal] != VITTE_SEMA_INVALID_TYPE_ID) {
+                right_id = candidate_substitutions[right_candidate_ordinal];
+                substituted = true;
+            }
+        }
+        if (!substituted) { break; }
+    }
+    if (left_id == right_id) { return true; }
+    left = vitte_sema_type_private(context, left_id);
+    right = vitte_sema_type_private(context, right_id);
+    if (left == NULL || right == NULL) { return false; }
+    if (left->kind == VITTE_SEMA_TYPE_GENERIC_PARAMETER) {
+        left_current_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+            context, current_impl, left->symbol_id);
+        left_candidate_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+            context, candidate_impl, left->symbol_id);
+        if (left_current_ordinal != SIZE_MAX && current_substitutions != NULL) {
+            if (vitte_sema_impl_type_occurs_private(
+                    context, left_id, right_id, current_impl, candidate_impl,
+                    current_substitutions, candidate_substitutions, depth + 1u)) {
+                return false;
+            }
+            current_substitutions[left_current_ordinal] = right_id;
+            return true;
+        }
+        if (left_candidate_ordinal != SIZE_MAX && candidate_substitutions != NULL) {
+            if (vitte_sema_impl_type_occurs_private(
+                    context, left_id, right_id, current_impl, candidate_impl,
+                    current_substitutions, candidate_substitutions, depth + 1u)) {
+                return false;
+            }
+            candidate_substitutions[left_candidate_ordinal] = right_id;
+            return true;
+        }
+        return right->kind == VITTE_SEMA_TYPE_GENERIC_PARAMETER &&
+               left->symbol_id == right->symbol_id;
+    }
+    if (right->kind == VITTE_SEMA_TYPE_GENERIC_PARAMETER) {
+        right_current_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+            context, current_impl, right->symbol_id);
+        right_candidate_ordinal = vitte_sema_impl_generic_parameter_ordinal_private(
+            context, candidate_impl, right->symbol_id);
+        if (right_current_ordinal != SIZE_MAX && current_substitutions != NULL) {
+            if (vitte_sema_impl_type_occurs_private(
+                    context, right_id, left_id, current_impl, candidate_impl,
+                    current_substitutions, candidate_substitutions, depth + 1u)) {
+                return false;
+            }
+            current_substitutions[right_current_ordinal] = left_id;
+            return true;
+        }
+        if (right_candidate_ordinal != SIZE_MAX && candidate_substitutions != NULL) {
+            if (vitte_sema_impl_type_occurs_private(
+                    context, right_id, left_id, current_impl, candidate_impl,
+                    current_substitutions, candidate_substitutions, depth + 1u)) {
+                return false;
+            }
+            candidate_substitutions[right_candidate_ordinal] = left_id;
+            return true;
+        }
+        return false;
+    }
+    if (left->kind != right->kind) { return false; }
+    if (left->kind == VITTE_SEMA_TYPE_NAMED) {
+        if (!vitte_sema_type_same_nominal_private(context, left_id, right_id) ||
+            left->generic_argument_count != right->generic_argument_count) {
+            return false;
+        }
+        for (index = 0u; index < left->generic_argument_count; ++index) {
+            if (!vitte_sema_impl_types_overlap_private(
+                    context, left->generic_arguments[index], current_impl,
+                    right->generic_arguments[index], candidate_impl,
+                    current_substitutions, candidate_substitutions, depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (left->kind == VITTE_SEMA_TYPE_FUNCTION) {
+        if (left->function_parameter_count != right->function_parameter_count ||
+            !vitte_sema_impl_types_overlap_private(
+                context, left->return_type, current_impl,
+                right->return_type, candidate_impl,
+                current_substitutions, candidate_substitutions, depth + 1u)) {
+            return false;
+        }
+        for (index = 0u; index < left->function_parameter_count; ++index) {
+            if (!vitte_sema_impl_types_overlap_private(
+                    context, left->function_parameter_types[index], current_impl,
+                    right->function_parameter_types[index], candidate_impl,
+                    current_substitutions, candidate_substitutions, depth + 1u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    switch (left->kind) {
+        case VITTE_SEMA_TYPE_POINTER:
+        case VITTE_SEMA_TYPE_REFERENCE:
+        case VITTE_SEMA_TYPE_OPTIONAL:
+        case VITTE_SEMA_TYPE_ARRAY:
+        case VITTE_SEMA_TYPE_SLICE:
+        case VITTE_SEMA_TYPE_RANGE:
+        case VITTE_SEMA_TYPE_TASK:
+            return left->array_length == right->array_length &&
+                   left->is_mutable == right->is_mutable &&
+                   vitte_sema_impl_types_overlap_private(
+                       context, left->element_type, current_impl,
+                       right->element_type, candidate_impl,
+                       current_substitutions, candidate_substitutions,
+                       depth + 1u);
+        default:
+            return left->symbol_id == right->symbol_id;
+    }
+}
+
+static const vitte_ast_node_t *
+vitte_sema_prior_overlapping_trait_impl_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *current,
+    vitte_scope_id_t fallback_scope,
+    vitte_sema_type_id_t trait_type,
+    vitte_sema_type_id_t target_type)
+{
+    size_t node_id;
+    size_t current_generic_count = 0u;
+    size_t child_index;
+
+    if (context == NULL || current == NULL) { return NULL; }
+    for (child_index = 0u; child_index < current->child_count; ++child_index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, current->children[child_index]);
+        if (child != NULL && child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
+            ++current_generic_count;
+        }
+    }
+    for (node_id = 1u; node_id < current->id; ++node_id) {
+        const vitte_ast_node_t *candidate = vitte_sema_node(
+            context, (vitte_ast_node_id_t)node_id);
+        const vitte_ast_node_t *header_types[2] = {NULL, NULL};
+        size_t header_count = 0u;
+        size_t generic_count = 0u;
+        size_t index;
+        vitte_scope_id_t candidate_scope;
+        vitte_sema_type_id_t candidate_trait;
+        vitte_sema_type_id_t candidate_target;
+        vitte_sema_type_id_t *current_substitutions = NULL;
+        vitte_sema_type_id_t *candidate_substitutions = NULL;
+        bool overlaps;
+
+        if (candidate == NULL ||
+            candidate->kind != VITTE_AST_NODE_IMPL_DECL) {
+            continue;
+        }
+        for (index = 0u; index < candidate->child_count; ++index) {
+            const vitte_ast_node_t *child = vitte_sema_node(
+                context, candidate->children[index]);
+            if (child == NULL) { continue; }
+            if (child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
+                ++generic_count;
+            } else if (child->kind == VITTE_AST_NODE_TYPE_EXPR ||
+                       child->kind == VITTE_AST_NODE_POINTER_TYPE ||
+                       child->kind == VITTE_AST_NODE_REFERENCE_TYPE ||
+                       child->kind == VITTE_AST_NODE_ARRAY_TYPE ||
+                       child->kind == VITTE_AST_NODE_OPTIONAL_TYPE) {
+                if (header_count < 2u) { header_types[header_count] = child; }
+                ++header_count;
+            }
+        }
+        if (generic_count != current_generic_count || header_count != 2u ||
+            header_types[0] == NULL || header_types[1] == NULL) {
+            continue;
+        }
+        candidate_scope = vitte_sema_implementation_scope_private(
+            context, candidate, fallback_scope);
+        if (candidate_scope == VITTE_SCOPE_INVALID_SCOPE_ID) { continue; }
+        candidate_trait = vitte_sema_analyze_type_node(
+            context, header_types[0]->id, candidate_scope);
+        candidate_target = vitte_sema_analyze_type_node(
+            context, header_types[1]->id, candidate_scope);
+        if (!vitte_sema_impl_type_pattern_identical_private(
+                context, trait_type, current,
+                candidate_trait, candidate, 0u) ||
+            !vitte_sema_impl_type_pattern_identical_private(
+                context, target_type, current,
+                candidate_target, candidate, 0u)) {
+            continue;
+        }
+        if (current_generic_count != 0u) {
+            current_substitutions = (vitte_sema_type_id_t *)calloc(
+                current_generic_count, sizeof(*current_substitutions));
+            if (current_substitutions == NULL) {
+                context->last_error = VITTE_SEMA_ERROR_OUT_OF_MEMORY;
+                continue;
+            }
+        }
+        if (generic_count != 0u) {
+            candidate_substitutions = (vitte_sema_type_id_t *)calloc(
+                generic_count, sizeof(*candidate_substitutions));
+            if (candidate_substitutions == NULL) {
+                free(current_substitutions);
+                context->last_error = VITTE_SEMA_ERROR_OUT_OF_MEMORY;
+                continue;
+            }
+        }
+        /* Unify both headers independently: differing generic arities and
+         * parameter names can still describe intersecting implementation
+         * sets (for example Box<T> and Box<i64>). */
+        overlaps = vitte_sema_impl_types_overlap_private(
+            context, trait_type, current, candidate_trait, candidate,
+            current_substitutions, candidate_substitutions, 0u);
+        if (overlaps) {
+            overlaps = vitte_sema_impl_types_overlap_private(
+                context, target_type, current, candidate_target, candidate,
+                current_substitutions, candidate_substitutions, 0u);
+        }
+        free(current_substitutions);
+        free(candidate_substitutions);
+        if (overlaps) {
+            return candidate;
+        }
+    }
+    return NULL;
 }
 
 static bool
@@ -4156,19 +5104,37 @@ vitte_sema_generic_call_check_trait_bound_private(
     concrete_type_id =
         vitte_sema_generic_call_substitute_type_private(
             context, bindings, binding_count, subject_type_id, 0u);
-    diagnostic_node = trait_symbol == NULL ? bound_node : call_node;
     if (trait_symbol == NULL ||
-        trait_symbol->kind != VITTE_SYMBOL_KIND_TRAIT ||
-        concrete_type_id == context->type_error ||
-        (!vitte_sema_generic_trait_implemented_private(
+        trait_symbol->kind != VITTE_SYMBOL_KIND_TRAIT) {
+        if (trait_type_id != context->type_error &&
+            vitte_sema_add_diagnostic(
+                context,
+                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE,
+                bound_node->span,
+                bound_node->id,
+                trait_type != NULL
+                    ? trait_type->symbol_id
+                    : VITTE_SCOPE_INVALID_SYMBOL_ID,
+                VITTE_SEMA_INVALID_TYPE_ID,
+                trait_type_id)) {
+            vitte_sema_append_diagnostic_help(
+                &context->diagnostics[context->diagnostic_count - 1u],
+                "A generic bound must name a trait, not an ordinary type.");
+        }
+        return false;
+    }
+    if (concrete_type_id == context->type_error) { return false; }
+    if (!vitte_sema_generic_trait_implemented_private(
              context, trait_type_id, concrete_type_id, generic_scope,
              constraint_depth) &&
          !vitte_sema_generic_type_has_trait_assumption_private(
-             context, concrete_type_id, trait_type_id))) {
+             context, concrete_type_id, trait_type_id)) {
+        diagnostic_node = call_node;
         if (vitte_sema_add_diagnostic(
                 context,
                 VITTE_SEMA_DIAGNOSTIC_ERROR,
-                VITTE_SEMA_DIAGNOSTIC_INVALID_ARGUMENT_TYPE,
+                VITTE_SEMA_DIAGNOSTIC_GENERIC_BOUND_UNSATISFIED,
                 diagnostic_node->span,
                 diagnostic_node->id,
                 trait_type != NULL
@@ -4181,7 +5147,11 @@ vitte_sema_generic_call_check_trait_bound_private(
             (void)snprintf(
                 diagnostic->help,
                 sizeof(diagnostic->help),
-                "The inferred type does not satisfy this generic trait bound.");
+                "The concrete type does not implement the required trait bound.");
+            vitte_sema_set_last_related_location(
+                context,
+                bound_node,
+                "required trait bound introduced here");
         }
         return false;
     }
@@ -4273,7 +5243,7 @@ vitte_sema_generic_call_check_constraints_private(
                         vitte_sema_add_diagnostic(
                             context,
                             VITTE_SEMA_DIAGNOSTIC_ERROR,
-                            VITTE_SEMA_DIAGNOSTIC_TYPE_MISMATCH,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE,
                             predicate->span,
                             predicate->id,
                             VITTE_SCOPE_INVALID_SYMBOL_ID,
@@ -4282,7 +5252,7 @@ vitte_sema_generic_call_check_constraints_private(
                         vitte_sema_append_diagnostic_help(
                             &context->diagnostics[
                                 context->diagnostic_count - 1u],
-                            "This compiler supports trait predicates in generic where clauses; this predicate form is not implemented.");
+                            "A where predicate must have the form `Type: Trait`.");
                     }
                     valid = false;
                     continue;
@@ -4501,7 +5471,7 @@ vitte_sema_generic_constraint_validate_trait_type_private(
             }
         }
         if (!diagnosed) {
-            (void)vitte_sema_add_diagnostic(
+            if (vitte_sema_add_diagnostic(
                 context,
                 VITTE_SEMA_DIAGNOSTIC_ERROR,
                 VITTE_SEMA_DIAGNOSTIC_UNKNOWN_TYPE,
@@ -4509,7 +5479,9 @@ vitte_sema_generic_constraint_validate_trait_type_private(
                 bound_node->id,
                 VITTE_SCOPE_INVALID_SYMBOL_ID,
                 VITTE_SEMA_INVALID_TYPE_ID,
-                VITTE_SEMA_INVALID_TYPE_ID);
+                VITTE_SEMA_INVALID_TYPE_ID)) {
+                /* Preserve the unknown-bound diagnostic as the root cause. */
+            }
         }
         return false;
     }
@@ -4520,7 +5492,7 @@ vitte_sema_generic_constraint_validate_trait_type_private(
         : NULL;
     if (bound_symbol == NULL ||
         bound_symbol->kind != VITTE_SYMBOL_KIND_TRAIT) {
-        (void)vitte_sema_add_diagnostic(
+        if (vitte_sema_add_diagnostic(
             context,
             VITTE_SEMA_DIAGNOSTIC_ERROR,
             VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE,
@@ -4530,7 +5502,9 @@ vitte_sema_generic_constraint_validate_trait_type_private(
                 ? bound_type->symbol_id
                 : VITTE_SCOPE_INVALID_SYMBOL_ID,
             VITTE_SEMA_INVALID_TYPE_ID,
-            bound_type_id);
+            bound_type_id)) {
+            /* A bound must resolve to a trait declaration. */
+        }
         return false;
     }
     return true;
@@ -4587,7 +5561,7 @@ vitte_sema_generic_declaration_validate_constraints_private(
                         (void)vitte_sema_add_diagnostic(
                             context,
                             VITTE_SEMA_DIAGNOSTIC_ERROR,
-                            VITTE_SEMA_DIAGNOSTIC_TYPE_MISMATCH,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE,
                             predicate->span,
                             predicate->id,
                             VITTE_SCOPE_INVALID_SYMBOL_ID,
@@ -5230,6 +6204,12 @@ vitte_sema_infer_declaration_type(
     const vitte_ast_node_t *node,
     vitte_scope_id_t scope_id);
 
+static vitte_sema_type_id_t
+vitte_sema_builtin_type_from_name(
+    const vitte_sema_t *context,
+    const char *name,
+    size_t name_length);
+
 static bool
 vitte_sema_resolve_qualified_import_type(
     vitte_sema_t *context,
@@ -5335,6 +6315,14 @@ vitte_sema_analyze_type_node(
     }
 
     info = vitte_sema_node_info_mut_private(context, node_id);
+
+    /* Type nodes are revisited during declaration registration and body
+     * checking. Cache an already-diagnosed failure in the same scope so the
+     * original, more useful diagnostic is not emitted twice. */
+    if (info != NULL && info->scope_id == scope_id &&
+        info->type_id == context->type_error) {
+        return context->type_error;
+    }
 
     if (node->kind == VITTE_AST_NODE_TYPE_EXPR &&
         node->operator_kind == VITTE_TOKEN_KW_PROC) {
@@ -5569,6 +6557,7 @@ vitte_sema_analyze_type_node(
             const vitte_symbol_t *symbol;
             vitte_sema_type_id_t type_id;
             const vitte_ast_node_t *qualified_path;
+            const vitte_ast_node_t *diagnostic_name_node;
 
             symbol_id = VITTE_SCOPE_INVALID_SYMBOL_ID;
 
@@ -5585,12 +6574,46 @@ vitte_sema_analyze_type_node(
                 }
             }
 
+            diagnostic_name_node = qualified_path;
+            if (qualified_path->kind == VITTE_AST_NODE_PATH &&
+                qualified_path->child_count != 0u) {
+                const vitte_ast_node_t *last_segment = vitte_sema_node(
+                    context,
+                    qualified_path->children[qualified_path->child_count - 1u]);
+                if (last_segment != NULL) diagnostic_name_node = last_segment;
+            }
+
             /* A generic TYPE_EXPR stores the constructor name in its first
              * child; the wrapper node itself has no identifier token. */
             token =
                 vitte_sema_node_token(
                     context,
                     qualified_path);
+
+            /* Primitive spellings are language types even if an import or
+             * prelude symbol with the same text is present. Resolve them
+             * before nominal lookup so signatures, bindings and expressions
+             * share the same canonical type IDs. */
+            if (((qualified_path->kind == VITTE_AST_NODE_PATH &&
+                  qualified_path->child_count == 1u) ||
+                 qualified_path->kind == VITTE_AST_NODE_IDENTIFIER) &&
+                (node->kind != VITTE_AST_NODE_TYPE_EXPR ||
+                 node->child_count == 1u)) {
+                const char *builtin_name = NULL;
+                size_t builtin_name_length = 0u;
+                if (vitte_sema_token_name(
+                        token, &builtin_name, &builtin_name_length)) {
+                    type_id = vitte_sema_builtin_type_from_name(
+                        context, builtin_name, builtin_name_length);
+                    if (type_id != VITTE_SEMA_INVALID_TYPE_ID) {
+                        if (info != NULL) {
+                            info->type_id = type_id;
+                            info->scope_id = scope_id;
+                        }
+                        return type_id;
+                    }
+                }
+            }
 
             if (qualified_path->kind == VITTE_AST_NODE_PATH &&
                 qualified_path->child_count > 1u &&
@@ -5611,11 +6634,14 @@ vitte_sema_analyze_type_node(
                         context,
                         VITTE_SEMA_DIAGNOSTIC_ERROR,
                         VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE,
-                        node->span,
-                        node_id,
+                        diagnostic_name_node->span,
+                        diagnostic_name_node->id,
                         symbol_id,
                         VITTE_SEMA_INVALID_TYPE_ID,
-                        VITTE_SEMA_INVALID_TYPE_ID);
+                        vitte_sema_type_for_symbol(context, symbol_id) !=
+                                context->type_error
+                            ? vitte_sema_type_for_symbol(context, symbol_id)
+                            : VITTE_SEMA_INVALID_TYPE_ID);
                     type_id = context->type_error;
                 } else {
                     type_id =
@@ -5679,6 +6705,7 @@ vitte_sema_analyze_type_node(
 
                     if (info != NULL) {
                         info->type_id = type_id;
+                        info->scope_id = scope_id;
                     }
 
                     return type_id;
@@ -5748,8 +6775,8 @@ vitte_sema_analyze_type_node(
                             context,
                             VITTE_SEMA_DIAGNOSTIC_ERROR,
                             VITTE_SEMA_DIAGNOSTIC_UNKNOWN_TYPE,
-                            node->span,
-                            node_id,
+                            diagnostic_name_node->span,
+                            diagnostic_name_node->id,
                             VITTE_SCOPE_INVALID_SYMBOL_ID,
                             VITTE_SEMA_INVALID_TYPE_ID,
                             VITTE_SEMA_INVALID_TYPE_ID)) {
@@ -5778,11 +6805,14 @@ vitte_sema_analyze_type_node(
                             context,
                             VITTE_SEMA_DIAGNOSTIC_ERROR,
                             VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE,
-                            node->span,
-                            node_id,
+                            diagnostic_name_node->span,
+                            diagnostic_name_node->id,
                             symbol_id,
                             VITTE_SEMA_INVALID_TYPE_ID,
-                            VITTE_SEMA_INVALID_TYPE_ID);
+                            vitte_sema_type_for_symbol(context, symbol_id) !=
+                                    context->type_error
+                                ? vitte_sema_type_for_symbol(context, symbol_id)
+                                : VITTE_SEMA_INVALID_TYPE_ID);
 
                         type_id =
                             context->type_error;
@@ -5810,6 +6840,7 @@ vitte_sema_analyze_type_node(
 
             if (info != NULL) {
                 info->type_id = type_id;
+                info->scope_id = scope_id;
             }
 
             type_id =
@@ -5830,6 +6861,7 @@ vitte_sema_analyze_type_node(
 
             if (info != NULL) {
                 info->type_id = type_id;
+                info->scope_id = scope_id;
             }
 
             return type_id;
@@ -6122,6 +7154,37 @@ vitte_sema_help_similar_name(vitte_sema_t *context, vitte_scope_id_t scope_id,
 }
 
 static vitte_sema_type_id_t
+vitte_sema_builtin_type_from_name(
+    const vitte_sema_t *context,
+    const char *name,
+    size_t name_length)
+{
+#define VITTE_SEMA_MATCH_TYPE_NAME(text_) \
+    (name_length == sizeof(text_) - 1u && \
+     memcmp(name, text_, sizeof(text_) - 1u) == 0)
+    if (context == NULL || name == NULL) return VITTE_SEMA_INVALID_TYPE_ID;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("bool")) return context->type_bool;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("i64") || VITTE_SEMA_MATCH_TYPE_NAME("int") ||
+        VITTE_SEMA_MATCH_TYPE_NAME("i8") || VITTE_SEMA_MATCH_TYPE_NAME("i16") ||
+        VITTE_SEMA_MATCH_TYPE_NAME("i32") || VITTE_SEMA_MATCH_TYPE_NAME("isize"))
+        return context->type_i64;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("u64") || VITTE_SEMA_MATCH_TYPE_NAME("u32") ||
+        VITTE_SEMA_MATCH_TYPE_NAME("u16") || VITTE_SEMA_MATCH_TYPE_NAME("usize"))
+        return context->type_u64;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("u8")) return context->type_u8;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("f32")) return context->type_f32;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("f64") || VITTE_SEMA_MATCH_TYPE_NAME("float"))
+        return context->type_f64;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("char")) return context->type_char;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("string") || VITTE_SEMA_MATCH_TYPE_NAME("str"))
+        return context->type_string;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("void")) return context->type_void;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("never")) return context->type_never;
+#undef VITTE_SEMA_MATCH_TYPE_NAME
+    return VITTE_SEMA_INVALID_TYPE_ID;
+}
+
+static vitte_sema_type_id_t
 vitte_sema_analyze_identifier(
     vitte_sema_t *context,
     const vitte_ast_node_t *node,
@@ -6151,6 +7214,23 @@ vitte_sema_analyze_identifier(
         vitte_sema_node_info_mut_private(
             context,
             node->id);
+
+    if ((context->current_contract_ensures ||
+         context->current_contract_requires) &&
+        name_length == 3u && memcmp(name, "old", 3u) == 0 &&
+        vitte_scope_lookup_n(&context->scopes, scope_id, name,
+            name_length) == VITTE_SCOPE_INVALID_SYMBOL_ID) {
+        if (vitte_sema_add_diagnostic(context, VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_CONTRACT_OLD_VALUE,
+                node->span, node->id, VITTE_SCOPE_INVALID_SYMBOL_ID,
+                VITTE_SEMA_INVALID_TYPE_ID, VITTE_SEMA_INVALID_TYPE_ID)) {
+            (void)snprintf(context->diagnostics[context->diagnostic_count - 1u].help,
+                sizeof(context->diagnostics[context->diagnostic_count - 1u].help),
+                "`old(...)` requires an entry-state snapshot, which is not available for this contract reference. Remove `old` or use values directly available to the clause.");
+        }
+        if (info != NULL) info->type_id = context->type_error;
+        return context->type_error;
+    }
 
     /* Postconditions refer to the value returned by the procedure through
        the implicit `result` binding.  Keep it contextual so a misspelled or
@@ -6244,6 +7324,26 @@ vitte_sema_analyze_identifier(
             return function_type;
         }
 
+        type_id = vitte_sema_builtin_type_from_name(
+            context, name, name_length);
+        if (type_id != VITTE_SEMA_INVALID_TYPE_ID) {
+            if (vitte_sema_add_diagnostic(
+                    context,
+                    VITTE_SEMA_DIAGNOSTIC_ERROR,
+                    VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE,
+                    node->span,
+                    node->id,
+                    VITTE_SCOPE_INVALID_SYMBOL_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID,
+                    type_id)) {
+                vitte_sema_append_diagnostic_help(
+                    &context->diagnostics[context->diagnostic_count - 1u],
+                    "This name denotes a type, not a runtime value. Use it in a type position or construct a value with the type's supported syntax.");
+            }
+            if (info != NULL) info->type_id = context->type_error;
+            return context->type_error;
+        }
+
         diagnostic_code =
             vitte_sema_is_private_glob_import_name(
                 context,
@@ -6264,14 +7364,26 @@ vitte_sema_analyze_identifier(
             VITTE_SEMA_INVALID_TYPE_ID,
             VITTE_SEMA_INVALID_TYPE_ID)) {
             if (diagnostic_code == VITTE_SEMA_DIAGNOSTIC_UNRESOLVED_NAME) {
-                vitte_sema_help_similar_name(
-                    context,
-                    scope_id,
-                    scope_id,
-                    name,
-                    name_length,
-                    diagnostic_code,
-                    false);
+                if (!vitte_sema_help_module_member_import(
+                        context,
+                        scope_id,
+                        name,
+                        name_length)) {
+                    vitte_sema_help_similar_name(
+                        context,
+                        scope_id,
+                        scope_id,
+                        name,
+                        name_length,
+                        diagnostic_code,
+                        false);
+                }
+                if (context->current_contract_ensures ||
+                    context->current_contract_requires) {
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[context->diagnostic_count - 1u],
+                        "Contract clauses are checked at the procedure boundary. Refer to a declared parameter or visible constant; local variables from the procedure body are unavailable here.");
+                }
             } else {
                 vitte_sema_help_private_symbol(
                     context,
@@ -6304,6 +7416,21 @@ vitte_sema_analyze_identifier(
     resolved_symbol = vitte_scope_get_symbol(
         &context->scopes,
         symbol_id);
+
+    if (resolved_symbol != NULL &&
+        vitte_symbol_kind_is_type(resolved_symbol->kind)) {
+        (void)vitte_sema_add_diagnostic(
+            context,
+            VITTE_SEMA_DIAGNOSTIC_ERROR,
+            VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE,
+            node->span,
+            node->id,
+            symbol_id,
+            VITTE_SEMA_INVALID_TYPE_ID,
+            type_id);
+        if (info != NULL) info->type_id = context->type_error;
+        return context->type_error;
+    }
 
     if (info != NULL) {
         info->symbol_id = symbol_id;
@@ -6434,14 +7561,24 @@ vitte_sema_analyze_unary(
 {
     vitte_sema_type_id_t operand_type;
     vitte_sema_type_id_t result;
-    const vitte_ast_node_t *operand_node;
+    const vitte_token_t *operator_token;
+    vitte_parser_span_t operator_span;
     vitte_sema_node_info_t *info;
 
     if (node->child_count == 0u) {
         return context->type_error;
     }
 
-    operand_node = vitte_sema_node(context, node->children[0]);
+    operator_token = vitte_sema_node_token(context, node);
+    operator_span = node->span;
+    if (operator_token != NULL) {
+        operator_span.file_id = operator_token->span.file_id;
+        operator_span.begin = operator_token->span.begin;
+        operator_span.end = operator_token->span.end;
+        operator_span.line = operator_token->line;
+        operator_span.column = operator_token->column;
+        operator_span.valid = operator_token->span.valid;
+    }
     operand_type =
         vitte_sema_analyze_expression(
             context,
@@ -6520,7 +7657,8 @@ vitte_sema_analyze_unary(
                     context,
                     node->id);
                 if (info != NULL) {
-                    info->flags |= VITTE_SEMA_NODE_FLAG_LVALUE;
+                    info->flags |= VITTE_SEMA_NODE_FLAG_LVALUE |
+                                   VITTE_SEMA_NODE_FLAG_ADDRESSABLE;
                     if (operand->is_mutable) {
                         info->flags |= VITTE_SEMA_NODE_FLAG_MUTABLE;
                     }
@@ -6547,8 +7685,9 @@ vitte_sema_analyze_unary(
             is_mutable =
                 (node->flags & VITTE_AST_FLAG_MUTABLE) != 0u;
 
-            if ((node->flags & VITTE_AST_FLAG_MUTABLE) != 0u &&
-                (operand_info == NULL ||
+            if (operand_info == NULL ||
+                (operand_info->flags & VITTE_SEMA_NODE_FLAG_ADDRESSABLE) == 0u ||
+                (is_mutable &&
                  (operand_info->flags & VITTE_SEMA_NODE_FLAG_MUTABLE) == 0u)) {
                 break;
             }
@@ -6571,15 +7710,37 @@ vitte_sema_analyze_unary(
 
     if (result ==
         context->type_error) {
-        (void)vitte_sema_add_diagnostic(
+        if (vitte_sema_add_diagnostic(
             context,
             VITTE_SEMA_DIAGNOSTIC_ERROR,
             VITTE_SEMA_DIAGNOSTIC_INVALID_UNARY_OPERAND,
-            operand_node != NULL ? operand_node->span : node->span,
-            operand_node != NULL ? operand_node->id : node->id,
+            operator_span,
+            node->id,
             VITTE_SCOPE_INVALID_SYMBOL_ID,
             VITTE_SEMA_INVALID_TYPE_ID,
-            operand_type);
+            operand_type)) {
+            vitte_sema_diagnostic_t *diagnostic =
+                &context->diagnostics[context->diagnostic_count - 1u];
+            if (node->operator_kind == VITTE_TOKEN_AMP ||
+                node->operator_kind == VITTE_TOKEN_KW_REF) {
+                const vitte_sema_node_info_t *operand_info =
+                    vitte_sema_node_info_private(context, node->children[0]);
+                if (operand_info == NULL ||
+                    (operand_info->flags & VITTE_SEMA_NODE_FLAG_ADDRESSABLE) == 0u) {
+                    (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                        "`&` can only borrow an addressable place such as a local, parameter, field, indexed element, or dereferenced reference. This operand is a value, not a place.");
+                } else {
+                    (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                        "`&mut` requires a mutable place. Declare the binding mutable or use `&` for a shared reference.");
+                }
+            } else if (node->operator_kind == VITTE_TOKEN_STAR) {
+                (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                    "`*` requires a pointer or reference operand; this expression has a non-pointer type.");
+            } else {
+                (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                    "The operand type is not valid for this unary operator.");
+            }
+        }
     }
 
     info =
@@ -6837,6 +7998,15 @@ vitte_sema_analyze_binary(
 
     if (result ==
         context->type_error) {
+        vitte_sema_type_id_t expected_type = left;
+        vitte_sema_type_id_t found_type = right;
+        if (node->operator_kind == VITTE_TOKEN_KW_AND ||
+            node->operator_kind == VITTE_TOKEN_AMP_AMP ||
+            node->operator_kind == VITTE_TOKEN_KW_OR ||
+            node->operator_kind == VITTE_TOKEN_PIPE_PIPE) {
+            expected_type = context->type_bool;
+            found_type = left != context->type_bool ? left : right;
+        }
         (void)vitte_sema_add_diagnostic(
             context,
             VITTE_SEMA_DIAGNOSTIC_ERROR,
@@ -6844,8 +8014,8 @@ vitte_sema_analyze_binary(
             node->span,
             node->id,
             VITTE_SCOPE_INVALID_SYMBOL_ID,
-            left,
-            right);
+            expected_type,
+            found_type);
     }
 
     info =
@@ -6969,7 +8139,11 @@ vitte_sema_analyze_assignment(
                 (void)snprintf(
                     diagnostic->help,
                     sizeof(diagnostic->help),
-                    "Parameters are immutable. Copy this value into a mutable local, for example `let mut %.*s_copy = %.*s`, then assign to that local.",
+                    "This parameter binding is immutable. Declare it as `mut %.*s` in the procedure signature to allow local reassignment, or copy it into `let mut %.*s_copy = %.*s` before assigning.",
+                    (int)(left_symbol->name_length < 120u
+                        ? left_symbol->name_length
+                        : 120u),
+                    left_symbol->name,
                     (int)(left_symbol->name_length < 120u
                         ? left_symbol->name_length
                         : 120u),
@@ -7257,6 +8431,457 @@ vitte_sema_resolve_pick_variant_path(
     return false;
 }
 
+static bool
+vitte_sema_procedure_has_generics_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *declaration)
+{
+    size_t index;
+    if (context == NULL || declaration == NULL) { return false; }
+    for (index = 0u; index < declaration->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, declaration->children[index]);
+        if (child != NULL && child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static size_t
+vitte_sema_procedure_parameter_count_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *declaration)
+{
+    size_t index;
+    size_t count = 0u;
+    if (context == NULL || declaration == NULL) { return 0u; }
+    for (index = 0u; index < declaration->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, declaration->children[index]);
+        if (child != NULL && child->kind == VITTE_AST_NODE_PARAMETER) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+static const vitte_ast_node_t *
+vitte_sema_procedure_parameter_at_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *declaration,
+    size_t ordinal)
+{
+    size_t index;
+    size_t current = 0u;
+    if (context == NULL || declaration == NULL) { return NULL; }
+    for (index = 0u; index < declaration->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, declaration->children[index]);
+        if (child == NULL || child->kind != VITTE_AST_NODE_PARAMETER) {
+            continue;
+        }
+        if (current == ordinal) { return child; }
+        ++current;
+    }
+    return NULL;
+}
+
+static const vitte_ast_node_t *
+vitte_sema_parameter_type_node_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *parameter)
+{
+    size_t index;
+    if (context == NULL || parameter == NULL) { return NULL; }
+    for (index = 0u; index < parameter->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, parameter->children[index]);
+        if (child != NULL &&
+            (child->kind == VITTE_AST_NODE_TYPE_EXPR ||
+             child->kind == VITTE_AST_NODE_POINTER_TYPE ||
+             child->kind == VITTE_AST_NODE_REFERENCE_TYPE ||
+             child->kind == VITTE_AST_NODE_ARRAY_TYPE ||
+             child->kind == VITTE_AST_NODE_OPTIONAL_TYPE)) {
+            return child;
+        }
+    }
+    return NULL;
+}
+
+static bool
+vitte_sema_type_syntax_equal_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *left,
+    const vitte_ast_node_t *right,
+    size_t depth)
+{
+    const vitte_token_t *left_token;
+    const vitte_token_t *right_token;
+    size_t index;
+    if (left == NULL || right == NULL || left->kind != right->kind ||
+        left->operator_kind != right->operator_kind ||
+        left->flags != right->flags || left->child_count != right->child_count ||
+        depth >= context->max_recursion_depth) {
+        return false;
+    }
+    left_token = vitte_sema_node_token(context, left);
+    right_token = vitte_sema_node_token(context, right);
+    if ((left_token == NULL) != (right_token == NULL)) { return false; }
+    if (left_token != NULL &&
+        (left_token->kind != right_token->kind ||
+         left_token->length != right_token->length ||
+         memcmp(left_token->lexeme, right_token->lexeme,
+                left_token->length) != 0)) {
+        return false;
+    }
+    for (index = 0u; index < left->child_count; ++index) {
+        if (!vitte_sema_type_syntax_equal_private(
+                context,
+                vitte_sema_node(context, left->children[index]),
+                vitte_sema_node(context, right->children[index]),
+                depth + 1u)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
+vitte_sema_procedure_signatures_identical_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *left,
+    const vitte_ast_node_t *right)
+{
+    size_t parameter_count;
+    size_t index;
+    if (context == NULL || left == NULL || right == NULL ||
+        vitte_sema_procedure_has_generics_private(context, left) ||
+        vitte_sema_procedure_has_generics_private(context, right)) {
+        return true;
+    }
+    parameter_count = vitte_sema_procedure_parameter_count_private(
+        context, left);
+    if (parameter_count !=
+        vitte_sema_procedure_parameter_count_private(context, right)) {
+        return false;
+    }
+    for (index = 0u; index < parameter_count; ++index) {
+        const vitte_ast_node_t *left_parameter =
+            vitte_sema_procedure_parameter_at_private(context, left, index);
+        const vitte_ast_node_t *right_parameter =
+            vitte_sema_procedure_parameter_at_private(context, right, index);
+        const vitte_ast_node_t *left_type =
+            vitte_sema_parameter_type_node_private(context, left_parameter);
+        const vitte_ast_node_t *right_type =
+            vitte_sema_parameter_type_node_private(context, right_parameter);
+        if (left_parameter == NULL || right_parameter == NULL ||
+            left_parameter->flags != right_parameter->flags ||
+            !vitte_sema_type_syntax_equal_private(
+                context, left_type, right_type, 0u)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
+vitte_sema_procedure_overload_distinct_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *left,
+    const vitte_ast_node_t *right)
+{
+    if (context == NULL || left == NULL || right == NULL ||
+        vitte_sema_procedure_has_generics_private(context, left) ||
+        vitte_sema_procedure_has_generics_private(context, right)) {
+        return false;
+    }
+    return !vitte_sema_procedure_signatures_identical_private(
+        context, left, right);
+}
+
+static void
+vitte_sema_append_signature_type_tokens_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *type_node,
+    char *buffer,
+    size_t capacity,
+    size_t *length)
+{
+    size_t index;
+    char previous_character = '\0';
+    if (context == NULL || type_node == NULL || buffer == NULL ||
+        capacity == 0u || length == NULL || !type_node->span.valid) {
+        return;
+    }
+    for (index = 0u; index < context->parser->token_count; ++index) {
+        const vitte_token_t *token = &context->parser->tokens[index];
+        size_t character_index;
+        if (token->span.begin < type_node->span.begin ||
+            token->span.end > type_node->span.end ||
+            token->lexeme == NULL || token->length == 0u ||
+            *length >= capacity - 1u) {
+            continue;
+        }
+        if ((previous_character == '_' ||
+             (previous_character >= 'A' && previous_character <= 'Z') ||
+             (previous_character >= 'a' && previous_character <= 'z') ||
+             (previous_character >= '0' && previous_character <= '9')) &&
+            ((token->lexeme[0] >= 'A' && token->lexeme[0] <= 'Z') ||
+             (token->lexeme[0] >= 'a' && token->lexeme[0] <= 'z') ||
+             token->lexeme[0] == '_')) {
+            buffer[(*length)++] = ' ';
+        }
+        for (character_index = 0u;
+             character_index < token->length && *length < capacity - 1u;
+             ++character_index) {
+            buffer[(*length)++] = token->lexeme[character_index];
+        }
+        previous_character = token->length != 0u
+            ? token->lexeme[token->length - 1u]
+            : previous_character;
+    }
+    buffer[*length] = '\0';
+}
+
+static void
+vitte_sema_format_procedure_candidate_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *declaration,
+    const char *fallback_name,
+    char *buffer,
+    size_t capacity)
+{
+    const char *name = fallback_name;
+    size_t name_length = fallback_name != NULL ? strlen(fallback_name) : 0u;
+    size_t length = 0u;
+    size_t index;
+    if (context == NULL || declaration == NULL || buffer == NULL ||
+        capacity == 0u) { return; }
+    buffer[0] = '\0';
+    (void)vitte_sema_declaration_name(
+        context, declaration, &name, &name_length);
+    if (name == NULL) { name = "procedure"; name_length = 9u; }
+    (void)snprintf(buffer, capacity, "%.*s(",
+        (int)(name_length > 40u ? 40u : name_length), name);
+    length = strlen(buffer);
+    for (index = 0u;
+         index < vitte_sema_procedure_parameter_count_private(
+                     context, declaration) && length < capacity - 1u;
+         ++index) {
+        const vitte_ast_node_t *parameter =
+            vitte_sema_procedure_parameter_at_private(
+                context, declaration, index);
+        const vitte_ast_node_t *type_node =
+            vitte_sema_parameter_type_node_private(context, parameter);
+        if (index != 0u && length < capacity - 1u) {
+            buffer[length++] = ',';
+            buffer[length] = '\0';
+        }
+        if (type_node != NULL) {
+            vitte_sema_append_signature_type_tokens_private(
+                context, type_node, buffer, capacity, &length);
+        } else if (length < capacity - 1u) {
+            buffer[length++] = '?';
+            buffer[length] = '\0';
+        }
+    }
+    if (length < capacity - 1u) {
+        buffer[length++] = ')';
+        buffer[length] = '\0';
+    }
+}
+
+typedef enum vitte_sema_overload_result {
+    VITTE_SEMA_OVERLOAD_NONE = 0,
+    VITTE_SEMA_OVERLOAD_SELECTED,
+    VITTE_SEMA_OVERLOAD_NO_MATCH,
+    VITTE_SEMA_OVERLOAD_AMBIGUOUS,
+    VITTE_SEMA_OVERLOAD_ARGUMENT_ERROR
+} vitte_sema_overload_result_t;
+
+static vitte_sema_overload_result_t
+vitte_sema_resolve_procedure_overload_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *call,
+    vitte_symbol_id_t symbol_id,
+    const vitte_ast_node_t *fallback_declaration,
+    const vitte_symbol_t *symbol,
+    const vitte_ast_node_t **selected_declaration)
+{
+    size_t node_index;
+    size_t candidate_count = 0u;
+    size_t match_count = 0u;
+    const vitte_ast_node_t *first_candidate = NULL;
+    const vitte_ast_node_t *second_candidate = NULL;
+    const vitte_ast_node_t *first_match = NULL;
+    const vitte_ast_node_t *second_match = NULL;
+    size_t supplied_count;
+    bool argument_error = false;
+    if (context == NULL || context->parser == NULL || call == NULL ||
+        symbol_id == VITTE_SCOPE_INVALID_SYMBOL_ID ||
+        selected_declaration == NULL) {
+        return VITTE_SEMA_OVERLOAD_NONE;
+    }
+    supplied_count = call->child_count > 0u ? call->child_count - 1u : 0u;
+    for (node_index = 0u; node_index < call->child_count - 1u; ++node_index) {
+        const vitte_sema_node_info_t *argument_info =
+            vitte_sema_node_info_private(context,
+                                         call->children[node_index + 1u]);
+        if (argument_info != NULL &&
+            argument_info->type_id == context->type_error) {
+            argument_error = true;
+        }
+    }
+    if (argument_error) { return VITTE_SEMA_OVERLOAD_ARGUMENT_ERROR; }
+
+    for (node_index = 0u; node_index < context->parser->node_count;
+         ++node_index) {
+        const vitte_ast_node_t *candidate = vitte_sema_node(
+            context, (vitte_ast_node_id_t)(node_index + 1u));
+        const vitte_sema_node_info_t *candidate_info;
+        size_t parameter_count;
+        size_t parameter_index;
+        bool matches = true;
+        if (candidate == NULL ||
+            (candidate->kind != VITTE_AST_NODE_PROC_DECL &&
+             candidate->kind != VITTE_AST_NODE_EXTERN_PROC_DECL)) {
+            continue;
+        }
+        candidate_info = vitte_sema_node_info_private(context, candidate->id);
+        if (candidate_info == NULL || candidate_info->symbol_id != symbol_id ||
+            (candidate_info->flags & VITTE_SEMA_NODE_FLAG_PREDECLARED) == 0u) {
+            continue;
+        }
+        if (first_candidate == NULL) { first_candidate = candidate; }
+        else if (second_candidate == NULL) { second_candidate = candidate; }
+        ++candidate_count;
+        if (vitte_sema_procedure_has_generics_private(context, candidate)) {
+            matches = false;
+        }
+        parameter_count = vitte_sema_procedure_parameter_count_private(
+            context, candidate);
+        if (parameter_count != supplied_count) { matches = false; }
+        if (matches) {
+            for (parameter_index = 0u;
+                 parameter_index < parameter_count;
+                 ++parameter_index) {
+                const vitte_ast_node_t *parameter =
+                    vitte_sema_procedure_parameter_at_private(
+                        context, candidate, parameter_index);
+                const vitte_sema_node_info_t *parameter_info = parameter != NULL
+                    ? vitte_sema_node_info_private(context, parameter->id)
+                    : NULL;
+                const vitte_sema_node_info_t *argument_info =
+                    vitte_sema_node_info_private(
+                        context, call->children[parameter_index + 1u]);
+                vitte_sema_type_id_t argument_type;
+                const vitte_ast_node_t *argument_node;
+                bool compatible;
+                if (parameter_info == NULL || argument_info == NULL ||
+                    parameter_info->type_id == VITTE_SEMA_INVALID_TYPE_ID ||
+                    argument_info->type_id == context->type_error) {
+                    matches = false;
+                    break;
+                }
+                argument_type = vitte_sema_type_is_pointer_like_private(
+                    context, parameter_info->type_id)
+                    ? argument_info->type_id
+                    : vitte_sema_value_type_private(
+                          context, argument_info->type_id);
+                compatible = vitte_sema_type_assignable_private(
+                    context, parameter_info->type_id, argument_type);
+                argument_node = vitte_sema_node(
+                    context, call->children[parameter_index + 1u]);
+                if (!compatible && argument_node != NULL &&
+                    ((argument_node->kind == VITTE_AST_NODE_INTEGER_LITERAL &&
+                      vitte_sema_type_is_integer_private(
+                          context, parameter_info->type_id)) ||
+                     (argument_node->kind == VITTE_AST_NODE_FLOAT_LITERAL &&
+                      vitte_sema_type_is_float_private(
+                          context, parameter_info->type_id)))) {
+                    compatible = true;
+                }
+                if (!compatible) { matches = false; break; }
+            }
+        }
+        if (matches) {
+            if (first_match == NULL) { first_match = candidate; }
+            else if (second_match == NULL) { second_match = candidate; }
+            ++match_count;
+        }
+    }
+    if (candidate_count <= 1u) {
+        return VITTE_SEMA_OVERLOAD_NONE;
+    }
+    if (match_count == 1u) {
+        *selected_declaration = first_match;
+        return VITTE_SEMA_OVERLOAD_SELECTED;
+    }
+    if (match_count == 0u) {
+        char first_signature[160];
+        char second_signature[160];
+        char help[480];
+        vitte_sema_format_procedure_candidate_private(
+            context, first_candidate, symbol != NULL ? symbol->name : NULL,
+            first_signature, sizeof(first_signature));
+        vitte_sema_format_procedure_candidate_private(
+            context, second_candidate != NULL ? second_candidate
+                                              : fallback_declaration,
+            symbol != NULL ? symbol->name : NULL,
+            second_signature, sizeof(second_signature));
+        (void)snprintf(help, sizeof(help),
+            "No overload accepts these arguments. Candidates include `%s` and `%s`; adjust the argument count or types.",
+            first_signature, second_signature);
+        if (vitte_sema_add_diagnostic(
+                context,
+                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_NO_MATCHING_PROCEDURE,
+                call->span,
+                call->id,
+                symbol_id,
+                VITTE_SEMA_INVALID_TYPE_ID,
+                VITTE_SEMA_INVALID_TYPE_ID)) {
+            vitte_sema_append_diagnostic_help(
+                &context->diagnostics[context->diagnostic_count - 1u], help);
+            vitte_sema_set_last_related_location(
+                context, first_candidate,
+                "candidate procedure declared here");
+        }
+        return VITTE_SEMA_OVERLOAD_NO_MATCH;
+    }
+    {
+        char first_signature[160];
+        char second_signature[160];
+        char help[480];
+        vitte_sema_format_procedure_candidate_private(
+            context, first_match, symbol != NULL ? symbol->name : NULL,
+            first_signature, sizeof(first_signature));
+        vitte_sema_format_procedure_candidate_private(
+            context, second_match, symbol != NULL ? symbol->name : NULL,
+            second_signature, sizeof(second_signature));
+        (void)snprintf(help, sizeof(help),
+            "More than one overload matches this call: `%s` and `%s`. Add an explicit conversion or rename one procedure to make the selection unique.",
+            first_signature, second_signature);
+        if (vitte_sema_add_diagnostic(
+                context,
+                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_CALL,
+                call->span,
+                call->id,
+                symbol_id,
+                VITTE_SEMA_INVALID_TYPE_ID,
+                VITTE_SEMA_INVALID_TYPE_ID)) {
+            vitte_sema_append_diagnostic_help(
+                &context->diagnostics[context->diagnostic_count - 1u], help);
+            vitte_sema_set_last_related_location(
+                context, second_match,
+                "other matching procedure candidate declared here");
+        }
+        return VITTE_SEMA_OVERLOAD_AMBIGUOUS;
+    }
+}
+
 static vitte_sema_type_id_t
 vitte_sema_analyze_call(
     vitte_sema_t *context,
@@ -7270,9 +8895,47 @@ vitte_sema_analyze_call(
     vitte_sema_type_id_t result;
     vitte_sema_node_info_t *info;
     bool unsafe_call_error = false;
+    bool procedure_modifier_error = false;
+    bool argument_error = false;
 
     if (node->child_count == 0u) {
         return context->type_error;
+    }
+
+    /* `old(value)` is parsed as an ordinary call, but this implementation
+       does not retain entry-state snapshots. Diagnose the contract construct
+       directly instead of reporting `old` as an unrelated missing name. */
+    if (context->current_contract_ensures || context->current_contract_requires) {
+        const vitte_ast_node_t *callee = vitte_sema_node(context, node->children[0]);
+        const vitte_ast_node_t *callee_name = callee;
+        const vitte_token_t *callee_token;
+        if (callee != NULL && callee->kind == VITTE_AST_NODE_PATH && callee->child_count != 0u)
+            callee_name = vitte_sema_node(context, callee->children[callee->child_count - 1u]);
+        callee_token = vitte_sema_node_token(context, callee_name);
+        if ((callee != NULL && (callee->kind == VITTE_AST_NODE_IDENTIFIER ||
+                (callee->kind == VITTE_AST_NODE_PATH && callee->child_count == 1u))) &&
+            callee_token != NULL && callee_token->length == 3u &&
+            memcmp(callee_token->lexeme, "old", 3u) == 0 &&
+            vitte_scope_lookup_n(&context->scopes, scope_id,
+                callee_token->lexeme, callee_token->length) == VITTE_SCOPE_INVALID_SYMBOL_ID) {
+            vitte_sema_node_info_t *old_info = vitte_sema_node_info_mut_private(context, node->id);
+            if (vitte_sema_add_diagnostic(context, VITTE_SEMA_DIAGNOSTIC_ERROR,
+                    VITTE_SEMA_DIAGNOSTIC_CONTRACT_OLD_VALUE,
+                    node->span, node->id, VITTE_SCOPE_INVALID_SYMBOL_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID, VITTE_SEMA_INVALID_TYPE_ID)) {
+                const char *help = context->current_contract_requires
+                    ? "`old(...)` cannot be used by a requires clause because there is no procedure-entry snapshot at the call site. Use a condition over the current arguments."
+                    : "`old(...)` requires an entry-state snapshot, which is not available for this contract reference. Remove `old` or use values directly available to the clause.";
+                (void)snprintf(context->diagnostics[context->diagnostic_count - 1u].help,
+                    sizeof(context->diagnostics[context->diagnostic_count - 1u].help), "%s", help);
+            }
+            if (old_info != NULL) {
+                old_info->type_id = context->type_error;
+                old_info->scope_id = scope_id;
+                old_info->flags |= VITTE_SEMA_NODE_FLAG_RESOLVED;
+            }
+            return context->type_error;
+        }
     }
 
     {
@@ -7514,12 +9177,14 @@ vitte_sema_analyze_call(
     } else if (type == NULL ||
         type->kind !=
             VITTE_SEMA_TYPE_FUNCTION) {
+        const vitte_ast_node_t *callee_node = node->child_count != 0u
+            ? vitte_sema_node(context, node->children[0]) : NULL;
         (void)vitte_sema_add_diagnostic(
             context,
             VITTE_SEMA_DIAGNOSTIC_ERROR,
             VITTE_SEMA_DIAGNOSTIC_NOT_CALLABLE,
-            node->span,
-            node->id,
+            callee_node != NULL ? callee_node->span : node->span,
+            callee_node != NULL ? callee_node->id : node->id,
             VITTE_SCOPE_INVALID_SYMBOL_ID,
             VITTE_SEMA_INVALID_TYPE_ID,
             callee_type);
@@ -7729,7 +9394,7 @@ vitte_sema_analyze_call(
                     vitte_sema_set_last_type_context(
                         context,
                         VITTE_SEMA_TYPE_CONTEXT_ARGUMENT,
-                        index + 1u,
+                        index,
                         VITTE_SCOPE_INVALID_SYMBOL_ID);
 
                     diagnostic =
@@ -7798,24 +9463,85 @@ vitte_sema_analyze_call(
             function_symbol != NULL
                 ? (const vitte_ast_node_t *)function_symbol->payload
                 : NULL;
-        if (function_symbol != NULL &&
-            (function_symbol->flags & VITTE_SYMBOL_FLAG_UNSAFE) != 0u &&
+        if (function_declaration != NULL &&
+            type->symbol_id != VITTE_SCOPE_INVALID_SYMBOL_ID) {
+            vitte_sema_overload_result_t overload_result =
+                vitte_sema_resolve_procedure_overload_private(
+                    context,
+                    node,
+                    type->symbol_id,
+                    function_declaration,
+                    function_symbol,
+                    &function_declaration);
+            if (overload_result == VITTE_SEMA_OVERLOAD_NO_MATCH ||
+                overload_result == VITTE_SEMA_OVERLOAD_AMBIGUOUS ||
+                overload_result == VITTE_SEMA_OVERLOAD_ARGUMENT_ERROR) {
+                info = vitte_sema_node_info_mut_private(context, node->id);
+                if (info != NULL) {
+                    info->type_id = context->type_error;
+                    info->scope_id = scope_id;
+                }
+                context->stats.calls_checked =
+                    vitte_sema_u64_add_sat(
+                        context->stats.calls_checked, UINT64_C(1));
+                return context->type_error;
+            }
+        }
+        if (function_declaration != NULL) {
+            bool callee_comptime =
+                (function_declaration->flags & VITTE_AST_FLAG_COMPTIME) != 0u;
+            bool callee_external =
+                (function_declaration->flags & VITTE_AST_FLAG_EXTERN) != 0u;
+            bool callee_intrinsic =
+                (function_declaration->flags & VITTE_AST_FLAG_INTRINSIC) != 0u;
+            if ((callee_comptime && !context->current_comptime) ||
+                (context->current_comptime && !callee_comptime) ||
+                (context->current_comptime &&
+                 (callee_external || callee_intrinsic))) {
+                const char *help = callee_comptime
+                    ? "A `comptime` procedure must be called from a compile-time procedure or constant-evaluation context."
+                    : "A `comptime` procedure cannot call a runtime, external, or intrinsic procedure.";
+                if (vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_MODIFIER,
+                        node->span,
+                        node->id,
+                        type->symbol_id,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[
+                            context->diagnostic_count - 1u],
+                        help);
+                    vitte_sema_set_last_related_location(
+                        context,
+                        function_declaration,
+                        "called procedure declared here");
+                }
+                procedure_modifier_error = true;
+            }
+        }
+        if (function_declaration != NULL &&
+            (function_declaration->flags & VITTE_AST_FLAG_UNSAFE) != 0u &&
             !context->current_unsafe) {
             if (vitte_sema_add_diagnostic(
                     context,
                     VITTE_SEMA_DIAGNOSTIC_ERROR,
                     VITTE_SEMA_DIAGNOSTIC_UNSAFE_REQUIRED,
-                    node->span,
+                    vitte_sema_keyword_span_in_node_private(
+                        context, node, "asm"),
                     node->id,
                     type->symbol_id,
                     VITTE_SEMA_INVALID_TYPE_ID,
                     VITTE_SEMA_INVALID_TYPE_ID)) {
                 vitte_sema_diagnostic_t *diagnostic =
                     &context->diagnostics[context->diagnostic_count - 1u];
-                (void)snprintf(
-                    diagnostic->help,
-                    sizeof(diagnostic->help),
-                    "Call this unsafe procedure inside an `unsafe { ... }` block, or from another unsafe procedure.");
+                (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                    "Calling an unsafe procedure requires an unsafe context. Wrap this call in `unsafe { ... }` or call it from an unsafe procedure.");
+                vitte_sema_set_last_related_location(
+                    context, function_declaration,
+                    "unsafe procedure declared here");
             }
             unsafe_call_error = true;
         }
@@ -7871,6 +9597,28 @@ vitte_sema_analyze_call(
                 VITTE_SEMA_INVALID_TYPE_ID)) {
                 vitte_sema_diagnostic_t *diagnostic =
                     &context->diagnostics[context->diagnostic_count - 1u];
+                const vitte_ast_node_t *related_declaration =
+                    function_declaration;
+                if (function_declaration != NULL &&
+                    node->child_count - 1u < parameter_count) {
+                    size_t ordinal = 0u;
+                    for (parameter_index = 0u;
+                         parameter_index < function_declaration->child_count;
+                         ++parameter_index) {
+                        const vitte_ast_node_t *parameter = vitte_sema_node(
+                            context,
+                            function_declaration->children[parameter_index]);
+                        if (parameter == NULL ||
+                            parameter->kind != VITTE_AST_NODE_PARAMETER) {
+                            continue;
+                        }
+                        if (ordinal == node->child_count - 1u) {
+                            related_declaration = parameter;
+                            break;
+                        }
+                        ++ordinal;
+                    }
+                }
                 (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
                     "This call requires %zu argument(s), but %zu were supplied. %s %zu argument(s) to match the declaration.",
                     parameter_count, node->child_count - 1u,
@@ -7878,6 +9626,34 @@ vitte_sema_analyze_call(
                     node->child_count - 1u < parameter_count
                         ? parameter_count - (node->child_count - 1u)
                         : node->child_count - 1u - parameter_count);
+                if (related_declaration == function_declaration) {
+                    vitte_sema_set_last_related_location(
+                        context,
+                        related_declaration,
+                        "procedure signature declared here");
+                } else {
+                    const char *parameter_name = NULL;
+                    size_t parameter_name_length = 0u;
+                    char label[128];
+                    (void)vitte_sema_declaration_name(
+                        context,
+                        related_declaration,
+                        &parameter_name,
+                        &parameter_name_length);
+                    (void)snprintf(
+                        label,
+                        sizeof(label),
+                        "missing parameter %zu%s%.*s%s declared here",
+                        node->child_count,
+                        parameter_name != NULL ? " (`" : "",
+                        (int)(parameter_name_length > 64u
+                                  ? 64u
+                                  : parameter_name_length),
+                        parameter_name != NULL ? parameter_name : "",
+                        parameter_name != NULL ? "`)" : "");
+                    vitte_sema_set_last_related_location(
+                        context, related_declaration, label);
+                }
             }
             result = context->type_error;
         } else if (function_declaration != NULL) {
@@ -7913,10 +9689,21 @@ vitte_sema_analyze_call(
                         context,
                         node->children[argument_index]);
 
+                if (argument_info == NULL ||
+                    argument_info->type_id == context->type_error ||
+                    parameter_info == NULL ||
+                    parameter_info->type_id == context->type_error) {
+                    argument_error = true;
+                }
+
                 if (parameter_info != NULL &&
-                    argument_info != NULL) {
+                    argument_info != NULL &&
+                    parameter_info->type_id != context->type_error &&
+                    argument_info->type_id != context->type_error) {
                     vitte_sema_type_id_t argument_type;
                     bool argument_compatible;
+                    size_t diagnostic_count_before_unify =
+                        context->diagnostic_count;
 
                     argument_type =
                         parameter_info->type_id;
@@ -7945,6 +9732,7 @@ vitte_sema_analyze_call(
                                 vitte_sema_node(
                                     context,
                                     node->children[argument_index]),
+                                true,
                                 0u);
                     } else {
                         argument_compatible =
@@ -7963,7 +9751,13 @@ vitte_sema_analyze_call(
                                 context,
                                 node->children[argument_index]);
 
-                        if (vitte_sema_add_diagnostic(
+                        bool inference_conflict =
+                            context->diagnostic_count >
+                                diagnostic_count_before_unify &&
+                            context->diagnostics[
+                                context->diagnostic_count - 1u].code ==
+                                VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT;
+                        if (!inference_conflict && vitte_sema_add_diagnostic(
                                 context,
                                 VITTE_SEMA_DIAGNOSTIC_ERROR,
                                 VITTE_SEMA_DIAGNOSTIC_INVALID_ARGUMENT_TYPE,
@@ -7980,11 +9774,12 @@ vitte_sema_analyze_call(
                             size_t parameter_name_length;
                             vitte_sema_diagnostic_t *diagnostic;
                             char help[256];
+                            char related_label[128];
 
                             vitte_sema_set_last_type_context(
                                 context,
                                 VITTE_SEMA_TYPE_CONTEXT_ARGUMENT,
-                                argument_index,
+                                argument_index - 1u,
                                 parameter_info->symbol_id);
 
                             diagnostic =
@@ -8041,6 +9836,26 @@ vitte_sema_analyze_call(
                             vitte_sema_append_diagnostic_help(
                                 diagnostic,
                                 help);
+                            if (parameter_name != NULL &&
+                                parameter_name_length != 0u) {
+                                (void)snprintf(
+                                    related_label,
+                                    sizeof(related_label),
+                                    "parameter %zu (`%.*s`) declared here",
+                                    argument_index,
+                                    (int)(parameter_name_length > 64u
+                                              ? 64u
+                                              : parameter_name_length),
+                                    parameter_name);
+                            } else {
+                                (void)snprintf(
+                                    related_label,
+                                    sizeof(related_label),
+                                    "parameter %zu declared here",
+                                    argument_index);
+                            }
+                            vitte_sema_set_last_related_location(
+                                context, parameter, related_label);
                             vitte_sema_add_safe_integer_conversion_help(
                                 context,
                                 node->children[argument_index],
@@ -8057,15 +9872,34 @@ vitte_sema_analyze_call(
             if (generic_parameter_count != 0u &&
                 generic_bindings != NULL) {
                 if (generic_binding_count != generic_parameter_count) {
-                    (void)vitte_sema_add_diagnostic(
-                        context,
-                        VITTE_SEMA_DIAGNOSTIC_ERROR,
-                        VITTE_SEMA_DIAGNOSTIC_INVALID_ARGUMENT_TYPE,
-                        node->span,
-                        node->id,
-                        type->symbol_id,
-                        type->return_type,
-                        VITTE_SEMA_INVALID_TYPE_ID);
+                    if (result != context->type_error && !argument_error) {
+                        const vitte_ast_node_t *callee =
+                            node->child_count > 0u
+                                ? vitte_sema_node(
+                                      context, node->children[0])
+                                : NULL;
+                        if (vitte_sema_add_diagnostic(
+                                context,
+                                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                                VITTE_SEMA_DIAGNOSTIC_CANNOT_INFER,
+                                callee != NULL ? callee->span : node->span,
+                                callee != NULL ? callee->id : node->id,
+                                type->symbol_id,
+                                VITTE_SEMA_INVALID_TYPE_ID,
+                                VITTE_SEMA_INVALID_TYPE_ID)) {
+                            vitte_sema_set_last_type_context(
+                                context,
+                                VITTE_SEMA_TYPE_CONTEXT_INFERENCE,
+                                SIZE_MAX,
+                                type->symbol_id);
+                            (void)snprintf(
+                                context->diagnostics[
+                                    context->diagnostic_count - 1u].help,
+                                sizeof(context->diagnostics[
+                                    context->diagnostic_count - 1u].help),
+                                "Provide explicit generic arguments at this call or annotate an argument so every generic type can be inferred.");
+                        }
+                    }
                     result = context->type_error;
                 } else {
                     result = vitte_sema_generic_call_substitute_type_private(
@@ -8091,8 +9925,8 @@ vitte_sema_analyze_call(
                     result = context->type_error;
                 }
             }
-            if (function_symbol != NULL &&
-                (function_symbol->flags & VITTE_SYMBOL_FLAG_ASYNC) != 0u &&
+            if (function_declaration != NULL &&
+                (function_declaration->flags & VITTE_AST_FLAG_ASYNC) != 0u &&
                 result != context->type_error) {
                 result = vitte_sema_create_type_private(
                     context,
@@ -8149,7 +9983,7 @@ vitte_sema_analyze_call(
                     vitte_sema_set_last_type_context(
                         context,
                         VITTE_SEMA_TYPE_CONTEXT_ARGUMENT,
-                        parameter_index + 1u,
+                        parameter_index,
                         VITTE_SCOPE_INVALID_SYMBOL_ID);
                 }
                 result = context->type_error;
@@ -8157,7 +9991,7 @@ vitte_sema_analyze_call(
         }
     }
 
-    if (unsafe_call_error) {
+    if (unsafe_call_error || procedure_modifier_error) {
         result = context->type_error;
     }
 
@@ -8215,14 +10049,16 @@ vitte_sema_analyze_index(
     if (index_type != context->type_error && !vitte_sema_type_is_integer_private(
             context,
             index_type)) {
+        const vitte_ast_node_t *index_node = node->child_count > 1u
+            ? vitte_sema_node(context, node->children[1]) : NULL;
         (void)vitte_sema_add_diagnostic(
             context,
             VITTE_SEMA_DIAGNOSTIC_ERROR,
             VITTE_SEMA_DIAGNOSTIC_INVALID_INDEX_TYPE,
-            node->span,
-            node->id,
+            index_node != NULL ? index_node->span : node->span,
+            index_node != NULL ? index_node->id : node->id,
             VITTE_SCOPE_INVALID_SYMBOL_ID,
-            context->type_i64,
+            VITTE_SEMA_INVALID_TYPE_ID,
             index_type);
     }
 
@@ -8260,12 +10096,14 @@ vitte_sema_analyze_index(
 
     if (object_type != context->type_error && result ==
         context->type_error) {
+        const vitte_ast_node_t *object_node = node->child_count != 0u
+            ? vitte_sema_node(context, node->children[0]) : NULL;
         (void)vitte_sema_add_diagnostic(
             context,
             VITTE_SEMA_DIAGNOSTIC_ERROR,
             VITTE_SEMA_DIAGNOSTIC_NOT_INDEXABLE,
-            node->span,
-            node->id,
+            object_node != NULL ? object_node->span : node->span,
+            object_node != NULL ? object_node->id : node->id,
             VITTE_SCOPE_INVALID_SYMBOL_ID,
             VITTE_SEMA_INVALID_TYPE_ID,
             object_type);
@@ -8281,13 +10119,20 @@ vitte_sema_analyze_index(
 
     if (info != NULL) {
         info->type_id = result;
-        info->flags |=
-            VITTE_SEMA_NODE_FLAG_LVALUE;
         object_info = vitte_sema_node_info_private(
             context,
             node->children[0]);
         if (object_info != NULL) {
             info->symbol_id = object_info->symbol_id;
+            if ((object_info->flags &
+                 VITTE_SEMA_NODE_FLAG_ADDRESSABLE) != 0u ||
+                (object != NULL &&
+                 object->kind == VITTE_SEMA_TYPE_POINTER) ||
+                (original_object != NULL &&
+                 original_object->kind == VITTE_SEMA_TYPE_POINTER)) {
+                info->flags |= VITTE_SEMA_NODE_FLAG_LVALUE |
+                               VITTE_SEMA_NODE_FLAG_ADDRESSABLE;
+            }
             if ((object_info->flags &
                  VITTE_SEMA_NODE_FLAG_MUTABLE) != 0u) {
                 info->flags |= VITTE_SEMA_NODE_FLAG_MUTABLE;
@@ -8437,7 +10282,7 @@ vitte_sema_analyze_form_expression(
             : NULL;
         if (field_declaration == NULL ||
             field_declaration->kind != VITTE_AST_NODE_FIELD_DECL) {
-            (void)vitte_sema_add_diagnostic(
+            if (vitte_sema_add_diagnostic(
                 context,
                 VITTE_SEMA_DIAGNOSTIC_ERROR,
                 VITTE_SEMA_DIAGNOSTIC_UNKNOWN_MEMBER,
@@ -8445,7 +10290,12 @@ vitte_sema_analyze_form_expression(
                 name->id,
                 form_type->symbol_id,
                 VITTE_SEMA_INVALID_TYPE_ID,
-                type_id);
+                type_id)) {
+                vitte_sema_set_last_related_location(
+                    context,
+                    form_declaration,
+                    "form fields declared here");
+            }
             continue;
         }
         for (previous = 1u; previous < index; ++previous) {
@@ -8791,14 +10641,34 @@ vitte_sema_analyze_expression(
                         }
                         path_scope = decl_info->scope_id;
                     } else {
-                        result =
-                            vitte_sema_type_for_symbol(
-                                context,
-                                path_symbol);
-                        if (info != NULL) {
-                            info->symbol_id = path_symbol;
-                            info->flags |=
-                                VITTE_SEMA_NODE_FLAG_RESOLVED;
+                        if (vitte_symbol_kind_is_type(symbol->kind)) {
+                            const vitte_ast_node_t *last_segment = segment;
+                            if (vitte_sema_add_diagnostic(
+                                    context,
+                                    VITTE_SEMA_DIAGNOSTIC_ERROR,
+                                    VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE,
+                                    last_segment != NULL
+                                        ? last_segment->span : node->span,
+                                    last_segment != NULL
+                                        ? last_segment->id : node->id,
+                                    path_symbol,
+                                    VITTE_SEMA_INVALID_TYPE_ID,
+                                    vitte_sema_type_for_symbol(
+                                        context, path_symbol))) {
+                                vitte_sema_append_diagnostic_help(
+                                    &context->diagnostics[
+                                        context->diagnostic_count - 1u],
+                                    "This path names a type, not a runtime value. Use it in a type position or construct a value with the type's supported syntax.");
+                            }
+                            result = context->type_error;
+                        } else {
+                            result = vitte_sema_type_for_symbol(
+                                context, path_symbol);
+                            if (info != NULL) {
+                                info->symbol_id = path_symbol;
+                                info->flags |=
+                                    VITTE_SEMA_NODE_FLAG_RESOLVED;
+                            }
                         }
                     }
                 }
@@ -8833,7 +10703,8 @@ vitte_sema_analyze_expression(
                      symbol->kind ==
                          VITTE_SYMBOL_KIND_FIELD)) {
                     info->flags |=
-                        VITTE_SEMA_NODE_FLAG_LVALUE;
+                        VITTE_SEMA_NODE_FLAG_LVALUE |
+                        VITTE_SEMA_NODE_FLAG_ADDRESSABLE;
 
                     if ((symbol->flags &
                          VITTE_SYMBOL_FLAG_MUTABLE) != 0u) {
@@ -8884,10 +10755,12 @@ vitte_sema_analyze_expression(
 
         case VITTE_AST_NODE_IF_EXPR:
         {
+            vitte_constant_t condition_value;
             vitte_sema_type_id_t condition_type;
             vitte_sema_type_id_t then_type;
             vitte_sema_type_id_t else_type;
             const vitte_ast_node_t *condition;
+            const vitte_ast_node_t *then_branch;
             const vitte_ast_node_t *else_branch;
 
             if (node->child_count != 3u) {
@@ -8901,6 +10774,10 @@ vitte_sema_analyze_expression(
             condition = vitte_sema_node(
                 context,
                 node->children[0]);
+            then_branch = vitte_sema_node(
+                context, node->children[1]);
+            else_branch = vitte_sema_node(
+                context, node->children[2]);
             if (condition_type != context->type_bool &&
                 condition_type != context->type_error &&
                 condition != NULL) {
@@ -8920,6 +10797,23 @@ vitte_sema_analyze_expression(
                         VITTE_SCOPE_INVALID_SYMBOL_ID);
                 }
             }
+            condition_value = vitte_sema_known_value(context, condition);
+            if (!vitte_sema_is_unreachable_private(context, node) &&
+                condition_value.kind == VITTE_CONSTANT_KIND_BOOL) {
+                const vitte_ast_node_t *dead_branch =
+                    condition_value.as.boolean ? else_branch : then_branch;
+                if (dead_branch != NULL) {
+                    vitte_sema_warn_unreachable_private(
+                        context, dead_branch, condition,
+                        "this condition makes the branch unreachable",
+                        condition_value.as.boolean
+                            ? "This condition is always true, so this alternative cannot run. Change the condition or remove the unreachable alternative."
+                            : "This condition is always false, so this branch cannot run. Change the condition or remove the unreachable branch.");
+                }
+            } else if (vitte_sema_is_unreachable_private(context, node)) {
+                vitte_sema_mark_unreachable_private(context, then_branch);
+                vitte_sema_mark_unreachable_private(context, else_branch);
+            }
             then_type = vitte_sema_analyze_expression(
                 context,
                 node->children[1],
@@ -8928,9 +10822,6 @@ vitte_sema_analyze_expression(
                 context,
                 node->children[2],
                 scope_id);
-            else_branch = vitte_sema_node(
-                context,
-                node->children[2]);
             if (vitte_sema_accept_value_private(
                     context,
                     then_type,
@@ -9137,7 +11028,7 @@ vitte_sema_analyze_expression(
                     (void)vitte_sema_add_diagnostic(
                         context,
                         VITTE_SEMA_DIAGNOSTIC_ERROR,
-                        VITTE_SEMA_DIAGNOSTIC_TYPE_MISMATCH,
+                        VITTE_SEMA_DIAGNOSTIC_INVALID_CAST,
                         source_node != NULL
                             ? source_node->span
                             : node->span,
@@ -9196,15 +11087,18 @@ vitte_sema_analyze_expression(
                         scope_id);
                 const vitte_sema_type_t *task_type =
                     vitte_sema_type_private(context, task_type_id);
-                if (task_type != NULL &&
-                    task_type->kind == VITTE_SEMA_TYPE_TASK) {
-                    result = task_type->element_type;
-                } else if (task_type_id != context->type_error) {
+                if (!context->current_async) {
+                    const vitte_token_t *await_token =
+                        vitte_sema_node_token(context, node);
+                    vitte_parser_span_t await_span = await_token != NULL
+                        ? vitte_sema_keyword_span_in_node_private(
+                              context, node, "await")
+                        : node->span;
                     if (vitte_sema_add_diagnostic(
                             context,
                             VITTE_SEMA_DIAGNOSTIC_ERROR,
-                            VITTE_SEMA_DIAGNOSTIC_INVALID_TYPE,
-                            node->span,
+                            VITTE_SEMA_DIAGNOSTIC_ASYNC_CONTEXT,
+                            await_span,
                             node->id,
                             VITTE_SCOPE_INVALID_SYMBOL_ID,
                             VITTE_SEMA_INVALID_TYPE_ID,
@@ -9212,7 +11106,29 @@ vitte_sema_analyze_expression(
                         vitte_sema_append_diagnostic_help(
                             &context->diagnostics[
                                 context->diagnostic_count - 1u],
-                            "`await` requires a task value returned by an async procedure.");
+                            "`await` is only valid inside an `async proc`; mark the enclosing procedure `async` or return the task to its caller.");
+                    }
+                    result = context->type_error;
+                } else if (task_type != NULL &&
+                    task_type->kind == VITTE_SEMA_TYPE_TASK) {
+                    result = task_type->element_type;
+                } else if (task_type_id != context->type_error) {
+                    if (vitte_sema_add_diagnostic(
+                            context,
+                            VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_TASK_TYPE,
+                            vitte_sema_node(context, node->children[0]) != NULL
+                                ? vitte_sema_node(
+                                      context, node->children[0])->span
+                                : node->span,
+                            node->children[0],
+                            VITTE_SCOPE_INVALID_SYMBOL_ID,
+                            VITTE_SEMA_INVALID_TYPE_ID,
+                            task_type_id)) {
+                        vitte_sema_append_diagnostic_help(
+                            &context->diagnostics[
+                                context->diagnostic_count - 1u],
+                            "`await` requires a task value returned by an async procedure; remove `await` or call an async procedure.");
                     }
                     result = context->type_error;
                 }
@@ -9243,6 +11159,14 @@ vitte_sema_analyze_expression(
                 operand_type = vitte_sema_type_private(
                     context,
                     operand_type_id);
+
+                if (context->current_defer_node_id != VITTE_AST_INVALID_ID &&
+                    context->current_defer_node_id != 0u) {
+                    (void)vitte_sema_defer_control_error(context, node,
+                        "Remove `?` from deferred work. Propagate the optional result before registering cleanup, then let the deferred action complete normally.");
+                    result = context->type_error;
+                    break;
+                }
 
                 if (operand_type_id == context->type_error) {
                     result = context->type_error;
@@ -9283,6 +11207,13 @@ vitte_sema_analyze_expression(
                         node->children[0],
                         scope_id);
                 }
+                const vitte_ast_node_t *operand_node = vitte_sema_node(
+                    context, node->children[0]);
+                if (queried_type != context->type_error &&
+                    vitte_sema_report_incomplete_type_private(
+                        context, operand_node, queried_type)) {
+                    queried_type = context->type_error;
+                }
                 result = queried_type == context->type_error
                     ? context->type_error
                     : context->type_u64;
@@ -9299,6 +11230,13 @@ vitte_sema_analyze_expression(
                     context,
                     node->children[0],
                     scope_id);
+                const vitte_ast_node_t *operand_node = vitte_sema_node(
+                    context, node->children[0]);
+                if (queried_type != context->type_error &&
+                    vitte_sema_report_incomplete_type_private(
+                        context, operand_node, queried_type)) {
+                    queried_type = context->type_error;
+                }
                 result = queried_type == context->type_error
                     ? context->type_error
                     : context->type_u64;
@@ -9457,6 +11395,8 @@ vitte_sema_register_declaration(
 
         if (scope_error ==
             VITTE_SCOPE_ERROR_DUPLICATE_SYMBOL) {
+            const vitte_ast_node_t *name_node;
+
             existing_id = vitte_scope_lookup_local_n(
                 &context->scopes,
                 scope_id,
@@ -9468,12 +11408,40 @@ vitte_sema_register_declaration(
                       &context->scopes,
                       existing_id)
                 : NULL;
+            if (existing_symbol != NULL &&
+                existing_symbol->kind == VITTE_SYMBOL_KIND_PROC &&
+                kind == VITTE_SYMBOL_KIND_PROC &&
+                existing_symbol->payload != NULL) {
+                const vitte_ast_node_t *existing_declaration =
+                    (const vitte_ast_node_t *)existing_symbol->payload;
+                if ((existing_declaration->kind ==
+                         VITTE_AST_NODE_PROC_DECL ||
+                     existing_declaration->kind ==
+                         VITTE_AST_NODE_EXTERN_PROC_DECL) &&
+                    vitte_sema_procedure_overload_distinct_private(
+                        context, existing_declaration, node)) {
+                    info = vitte_sema_node_info_mut_private(
+                        context, node->id);
+                    if (info != NULL) {
+                        info->symbol_id = existing_id;
+                        info->scope_id = scope_id;
+                        info->flags |= VITTE_SEMA_NODE_FLAG_DECLARATION;
+                    }
+                    context->stats.declarations =
+                        vitte_sema_u64_add_sat(
+                            context->stats.declarations, UINT64_C(1));
+                    return existing_id;
+                }
+            }
+            name_node = vitte_sema_find_identifier_child(
+                context,
+                node);
             if (vitte_sema_add_diagnostic(
                 context,
                 VITTE_SEMA_DIAGNOSTIC_ERROR,
                 VITTE_SEMA_DIAGNOSTIC_DUPLICATE_DECLARATION,
-                node->span,
-                node->id,
+                name_node != NULL ? name_node->span : node->span,
+                name_node != NULL ? name_node->id : node->id,
                 existing_id,
                 VITTE_SEMA_INVALID_TYPE_ID,
                 VITTE_SEMA_INVALID_TYPE_ID)) {
@@ -9549,6 +11517,198 @@ vitte_sema_register_declaration(
     return symbol_id;
 }
 
+typedef struct vitte_sema_pattern_binding_private {
+    const vitte_token_t *token;
+    uint32_t flags;
+} vitte_sema_pattern_binding_private_t;
+
+static size_t
+vitte_sema_pattern_binding_count_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *pattern,
+    uint32_t inherited_flags,
+    size_t depth)
+{
+    size_t count = 0u;
+    size_t index;
+    uint32_t flags;
+
+    if (context == NULL || pattern == NULL || depth >= 128u) return 0u;
+    flags = inherited_flags | pattern->flags;
+    if (pattern->kind == VITTE_AST_NODE_IDENTIFIER ||
+        pattern->kind == VITTE_AST_NODE_PATH) {
+        const vitte_token_t *token = vitte_sema_node_token(context, pattern);
+        return token != NULL && !(token->length == 1u &&
+            token->lexeme != NULL && token->lexeme[0] == '_') &&
+            (pattern->kind != VITTE_AST_NODE_PATH ||
+             pattern->child_count <= 1u) ? 1u : 0u;
+    }
+    if (pattern->kind != VITTE_AST_NODE_PATTERN ||
+        (flags & VITTE_AST_FLAG_PATTERN_RANGE) != 0u) return 0u;
+    if ((flags & VITTE_AST_FLAG_PATTERN_OR) != 0u) {
+        return pattern->child_count == 0u ? 0u :
+            vitte_sema_pattern_binding_count_private(
+                context,
+                vitte_sema_node(context, pattern->children[0]),
+                flags,
+                depth + 1u);
+    }
+    index = (flags & VITTE_AST_FLAG_PATTERN_HEAD) != 0u ? 1u : 0u;
+    for (; index < pattern->child_count; ++index) {
+        count += vitte_sema_pattern_binding_count_private(
+            context,
+            vitte_sema_node(context, pattern->children[index]),
+            flags,
+            depth + 1u);
+    }
+    return count;
+}
+
+static vitte_sema_pattern_binding_private_t
+vitte_sema_pattern_binding_at_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *pattern,
+    size_t wanted,
+    uint32_t inherited_flags,
+    size_t depth)
+{
+    vitte_sema_pattern_binding_private_t result;
+    uint32_t flags;
+    size_t index;
+    memset(&result, 0, sizeof(result));
+    if (context == NULL || pattern == NULL || depth >= 128u) return result;
+    flags = inherited_flags | pattern->flags;
+    if (pattern->kind == VITTE_AST_NODE_IDENTIFIER ||
+        pattern->kind == VITTE_AST_NODE_PATH) {
+        if (wanted == 0u &&
+            (pattern->kind != VITTE_AST_NODE_PATH ||
+             pattern->child_count <= 1u)) {
+            const vitte_token_t *token = vitte_sema_node_token(context, pattern);
+            if (token != NULL && !(token->length == 1u &&
+                token->lexeme != NULL && token->lexeme[0] == '_')) {
+                result.token = token;
+                result.flags = flags & (VITTE_AST_FLAG_PATTERN_MUTABLE |
+                                        VITTE_AST_FLAG_PATTERN_REFERENCE);
+            }
+        }
+        return result;
+    }
+    if (pattern->kind != VITTE_AST_NODE_PATTERN ||
+        (flags & VITTE_AST_FLAG_PATTERN_RANGE) != 0u) return result;
+    if ((flags & VITTE_AST_FLAG_PATTERN_OR) != 0u) {
+        return pattern->child_count == 0u ? result :
+            vitte_sema_pattern_binding_at_private(
+                context,
+                vitte_sema_node(context, pattern->children[0]),
+                wanted,
+                flags,
+                depth + 1u);
+    }
+    index = (flags & VITTE_AST_FLAG_PATTERN_HEAD) != 0u ? 1u : 0u;
+    for (; index < pattern->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, pattern->children[index]);
+        size_t child_count = vitte_sema_pattern_binding_count_private(
+            context, child, flags, depth + 1u);
+        if (wanted < child_count) {
+            return vitte_sema_pattern_binding_at_private(
+                context, child, wanted, flags, depth + 1u);
+        }
+        wanted -= child_count;
+    }
+    return result;
+}
+
+static bool
+vitte_sema_pattern_alternatives_valid_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *pattern,
+    uint32_t inherited_flags,
+    size_t depth)
+{
+    uint32_t flags;
+    size_t index;
+    bool valid = true;
+
+    if (context == NULL || pattern == NULL || depth >= 128u) return true;
+    flags = inherited_flags | pattern->flags;
+    if (pattern->kind == VITTE_AST_NODE_PATTERN &&
+        (flags & VITTE_AST_FLAG_PATTERN_OR) != 0u) {
+        const vitte_ast_node_t *first = pattern->child_count != 0u
+            ? vitte_sema_node(context, pattern->children[0]) : NULL;
+        const vitte_ast_node_t *offending_alternative = NULL;
+        size_t first_count = vitte_sema_pattern_binding_count_private(
+            context, first, flags, depth + 1u);
+        if (pattern->child_count < 2u) valid = false;
+        for (index = 1u; valid && index < pattern->child_count; ++index) {
+            const vitte_ast_node_t *alternative = vitte_sema_node(
+                context, pattern->children[index]);
+            size_t alternative_count =
+                vitte_sema_pattern_binding_count_private(
+                    context, alternative, flags, depth + 1u);
+            size_t binding_index;
+            if (alternative_count != first_count) {
+                valid = false;
+                offending_alternative = alternative;
+                break;
+            }
+            for (binding_index = 0u; binding_index < first_count;
+                 ++binding_index) {
+                vitte_sema_pattern_binding_private_t left =
+                    vitte_sema_pattern_binding_at_private(
+                        context, first, binding_index, flags, depth + 1u);
+                vitte_sema_pattern_binding_private_t right =
+                    vitte_sema_pattern_binding_at_private(
+                        context, alternative, binding_index, flags,
+                        depth + 1u);
+                if (left.token == NULL || right.token == NULL ||
+                    left.token->lexeme == NULL || right.token->lexeme == NULL ||
+                    left.token->length != right.token->length ||
+                    memcmp(left.token->lexeme, right.token->lexeme,
+                           left.token->length) != 0 ||
+                    left.flags != right.flags) {
+                    valid = false;
+                    offending_alternative = alternative;
+                    break;
+                }
+            }
+        }
+        if (!valid && vitte_sema_add_diagnostic(
+                context, VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_INVALID_PATTERN_BINDINGS,
+                offending_alternative != NULL
+                    ? offending_alternative->span : pattern->span,
+                offending_alternative != NULL
+                    ? offending_alternative->id : pattern->id,
+                VITTE_SCOPE_INVALID_SYMBOL_ID,
+                VITTE_SEMA_INVALID_TYPE_ID,
+                VITTE_SEMA_INVALID_TYPE_ID)) {
+            vitte_sema_diagnostic_t *diagnostic =
+                &context->diagnostics[context->diagnostic_count - 1u];
+            (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                "Every `|` alternative must bind the same names in the same order with the same `mut` and `ref` modes.");
+            if (first != NULL) {
+                vitte_sema_set_last_related_location(
+                    context, first, "first alternative establishes the bindings");
+            }
+            {
+                vitte_sema_node_info_t *pattern_info =
+                    vitte_sema_node_info_mut_private(context, pattern->id);
+                if (pattern_info != NULL)
+                    pattern_info->type_id = context->type_error;
+            }
+        }
+    }
+    for (index = 0u; index < pattern->child_count; ++index) {
+        if (!vitte_sema_pattern_alternatives_valid_private(
+                context,
+                vitte_sema_node(context, pattern->children[index]),
+                flags,
+                depth + 1u)) valid = false;
+    }
+    return valid;
+}
+
 /* Register names introduced by a `for` pattern in the loop scope.  A loop
  * binding is not a declaration node in the parser tree, so it cannot go
  * through vitte_sema_register_declaration directly. */
@@ -9584,8 +11744,82 @@ vitte_sema_bind_pattern(
 
     if (pattern->kind == VITTE_AST_NODE_PATTERN) {
         if ((pattern->flags & VITTE_AST_FLAG_PATTERN_OR) != 0u) {
-            /* Alternative bindings need a shared name-set check before
-             * their names can be registered in one scope. */
+            if (!vitte_sema_pattern_alternatives_valid_private(
+                    context, pattern, 0u, 0u)) {
+                return;
+            }
+            if (pattern->child_count != 0u) {
+                vitte_sema_bind_pattern(
+                    context, pattern->children[0], scope_id,
+                    binding_type, inherited_mutable);
+            }
+            return;
+        }
+        if ((pattern->flags & VITTE_AST_FLAG_PATTERN_TUPLE) != 0u) {
+            if (vitte_sema_add_diagnostic(context,
+                    VITTE_SEMA_DIAGNOSTIC_ERROR,
+                    VITTE_SEMA_DIAGNOSTIC_MATCH_TYPE,
+                    pattern->span, pattern->id,
+                    VITTE_SCOPE_INVALID_SYMBOL_ID,
+                    binding_type, VITTE_SEMA_INVALID_TYPE_ID)) {
+                vitte_sema_diagnostic_t *diagnostic =
+                    &context->diagnostics[context->diagnostic_count - 1u];
+                (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                    "Tuple patterns require a tuple value type, which Vitte does not define. Use a form or a pick variant with payload fields.");
+            }
+            info = vitte_sema_node_info_mut_private(context, pattern->id);
+            if (info != NULL) info->type_id = context->type_error;
+            for (index = 0u; index < pattern->child_count; ++index) {
+                vitte_sema_bind_pattern(
+                    context, pattern->children[index], scope_id,
+                    context->type_error, inherited_mutable);
+            }
+            return;
+        }
+        if ((pattern->flags & VITTE_AST_FLAG_PATTERN_ARRAY) != 0u) {
+            const vitte_sema_type_t *array_type =
+                vitte_sema_type_private(context, binding_type);
+            if (array_type == NULL ||
+                (array_type->kind != VITTE_SEMA_TYPE_ARRAY &&
+                 array_type->kind != VITTE_SEMA_TYPE_SLICE) ||
+                (array_type->kind == VITTE_SEMA_TYPE_ARRAY &&
+                 array_type->array_length != 0u &&
+                 array_type->array_length != pattern->child_count)) {
+                if (vitte_sema_add_diagnostic(context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_MATCH_TYPE,
+                        pattern->span, pattern->id,
+                        VITTE_SCOPE_INVALID_SYMBOL_ID,
+                        binding_type, VITTE_SEMA_INVALID_TYPE_ID)) {
+                    vitte_sema_diagnostic_t *diagnostic =
+                        &context->diagnostics[context->diagnostic_count - 1u];
+                    if (array_type != NULL &&
+                        array_type->kind == VITTE_SEMA_TYPE_ARRAY &&
+                        array_type->array_length != 0u) {
+                        (void)snprintf(diagnostic->help,
+                            sizeof(diagnostic->help),
+                            "This array pattern has %zu element pattern(s), but the matched array has %zu elements.",
+                            pattern->child_count, array_type->array_length);
+                    } else {
+                        (void)snprintf(diagnostic->help,
+                            sizeof(diagnostic->help),
+                            "Use an array pattern for an array or slice value, and match its element shape.");
+                    }
+                }
+                info = vitte_sema_node_info_mut_private(context, pattern->id);
+                if (info != NULL) info->type_id = context->type_error;
+                for (index = 0u; index < pattern->child_count; ++index) {
+                    vitte_sema_bind_pattern(
+                        context, pattern->children[index], scope_id,
+                        context->type_error, inherited_mutable);
+                }
+                return;
+            }
+            for (index = 0u; index < pattern->child_count; ++index) {
+                vitte_sema_bind_pattern(
+                    context, pattern->children[index], scope_id,
+                    array_type->element_type, inherited_mutable);
+            }
             return;
         }
         if ((pattern->flags & VITTE_AST_FLAG_PATTERN_MUTABLE) != 0u) {
@@ -9595,6 +11829,186 @@ vitte_sema_bind_pattern(
             pattern->child_count != 0u) {
             const vitte_ast_node_t *head =
                 vitte_sema_node(context, pattern->children[0]);
+
+            if ((pattern->flags & VITTE_AST_FLAG_PATTERN_STRUCT) != 0u) {
+                vitte_sema_type_id_t aggregate_type =
+                    vitte_sema_analyze_type_node(context, head->id, scope_id);
+                const vitte_sema_type_t *aggregate =
+                    vitte_sema_type_private(context, aggregate_type);
+                const vitte_symbol_t *aggregate_symbol = aggregate != NULL &&
+                        aggregate->kind == VITTE_SEMA_TYPE_NAMED
+                    ? vitte_scope_get_symbol(
+                          &context->scopes, aggregate->symbol_id)
+                    : NULL;
+                const vitte_ast_node_t *form_declaration = aggregate_symbol != NULL
+                    ? (const vitte_ast_node_t *)aggregate_symbol->payload : NULL;
+                vitte_scope_id_t form_scope = VITTE_SCOPE_INVALID_SCOPE_ID;
+                size_t scope_index;
+
+                if (binding_type != context->type_error &&
+                    aggregate_type != context->type_error &&
+                    !vitte_sema_type_identical_private(
+                        context, binding_type, aggregate_type) &&
+                    vitte_sema_add_diagnostic(context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_MATCH_TYPE,
+                        pattern->span, pattern->id,
+                        aggregate_symbol != NULL ? aggregate_symbol->id
+                            : VITTE_SCOPE_INVALID_SYMBOL_ID,
+                        binding_type, aggregate_type)) {
+                    vitte_sema_diagnostic_t *diagnostic =
+                        &context->diagnostics[context->diagnostic_count - 1u];
+                    (void)snprintf(diagnostic->help,
+                        sizeof(diagnostic->help),
+                        "Use a struct pattern whose type matches the value being matched.");
+                    if (form_declaration != NULL) {
+                        vitte_sema_set_last_related_location(
+                            context, form_declaration,
+                            "this form defines the pattern type");
+                    }
+                    {
+                        vitte_sema_node_info_t *pattern_info =
+                            vitte_sema_node_info_mut_private(
+                                context, pattern->id);
+                        if (pattern_info != NULL)
+                            pattern_info->type_id = context->type_error;
+                    }
+                }
+                if (form_declaration == NULL ||
+                    form_declaration->kind != VITTE_AST_NODE_FORM_DECL) {
+                    return;
+                }
+                for (scope_index = 0u;
+                     scope_index < context->scopes.scope_count;
+                     ++scope_index) {
+                    const vitte_scope_entry_t *candidate =
+                        &context->scopes.scopes[scope_index];
+                    if (candidate->kind == VITTE_SCOPE_KIND_FORM &&
+                        candidate->payload == (void *)form_declaration) {
+                        form_scope = candidate->id;
+                        break;
+                    }
+                }
+                if (form_scope == VITTE_SCOPE_INVALID_SCOPE_ID) return;
+                for (index = 1u; index < pattern->child_count; ++index) {
+                    const vitte_ast_node_t *field = vitte_sema_node(
+                        context, pattern->children[index]);
+                    const vitte_ast_node_t *field_name = field;
+                    const vitte_ast_node_t *field_binding = field;
+                    const vitte_token_t *field_token;
+                    vitte_symbol_id_t field_symbol_id;
+                    const vitte_symbol_t *field_symbol;
+                    const vitte_ast_node_t *field_declaration;
+                    vitte_sema_type_id_t field_type = context->type_error;
+                    size_t previous_index;
+
+                    if (field == NULL) continue;
+                    if (field->kind == VITTE_AST_NODE_PATTERN &&
+                        (field->flags & VITTE_AST_FLAG_PATTERN_HEAD) != 0u &&
+                        field->child_count >= 2u) {
+                        field_name = vitte_sema_node(
+                            context, field->children[0]);
+                        field_binding = vitte_sema_node(
+                            context, field->children[1]);
+                    }
+                    field_token = vitte_sema_node_token(context, field_name);
+                    for (previous_index = 1u;
+                         previous_index < index;
+                         ++previous_index) {
+                        const vitte_ast_node_t *previous_field =
+                            vitte_sema_node(context,
+                                pattern->children[previous_index]);
+                        const vitte_ast_node_t *previous_name = previous_field;
+                        const vitte_token_t *previous_token;
+                        if (previous_field != NULL &&
+                            previous_field->kind == VITTE_AST_NODE_PATTERN &&
+                            (previous_field->flags &
+                             VITTE_AST_FLAG_PATTERN_HEAD) != 0u &&
+                            previous_field->child_count >= 2u) {
+                            previous_name = vitte_sema_node(context,
+                                previous_field->children[0]);
+                        }
+                        previous_token = vitte_sema_node_token(
+                            context, previous_name);
+                        if (field_token != NULL && previous_token != NULL &&
+                            field_token->length == previous_token->length &&
+                            memcmp(field_token->lexeme, previous_token->lexeme,
+                                   field_token->length) == 0) {
+                            (void)vitte_sema_add_diagnostic(context,
+                                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                                VITTE_SEMA_DIAGNOSTIC_MATCH_TYPE,
+                                field_name != NULL ? field_name->span : field->span,
+                                field_name != NULL ? field_name->id : field->id,
+                                aggregate_symbol != NULL ? aggregate_symbol->id
+                                    : VITTE_SCOPE_INVALID_SYMBOL_ID,
+                                VITTE_SEMA_INVALID_TYPE_ID, aggregate_type);
+                            if (context->diagnostic_count != 0u) {
+                                vitte_sema_diagnostic_t *diagnostic =
+                                    &context->diagnostics[context->diagnostic_count - 1u];
+                                (void)snprintf(diagnostic->help,
+                                    sizeof(diagnostic->help),
+                                    "Field `%.*s` appears more than once in this struct pattern. Keep one field entry.",
+                                    (int)field_token->length, field_token->lexeme);
+                                vitte_sema_set_last_related_location(
+                                    context, previous_name,
+                                    "first field entry appears here");
+                            }
+                            {
+                                vitte_sema_node_info_t *pattern_info =
+                                    vitte_sema_node_info_mut_private(
+                                        context, pattern->id);
+                                if (pattern_info != NULL)
+                                    pattern_info->type_id = context->type_error;
+                            }
+                            return;
+                        }
+                    }
+                    field_symbol_id = field_token != NULL
+                        ? vitte_scope_lookup_local_n(
+                              &context->scopes, form_scope,
+                              field_token->lexeme, field_token->length)
+                        : VITTE_SCOPE_INVALID_SYMBOL_ID;
+                    field_symbol = field_symbol_id !=
+                            VITTE_SCOPE_INVALID_SYMBOL_ID
+                        ? vitte_scope_get_symbol(
+                              &context->scopes, field_symbol_id) : NULL;
+                    field_declaration = field_symbol != NULL
+                        ? (const vitte_ast_node_t *)field_symbol->payload
+                        : NULL;
+                    if (field_declaration == NULL ||
+                        field_declaration->kind != VITTE_AST_NODE_FIELD_DECL) {
+                        (void)vitte_sema_add_diagnostic(context,
+                            VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_UNKNOWN_MEMBER,
+                            field_name != NULL ? field_name->span : field->span,
+                            field_name != NULL ? field_name->id : field->id,
+                            aggregate_symbol != NULL ? aggregate_symbol->id
+                                : VITTE_SCOPE_INVALID_SYMBOL_ID,
+                            VITTE_SEMA_INVALID_TYPE_ID, aggregate_type);
+                        if (context->diagnostic_count != 0u) {
+                            vitte_sema_set_last_related_location(
+                                context,
+                                form_declaration,
+                                "available fields are declared here");
+                        }
+                    } else if (field_declaration->child_count > 1u) {
+                        field_type = vitte_sema_analyze_type_node(
+                            context, field_declaration->children[1], form_scope);
+                        field_type =
+                            vitte_sema_substitute_generic_type_private(
+                                context, field_type, aggregate_type);
+                    }
+                    vitte_sema_bind_pattern(
+                        context,
+                        field_binding != NULL ? field_binding->id : field->id,
+                        scope_id,
+                        field_type,
+                        inherited_mutable ||
+                            (pattern->flags &
+                             VITTE_AST_FLAG_PATTERN_MUTABLE) != 0u);
+                }
+                return;
+            }
             vitte_sema_pick_variant_resolution_t resolution;
             size_t payload_count;
             size_t pattern_payload_count;
@@ -9606,21 +12020,90 @@ vitte_sema_bind_pattern(
                     context, head, scope_id, &resolution)) {
                 (void)vitte_sema_analyze_expression(
                     context, head->id, scope_id);
+                {
+                    vitte_sema_node_info_t *pattern_info =
+                        vitte_sema_node_info_mut_private(
+                            context, pattern->id);
+                    if (pattern_info != NULL)
+                        pattern_info->type_id = context->type_error;
+                }
                 return;
             }
             payload_count =
                 resolution.variant_declaration->child_count - 1u;
             pattern_payload_count = pattern->child_count - 1u;
-            if (payload_count != pattern_payload_count) {
-                (void)vitte_sema_add_diagnostic(
-                    context,
+            if (binding_type != context->type_error &&
+                !vitte_sema_type_identical_private(
+                    context, binding_type, resolution.pick_type_id) &&
+                vitte_sema_add_diagnostic(context,
                     VITTE_SEMA_DIAGNOSTIC_ERROR,
-                    VITTE_SEMA_DIAGNOSTIC_INVALID_ARGUMENT_COUNT,
-                    pattern->span,
-                    pattern->id,
+                    VITTE_SEMA_DIAGNOSTIC_MATCH_TYPE,
+                    pattern->span, pattern->id,
                     resolution.pick_symbol_id,
-                    VITTE_SEMA_INVALID_TYPE_ID,
-                    VITTE_SEMA_INVALID_TYPE_ID);
+                    binding_type, resolution.pick_type_id)) {
+                vitte_sema_diagnostic_t *diagnostic =
+                    &context->diagnostics[context->diagnostic_count - 1u];
+                (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                    "Use a variant declared by the matched pick type.");
+                vitte_sema_set_last_related_location(
+                    context, resolution.pick_declaration,
+                    "this pick declaration owns the variant");
+                {
+                    vitte_sema_node_info_t *pattern_info =
+                        vitte_sema_node_info_mut_private(
+                            context, pattern->id);
+                    if (pattern_info != NULL)
+                        pattern_info->type_id = context->type_error;
+                }
+            }
+            if (payload_count != pattern_payload_count) {
+                if (vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_MATCH_TYPE,
+                        pattern->span,
+                        pattern->id,
+                        resolution.pick_symbol_id,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    vitte_sema_diagnostic_t *diagnostic =
+                        &context->diagnostics[context->diagnostic_count - 1u];
+                    (void)snprintf(diagnostic->help,
+                        sizeof(diagnostic->help),
+                        "This variant expects %zu payload pattern%s but this arm supplies %zu. Match the declared constructor shape.",
+                        payload_count, payload_count == 1u ? "" : "s",
+                        pattern_payload_count);
+                    vitte_sema_set_last_related_location(
+                        context, resolution.variant_declaration,
+                        "variant payloads are declared here");
+                    {
+                        vitte_sema_node_info_t *pattern_info =
+                            vitte_sema_node_info_mut_private(
+                                context, pattern->id);
+                        if (pattern_info != NULL)
+                            pattern_info->type_id = context->type_error;
+                    }
+                }
+                for (index = 0u;
+                     index < pattern_payload_count;
+                     ++index) {
+                    vitte_sema_type_id_t payload_type = context->type_error;
+                    if (index < payload_count) {
+                        payload_type = vitte_sema_analyze_type_node(
+                            context,
+                            resolution.variant_declaration->children[index + 1u],
+                            resolution.pick_scope_id);
+                        payload_type =
+                            vitte_sema_substitute_generic_type_private(
+                                context, payload_type,
+                                resolution.pick_type_id);
+                    }
+                    vitte_sema_bind_pattern(
+                        context, pattern->children[index + 1u],
+                        scope_id, payload_type, inherited_mutable ||
+                            (pattern->flags &
+                             VITTE_AST_FLAG_PATTERN_MUTABLE) != 0u);
+                }
                 return;
             }
             for (index = 0u; index < pattern_payload_count; ++index) {
@@ -9688,6 +12171,40 @@ vitte_sema_bind_pattern(
         vitte_sema_scope_span_from_parser(pattern->span),
         (void *)pattern);
     if (symbol_id == VITTE_SCOPE_INVALID_SYMBOL_ID) {
+        vitte_symbol_id_t existing_id = vitte_scope_lookup_local_n(
+            &context->scopes,
+            scope_id,
+            name,
+            name_length);
+        if (existing_id != VITTE_SCOPE_INVALID_SYMBOL_ID) {
+            const vitte_symbol_t *existing_symbol =
+                vitte_scope_get_symbol(&context->scopes, existing_id);
+            if (vitte_sema_add_diagnostic(
+                context,
+                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_DUPLICATE_BINDING,
+                pattern->span,
+                pattern->id,
+                existing_id,
+                VITTE_SEMA_INVALID_TYPE_ID,
+                VITTE_SEMA_INVALID_TYPE_ID)) {
+                const vitte_ast_node_t *previous_pattern =
+                    existing_symbol != NULL && existing_symbol->payload != NULL
+                        ? (const vitte_ast_node_t *)existing_symbol->payload
+                        : NULL;
+                if (previous_pattern != NULL) {
+                    vitte_sema_set_last_related_location(
+                        context, previous_pattern,
+                        "first binding declared here");
+                }
+            }
+            info = vitte_sema_node_info_mut_private(context, pattern->id);
+            if (info != NULL) info->type_id = context->type_error;
+            context->stats.duplicate_declarations =
+                vitte_sema_u64_add_sat(
+                    context->stats.duplicate_declarations,
+                    UINT64_C(1));
+        }
         return;
     }
 
@@ -10030,6 +12547,356 @@ vitte_sema_is_private_glob_import_name(
     }
 
     return false;
+}
+
+static bool
+vitte_sema_scope_module_path_text(
+    vitte_sema_t *context,
+    vitte_scope_id_t module_scope,
+    char *buffer,
+    size_t capacity)
+{
+    vitte_scope_id_t chain[64];
+    size_t chain_count = 0u;
+    size_t used;
+    size_t chain_index;
+
+    if (context == NULL || buffer == NULL || capacity == 0u) {
+        return false;
+    }
+
+    buffer[0] = '\0';
+    while (module_scope != 0u && chain_count < sizeof(chain) / sizeof(chain[0])) {
+        const vitte_scope_entry_t *entry =
+            vitte_scope_get_scope(&context->scopes, module_scope);
+        if (entry == NULL) {
+            return false;
+        }
+        chain[chain_count++] = module_scope;
+        module_scope = entry->parent_id;
+    }
+    if (module_scope != 0u || chain_count == 0u) {
+        return false;
+    }
+
+    used = 0u;
+    for (chain_index = chain_count; chain_index != 0u; --chain_index) {
+        const vitte_scope_entry_t *entry = vitte_scope_get_scope(
+            &context->scopes, chain[chain_index - 1u]);
+        const vitte_ast_node_t *declaration = entry != NULL
+            ? (const vitte_ast_node_t *)entry->payload
+            : NULL;
+        const vitte_ast_node_t *path = declaration != NULL &&
+                declaration->kind == VITTE_AST_NODE_SPACE_DECL &&
+                declaration->child_count != 0u
+            ? vitte_sema_node(context, declaration->children[0])
+            : NULL;
+        size_t segment_index;
+        if (path == NULL || path->kind != VITTE_AST_NODE_PATH) {
+            continue;
+        }
+        for (segment_index = 0u;
+             segment_index < path->child_count;
+             ++segment_index) {
+            const vitte_ast_node_t *segment =
+                vitte_sema_node(context, path->children[segment_index]);
+            const char *name;
+            size_t name_length;
+            size_t separator_length = used == 0u ? 0u : 2u;
+            if (segment == NULL ||
+                !vitte_sema_token_name(
+                    vitte_sema_node_token(context, segment),
+                    &name,
+                    &name_length) ||
+                separator_length > capacity - used - 1u ||
+                name_length > capacity - used - separator_length - 1u) {
+                buffer[0] = '\0';
+                return false;
+            }
+            if (separator_length != 0u) {
+                memcpy(buffer + used, "::", separator_length);
+                used += separator_length;
+            }
+            memcpy(buffer + used, name, name_length);
+            used += name_length;
+            buffer[used] = '\0';
+        }
+    }
+
+    return used != 0u;
+}
+
+static bool
+vitte_sema_help_module_member_import(
+    vitte_sema_t *context,
+    vitte_scope_id_t requester_scope,
+    const char *name,
+    size_t name_length)
+{
+    char modules[2][128];
+    char aliases[2][96];
+    vitte_symbol_id_t symbols[2];
+    size_t candidate_count;
+    size_t node_index;
+    vitte_sema_diagnostic_t *diagnostic;
+    int shown_name_length;
+
+    if (context == NULL || context->parser == NULL || name == NULL ||
+        name_length == 0u || context->diagnostic_count == 0u) {
+        return false;
+    }
+
+    diagnostic = &context->diagnostics[context->diagnostic_count - 1u];
+    if (diagnostic->code != VITTE_SEMA_DIAGNOSTIC_UNRESOLVED_NAME) {
+        return false;
+    }
+    candidate_count = 0u;
+    shown_name_length = name_length > 40u ? 40 : (int)name_length;
+
+    for (node_index = 0u;
+         node_index < context->parser->node_count;
+         ++node_index) {
+        const vitte_ast_node_t *use_node;
+        const vitte_sema_node_info_t *use_info;
+        const vitte_ast_node_t *module_path;
+        const vitte_ast_node_t *alias_node;
+        const char *alias_name;
+        size_t alias_length;
+        vitte_scope_id_t module_scope;
+        vitte_symbol_id_t symbol_id;
+        const vitte_symbol_t *symbol;
+        size_t candidate_index;
+
+        use_node = vitte_sema_node(
+            context,
+            (vitte_ast_node_id_t)(node_index + 1u));
+        if (use_node == NULL ||
+            use_node->kind != VITTE_AST_NODE_USE_DECL ||
+            (use_node->flags & VITTE_AST_FLAG_GLOB_IMPORT) != 0u ||
+            (use_node->child_count != 1u && use_node->child_count != 2u) ||
+            (use_node->child_count == 2u &&
+             (vitte_sema_node(
+                  context,
+                  use_node->children[1]) == NULL ||
+              vitte_sema_node(
+                  context,
+                  use_node->children[1])->kind !=
+                  VITTE_AST_NODE_IDENTIFIER))) {
+            continue;
+        }
+
+        use_info = vitte_sema_node_info_private(context, use_node->id);
+        if (use_info == NULL ||
+            !vitte_scope_is_ancestor(
+                &context->scopes,
+                use_info->scope_id,
+                requester_scope)) {
+            continue;
+        }
+
+        module_path = vitte_sema_node(context, use_node->children[0]);
+        if (module_path == NULL ||
+            !vitte_sema_resolve_import_module(
+                context,
+                module_path,
+                use_info->scope_id,
+                &module_scope)) {
+            continue;
+        }
+
+        symbol_id = vitte_scope_lookup_local_n(
+            &context->scopes,
+            module_scope,
+            name,
+            name_length);
+        symbol = symbol_id != VITTE_SCOPE_INVALID_SYMBOL_ID
+            ? vitte_scope_get_symbol(&context->scopes, symbol_id)
+            : NULL;
+        if (!vitte_symbol_is_public(symbol)) {
+            continue;
+        }
+
+        alias_node = use_node->child_count == 2u
+            ? vitte_sema_node(context, use_node->children[1])
+            : module_path->kind == VITTE_AST_NODE_PATH &&
+                    module_path->child_count != 0u
+                ? vitte_sema_node(
+                      context,
+                      module_path->children[module_path->child_count - 1u])
+                : NULL;
+        if (alias_node == NULL ||
+            !vitte_sema_token_name(
+                vitte_sema_node_token(context, alias_node),
+                &alias_name,
+                &alias_length)) {
+            continue;
+        }
+
+        for (candidate_index = 0u;
+             candidate_index < candidate_count && candidate_index < 2u;
+             ++candidate_index) {
+            if (symbols[candidate_index] == symbol_id) {
+                break;
+            }
+        }
+        if (candidate_index < candidate_count) {
+            continue;
+        }
+        if (candidate_count < 2u) {
+            size_t copy_length;
+
+            symbols[candidate_count] = symbol_id;
+            if (!vitte_sema_scope_module_path_text(
+                    context,
+                    module_scope,
+                    modules[candidate_count],
+                    sizeof(modules[candidate_count]))) {
+                modules[candidate_count][0] = '\0';
+            }
+            copy_length = alias_length < sizeof(aliases[candidate_count]) - 1u
+                ? alias_length
+                : sizeof(aliases[candidate_count]) - 1u;
+            memcpy(aliases[candidate_count], alias_name, copy_length);
+            aliases[candidate_count][copy_length] = '\0';
+        }
+        ++candidate_count;
+    }
+
+    if (candidate_count == 0u) {
+        return false;
+    }
+    if (candidate_count == 1u && modules[0][0] != '\0') {
+        (void)snprintf(
+            diagnostic->help,
+            sizeof(diagnostic->help),
+            "`%.*s` is in module `%.*s`; importing it binds module `%.*s`, not its members. Use `%.*s::%.*s` or `use %.*s::{%.*s};` (add `as alias` to rename the item).",
+            shown_name_length,
+            name,
+            64,
+            modules[0],
+            48,
+            aliases[0],
+            48,
+            aliases[0],
+            shown_name_length,
+            name,
+            64,
+            modules[0],
+            shown_name_length,
+            name);
+    } else if (candidate_count >= 2u && modules[0][0] != '\0' &&
+               modules[1][0] != '\0') {
+        (void)snprintf(
+            diagnostic->help,
+            sizeof(diagnostic->help),
+            "`%.*s` is exported by both `%s` and `%s`. Import one through a group with `as alias` to select it explicitly.",
+            shown_name_length,
+            name,
+            modules[0],
+            modules[1]);
+    } else {
+        return false;
+    }
+
+    return diagnostic->help[0] != '\0';
+}
+
+static bool
+vitte_sema_add_import_ambiguity(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *current_declaration,
+    vitte_scope_id_t current_module_scope,
+    const vitte_symbol_t *existing_import)
+{
+    const vitte_ast_node_t *existing_declaration;
+    const vitte_ast_node_t *current_name_node;
+    const vitte_sema_node_info_t *current_info;
+    const vitte_sema_node_info_t *existing_info;
+    const char *name;
+    size_t name_length;
+    char current_module[96];
+    char existing_module[96];
+    vitte_symbol_id_t existing_declaration_id;
+
+    if (context == NULL || current_declaration == NULL ||
+        existing_import == NULL || existing_import->payload == NULL ||
+        (existing_import->flags & VITTE_SYMBOL_FLAG_IMPORTED) == 0u) {
+        return false;
+    }
+
+    existing_declaration = (const vitte_ast_node_t *)existing_import->payload;
+    current_name_node = vitte_sema_find_identifier_child(
+        context,
+        current_declaration);
+    if (current_name_node == NULL ||
+        !vitte_sema_declaration_name(
+            context,
+            current_declaration,
+            &name,
+            &name_length)) {
+        return false;
+    }
+
+    current_info = vitte_sema_node_info_private(
+        context,
+        current_declaration->id);
+    if (current_info != NULL &&
+        current_info->scope_id != VITTE_SCOPE_INVALID_SCOPE_ID) {
+        current_module_scope = current_info->scope_id;
+    }
+    existing_info = vitte_sema_node_info_private(
+        context,
+        existing_declaration->id);
+    if (existing_info == NULL ||
+        !vitte_sema_scope_module_path_text(
+            context,
+            current_module_scope,
+            current_module,
+            sizeof(current_module)) ||
+        !vitte_sema_scope_module_path_text(
+            context,
+            existing_info->scope_id,
+            existing_module,
+            sizeof(existing_module))) {
+        return false;
+    }
+
+    existing_declaration_id = vitte_scope_lookup_local_n(
+        &context->scopes,
+        existing_info->scope_id,
+        existing_import->name,
+        existing_import->name_length);
+    if (existing_declaration_id == VITTE_SCOPE_INVALID_SYMBOL_ID) {
+        existing_declaration_id = existing_import->id;
+    }
+
+    if (!vitte_sema_add_diagnostic(
+            context,
+            VITTE_SEMA_DIAGNOSTIC_ERROR,
+            VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME,
+            current_name_node->span,
+            current_name_node->id,
+            existing_declaration_id,
+            VITTE_SEMA_INVALID_TYPE_ID,
+            VITTE_SEMA_INVALID_TYPE_ID)) {
+        return true;
+    }
+
+    (void)snprintf(
+        context->diagnostics[context->diagnostic_count - 1u].help,
+        sizeof(context->diagnostics[context->diagnostic_count - 1u].help),
+        "Ambiguous imported name `%.*s` has candidates in `%.*s` and `%.*s`. Alias one grouped item, e.g. `use %.*s::{%.*s as local};`, or qualify it through its module.",
+        (int)(name_length > 32u ? 32u : name_length),
+        name,
+        64,
+        current_module,
+        64,
+        existing_module,
+        64,
+        current_module,
+        (int)(name_length > 32u ? 32u : name_length),
+        name);
+    return true;
 }
 
 static bool
@@ -10693,6 +13560,26 @@ vitte_sema_analyze_import(
                 vitte_sema_same_declaration_private(
                     existing_symbol->payload,
                     module_declaration)) {
+                if (vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT,
+                        module_alias->span,
+                        module_alias->id,
+                        existing_id,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    (void)snprintf(
+                        context->diagnostics[
+                            context->diagnostic_count - 1u].help,
+                        sizeof(context->diagnostics[
+                            context->diagnostic_count - 1u].help),
+                        "Module `%.*s` is already imported as `%.*s`; remove this repeated use declaration.",
+                        (int)(alias_length > 96u ? 96u : alias_length),
+                        alias_name,
+                        (int)(alias_length > 96u ? 96u : alias_length),
+                        alias_name);
+                }
                 return context->type_void;
             }
 
@@ -10804,6 +13691,14 @@ vitte_sema_analyze_import(
                             node->span),
                         (void *)target_declaration) ==
                     VITTE_SCOPE_INVALID_SYMBOL_ID) {
+                    if (existing_symbol != NULL &&
+                        vitte_sema_add_import_ambiguity(
+                            context,
+                            target_declaration,
+                            module_scope,
+                            existing_symbol)) {
+                        continue;
+                    }
                     if (vitte_sema_add_diagnostic(
                             context,
                             VITTE_SEMA_DIAGNOSTIC_ERROR,
@@ -10814,12 +13709,10 @@ vitte_sema_analyze_import(
                             VITTE_SEMA_INVALID_TYPE_ID,
                             VITTE_SEMA_INVALID_TYPE_ID) &&
                         existing_symbol != NULL) {
-                        vitte_sema_diagnostic_t *diagnostic;
-                        int shown_length;
-
-                        diagnostic = &context->diagnostics[
-                            context->diagnostic_count - 1u];
-                        shown_length = target_symbol->name_length > 128u
+                        vitte_sema_diagnostic_t *diagnostic =
+                            &context->diagnostics[
+                                context->diagnostic_count - 1u];
+                        int shown_length = target_symbol->name_length > 128u
                             ? 128
                             : (int)target_symbol->name_length;
                         (void)snprintf(
@@ -10968,6 +13861,39 @@ vitte_sema_analyze_import(
                 vitte_sema_same_declaration_private(
                     existing_symbol->payload,
                     target_declaration)) {
+                if (vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT,
+                        alias_node != NULL ? alias_node->span : item->span,
+                        alias_node != NULL ? alias_node->id : item->id,
+                        existing_id,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    (void)snprintf(
+                        context->diagnostics[
+                            context->diagnostic_count - 1u].help,
+                        sizeof(context->diagnostics[
+                            context->diagnostic_count - 1u].help),
+                        "`%.*s` is imported more than once under the same local name; remove the repeated item or give one import a distinct alias.",
+                        (int)(alias_length > 96u ? 96u : alias_length),
+                        alias);
+                }
+                continue;
+            }
+            if (alias_node == NULL &&
+                existing_symbol != NULL &&
+                (existing_symbol->flags &
+                 VITTE_SYMBOL_FLAG_IMPORTED) != 0u &&
+                existing_symbol->kind == target_symbol->kind &&
+                !vitte_sema_same_declaration_private(
+                    existing_symbol->payload,
+                    target_declaration) &&
+                vitte_sema_add_import_ambiguity(
+                    context,
+                    target_declaration,
+                    module_scope,
+                    existing_symbol)) {
                 continue;
             }
             if (vitte_sema_add_diagnostic(
@@ -11019,6 +13945,8 @@ vitte_sema_register_export_aliases(
     bool diagnose_missing)
 {
     size_t declaration_index;
+    const vitte_scope_entry_t *export_scope;
+    bool export_scope_valid;
 
 
     if (context == NULL ||
@@ -11027,6 +13955,11 @@ vitte_sema_register_export_aliases(
          body->kind != VITTE_AST_NODE_TRANSLATION_UNIT)) {
         return;
     }
+
+    export_scope = vitte_scope_get_scope(&context->scopes, scope_id);
+    export_scope_valid = export_scope != NULL &&
+        (export_scope->kind == VITTE_SCOPE_KIND_ROOT ||
+         export_scope->kind == VITTE_SCOPE_KIND_SPACE);
 
     for (declaration_index = 0u;
          declaration_index < body->child_count;
@@ -11046,32 +13979,87 @@ vitte_sema_register_export_aliases(
             continue;
         }
 
+        if (!export_scope_valid) {
+            if (diagnose_missing && vitte_sema_add_diagnostic(
+                    context,
+                    VITTE_SEMA_DIAGNOSTIC_ERROR,
+                    VITTE_SEMA_DIAGNOSTIC_INVALID_SCOPE,
+                    export_node->span,
+                    export_node->id,
+                    VITTE_SCOPE_INVALID_SYMBOL_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID)) {
+                vitte_sema_append_diagnostic_help(
+                    &context->diagnostics[context->diagnostic_count - 1u],
+                    "Export clauses belong at module scope. Add `pub` to an individual declaration inside a trait or impl block.");
+            }
+            continue;
+        }
+
+        if (export_node->child_count == 0u) {
+            size_t symbol_index;
+            for (symbol_index = 0u;
+                 symbol_index < context->scopes.symbol_count;
+                 ++symbol_index) {
+                const vitte_symbol_t *symbol =
+                    &context->scopes.symbols[symbol_index];
+                if (symbol->scope_id != scope_id ||
+                    (symbol->flags & VITTE_SYMBOL_FLAG_IMPORTED) == 0u) {
+                    continue;
+                }
+                if (diagnose_missing && vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT,
+                        export_node->span,
+                        export_node->id,
+                        symbol->id,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[
+                            context->diagnostic_count - 1u],
+                        "`export *;` exports declarations from this module only. Add `pub` to local declarations and import dependencies directly in the consuming module.");
+                }
+            }
+            continue;
+        }
+
         for (item_index = 0u;
-             item_index + 1u < export_node->child_count;
+             item_index < export_node->child_count;
              ++item_index) {
             const vitte_ast_node_t *item;
             const vitte_ast_node_t *alias_node;
             const vitte_ast_node_t *segment;
+            const vitte_ast_node_t *prefix_segment;
             const vitte_symbol_t *target_symbol;
+            const vitte_symbol_t *prefix_symbol;
             const char *source_name;
             const char *alias;
+            const char *prefix_name;
             size_t source_name_length;
             size_t alias_length;
+            size_t prefix_name_length;
             vitte_symbol_id_t target_id;
+            vitte_symbol_id_t prefix_id;
+            vitte_symbol_id_t qualified_target_id;
+            vitte_scope_id_t imported_module_scope;
+            bool imported_module_prefix;
 
             item =
                 vitte_sema_node(
                     context,
                     export_node->children[item_index]);
-            alias_node =
-                vitte_sema_node(
-                    context,
-                    export_node->children[item_index + 1u]);
+            alias_node = item_index + 1u < export_node->child_count
+                ? vitte_sema_node(
+                      context,
+                      export_node->children[item_index + 1u])
+                : NULL;
+            if (alias_node != NULL && alias_node->kind != VITTE_AST_NODE_IDENTIFIER) {
+                alias_node = NULL;
+            }
             if (item == NULL ||
                 item->kind != VITTE_AST_NODE_PATH ||
-                alias_node == NULL ||
-                alias_node->kind !=
-                    VITTE_AST_NODE_IDENTIFIER ||
                 item->child_count == 0u) {
                 continue;
             }
@@ -11088,21 +14076,50 @@ vitte_sema_register_export_aliases(
                         segment),
                     &source_name,
                     &source_name_length) ||
-                !vitte_sema_token_name(
-                    vitte_sema_node_token(
-                        context,
-                        alias_node),
-                    &alias,
-                    &alias_length)) {
+                (alias_node != NULL &&
+                 !vitte_sema_token_name(
+                     vitte_sema_node_token(context, alias_node),
+                     &alias,
+                     &alias_length))) {
                 continue;
             }
 
-            ++item_index;
-            if (source_name_length == alias_length &&
-                memcmp(source_name, alias, alias_length) == 0) {
-                continue;
+            prefix_id = VITTE_SCOPE_INVALID_SYMBOL_ID;
+            prefix_symbol = NULL;
+            imported_module_prefix = false;
+            if (item->child_count > 1u) {
+                prefix_segment = vitte_sema_node(
+                    context,
+                    item->children[0u]);
+                if (prefix_segment != NULL &&
+                    vitte_sema_token_name(
+                        vitte_sema_node_token(context, prefix_segment),
+                        &prefix_name,
+                        &prefix_name_length)) {
+                    prefix_id = vitte_scope_lookup_local_n(
+                        &context->scopes,
+                        scope_id,
+                        prefix_name,
+                        prefix_name_length);
+                    prefix_symbol = prefix_id !=
+                            VITTE_SCOPE_INVALID_SYMBOL_ID
+                        ? vitte_scope_get_symbol(
+                              &context->scopes,
+                              prefix_id)
+                        : NULL;
+                    imported_module_prefix = prefix_symbol != NULL &&
+                        prefix_symbol->kind == VITTE_SYMBOL_KIND_SPACE &&
+                        (prefix_symbol->flags &
+                         VITTE_SYMBOL_FLAG_IMPORTED) != 0u;
+                }
             }
 
+            if (alias_node != NULL) {
+                ++item_index;
+            } else {
+                alias = source_name;
+                alias_length = source_name_length;
+            }
             target_id =
                 vitte_scope_lookup_local_n(
                     &context->scopes,
@@ -11131,22 +14148,121 @@ vitte_sema_register_export_aliases(
                           &context->scopes,
                           target_id)
                     : NULL;
+            if (imported_module_prefix) {
+                const vitte_ast_node_t *module_declaration =
+                    (const vitte_ast_node_t *)prefix_symbol->payload;
+                const vitte_symbol_t *qualified_target_symbol = NULL;
+                imported_module_scope = VITTE_SCOPE_INVALID_SCOPE_ID;
+                qualified_target_id = VITTE_SCOPE_INVALID_SYMBOL_ID;
+                if (module_declaration != NULL &&
+                    vitte_sema_space_scope_private(
+                        context,
+                        prefix_symbol,
+                        module_declaration,
+                        &imported_module_scope)) {
+                    qualified_target_id = vitte_scope_lookup_local_n(
+                        &context->scopes,
+                        imported_module_scope,
+                        source_name,
+                        source_name_length);
+                    qualified_target_symbol = qualified_target_id !=
+                            VITTE_SCOPE_INVALID_SYMBOL_ID
+                        ? vitte_scope_get_symbol(
+                              &context->scopes,
+                              qualified_target_id)
+                        : NULL;
+                }
+                if (qualified_target_symbol != NULL &&
+                    qualified_target_symbol->visibility !=
+                        VITTE_SYMBOL_VISIBILITY_PUBLIC) {
+                    if (diagnose_missing && vitte_sema_add_diagnostic(
+                            context,
+                            VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_PRIVATE_SYMBOL,
+                            segment->span,
+                            segment->id,
+                            qualified_target_id,
+                            VITTE_SEMA_INVALID_TYPE_ID,
+                            VITTE_SEMA_INVALID_TYPE_ID)) {
+                        vitte_sema_help_private_symbol(
+                            context,
+                            qualified_target_symbol);
+                    }
+                    continue;
+                }
+                if (qualified_target_symbol == NULL) {
+                    if (diagnose_missing && vitte_sema_add_diagnostic(
+                            context,
+                            VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT,
+                            segment->span,
+                            segment->id,
+                            prefix_id,
+                            VITTE_SEMA_INVALID_TYPE_ID,
+                            VITTE_SEMA_INVALID_TYPE_ID)) {
+                        vitte_sema_append_diagnostic_help(
+                            &context->diagnostics[
+                                context->diagnostic_count - 1u],
+                            "This imported module has no declaration with that name. Correct the member path or export a name declared in the current module; re-exports are unsupported.");
+                    }
+                    continue;
+                }
+                if (diagnose_missing && vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT,
+                        segment->span,
+                        segment->id,
+                        qualified_target_id,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[
+                            context->diagnostic_count - 1u],
+                        "Re-exporting a member through an imported module is unsupported. Add `pub` to its declaration in that module, then use `use module::{name};` in the consuming module.");
+                }
+                continue;
+            }
             if (target_symbol == NULL) {
                 if (diagnose_missing &&
                     vitte_sema_add_diagnostic(
                         context,
                         VITTE_SEMA_DIAGNOSTIC_ERROR,
-                        VITTE_SEMA_DIAGNOSTIC_UNRESOLVED_NAME,
-                        item->span,
-                        item->id,
+                        VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT,
+                        segment->span,
+                        segment->id,
                         VITTE_SCOPE_INVALID_SYMBOL_ID,
                         VITTE_SEMA_INVALID_TYPE_ID,
                         VITTE_SEMA_INVALID_TYPE_ID)) {
                     vitte_sema_append_diagnostic_help(
                         &context->diagnostics[
                             context->diagnostic_count - 1u],
-                        "The exported declaration must exist in the defining module.");
+                        "Declare this name in the current module, or correct its spelling. Export paths use `::`, for example `export local_name as public_name;`.");
                 }
+                continue;
+            }
+
+            if ((target_symbol->flags & VITTE_SYMBOL_FLAG_IMPORTED) != 0u) {
+                if (diagnose_missing && vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT,
+                        segment->span,
+                        segment->id,
+                        target_id,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[
+                            context->diagnostic_count - 1u],
+                        "Re-exporting an imported symbol is unsupported. Add `pub` to its declaration in the defining module, then import it with `use module::{name};`.");
+                }
+                continue;
+            }
+
+            if (alias_node == NULL ||
+                (source_name_length == alias_length &&
+                 memcmp(source_name, alias, alias_length) == 0)) {
                 continue;
             }
 
@@ -11194,13 +14310,10 @@ vitte_sema_register_export_aliases(
                         existing_id,
                         VITTE_SEMA_INVALID_TYPE_ID,
                         VITTE_SEMA_INVALID_TYPE_ID)) {
-                    vitte_sema_help_import_alias_conflict(
-                        context,
-                        alias,
-                        alias_length,
-                        false,
-                        true,
-                        existing_symbol);
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[
+                            context->diagnostic_count - 1u],
+                        "Choose an unused public name after `as`, for example `export local_name as public_name;`, or remove the conflicting export.");
                 }
             }
         }
@@ -11361,6 +14474,570 @@ vitte_sema_infer_declaration_type(
     return context->type_error;
 }
 
+static const vitte_ast_node_t *
+vitte_sema_trait_method_for_bound_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *bound_node,
+    vitte_scope_id_t generic_scope,
+    const vitte_token_t *method_name,
+    vitte_symbol_id_t *trait_symbol_id)
+{
+    vitte_sema_type_id_t bound_type_id;
+    const vitte_sema_type_t *bound_type;
+    const vitte_symbol_t *trait_symbol;
+    const vitte_ast_node_t *trait_declaration;
+    size_t index;
+
+    if (trait_symbol_id != NULL) {
+        *trait_symbol_id = VITTE_SCOPE_INVALID_SYMBOL_ID;
+    }
+    if (context == NULL || bound_node == NULL || method_name == NULL ||
+        method_name->lexeme == NULL || method_name->length == 0u) {
+        return NULL;
+    }
+    bound_type_id = vitte_sema_analyze_type_node(
+        context, bound_node->id, generic_scope);
+    bound_type = vitte_sema_type_private(context, bound_type_id);
+    trait_symbol = bound_type != NULL &&
+            bound_type->kind == VITTE_SEMA_TYPE_NAMED
+        ? vitte_scope_get_symbol(&context->scopes, bound_type->symbol_id)
+        : NULL;
+    if (trait_symbol == NULL ||
+        trait_symbol->kind != VITTE_SYMBOL_KIND_TRAIT ||
+        trait_symbol->payload == NULL) {
+        return NULL;
+    }
+    if (trait_symbol_id != NULL) {
+        *trait_symbol_id = trait_symbol->id;
+    }
+    trait_declaration = (const vitte_ast_node_t *)trait_symbol->payload;
+    for (index = 0u; index < trait_declaration->child_count; ++index) {
+        const vitte_ast_node_t *member = vitte_sema_node(
+            context, trait_declaration->children[index]);
+        const char *member_name;
+        size_t member_name_length;
+        if (member == NULL ||
+            (member->kind != VITTE_AST_NODE_PROC_DECL &&
+             member->kind != VITTE_AST_NODE_EXTERN_PROC_DECL) ||
+            !vitte_sema_declaration_name(
+                context, member, &member_name, &member_name_length)) {
+            continue;
+        }
+        if (member_name_length == method_name->length &&
+            memcmp(member_name, method_name->lexeme, member_name_length) == 0) {
+            return member;
+        }
+    }
+    return NULL;
+}
+
+static vitte_sema_type_id_t
+vitte_sema_trait_method_signature_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *method,
+    vitte_scope_id_t fallback_scope)
+{
+    vitte_sema_type_id_t *parameter_types = NULL;
+    vitte_sema_type_id_t return_type = 0u;
+    vitte_sema_type_id_t signature;
+    const vitte_sema_node_info_t *method_info;
+    vitte_scope_id_t method_scope;
+    size_t parameter_count = 0u;
+    size_t parameter_capacity = 0u;
+    size_t index;
+    bool saw_return = false;
+
+    if (context == NULL || method == NULL) {
+        return VITTE_SEMA_INVALID_TYPE_ID;
+    }
+    method_info = vitte_sema_node_info_private(context, method->id);
+    method_scope = method_info != NULL &&
+            method_info->scope_id != VITTE_SCOPE_INVALID_SCOPE_ID
+        ? method_info->scope_id
+        : fallback_scope;
+    if (method_info != NULL &&
+        method_info->type_id != VITTE_SEMA_INVALID_TYPE_ID) {
+        const vitte_sema_type_t *stored_type = vitte_sema_type_private(
+            context, method_info->type_id);
+        if (stored_type != NULL &&
+            stored_type->kind == VITTE_SEMA_TYPE_FUNCTION) {
+            return method_info->type_id;
+        }
+    }
+    return_type = context->type_void;
+    for (index = 1u; index < method->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, method->children[index]);
+        const vitte_ast_node_t *parameter_type;
+        vitte_sema_type_id_t type_id;
+        if (child == NULL) {
+            continue;
+        }
+        if (child->kind == VITTE_AST_NODE_PARAMETER) {
+            parameter_type = child->child_count > 1u
+                ? vitte_sema_node(context, child->children[1])
+                : NULL;
+            type_id = parameter_type != NULL
+                ? vitte_sema_analyze_type_node(
+                      context, parameter_type->id, method_scope)
+                : context->type_error;
+            if (type_id == context->type_error) {
+                free(parameter_types);
+                return VITTE_SEMA_INVALID_TYPE_ID;
+            }
+            if (parameter_count == parameter_capacity) {
+                size_t next_capacity = parameter_capacity == 0u
+                    ? 4u
+                    : parameter_capacity * 2u;
+                vitte_sema_type_id_t *next_parameters =
+                    (vitte_sema_type_id_t *)vitte_sema_reallocate(
+                        context, parameter_types, next_capacity,
+                        sizeof(*parameter_types));
+                if (next_parameters == NULL) {
+                    free(parameter_types);
+                    return VITTE_SEMA_INVALID_TYPE_ID;
+                }
+                parameter_types = next_parameters;
+                parameter_capacity = next_capacity;
+            }
+            parameter_types[parameter_count++] = type_id;
+        } else if (!saw_return &&
+                   (child->kind == VITTE_AST_NODE_TYPE_EXPR ||
+                    child->kind == VITTE_AST_NODE_POINTER_TYPE ||
+                    child->kind == VITTE_AST_NODE_REFERENCE_TYPE ||
+                    child->kind == VITTE_AST_NODE_ARRAY_TYPE ||
+                    child->kind == VITTE_AST_NODE_OPTIONAL_TYPE)) {
+            return_type = vitte_sema_analyze_type_node(
+                context, child->id, method_scope);
+            if (return_type == context->type_error) {
+                free(parameter_types);
+                return VITTE_SEMA_INVALID_TYPE_ID;
+            }
+            saw_return = true;
+        }
+    }
+    signature = vitte_sema_create_function_type_private(
+        context, parameter_types, parameter_count, return_type);
+    free(parameter_types);
+    return signature;
+}
+
+static size_t
+vitte_sema_method_generic_parameter_ordinal_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *method,
+    const vitte_token_t *name)
+{
+    size_t ordinal = 0u;
+    size_t index;
+    if (context == NULL || method == NULL || name == NULL ||
+        name->lexeme == NULL) {
+        return SIZE_MAX;
+    }
+    for (index = 1u; index < method->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, method->children[index]);
+        const vitte_ast_node_t *generic_name;
+        const vitte_token_t *generic_token;
+        if (child == NULL || child->kind != VITTE_AST_NODE_GENERIC_PARAM) {
+            continue;
+        }
+        generic_name = child->child_count != 0u
+            ? vitte_sema_node(context, child->children[0])
+            : NULL;
+        generic_token = vitte_sema_node_token(context, generic_name);
+        if (generic_token != NULL &&
+            generic_token->length == name->length &&
+            memcmp(generic_token->lexeme, name->lexeme, name->length) == 0) {
+            return ordinal;
+        }
+        ++ordinal;
+    }
+    return SIZE_MAX;
+}
+
+static bool
+vitte_sema_method_type_syntax_equal_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *left,
+    const vitte_ast_node_t *left_method,
+    const vitte_ast_node_t *right,
+    const vitte_ast_node_t *right_method,
+    size_t depth)
+{
+    const vitte_token_t *left_token;
+    const vitte_token_t *right_token;
+    size_t index;
+    if (left == NULL || right == NULL || depth >= 32u ||
+        left->kind != right->kind || left->operator_kind != right->operator_kind ||
+        left->child_count != right->child_count) {
+        return false;
+    }
+    left_token = vitte_sema_node_token(context, left);
+    right_token = vitte_sema_node_token(context, right);
+    if ((left_token == NULL) != (right_token == NULL)) { return false; }
+    if (left_token != NULL) {
+        size_t left_generic_ordinal = SIZE_MAX;
+        size_t right_generic_ordinal = SIZE_MAX;
+        if (left_token->kind == VITTE_TOKEN_IDENTIFIER) {
+            left_generic_ordinal =
+                vitte_sema_method_generic_parameter_ordinal_private(
+                    context, left_method, left_token);
+        }
+        if (right_token->kind == VITTE_TOKEN_IDENTIFIER) {
+            right_generic_ordinal =
+                vitte_sema_method_generic_parameter_ordinal_private(
+                    context, right_method, right_token);
+        }
+        if (left_generic_ordinal != SIZE_MAX ||
+            right_generic_ordinal != SIZE_MAX) {
+            if (left_generic_ordinal == SIZE_MAX ||
+                right_generic_ordinal == SIZE_MAX ||
+                left_generic_ordinal != right_generic_ordinal) {
+                return false;
+            }
+        } else if (left_token->kind != right_token->kind ||
+                   left_token->length != right_token->length ||
+                   memcmp(left_token->lexeme, right_token->lexeme,
+                          left_token->length) != 0) {
+            return false;
+        }
+    }
+    for (index = 0u; index < left->child_count; ++index) {
+        const vitte_ast_node_t *left_child = vitte_sema_node(
+            context, left->children[index]);
+        const vitte_ast_node_t *right_child = vitte_sema_node(
+            context, right->children[index]);
+        if (!vitte_sema_method_type_syntax_equal_private(
+                context, left_child, left_method, right_child,
+                right_method, depth + 1u)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static const vitte_ast_node_t *
+vitte_sema_method_return_type_syntax_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *method)
+{
+    size_t index;
+    if (context == NULL || method == NULL) { return NULL; }
+    for (index = 1u; index < method->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, method->children[index]);
+        if (child != NULL &&
+            (child->kind == VITTE_AST_NODE_TYPE_EXPR ||
+             child->kind == VITTE_AST_NODE_POINTER_TYPE ||
+             child->kind == VITTE_AST_NODE_REFERENCE_TYPE ||
+             child->kind == VITTE_AST_NODE_ARRAY_TYPE ||
+             child->kind == VITTE_AST_NODE_OPTIONAL_TYPE)) {
+            return child;
+        }
+    }
+    return NULL;
+}
+
+static bool
+vitte_sema_trait_method_signatures_syntax_equal_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *left,
+    const vitte_ast_node_t *right)
+{
+    size_t left_parameter_count = 0u;
+    size_t right_parameter_count = 0u;
+    size_t left_generic_count = 0u;
+    size_t right_generic_count = 0u;
+    size_t left_index;
+    size_t right_index;
+    size_t left_generic_index;
+    size_t right_generic_index;
+    const vitte_ast_node_t *left_return;
+    const vitte_ast_node_t *right_return;
+    const vitte_ast_node_t *left_where = NULL;
+    const vitte_ast_node_t *right_where = NULL;
+    if (context == NULL || left == NULL || right == NULL ||
+        left->flags != right->flags) {
+        return false;
+    }
+    for (left_index = 0u; left_index < left->child_count; ++left_index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, left->children[left_index]);
+        if (child != NULL && child->kind == VITTE_AST_NODE_PARAMETER) {
+            ++left_parameter_count;
+        } else if (child != NULL && child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
+            ++left_generic_count;
+        }
+    }
+    for (right_index = 0u; right_index < right->child_count; ++right_index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, right->children[right_index]);
+        if (child != NULL && child->kind == VITTE_AST_NODE_PARAMETER) {
+            ++right_parameter_count;
+        } else if (child != NULL && child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
+            ++right_generic_count;
+        }
+    }
+    if (left_parameter_count != right_parameter_count ||
+        left_generic_count != right_generic_count) {
+        return false;
+    }
+    left_generic_index = 0u;
+    right_generic_index = 0u;
+    while (left_generic_index < left->child_count &&
+           right_generic_index < right->child_count) {
+        const vitte_ast_node_t *left_child = vitte_sema_node(
+            context, left->children[left_generic_index++]);
+        const vitte_ast_node_t *right_child = vitte_sema_node(
+            context, right->children[right_generic_index++]);
+        if (left_child == NULL || right_child == NULL) { return false; }
+        if (left_child->kind == VITTE_AST_NODE_GENERIC_PARAM &&
+            right_child->kind == VITTE_AST_NODE_GENERIC_PARAM) {
+            size_t bound_index;
+            if ((left_child->flags & VITTE_AST_FLAG_CONST_GENERIC) !=
+                    (right_child->flags & VITTE_AST_FLAG_CONST_GENERIC) ||
+                left_child->child_count != right_child->child_count) {
+                return false;
+            }
+            for (bound_index = 1u;
+                 bound_index < left_child->child_count;
+                 ++bound_index) {
+                const vitte_ast_node_t *left_bound = vitte_sema_node(
+                    context, left_child->children[bound_index]);
+                const vitte_ast_node_t *right_bound = vitte_sema_node(
+                    context, right_child->children[bound_index]);
+                if (!vitte_sema_method_type_syntax_equal_private(
+                        context, left_bound, left, right_bound, right, 0u)) {
+                    return false;
+                }
+            }
+        }
+    }
+    for (left_index = 0u; left_index < left->child_count; ++left_index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, left->children[left_index]);
+        if (child != NULL && child->kind == VITTE_AST_NODE_WHERE_CLAUSE) {
+            left_where = child;
+            break;
+        }
+    }
+    for (right_index = 0u; right_index < right->child_count; ++right_index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, right->children[right_index]);
+        if (child != NULL && child->kind == VITTE_AST_NODE_WHERE_CLAUSE) {
+            right_where = child;
+            break;
+        }
+    }
+    if ((left_where == NULL) != (right_where == NULL) ||
+        (left_where != NULL &&
+         !vitte_sema_method_type_syntax_equal_private(
+             context, left_where, left, right_where, right, 0u))) {
+        return false;
+    }
+    left_index = 0u;
+    right_index = 0u;
+    while (left_index < left->child_count && right_index < right->child_count) {
+        const vitte_ast_node_t *left_child = vitte_sema_node(
+            context, left->children[left_index++]);
+        const vitte_ast_node_t *right_child = vitte_sema_node(
+            context, right->children[right_index++]);
+        if (left_child == NULL || right_child == NULL) { return false; }
+        if (left_child->kind == VITTE_AST_NODE_PARAMETER &&
+            right_child->kind == VITTE_AST_NODE_PARAMETER) {
+            const vitte_ast_node_t *left_type = left_child->child_count > 1u
+                ? vitte_sema_node(context, left_child->children[1])
+                : NULL;
+            const vitte_ast_node_t *right_type = right_child->child_count > 1u
+                ? vitte_sema_node(context, right_child->children[1])
+                : NULL;
+            if (left_child->flags != right_child->flags ||
+                !vitte_sema_method_type_syntax_equal_private(
+                    context, left_type, left, right_type, right, 0u)) {
+                return false;
+            }
+        }
+    }
+    left_return = vitte_sema_method_return_type_syntax_private(context, left);
+    right_return = vitte_sema_method_return_type_syntax_private(context, right);
+    if ((left_return == NULL) != (right_return == NULL)) { return false; }
+    return left_return == NULL ||
+        vitte_sema_method_type_syntax_equal_private(
+            context, left_return, left, right_return, right, 0u);
+}
+
+static bool
+vitte_sema_consider_generic_method_bound_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *bound_node,
+    vitte_scope_id_t generic_scope,
+    const vitte_token_t *method_name,
+    const vitte_ast_node_t *member_node,
+    vitte_symbol_id_t generic_symbol_id,
+    vitte_symbol_id_t *first_trait_symbol_id,
+    const vitte_ast_node_t **first_method,
+    vitte_sema_type_id_t *first_signature)
+{
+    vitte_symbol_id_t trait_symbol_id;
+    const vitte_ast_node_t *method = vitte_sema_trait_method_for_bound_private(
+        context, bound_node, generic_scope, method_name, &trait_symbol_id);
+    vitte_sema_type_id_t signature;
+
+    if (method == NULL || trait_symbol_id == *first_trait_symbol_id) {
+        return true;
+    }
+    signature = vitte_sema_trait_method_signature_private(
+        context, method, generic_scope);
+    if (signature == VITTE_SEMA_INVALID_TYPE_ID) {
+        return true;
+    }
+    if (*first_method == NULL) {
+        *first_trait_symbol_id = trait_symbol_id;
+        *first_method = method;
+        *first_signature = signature;
+        return true;
+    }
+    if (!vitte_sema_type_identical_private(
+            context, *first_signature, signature) &&
+        !vitte_sema_trait_method_signatures_syntax_equal_private(
+            context, *first_method, method)) {
+        if (vitte_sema_add_diagnostic(
+                context,
+                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_METHOD,
+                member_node->span,
+                member_node->id,
+                generic_symbol_id,
+                VITTE_SEMA_INVALID_TYPE_ID,
+                VITTE_SEMA_INVALID_TYPE_ID)) {
+            vitte_sema_diagnostic_t *diagnostic =
+                &context->diagnostics[context->diagnostic_count - 1u];
+            (void)snprintf(
+                diagnostic->help,
+                sizeof(diagnostic->help),
+                "This method is provided by multiple applicable trait bounds with incompatible signatures. Qualify the trait or remove the conflicting bound.");
+            vitte_sema_set_last_related_location(
+                context, *first_method,
+                "other applicable method candidate declared here");
+        }
+        return false;
+    }
+    return true;
+}
+
+static vitte_sema_type_id_t
+vitte_sema_generic_bound_method_type_private(
+    vitte_sema_t *context,
+    vitte_sema_type_id_t generic_type_id,
+    const vitte_ast_node_t *member_node,
+    const vitte_token_t *method_name)
+{
+    const vitte_sema_type_t *generic_type = vitte_sema_type_private(
+        context, generic_type_id);
+    size_t node_id;
+    size_t node_count;
+    vitte_symbol_id_t first_trait_symbol_id = VITTE_SCOPE_INVALID_SYMBOL_ID;
+    const vitte_ast_node_t *first_method = NULL;
+    vitte_sema_type_id_t first_signature = VITTE_SEMA_INVALID_TYPE_ID;
+
+    if (generic_type == NULL ||
+        generic_type->kind != VITTE_SEMA_TYPE_GENERIC_PARAMETER ||
+        generic_type->symbol_id == VITTE_SCOPE_INVALID_SYMBOL_ID) {
+        return VITTE_SEMA_INVALID_TYPE_ID;
+    }
+    node_count = vitte_parser_node_count(context->parser);
+    for (node_id = 1u; node_id <= node_count; ++node_id) {
+        const vitte_ast_node_t *generic = vitte_sema_node(
+            context, (vitte_ast_node_id_t)node_id);
+        const vitte_sema_node_info_t *generic_info;
+        size_t bound_index;
+        if (generic == NULL || generic->kind != VITTE_AST_NODE_GENERIC_PARAM) {
+            continue;
+        }
+        generic_info = vitte_sema_node_info_private(context, generic->id);
+        if (generic_info == NULL ||
+            generic_info->symbol_id != generic_type->symbol_id) {
+            continue;
+        }
+        for (bound_index = 1u; bound_index < generic->child_count; ++bound_index) {
+            const vitte_ast_node_t *bound = vitte_sema_node(
+                context, generic->children[bound_index]);
+            if (bound != NULL &&
+                !vitte_sema_consider_generic_method_bound_private(
+                    context, bound, generic_info->scope_id, method_name,
+                    member_node, generic_type->symbol_id,
+                    &first_trait_symbol_id, &first_method, &first_signature)) {
+                return context->type_error;
+            }
+        }
+        for (size_t owner_id = 1u; owner_id <= node_count; ++owner_id) {
+            const vitte_ast_node_t *owner = vitte_sema_node(
+                context, (vitte_ast_node_id_t)owner_id);
+            bool owns_generic = false;
+            size_t owner_index;
+            if (owner == NULL) { continue; }
+            for (owner_index = 0u; owner_index < owner->child_count; ++owner_index) {
+                if (owner->children[owner_index] == generic->id) {
+                    owns_generic = true;
+                    break;
+                }
+            }
+            if (!owns_generic) { continue; }
+            for (owner_index = 0u; owner_index < owner->child_count; ++owner_index) {
+                const vitte_ast_node_t *clause = vitte_sema_node(
+                    context, owner->children[owner_index]);
+                size_t predicate_index;
+                if (clause == NULL || clause->kind != VITTE_AST_NODE_WHERE_CLAUSE) {
+                    continue;
+                }
+                for (predicate_index = 0u;
+                     predicate_index < clause->child_count;
+                     ++predicate_index) {
+                    const vitte_ast_node_t *predicate = vitte_sema_node(
+                        context, clause->children[predicate_index]);
+                    const vitte_ast_node_t *subject;
+                    vitte_sema_type_id_t subject_type;
+                    size_t where_bound_index;
+                    if (predicate == NULL ||
+                        predicate->kind != VITTE_AST_NODE_WHERE_PREDICATE ||
+                        predicate->operator_kind != VITTE_TOKEN_COLON ||
+                        predicate->child_count < 2u) {
+                        continue;
+                    }
+                    subject = vitte_sema_node(context, predicate->children[0]);
+                    subject_type = subject != NULL
+                        ? vitte_sema_analyze_type_node(
+                              context, subject->id, generic_info->scope_id)
+                        : context->type_error;
+                    if (!vitte_sema_type_identical_private(
+                            context, subject_type, generic_type_id)) {
+                        continue;
+                    }
+                    for (where_bound_index = 1u;
+                         where_bound_index < predicate->child_count;
+                         ++where_bound_index) {
+                        const vitte_ast_node_t *bound = vitte_sema_node(
+                            context, predicate->children[where_bound_index]);
+                        if (bound != NULL &&
+                            !vitte_sema_consider_generic_method_bound_private(
+                                context, bound, generic_info->scope_id,
+                                method_name, member_node,
+                                generic_type->symbol_id,
+                                &first_trait_symbol_id, &first_method,
+                                &first_signature)) {
+                            return context->type_error;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return first_method != NULL
+        ? first_signature
+        : VITTE_SEMA_INVALID_TYPE_ID;
+}
+
 static vitte_sema_type_id_t
 vitte_sema_analyze_member(
     vitte_sema_t *context,
@@ -11380,6 +15057,7 @@ vitte_sema_analyze_member(
     vitte_sema_node_info_t *info;
     size_t scope_index;
     bool mutable_receiver;
+    bool pointer_receiver;
 
     if (context == NULL ||
         node == NULL ||
@@ -11473,12 +15151,16 @@ vitte_sema_analyze_member(
         base_info != NULL &&
         (base_info->flags &
          VITTE_SEMA_NODE_FLAG_MUTABLE) != 0u;
+    pointer_receiver = false;
 
     while (base_type != NULL &&
            (base_type->kind ==
                 VITTE_SEMA_TYPE_REFERENCE ||
             base_type->kind ==
                 VITTE_SEMA_TYPE_POINTER)) {
+        if (base_type->kind == VITTE_SEMA_TYPE_POINTER) {
+            pointer_receiver = true;
+        }
         if (base_type->is_mutable) {
             mutable_receiver = true;
         }
@@ -11489,6 +15171,7 @@ vitte_sema_analyze_member(
                 context,
                 base_type_id);
     }
+
 
     member_node = vitte_sema_node(context, node->children[1]);
     member_token = vitte_sema_node_token(context, member_node);
@@ -11634,6 +15317,26 @@ vitte_sema_analyze_member(
         return function_type;
     }
 
+    if (base_type != NULL &&
+        base_type->kind == VITTE_SEMA_TYPE_GENERIC_PARAMETER &&
+        member_node != NULL && member_token != NULL) {
+        vitte_sema_type_id_t bound_method_type =
+            vitte_sema_generic_bound_method_type_private(
+                context, base_type_id, member_node, member_token);
+        if (bound_method_type == context->type_error) {
+            return context->type_error;
+        }
+        if (bound_method_type != VITTE_SEMA_INVALID_TYPE_ID) {
+            info = vitte_sema_node_info_mut_private(context, node->id);
+            if (info != NULL) {
+                info->type_id = bound_method_type;
+                info->scope_id = scope_id;
+                info->flags |= VITTE_SEMA_NODE_FLAG_RESOLVED;
+            }
+            return bound_method_type;
+        }
+    }
+
     if (base_type == NULL ||
         base_type->kind !=
             VITTE_SEMA_TYPE_NAMED) {
@@ -11656,6 +15359,13 @@ vitte_sema_analyze_member(
         member_token == NULL ||
         member_token->lexeme == NULL ||
         member_token->length == 0u) {
+        if (member_token != NULL &&
+            vitte_sema_report_incomplete_type_private(
+                context,
+                member_node != NULL ? member_node : node,
+                base_type_id)) {
+            return context->type_error;
+        }
         return context->type_error;
     }
 
@@ -11699,7 +15409,7 @@ vitte_sema_analyze_member(
     if (field_declaration == NULL ||
         field_declaration->kind !=
             VITTE_AST_NODE_FIELD_DECL) {
-        (void)vitte_sema_add_diagnostic(
+        if (vitte_sema_add_diagnostic(
             context,
             VITTE_SEMA_DIAGNOSTIC_ERROR,
             VITTE_SEMA_DIAGNOSTIC_UNKNOWN_MEMBER,
@@ -11711,7 +15421,12 @@ vitte_sema_analyze_member(
                 : node->id,
             base_type->symbol_id,
             VITTE_SEMA_INVALID_TYPE_ID,
-            base_type_id);
+            base_type_id)) {
+            vitte_sema_set_last_related_location(
+                context,
+                type_declaration,
+                "receiver type declared here");
+        }
 
         return context->type_error;
     }
@@ -11751,8 +15466,12 @@ vitte_sema_analyze_member(
         if (info != NULL) {
             info->type_id = field_type_id;
             info->symbol_id = field_symbol_id;
-            info->flags |=
-                VITTE_SEMA_NODE_FLAG_LVALUE;
+            if ((base_info != NULL &&
+                 (base_info->flags & VITTE_SEMA_NODE_FLAG_ADDRESSABLE) != 0u) ||
+                pointer_receiver) {
+                info->flags |= VITTE_SEMA_NODE_FLAG_LVALUE |
+                               VITTE_SEMA_NODE_FLAG_ADDRESSABLE;
+            }
 
             if (mutable_receiver ||
                 (field_symbol->flags &
@@ -11772,6 +15491,340 @@ vitte_sema_analyze_member(
 
 #include "flow.inc"
 
+static void
+vitte_sema_mark_unreachable_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *node)
+{
+    vitte_sema_node_info_t *info;
+
+    if (context == NULL || node == NULL) {
+        return;
+    }
+    info = vitte_sema_node_info_mut_private(context, node->id);
+    if (info != NULL) {
+        info->flags |= VITTE_SEMA_NODE_FLAG_UNREACHABLE;
+    }
+}
+
+static bool
+vitte_sema_is_unreachable_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *node)
+{
+    const vitte_sema_node_info_t *info;
+
+    if (context == NULL || node == NULL) {
+        return false;
+    }
+    info = vitte_sema_node_info_private(context, node->id);
+    return info != NULL &&
+        (info->flags & VITTE_SEMA_NODE_FLAG_UNREACHABLE) != 0u;
+}
+
+static void
+vitte_sema_warn_unreachable_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *node,
+    const vitte_ast_node_t *cause,
+    const char *cause_label,
+    const char *help)
+{
+    vitte_sema_node_info_t *info;
+
+    if (context == NULL || node == NULL) {
+        return;
+    }
+    info = vitte_sema_node_info_mut_private(context, node->id);
+    if (info != NULL &&
+        (info->flags & VITTE_SEMA_NODE_FLAG_UNREACHABLE) != 0u) {
+        return;
+    }
+    if (vitte_sema_add_diagnostic(
+            context, VITTE_SEMA_DIAGNOSTIC_WARNING,
+            VITTE_SEMA_DIAGNOSTIC_UNREACHABLE_CODE,
+            node->span, node->id,
+            VITTE_SCOPE_INVALID_SYMBOL_ID,
+            VITTE_SEMA_INVALID_TYPE_ID,
+            VITTE_SEMA_INVALID_TYPE_ID)) {
+        vitte_sema_diagnostic_t *diagnostic =
+            &context->diagnostics[context->diagnostic_count - 1u];
+        if (help != NULL) {
+            (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                "%s", help);
+        }
+        if (cause != NULL && cause_label != NULL) {
+            vitte_sema_set_last_related_location(
+                context, cause, cause_label);
+        }
+    }
+    vitte_sema_mark_unreachable_private(context, node);
+}
+
+static bool
+vitte_sema_parameter_pattern_refutable_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *pattern,
+    size_t depth)
+{
+    size_t index;
+
+    if (context == NULL || pattern == NULL || depth >= 128u) {
+        return true;
+    }
+    if (pattern->kind == VITTE_AST_NODE_INTEGER_LITERAL ||
+        pattern->kind == VITTE_AST_NODE_FLOAT_LITERAL ||
+        pattern->kind == VITTE_AST_NODE_STRING_LITERAL ||
+        pattern->kind == VITTE_AST_NODE_CHARACTER_LITERAL ||
+        pattern->kind == VITTE_AST_NODE_BOOL_LITERAL ||
+        pattern->kind == VITTE_AST_NODE_NULL_LITERAL) {
+        return true;
+    }
+    if (pattern->kind == VITTE_AST_NODE_IDENTIFIER) {
+        return false;
+    }
+    if (pattern->kind == VITTE_AST_NODE_PATH) {
+        return pattern->child_count > 1u;
+    }
+    if (pattern->kind != VITTE_AST_NODE_PATTERN ||
+        (pattern->flags & (VITTE_AST_FLAG_PATTERN_RANGE |
+                           VITTE_AST_FLAG_PATTERN_OR)) != 0u ||
+        ((pattern->flags & VITTE_AST_FLAG_PATTERN_HEAD) != 0u &&
+         (pattern->flags & VITTE_AST_FLAG_PATTERN_STRUCT) == 0u &&
+         pattern->child_count != 0u &&
+         !(pattern->child_count == 2u &&
+           vitte_sema_node(context, pattern->children[0]) != NULL &&
+           vitte_sema_node(context, pattern->children[0])->kind ==
+               VITTE_AST_NODE_IDENTIFIER))) {
+        return true;
+    }
+    for (index = 0u; index < pattern->child_count; ++index) {
+        const vitte_ast_node_t *child = vitte_sema_node(
+            context, pattern->children[index]);
+        if (child != NULL &&
+            vitte_sema_parameter_pattern_refutable_private(
+                context, child, depth + 1u) &&
+            !((pattern->flags & VITTE_AST_FLAG_PATTERN_STRUCT) != 0u &&
+              index == 0u && child->kind == VITTE_AST_NODE_IDENTIFIER)) {
+            /* In a struct pattern the head is a type name, not a binding. */
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+vitte_sema_suppress_pattern_type_cascades_private(
+    vitte_sema_t *context,
+    size_t first_diagnostic,
+    const vitte_parser_span_t *pattern_span)
+{
+    size_t index;
+
+    if (context == NULL || pattern_span == NULL || !pattern_span->valid) {
+        return;
+    }
+    index = first_diagnostic;
+    while (index < context->diagnostic_count) {
+        vitte_sema_diagnostic_t *diagnostic = &context->diagnostics[index];
+        bool inside_pattern = diagnostic->span.valid &&
+            diagnostic->span.file_id == pattern_span->file_id &&
+            diagnostic->span.begin >= pattern_span->begin &&
+            diagnostic->span.end <= pattern_span->end;
+        if (diagnostic->code == VITTE_SEMA_DIAGNOSTIC_TYPE_MISMATCH &&
+            inside_pattern) {
+            if (diagnostic->kind == VITTE_SEMA_DIAGNOSTIC_ERROR &&
+                context->stats.errors != 0u) {
+                --context->stats.errors;
+            } else if (diagnostic->kind == VITTE_SEMA_DIAGNOSTIC_WARNING &&
+                       context->stats.warnings != 0u) {
+                --context->stats.warnings;
+            }
+            if (context->stats.diagnostics != 0u) {
+                --context->stats.diagnostics;
+            }
+            --context->diagnostic_count;
+            if (index < context->diagnostic_count) {
+                memmove(&context->diagnostics[index],
+                        &context->diagnostics[index + 1u],
+                        (context->diagnostic_count - index) *
+                            sizeof(*context->diagnostics));
+            }
+            continue;
+        }
+        ++index;
+    }
+}
+
+static void
+vitte_sema_format_type_label_private(
+    const vitte_sema_t *context,
+    vitte_sema_type_id_t type_id,
+    char *buffer,
+    size_t capacity,
+    size_t depth)
+{
+    const vitte_sema_type_t *type;
+    const vitte_symbol_t *symbol;
+    char element[128];
+    int written;
+
+    if (buffer == NULL || capacity == 0u) { return; }
+    buffer[0] = '\0';
+    type = vitte_sema_type_private(context, type_id);
+    if (type == NULL || depth >= 8u) {
+        (void)snprintf(buffer, capacity, "<unknown>");
+        return;
+    }
+    if (type->kind == VITTE_SEMA_TYPE_NAMED ||
+        type->kind == VITTE_SEMA_TYPE_DYN) {
+        symbol = vitte_scope_get_symbol(&context->scopes, type->symbol_id);
+        if (symbol != NULL && symbol->name != NULL &&
+            symbol->name_length != 0u) {
+            written = snprintf(buffer, capacity, "%.*s",
+                (int)(symbol->name_length > 96u ? 96u : symbol->name_length),
+                symbol->name);
+            if (written >= 0 && (size_t)written < capacity &&
+                type->kind == VITTE_SEMA_TYPE_NAMED &&
+                type->generic_argument_count != 0u) {
+                size_t offset = (size_t)written;
+                size_t index;
+                for (index = 0u; index < type->generic_argument_count; ++index) {
+                    if (offset + 2u >= capacity) { break; }
+                    vitte_sema_format_type_label_private(
+                        context, type->generic_arguments[index], element,
+                        sizeof(element), depth + 1u);
+                    written = snprintf(buffer + offset, capacity - offset,
+                        index == 0u ? "<%s" : ", %s", element);
+                    if (written < 0 || (size_t)written >= capacity - offset) {
+                        break;
+                    }
+                    offset += (size_t)written;
+                }
+                if (offset + 1u < capacity) {
+                    buffer[offset++] = '>';
+                    buffer[offset] = '\0';
+                }
+            }
+            return;
+        }
+    }
+    if (type->kind == VITTE_SEMA_TYPE_POINTER ||
+        type->kind == VITTE_SEMA_TYPE_REFERENCE ||
+        type->kind == VITTE_SEMA_TYPE_OPTIONAL) {
+        vitte_sema_format_type_label_private(
+            context, type->element_type, element, sizeof(element), depth + 1u);
+        if (type->kind == VITTE_SEMA_TYPE_POINTER) {
+            (void)snprintf(buffer, capacity, "%s%s",
+                type->is_mutable ? "*mut " : "*", element);
+        } else if (type->kind == VITTE_SEMA_TYPE_REFERENCE) {
+            (void)snprintf(buffer, capacity, "%s%s",
+                type->is_mutable ? "&mut " : "&", element);
+        } else {
+            (void)snprintf(buffer, capacity, "?%s", element);
+        }
+        return;
+    }
+    (void)snprintf(buffer, capacity, "%s",
+        vitte_sema_type_kind_name(type->kind));
+}
+
+static bool
+vitte_sema_first_type_name_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *node,
+    char *buffer,
+    size_t capacity,
+    size_t depth)
+{
+    const vitte_token_t *token;
+    size_t index;
+
+    if (context == NULL || node == NULL || buffer == NULL ||
+        capacity == 0u || depth >= 32u) {
+        return false;
+    }
+    token = vitte_sema_node_token(context, node);
+    if (token != NULL && token->kind == VITTE_TOKEN_IDENTIFIER &&
+        token->lexeme != NULL && token->length != 0u) {
+        size_t length = token->length < capacity - 1u
+            ? token->length : capacity - 1u;
+        memcpy(buffer, token->lexeme, length);
+        buffer[length] = '\0';
+        return true;
+    }
+    for (index = 0u; index < node->child_count; ++index) {
+        if (vitte_sema_first_type_name_private(
+                context,
+                vitte_sema_node(context, node->children[index]),
+                buffer, capacity, depth + 1u)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static const vitte_token_t *
+vitte_sema_external_abi_token_private(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *declaration)
+{
+    size_t index;
+    bool saw_extern = false;
+
+    if (context == NULL || context->parser == NULL || declaration == NULL) {
+        return NULL;
+    }
+    for (index = 0u; index < context->parser->token_count; ++index) {
+        const vitte_token_t *token = &context->parser->tokens[index];
+        if (!token->span.valid || token->span.begin < declaration->span.begin ||
+            token->span.end > declaration->span.end) {
+            continue;
+        }
+        if (!saw_extern) {
+            saw_extern = token->kind == VITTE_TOKEN_KW_EXTERN;
+            continue;
+        }
+        if (token->kind == VITTE_TOKEN_KW_PROC) {
+            break;
+        }
+        if (token->kind == VITTE_TOKEN_STRING_LITERAL) {
+            return token;
+        }
+    }
+    return NULL;
+}
+
+static bool
+vitte_sema_ffi_type_supported_private(
+    const vitte_sema_t *context,
+    vitte_sema_type_id_t type_id,
+    bool allow_void)
+{
+    const vitte_sema_type_t *type =
+        vitte_sema_type_private(context, type_id);
+
+    if (type == NULL || type->kind == VITTE_SEMA_TYPE_ERROR) {
+        return true;
+    }
+    if (type->kind == VITTE_SEMA_TYPE_POINTER ||
+        type->kind == VITTE_SEMA_TYPE_REFERENCE) {
+        /* Pointer representation is ABI-stable even when the pointee is opaque. */
+        return true;
+    }
+    if (type->kind == VITTE_SEMA_TYPE_BOOL ||
+        type->kind == VITTE_SEMA_TYPE_I64 ||
+        type->kind == VITTE_SEMA_TYPE_U64 ||
+        type->kind == VITTE_SEMA_TYPE_U8 ||
+        type->kind == VITTE_SEMA_TYPE_F32 ||
+        type->kind == VITTE_SEMA_TYPE_F64 ||
+        type->kind == VITTE_SEMA_TYPE_CHAR ||
+        type->kind == VITTE_SEMA_TYPE_STRING) {
+        return true;
+    }
+    return allow_void && type->kind == VITTE_SEMA_TYPE_VOID;
+}
+
 static vitte_sema_type_id_t
 vitte_sema_analyze_proc(
     vitte_sema_t *context,
@@ -11785,10 +15838,13 @@ vitte_sema_analyze_proc(
     bool previous_contract_ensures;
     bool previous_contract_requires;
     bool previous_unsafe;
+    bool previous_async;
+    bool previous_comptime;
     size_t index;
     size_t parameter_count;
     vitte_sema_type_id_t *parameter_types;
     vitte_sema_type_id_t return_type;
+    const vitte_ast_node_t *return_type_node;
     vitte_sema_type_id_t function_type;
     vitte_sema_node_info_t *info;
 
@@ -11824,6 +15880,8 @@ vitte_sema_analyze_proc(
         context->current_contract_ensures;
     previous_contract_requires = context->current_contract_requires;
     previous_unsafe = context->current_unsafe;
+    previous_async = context->current_async;
+    previous_comptime = context->current_comptime;
 
     context->current_proc_scope =
         proc_scope;
@@ -11831,9 +15889,58 @@ vitte_sema_analyze_proc(
     context->current_contract_requires = false;
     context->current_unsafe =
         (node->flags & VITTE_AST_FLAG_UNSAFE) != 0u;
+    context->current_async =
+        (node->flags & VITTE_AST_FLAG_ASYNC) != 0u;
+    context->current_comptime =
+        (node->flags & VITTE_AST_FLAG_COMPTIME) != 0u;
+
+    {
+        bool is_external = (node->flags & VITTE_AST_FLAG_EXTERN) != 0u;
+        bool is_intrinsic = (node->flags & VITTE_AST_FLAG_INTRINSIC) != 0u;
+        bool has_async = (node->flags & VITTE_AST_FLAG_ASYNC) != 0u;
+        bool has_comptime = (node->flags & VITTE_AST_FLAG_COMPTIME) != 0u;
+        const char *primary_modifier = NULL;
+        const char *related_modifier = NULL;
+        const char *help = NULL;
+
+        if (has_async && has_comptime) {
+            primary_modifier = "comptime";
+            related_modifier = "async";
+            help = "A procedure cannot be both `async` and `comptime`; choose runtime asynchronous execution or compile-time evaluation.";
+        } else if ((is_external || is_intrinsic) && has_async) {
+            primary_modifier = "async";
+            related_modifier = is_intrinsic ? "intrinsic" : "extern";
+            help = "External and intrinsic procedure declarations cannot use `async` until the target ABI defines task-returning calls.";
+        } else if ((is_external || is_intrinsic) && has_comptime) {
+            primary_modifier = "comptime";
+            related_modifier = is_intrinsic ? "intrinsic" : "extern";
+            help = "External and intrinsic procedures cannot be evaluated at compile time; remove `comptime` or provide a compile-time procedure body.";
+        }
+        if (primary_modifier != NULL &&
+            vitte_sema_add_diagnostic(
+                context,
+                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_MODIFIER,
+                vitte_sema_keyword_span_in_node_private(
+                    context, node, primary_modifier),
+                node->id,
+                symbol_id,
+                VITTE_SEMA_INVALID_TYPE_ID,
+                VITTE_SEMA_INVALID_TYPE_ID)) {
+            vitte_sema_append_diagnostic_help(
+                &context->diagnostics[context->diagnostic_count - 1u],
+                help);
+            vitte_sema_set_last_related_span_private(
+                context,
+                vitte_sema_keyword_span_in_node_private(
+                    context, node, related_modifier),
+                "conflicting procedure modifier declared here");
+        }
+    }
 
     return_type =
         context->type_void;
+    return_type_node = NULL;
 
     /*
      * Register parameters/generic parameters before the body.
@@ -11859,6 +15966,7 @@ vitte_sema_analyze_proc(
             vitte_symbol_id_t parameter_symbol;
             vitte_sema_type_id_t parameter_type;
             vitte_sema_node_info_t *parameter_info;
+            size_t parameter_diagnostic_start = context->diagnostic_count;
 
             parameter_symbol =
                 vitte_sema_register_declaration(
@@ -11880,6 +15988,66 @@ vitte_sema_analyze_proc(
             if (parameter_info != NULL) {
                 parameter_info->type_id =
                     parameter_type;
+            }
+
+            {
+                const vitte_ast_node_t *pattern = child->child_count != 0u
+                    ? vitte_sema_node(context, child->children[0])
+                    : NULL;
+                const vitte_ast_node_t *parameter_type_node =
+                    child->child_count > 1u
+                        ? vitte_sema_node(context, child->children[1])
+                        : NULL;
+                bool pattern_refutable =
+                    vitte_sema_parameter_pattern_refutable_private(
+                        context, pattern, 0u);
+                uint32_t mode = child->flags &
+                    (VITTE_AST_FLAG_PARAMETER_MOVE |
+                     VITTE_AST_FLAG_PARAMETER_OWNED |
+                     VITTE_AST_FLAG_PARAMETER_BORROW);
+
+                if (pattern_refutable) {
+                    if (vitte_sema_add_diagnostic(
+                            context, VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_PARAMETER,
+                            pattern != NULL ? pattern->span : child->span,
+                            pattern != NULL ? pattern->id : child->id,
+                            parameter_symbol, parameter_type,
+                            VITTE_SEMA_INVALID_TYPE_ID)) {
+                        vitte_sema_append_diagnostic_help(
+                            &context->diagnostics[
+                                context->diagnostic_count - 1u],
+                            "Procedure parameters must use irrefutable binding patterns. Replace this literal, range, alternative, or variant pattern with a name, `_`, tuple, or struct binding pattern.");
+                    }
+                    vitte_sema_suppress_pattern_type_cascades_private(
+                        context, parameter_diagnostic_start,
+                        pattern != NULL ? &pattern->span : &child->span);
+                }
+                if ((mode & (VITTE_AST_FLAG_PARAMETER_OWNED |
+                             VITTE_AST_FLAG_PARAMETER_BORROW)) != 0u) {
+                    bool is_borrow =
+                        (mode & VITTE_AST_FLAG_PARAMETER_BORROW) != 0u;
+                    const char *mode_name = is_borrow ? "borrow" : "owned";
+                    const char *help = is_borrow
+                        ? "The `borrow` parameter mode has no defined calling convention yet. Use a reference type such as `&T` to express borrowing explicitly, or remove the mode."
+                        : "The `owned` parameter mode has no separate semantics yet. Parameters already receive their declared value; remove `owned` or use `move` at the call site when transferring a value.";
+                    if (vitte_sema_add_diagnostic(
+                            context, VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_PARAMETER,
+                            vitte_sema_keyword_span_in_node_private(
+                                context, child, mode_name),
+                            child->id, parameter_symbol, parameter_type,
+                            VITTE_SEMA_INVALID_TYPE_ID)) {
+                        vitte_sema_append_diagnostic_help(
+                            &context->diagnostics[
+                                context->diagnostic_count - 1u], help);
+                        if (parameter_type_node != NULL) {
+                            vitte_sema_set_last_related_location(
+                                context, parameter_type_node,
+                                "parameter type declared here");
+                        }
+                    }
+                }
             }
 
             (void)parameter_symbol;
@@ -11919,6 +16087,7 @@ vitte_sema_analyze_proc(
                 VITTE_AST_NODE_OPTIONAL_TYPE ||
             child->kind ==
                 VITTE_AST_NODE_ARRAY_TYPE) {
+            return_type_node = child;
             return_type =
                 vitte_sema_analyze_type_node(
                     context,
@@ -11948,6 +16117,8 @@ vitte_sema_analyze_proc(
             context->current_contract_ensures = previous_contract_ensures;
             context->current_contract_requires = previous_contract_requires;
             context->current_unsafe = previous_unsafe;
+            context->current_async = previous_async;
+            context->current_comptime = previous_comptime;
             return context->type_error;
         }
         parameter_count = 0u;
@@ -11968,6 +16139,123 @@ vitte_sema_analyze_proc(
 
     function_type = vitte_sema_create_function_type_private(
         context, parameter_types, parameter_count, return_type);
+
+    if ((node->flags & VITTE_AST_FLAG_EXTERN) != 0u &&
+        (node->flags & VITTE_AST_FLAG_INTRINSIC) == 0u) {
+        const vitte_token_t *abi_token =
+            vitte_sema_external_abi_token_private(context, node);
+        if (abi_token != NULL &&
+            (abi_token->lexeme == NULL || abi_token->length != 3u ||
+             abi_token->lexeme[0] != '"' || abi_token->lexeme[1] != 'C' ||
+             abi_token->lexeme[2] != '"')) {
+            if (vitte_sema_add_diagnostic(
+                    context,
+                    VITTE_SEMA_DIAGNOSTIC_ERROR,
+                    VITTE_SEMA_DIAGNOSTIC_FFI_ABI,
+                    vitte_parser_span_make(
+                        abi_token->span.file_id,
+                        abi_token->span.begin,
+                        abi_token->span.end,
+                        abi_token->line,
+                        abi_token->column),
+                    node->id,
+                    symbol_id,
+                    VITTE_SEMA_INVALID_TYPE_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID)) {
+                vitte_sema_append_diagnostic_help(
+                    &context->diagnostics[context->diagnostic_count - 1u],
+                    "The C17 backend implements the platform C calling convention only. Use `extern \"C\"` or omit the ABI string to select it.");
+                vitte_sema_set_last_related_location(
+                    context, node,
+                    "external procedure declaration is here");
+            }
+        }
+
+        for (index = 0u; index < node->child_count; ++index) {
+            const vitte_ast_node_t *child = vitte_sema_node(
+                context, node->children[index]);
+            if (child != NULL && child->kind == VITTE_AST_NODE_GENERIC_PARAM &&
+                vitte_sema_add_diagnostic(
+                    context,
+                    VITTE_SEMA_DIAGNOSTIC_ERROR,
+                    VITTE_SEMA_DIAGNOSTIC_FFI_TYPE,
+                    child->span,
+                    child->id,
+                    symbol_id,
+                    VITTE_SEMA_INVALID_TYPE_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID)) {
+                vitte_sema_append_diagnostic_help(
+                    &context->diagnostics[context->diagnostic_count - 1u],
+                    "Generic external procedures do not have a supported C ABI specialization. Declare a concrete external signature or add a Vitte wrapper with a concrete type.");
+                vitte_sema_set_last_related_location(
+                    context, node,
+                    "generic external declaration is here");
+            }
+        }
+
+        {
+            size_t parameter_index = 0u;
+            for (index = 0u; index < node->child_count; ++index) {
+                const vitte_ast_node_t *parameter = vitte_sema_node(
+                    context, node->children[index]);
+                const vitte_ast_node_t *type_node;
+                vitte_sema_type_id_t type_id;
+                if (parameter == NULL ||
+                    parameter->kind != VITTE_AST_NODE_PARAMETER) {
+                    continue;
+                }
+                type_node = parameter->child_count > 1u
+                    ? vitte_sema_node(context, parameter->children[1])
+                    : NULL;
+                type_id = parameter_index < parameter_count &&
+                    parameter_types != NULL
+                    ? parameter_types[parameter_index]
+                    : context->type_error;
+                ++parameter_index;
+                if (type_node == NULL ||
+                    vitte_sema_ffi_type_supported_private(
+                        context, type_id, false)) {
+                    continue;
+                }
+                if (vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_FFI_TYPE,
+                        type_node->span,
+                        type_node->id,
+                        symbol_id,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        type_id)) {
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[context->diagnostic_count - 1u],
+                        "C procedure parameters must use scalar, string, pointer, or reference types. Marshal aggregate, optional, array, slice, function, and generic values through a concrete C-compatible wrapper.");
+                    vitte_sema_set_last_related_location(
+                        context, node,
+                        "external procedure signature is declared here");
+                }
+            }
+        }
+
+        if (return_type_node != NULL &&
+            !vitte_sema_ffi_type_supported_private(
+                context, return_type, true) &&
+            vitte_sema_add_diagnostic(
+                context,
+                VITTE_SEMA_DIAGNOSTIC_ERROR,
+                VITTE_SEMA_DIAGNOSTIC_FFI_TYPE,
+                return_type_node->span,
+                return_type_node->id,
+                symbol_id,
+                VITTE_SEMA_INVALID_TYPE_ID,
+                return_type)) {
+            vitte_sema_append_diagnostic_help(
+                &context->diagnostics[context->diagnostic_count - 1u],
+                "C procedure results must use `void`, scalar, string, pointer, or reference types. Return aggregates, optional values, arrays, slices, functions, and generic values through a concrete C-compatible wrapper.");
+            vitte_sema_set_last_related_location(
+                context, node,
+                "external procedure signature is declared here");
+        }
+    }
     free(parameter_types);
 
     if (function_type !=
@@ -12022,7 +16310,10 @@ vitte_sema_analyze_proc(
                     proc_scope);
             if (contract_type != context->type_bool &&
                 contract_type != context->type_error) {
-                (void)vitte_sema_add_diagnostic(
+                char actual_type[128];
+                vitte_sema_format_type_label_private(
+                    context, contract_type, actual_type, sizeof(actual_type), 0u);
+                if (vitte_sema_add_diagnostic(
                     context,
                     VITTE_SEMA_DIAGNOSTIC_ERROR,
                     context->current_contract_ensures
@@ -12032,7 +16323,13 @@ vitte_sema_analyze_proc(
                     child->id,
                     symbol_id,
                     context->type_bool,
-                    contract_type);
+                    contract_type)) {
+                    (void)snprintf(context->diagnostics[context->diagnostic_count - 1u].help,
+                        sizeof(context->diagnostics[context->diagnostic_count - 1u].help),
+                        "This %s clause must evaluate to `bool`, but this expression has type `%s`. Change the expression to a boolean condition.",
+                        context->current_contract_ensures ? "ensures" : "requires",
+                        actual_type);
+                }
             }
             for (diagnostic_index = first_contract_diagnostic;
                  diagnostic_index < context->diagnostic_count;
@@ -12082,11 +16379,32 @@ vitte_sema_analyze_proc(
             if (end_span.end > end_span.begin) {
                 end_span.begin = end_span.end - 1u;
             }
-            (void)vitte_sema_add_diagnostic(
+            if (vitte_sema_add_diagnostic(
                 context, VITTE_SEMA_DIAGNOSTIC_ERROR,
                 VITTE_SEMA_DIAGNOSTIC_MISSING_RETURN,
                 end_span, child->id, symbol_id, return_type,
-                VITTE_SEMA_INVALID_TYPE_ID);
+                VITTE_SEMA_INVALID_TYPE_ID)) {
+                vitte_sema_diagnostic_t *diagnostic =
+                    &context->diagnostics[context->diagnostic_count - 1u];
+                char declared_type[128];
+                vitte_sema_format_type_label_private(
+                    context, return_type, declared_type,
+                    sizeof(declared_type), 0u);
+                if (return_type_node != NULL) {
+                    (void)vitte_sema_first_type_name_private(
+                        context, return_type_node, declared_type,
+                        sizeof(declared_type), 0u);
+                }
+                (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                    "This procedure declares return type `%s`, but control flow can reach its closing brace. Return a value of that type on every path or change the signature to return `void`.",
+                    declared_type);
+                diagnostic->type_context = VITTE_SEMA_TYPE_CONTEXT_RETURN;
+                if (return_type_node != NULL) {
+                    vitte_sema_set_last_related_location(
+                        context, return_type_node,
+                        "declared return type is here");
+                }
+            }
         }
     }
 
@@ -12099,6 +16417,8 @@ vitte_sema_analyze_proc(
         previous_contract_ensures;
     context->current_contract_requires = previous_contract_requires;
     context->current_unsafe = previous_unsafe;
+    context->current_async = previous_async;
+    context->current_comptime = previous_comptime;
 
     return function_type;
 }
@@ -12123,6 +16443,8 @@ vitte_sema_analyze_block(
     vitte_scope_id_t block_scope;
     size_t index;
     bool terminated;
+    bool inherited_unreachable;
+    const vitte_ast_node_t *termination_node;
     vitte_sema_node_info_t *info;
 
     block_scope =
@@ -12155,7 +16477,10 @@ vitte_sema_analyze_block(
         node->child_count,
         block_scope);
 
+    inherited_unreachable = info != NULL &&
+        (info->flags & VITTE_SEMA_NODE_FLAG_UNREACHABLE) != 0u;
     terminated = false;
+    termination_node = NULL;
 
     for (index = 0u;
          index < node->child_count;
@@ -12171,16 +16496,12 @@ vitte_sema_analyze_block(
             continue;
         }
 
-        if (terminated) {
-            (void)vitte_sema_add_diagnostic(
-                context,
-                VITTE_SEMA_DIAGNOSTIC_WARNING,
-                VITTE_SEMA_DIAGNOSTIC_UNREACHABLE_CODE,
-                child->span,
-                child->id,
-                VITTE_SCOPE_INVALID_SYMBOL_ID,
-                VITTE_SEMA_INVALID_TYPE_ID,
-                VITTE_SEMA_INVALID_TYPE_ID);
+        if (inherited_unreachable) {
+            vitte_sema_mark_unreachable_private(context, child);
+        } else if (terminated) {
+            vitte_sema_warn_unreachable_private(
+                context, child, termination_node,
+                "preceding statement exits control flow here", NULL);
 
             context->stats.unreachable_statements =
                 vitte_sema_u64_add_sat(
@@ -12201,6 +16522,9 @@ vitte_sema_analyze_block(
                 VITTE_AST_NODE_CONTINUE_STMT ||
             vitte_sema_exit_flow(context, child, 0u) ==
                 VITTE_SEMA_EXIT_TERMINATED) {
+            if (!terminated) {
+                termination_node = child;
+            }
             terminated = true;
         }
     }
@@ -12222,9 +16546,24 @@ vitte_sema_analyze_return(
     const vitte_ast_node_t *return_value;
     const vitte_token_t *procedure_name_token;
 
+    if (context->current_defer_node_id != VITTE_AST_INVALID_ID &&
+        context->current_defer_node_id != 0u) {
+        size_t value_index;
+        for (value_index = 0u; value_index < node->child_count; ++value_index) {
+            const vitte_ast_node_t *value = vitte_sema_node(
+                context, node->children[value_index]);
+            if (value != NULL) {
+                (void)vitte_sema_analyze_expression(context, value->id, scope_id);
+            }
+        }
+        (void)vitte_sema_defer_control_error(context, node,
+            "Remove `return` from this deferred action. Return from the enclosing procedure before scheduling cleanup, or let the deferred action finish normally.");
+        return context->type_error;
+    }
+
     if (context->current_proc_scope ==
         VITTE_SCOPE_INVALID_SCOPE_ID) {
-        (void)vitte_sema_add_diagnostic(
+        if (vitte_sema_add_diagnostic(
             context,
             VITTE_SEMA_DIAGNOSTIC_ERROR,
             VITTE_SEMA_DIAGNOSTIC_RETURN_OUTSIDE_PROC,
@@ -12232,7 +16571,16 @@ vitte_sema_analyze_return(
             node->id,
             VITTE_SCOPE_INVALID_SYMBOL_ID,
             VITTE_SEMA_INVALID_TYPE_ID,
-            VITTE_SEMA_INVALID_TYPE_ID);
+            VITTE_SEMA_INVALID_TYPE_ID)) {
+            vitte_sema_diagnostic_t *diagnostic =
+                &context->diagnostics[context->diagnostic_count - 1u];
+            (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                "A `return` statement must be inside a procedure body. Move it into the procedure whose result it should produce.");
+            vitte_sema_set_nearest_control_context_private(
+                context, scope_id,
+                "enclosing procedure declaration is here",
+                "enclosing test is here; return requires a procedure");
+        }
 
         return context->type_error;
     }
@@ -12270,7 +16618,12 @@ vitte_sema_analyze_return(
         }
     }
 
-    if (!vitte_sema_accept_value_private(
+    /* Preserve the first unresolved name/type diagnostic.  A follow-up
+     * return mismatch would only report the error type as though it were a
+     * real source value. */
+    if (found != context->type_error &&
+        context->current_return_type != context->type_error &&
+        !vitte_sema_accept_value_private(
             context,
             context->current_return_type,
             found,
@@ -12288,6 +16641,9 @@ vitte_sema_analyze_return(
                 found)) {
             vitte_sema_diagnostic_t *diagnostic;
             char help[256];
+            char declared_type[128];
+            const vitte_ast_node_t *declared_return_type = NULL;
+            size_t related_index;
 
             vitte_sema_set_last_type_context(
                 context,
@@ -12311,6 +16667,31 @@ vitte_sema_analyze_return(
             procedure_name_token = vitte_sema_node_token(
                 context,
                 procedure_name_node);
+            vitte_sema_format_type_label_private(
+                context, context->current_return_type, declared_type,
+                sizeof(declared_type), 0u);
+            if (procedure_declaration != NULL) {
+                for (related_index = 0u;
+                     related_index < procedure_declaration->child_count;
+                     ++related_index) {
+                    const vitte_ast_node_t *candidate = vitte_sema_node(
+                        context, procedure_declaration->children[related_index]);
+                    if (candidate != NULL &&
+                        (candidate->kind == VITTE_AST_NODE_TYPE_EXPR ||
+                         candidate->kind == VITTE_AST_NODE_POINTER_TYPE ||
+                         candidate->kind == VITTE_AST_NODE_REFERENCE_TYPE ||
+                         candidate->kind == VITTE_AST_NODE_OPTIONAL_TYPE ||
+                         candidate->kind == VITTE_AST_NODE_ARRAY_TYPE)) {
+                        declared_return_type = candidate;
+                        break;
+                    }
+                }
+            }
+            if (declared_return_type != NULL) {
+                (void)vitte_sema_first_type_name_private(
+                    context, declared_return_type, declared_type,
+                    sizeof(declared_type), 0u);
+            }
             if (procedure_name_token != NULL &&
                 procedure_name_token->lexeme != NULL &&
                 procedure_name_token->length != 0u) {
@@ -12321,14 +16702,16 @@ vitte_sema_analyze_return(
                 (void)snprintf(
                     help,
                     sizeof(help),
-                    "Return value in procedure `%.*s` does not match its declared return type.",
+                    "Return value in procedure `%.*s` does not match its declared return type `%s`.",
                     (int)procedure_name_length,
-                    procedure_name_token->lexeme);
+                    procedure_name_token->lexeme,
+                    declared_type);
             } else {
                 (void)snprintf(
                     help,
                     sizeof(help),
-                    "This return value does not match the procedure's declared return type.");
+                    "This return value does not match the procedure's declared return type `%s`.",
+                    declared_type);
             }
             diagnostic =
                 &context->diagnostics[
@@ -12336,6 +16719,15 @@ vitte_sema_analyze_return(
             vitte_sema_append_diagnostic_help(
                 diagnostic,
                 help);
+            if (declared_return_type != NULL) {
+                vitte_sema_set_last_related_location(
+                    context, declared_return_type,
+                    "declared return type is here");
+            } else if (procedure_declaration != NULL) {
+                vitte_sema_set_last_related_location(
+                    context, procedure_declaration,
+                    "procedure signature declared here");
+            }
             if (node->child_count != 0u) {
                 vitte_sema_add_safe_integer_conversion_help(
                     context,
@@ -12391,6 +16783,39 @@ vitte_sema_analyze_condition(
     }
 
     return type;
+}
+
+static void
+vitte_sema_predeclare_values(
+    vitte_sema_t *context,
+    const vitte_ast_node_id_t *declarations,
+    size_t declaration_count,
+    vitte_scope_id_t scope_id)
+{
+    size_t index;
+
+    for (index = 0u; index < declaration_count; ++index) {
+        const vitte_ast_node_t *declaration = vitte_sema_node(
+            context, declarations[index]);
+        vitte_sema_node_info_t *info;
+
+        if (declaration == NULL ||
+            (declaration->kind != VITTE_AST_NODE_CONST_DECL &&
+             declaration->kind != VITTE_AST_NODE_STATIC_DECL)) {
+            continue;
+        }
+        info = vitte_sema_node_info_mut_private(context, declaration->id);
+        if (info != NULL &&
+            (info->flags & VITTE_SEMA_NODE_FLAG_PREDECLARED) != 0u) {
+            continue;
+        }
+        (void)vitte_sema_register_declaration(
+            context, declaration, scope_id);
+        info = vitte_sema_node_info_mut_private(context, declaration->id);
+        if (info != NULL) {
+            info->flags |= VITTE_SEMA_NODE_FLAG_PREDECLARED;
+        }
+    }
 }
 
 static void
@@ -12643,6 +17068,8 @@ vitte_sema_predeclare_types(
         if (has_generics) {
             continue;
         }
+        declaration_info = vitte_sema_node_info_mut_private(
+            context, declaration->id);
         target = vitte_sema_node(
             context,
             declaration->children[declaration->child_count - 1u]);
@@ -12657,6 +17084,34 @@ vitte_sema_predeclare_types(
 
         alias_type = vitte_sema_analyze_type_node(
             context, target->id, scope_id);
+        if (alias_type != context->type_error) {
+            const vitte_sema_type_t *resolved_alias =
+                vitte_sema_type_private(context, alias_type);
+            if (declaration_info != NULL &&
+                resolved_alias != NULL &&
+                resolved_alias->kind == VITTE_SEMA_TYPE_NAMED &&
+                resolved_alias->symbol_id == declaration_info->symbol_id) {
+                if (vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE,
+                        target->span,
+                        target->id,
+                        declaration_info->symbol_id,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        alias_type)) {
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[
+                            context->diagnostic_count - 1u],
+                        "This type alias refers to itself without an intervening type definition; introduce a concrete type or indirection.");
+                    vitte_sema_set_last_related_location(
+                        context,
+                        declaration,
+                        "recursive type alias declared here");
+                }
+                alias_type = context->type_error;
+            }
+        }
         declaration_info = vitte_sema_node_info_mut_private(
             context, declaration->id);
         if (declaration_info != NULL && alias_type != context->type_error) {
@@ -12716,7 +17171,8 @@ vitte_sema_analyze_node(
                         node->children[index]);
                 if (declaration != NULL &&
                     declaration->kind ==
-                        VITTE_AST_NODE_SPACE_DECL) {
+                        VITTE_AST_NODE_SPACE_DECL &&
+                    declaration->child_count != 1u) {
                     (void)vitte_sema_analyze_node(
                         context,
                         declaration->id,
@@ -12746,6 +17202,12 @@ vitte_sema_analyze_node(
             }
 
             vitte_sema_predeclare_types(
+                context,
+                node->children,
+                node->child_count,
+                scope_id);
+
+            vitte_sema_predeclare_values(
                 context,
                 node->children,
                 node->child_count,
@@ -12843,11 +17305,11 @@ vitte_sema_analyze_node(
         {
             vitte_symbol_id_t symbol_id;
 
-            symbol_id =
-                vitte_sema_register_declaration(
-                    context,
-                    node,
-                    scope_id);
+            symbol_id = info != NULL &&
+                    (info->flags & VITTE_SEMA_NODE_FLAG_PREDECLARED) != 0u
+                ? info->symbol_id
+                : vitte_sema_register_declaration(
+                    context, node, scope_id);
 
             result =
                 vitte_sema_infer_declaration_type(
@@ -12867,11 +17329,74 @@ vitte_sema_analyze_node(
         {
             vitte_sema_type_id_t let_result;
             const vitte_ast_node_t *binding;
+            const vitte_ast_node_t *initializer;
+            const vitte_ast_node_t *diagnostic_node;
             vitte_sema_node_info_t *let_info;
+            size_t child_index;
+            bool has_explicit_type = false;
+            bool has_initializer = false;
 
             binding = node->child_count != 0u
                 ? vitte_sema_node(context, node->children[0])
                 : NULL;
+            initializer = NULL;
+            diagnostic_node = binding;
+            while (diagnostic_node != NULL &&
+                   diagnostic_node->kind == VITTE_AST_NODE_PATTERN &&
+                   diagnostic_node->child_count == 1u &&
+                   (diagnostic_node->flags &
+                    (VITTE_AST_FLAG_PATTERN_HEAD |
+                     VITTE_AST_FLAG_PATTERN_OR |
+                     VITTE_AST_FLAG_PATTERN_RANGE)) == 0u) {
+                diagnostic_node = vitte_sema_node(
+                    context, diagnostic_node->children[0]);
+            }
+            let_result = vitte_sema_infer_declaration_type(
+                context,
+                node,
+                scope_id);
+            for (child_index = 1u;
+                 child_index < node->child_count;
+                 ++child_index) {
+                const vitte_ast_node_t *child =
+                    vitte_sema_node(context, node->children[child_index]);
+                if (child == NULL) {
+                    continue;
+                }
+                if (child->kind == VITTE_AST_NODE_TYPE_EXPR ||
+                    child->kind == VITTE_AST_NODE_POINTER_TYPE ||
+                    child->kind == VITTE_AST_NODE_REFERENCE_TYPE ||
+                    child->kind == VITTE_AST_NODE_ARRAY_TYPE ||
+                    child->kind == VITTE_AST_NODE_OPTIONAL_TYPE) {
+                    has_explicit_type = true;
+                } else {
+                    has_initializer = true;
+                    initializer = child;
+                }
+            }
+            if ((!has_explicit_type && !has_initializer) ||
+                (!has_explicit_type && initializer != NULL &&
+                 initializer->kind == VITTE_AST_NODE_ARRAY_EXPR &&
+                 initializer->child_count == 0u)) {
+                const vitte_ast_node_t *cause_node =
+                    has_initializer ? initializer : diagnostic_node;
+                if (cause_node == NULL) cause_node = node;
+                if (vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_CANNOT_INFER,
+                        cause_node->span,
+                        cause_node->id,
+                        VITTE_SCOPE_INVALID_SYMBOL_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[context->diagnostic_count - 1u],
+                        has_initializer
+                            ? "Add an explicit element type after the binding, such as `let values: [ElementType] = [];`."
+                            : "Add a type annotation after this binding or provide an initializer so its type can be inferred.");
+                }
+            }
             if (binding == NULL ||
                 binding->kind != VITTE_AST_NODE_PATTERN) {
                 vitte_symbol_id_t symbol_id =
@@ -12880,10 +17405,6 @@ vitte_sema_analyze_node(
                         node,
                         scope_id);
 
-                let_result = vitte_sema_infer_declaration_type(
-                    context,
-                    node,
-                    scope_id);
                 info = vitte_sema_node_info_mut_private(
                     context,
                     node->id);
@@ -12894,10 +17415,6 @@ vitte_sema_analyze_node(
                 return let_result;
             }
 
-            let_result = vitte_sema_infer_declaration_type(
-                context,
-                node,
-                scope_id);
             let_info = vitte_sema_node_info_mut_private(
                 context,
                 node->id);
@@ -13024,7 +17541,31 @@ vitte_sema_analyze_node(
 
                 if (child == NULL ||
                     child->kind ==
-                        VITTE_AST_NODE_IDENTIFIER) {
+                        VITTE_AST_NODE_IDENTIFIER ||
+                    child->kind ==
+                        VITTE_AST_NODE_GENERIC_PARAM) {
+                    continue;
+                }
+
+                if (node->kind == VITTE_AST_NODE_TRAIT_DECL &&
+                    child->kind != VITTE_AST_NODE_GENERIC_PARAM &&
+                    child->kind != VITTE_AST_NODE_WHERE_CLAUSE &&
+                    child->kind != VITTE_AST_NODE_PROC_DECL &&
+                    child->kind != VITTE_AST_NODE_EXTERN_PROC_DECL) {
+                    if (vitte_sema_add_diagnostic(
+                            context,
+                            VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_TRAIT_MEMBER,
+                            child->span,
+                            child->id,
+                            symbol_id,
+                            VITTE_SEMA_INVALID_TYPE_ID,
+                            VITTE_SEMA_INVALID_TYPE_ID)) {
+                        vitte_sema_append_diagnostic_help(
+                            &context->diagnostics[
+                                context->diagnostic_count - 1u],
+                            "Trait bodies currently support procedure signatures and default procedure bodies. Move this declaration outside the trait or express it as a procedure member.");
+                    }
                     continue;
                 }
 
@@ -13213,6 +17754,11 @@ vitte_sema_analyze_node(
                         child->children,
                         child->child_count,
                         child_scope);
+                    vitte_sema_predeclare_values(
+                        context,
+                        child->children,
+                        child->child_count,
+                        child_scope);
                     vitte_sema_predeclare_procedures(
                         context,
                         child->children,
@@ -13267,6 +17813,25 @@ vitte_sema_analyze_node(
         case VITTE_AST_NODE_USE_DECL:
             if ((node->flags &
                  VITTE_AST_FLAG_PUBLIC) != 0u) {
+                const vitte_scope_entry_t *scope_entry =
+                    vitte_scope_get_scope(&context->scopes, scope_id);
+                if (scope_entry != NULL &&
+                    scope_entry->kind != VITTE_SCOPE_KIND_ROOT &&
+                    scope_entry->kind != VITTE_SCOPE_KIND_SPACE &&
+                    vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_INVALID_SCOPE,
+                        node->span,
+                        node->id,
+                        VITTE_SCOPE_INVALID_SYMBOL_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    vitte_sema_append_diagnostic_help(
+                        &context->diagnostics[
+                            context->diagnostic_count - 1u],
+                        "Export clauses belong at module scope. Add `pub` to an individual declaration inside a trait or impl block.");
+                }
                 return context->type_void;
             }
             return vitte_sema_analyze_import(
@@ -13434,7 +17999,7 @@ vitte_sema_analyze_node(
                     if (vitte_sema_add_diagnostic(
                             context,
                             VITTE_SEMA_DIAGNOSTIC_ERROR,
-                            VITTE_SEMA_DIAGNOSTIC_TYPE_MISMATCH,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_IMPL_TARGET,
                             first_type_node->span,
                             first_type_node->id,
                             resolved_trait_symbol_id,
@@ -13459,6 +18024,39 @@ vitte_sema_analyze_node(
 
             if (trait_declaration != NULL &&
                 impl_self_type != context->type_error) {
+                const vitte_ast_node_t *prior_implementation = NULL;
+                if (header_type_count == 2u && first_type_node != NULL) {
+                    vitte_sema_type_id_t current_trait_type =
+                        vitte_sema_analyze_type_node(
+                            context, first_type_node->id, impl_scope);
+                    prior_implementation =
+                        vitte_sema_prior_overlapping_trait_impl_private(
+                            context,
+                            node,
+                            scope_id,
+                            current_trait_type,
+                            impl_self_type);
+                }
+                if (prior_implementation != NULL) {
+                    if (vitte_sema_add_diagnostic(
+                            context,
+                            VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_CONFLICTING_IMPL,
+                            node->span,
+                            node->id,
+                            trait_symbol_id,
+                            VITTE_SEMA_INVALID_TYPE_ID,
+                            impl_self_type)) {
+                        vitte_sema_append_diagnostic_help(
+                            &context->diagnostics[
+                                context->diagnostic_count - 1u],
+                            "This trait and target type already have an implementation that overlaps this header. Keep one implementation and merge its members.");
+                        vitte_sema_set_last_related_location(
+                            context,
+                            prior_implementation,
+                            "conflicting implementation declared here");
+                    }
+                } else {
                 size_t trait_index;
                 for (trait_index = 0u;
                      trait_index < trait_declaration->child_count;
@@ -13529,7 +18127,7 @@ vitte_sema_analyze_node(
                         vitte_sema_add_diagnostic(
                             context,
                             VITTE_SEMA_DIAGNOSTIC_ERROR,
-                            VITTE_SEMA_DIAGNOSTIC_UNKNOWN_MEMBER,
+                            VITTE_SEMA_DIAGNOSTIC_MISSING_TRAIT_MEMBER,
                             node->span,
                             node->id,
                             trait_symbol_id,
@@ -13546,7 +18144,12 @@ vitte_sema_analyze_node(
                                       ? 96u
                                       : required_name_length),
                             required_name);
+                        vitte_sema_set_last_related_location(
+                            context,
+                            required,
+                            "required trait method declared here");
                     }
+                }
                 }
             }
 
@@ -13587,11 +18190,48 @@ vitte_sema_analyze_node(
                 scope_id);
 
         case VITTE_AST_NODE_IF_STMT:
+        {
+            const vitte_ast_node_t *condition = node->child_count != 0u
+                ? vitte_sema_node(context, node->children[0]) : NULL;
+            vitte_constant_t condition_value;
+            bool unreachable_parent =
+                vitte_sema_is_unreachable_private(context, node);
+
             if (node->child_count != 0u) {
                 (void)vitte_sema_analyze_condition(
                     context,
                     node->children[0],
                     scope_id);
+            }
+
+            condition_value = vitte_sema_known_value(context, condition);
+            if (!unreachable_parent &&
+                condition_value.kind == VITTE_CONSTANT_KIND_BOOL &&
+                node->child_count >= 2u) {
+                const vitte_ast_node_t *dead_branch =
+                    vitte_sema_node(context, condition_value.as.boolean
+                        ? (node->child_count >= 3u
+                            ? node->children[2] : VITTE_AST_INVALID_ID)
+                        : node->children[1]);
+                if (condition_value.as.boolean) {
+                    if (dead_branch != NULL) {
+                        vitte_sema_warn_unreachable_private(
+                            context, dead_branch, condition,
+                            "this condition makes the branch unreachable",
+                            "This condition is always true, so this alternative cannot run. Change the condition or remove the unreachable alternative.");
+                    }
+                } else {
+                    vitte_sema_warn_unreachable_private(
+                        context, dead_branch, condition,
+                        "this condition makes the branch unreachable",
+                        "This condition is always false, so this branch cannot run. Change the condition or remove the unreachable branch.");
+                }
+            } else if (unreachable_parent) {
+                for (index = 1u; index < node->child_count; ++index) {
+                    vitte_sema_mark_unreachable_private(
+                        context,
+                        vitte_sema_node(context, node->children[index]));
+                }
             }
 
             for (index = 1u;
@@ -13604,6 +18244,7 @@ vitte_sema_analyze_node(
             }
 
             return context->type_void;
+        }
 
         case VITTE_AST_NODE_WHILE_STMT:
         case VITTE_AST_NODE_FOR_STMT:
@@ -13665,11 +18306,39 @@ vitte_sema_analyze_node(
                         loop_scope);
                 }
             } else {
+                const vitte_ast_node_t *condition =
+                    node->child_count != 0u
+                        ? vitte_sema_node(context, node->children[0])
+                        : NULL;
+                vitte_constant_t condition_value;
+                bool unreachable_parent =
+                    vitte_sema_is_unreachable_private(context, node);
+
                 if (node->child_count != 0u) {
                     (void)vitte_sema_analyze_condition(
                         context,
                         node->children[0],
                         loop_scope);
+                }
+
+                condition_value = vitte_sema_known_value(
+                    context, condition);
+                if (node->kind == VITTE_AST_NODE_WHILE_STMT &&
+                    node->child_count > 1u && !unreachable_parent &&
+                    condition_value.kind == VITTE_CONSTANT_KIND_BOOL &&
+                    !condition_value.as.boolean) {
+                    const vitte_ast_node_t *body = vitte_sema_node(
+                        context, node->children[1]);
+                    vitte_sema_warn_unreachable_private(
+                        context, body, condition,
+                        "this condition makes the loop body unreachable",
+                        "This loop condition is always false, so the body cannot run. Change the condition or remove the loop.");
+                } else if (unreachable_parent) {
+                    for (index = 1u; index < node->child_count; ++index) {
+                        vitte_sema_mark_unreachable_private(
+                            context,
+                            vitte_sema_node(context, node->children[index]));
+                    }
                 }
 
                 for (index = 1u;
@@ -13729,8 +18398,13 @@ vitte_sema_analyze_node(
 
         case VITTE_AST_NODE_BREAK_STMT:
         case VITTE_AST_NODE_CONTINUE_STMT:
-            if (context->loop_depth == 0u) {
-                (void)vitte_sema_add_diagnostic(
+            if (context->current_defer_node_id != VITTE_AST_INVALID_ID &&
+                context->current_defer_node_id != 0u &&
+                context->loop_depth <= context->current_defer_loop_depth) {
+                (void)vitte_sema_defer_control_error(context, node,
+                    "Remove `break` or `continue` from deferred work. Perform the loop exit in the enclosing body and let cleanup complete normally.");
+            } else if (context->loop_depth == 0u) {
+                if (vitte_sema_add_diagnostic(
                     context,
                     VITTE_SEMA_DIAGNOSTIC_ERROR,
                     node->kind ==
@@ -13741,7 +18415,28 @@ vitte_sema_analyze_node(
                     node->id,
                     VITTE_SCOPE_INVALID_SYMBOL_ID,
                     VITTE_SEMA_INVALID_TYPE_ID,
-                    VITTE_SEMA_INVALID_TYPE_ID);
+                    VITTE_SEMA_INVALID_TYPE_ID)) {
+                    vitte_sema_diagnostic_t *diagnostic =
+                        &context->diagnostics[
+                            context->diagnostic_count - 1u];
+                    if (node->kind == VITTE_AST_NODE_BREAK_STMT) {
+                        (void)snprintf(diagnostic->help,
+                            sizeof(diagnostic->help),
+                            "Place `break` inside a loop body to exit that loop.");
+                        vitte_sema_set_nearest_control_context_private(
+                            context, scope_id,
+                            "enclosing procedure is here; place a loop here",
+                            "enclosing test is here; place a loop here");
+                    } else {
+                        (void)snprintf(diagnostic->help,
+                            sizeof(diagnostic->help),
+                            "Place `continue` inside a loop body to start its next iteration.");
+                        vitte_sema_set_nearest_control_context_private(
+                            context, scope_id,
+                            "enclosing procedure is here; place a loop here",
+                            "enclosing test is here; place a loop here");
+                    }
+                }
             }
 
             return context->type_void;
@@ -13817,11 +18512,9 @@ vitte_sema_analyze_node(
                         if (pattern_info != NULL) pattern_info->type_id = context->type_error;
                     }
                 }
-                /* Alternative bindings need name-set validation before they
-                 * can share a scope. Literal alternatives introduce none. */
-                if (pattern != NULL &&
-                    !(pattern->kind == VITTE_AST_NODE_PATTERN &&
-                      (pattern->flags & VITTE_AST_FLAG_PATTERN_OR) != 0u)) {
+                /* Binding handles `|` alternatives by validating their name
+                 * sets and registering one shared binding set. */
+                if (pattern != NULL) {
                     vitte_sema_bind_pattern(
                         context,
                         pattern->id,
@@ -13835,6 +18528,19 @@ vitte_sema_analyze_node(
                     const vitte_ast_node_t *part = vitte_sema_node(context, arm->children[child_index]);
                     if (arm->child_count == 3u && child_index == 1u) {
                         (void)vitte_sema_analyze_condition(context, arm->children[child_index], arm_scope);
+                        {
+                            vitte_constant_t guard_value =
+                                vitte_sema_known_value(context, part);
+                            if (guard_value.kind ==
+                                    VITTE_CONSTANT_KIND_BOOL &&
+                                !guard_value.as.boolean) {
+                                vitte_sema_mark_unreachable_private(
+                                    context,
+                                    vitte_sema_node(context,
+                                        arm->children[
+                                            arm->child_count - 1u]));
+                            }
+                        }
                     } else if (part != NULL && part->kind != VITTE_AST_NODE_BLOCK &&
                         part->kind != VITTE_AST_NODE_RETURN_STMT && part->kind != VITTE_AST_NODE_IF_STMT &&
                         part->kind != VITTE_AST_NODE_WHILE_STMT && part->kind != VITTE_AST_NODE_LOOP_STMT &&
@@ -13870,17 +18576,137 @@ vitte_sema_analyze_node(
             return context->type_void;
 
         case VITTE_AST_NODE_DEFER_STMT:
-        case VITTE_AST_NODE_ASM_STMT:
-            for (index = 0u;
-                 index < node->child_count;
-                 ++index) {
-                (void)vitte_sema_analyze_node(
-                    context,
-                    node->children[index],
-                    scope_id);
+            if (context->current_defer_node_id != VITTE_AST_INVALID_ID &&
+                context->current_defer_node_id != 0u) {
+                (void)vitte_sema_defer_control_error(context, node,
+                    "A deferred action cannot register another `defer`. Move the nested cleanup into the enclosing block.");
+                return context->type_void;
+            }
+            {
+                vitte_ast_node_id_t previous_defer =
+                    context->current_defer_node_id;
+                size_t previous_defer_loop_depth =
+                    context->current_defer_loop_depth;
+                context->current_defer_node_id = node->id;
+                context->current_defer_loop_depth = context->loop_depth;
+                for (index = 0u; index < node->child_count; ++index) {
+                    (void)vitte_sema_analyze_node(
+                        context, node->children[index], scope_id);
+                }
+                context->current_defer_node_id = previous_defer;
+                context->current_defer_loop_depth = previous_defer_loop_depth;
             }
 
             return context->type_void;
+
+        case VITTE_AST_NODE_ASM_STMT:
+        {
+            const vitte_token_t *syntax_token =
+                vitte_parser_token_at(context->parser, node->token_index + 1u);
+            bool template_form = syntax_token != NULL &&
+                syntax_token->kind == VITTE_TOKEN_STRING_LITERAL;
+
+            if (!context->current_unsafe &&
+                vitte_sema_add_diagnostic(
+                    context,
+                    VITTE_SEMA_DIAGNOSTIC_ERROR,
+                    VITTE_SEMA_DIAGNOSTIC_UNSAFE_REQUIRED,
+                    node->span,
+                    node->id,
+                    VITTE_SCOPE_INVALID_SYMBOL_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID)) {
+                vitte_sema_diagnostic_t *diagnostic =
+                    &context->diagnostics[context->diagnostic_count - 1u];
+                (void)snprintf(diagnostic->help, sizeof(diagnostic->help),
+                    "Inline assembly is an unsafe operation. Wrap this `asm` statement in `unsafe { ... }` after checking the target instruction and its memory effects.");
+            }
+
+            if (node->child_count > 512u &&
+                vitte_sema_add_diagnostic(
+                    context,
+                    VITTE_SEMA_DIAGNOSTIC_ERROR,
+                    VITTE_SEMA_DIAGNOSTIC_INVALID_ASM,
+                    node->span,
+                    node->id,
+                    VITTE_SCOPE_INVALID_SYMBOL_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID,
+                    VITTE_SEMA_INVALID_TYPE_ID)) {
+                (void)snprintf(
+                    context->diagnostics[context->diagnostic_count - 1u].help,
+                    sizeof(context->diagnostics[context->diagnostic_count - 1u].help),
+                    "The C17 backend supports at most 512 inline assembly inputs. Split this block into smaller assembly statements.");
+            }
+
+            if (template_form) {
+                const vitte_ast_node_t *template_node = node->child_count == 1u
+                    ? vitte_sema_node(context, node->children[0]) : NULL;
+                if (template_node == NULL ||
+                    template_node->kind != VITTE_AST_NODE_STRING_LITERAL) {
+                    if (vitte_sema_add_diagnostic(
+                            context,
+                            VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_ASM,
+                            node->span,
+                            node->id,
+                            VITTE_SCOPE_INVALID_SYMBOL_ID,
+                            VITTE_SEMA_INVALID_TYPE_ID,
+                            VITTE_SEMA_INVALID_TYPE_ID)) {
+                        (void)snprintf(context->diagnostics[context->diagnostic_count - 1u].help,
+                            sizeof(context->diagnostics[context->diagnostic_count - 1u].help),
+                            "The template form is `asm(\"instructions\");` and accepts exactly one string literal. Use `asm(expr, ...);` for input operands.");
+                    }
+                } else {
+                    (void)vitte_sema_analyze_expression(
+                        context, template_node->id, scope_id);
+                }
+            } else if (node->child_count == 0u) {
+                if (vitte_sema_add_diagnostic(
+                        context,
+                        VITTE_SEMA_DIAGNOSTIC_ERROR,
+                        VITTE_SEMA_DIAGNOSTIC_INVALID_ASM,
+                        node->span,
+                        node->id,
+                        VITTE_SCOPE_INVALID_SYMBOL_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID,
+                        VITTE_SEMA_INVALID_TYPE_ID)) {
+                    (void)snprintf(context->diagnostics[context->diagnostic_count - 1u].help,
+                        sizeof(context->diagnostics[context->diagnostic_count - 1u].help),
+                        "The operand form is `asm(value, ...);` and needs at least one input operand.");
+                }
+            } else {
+                for (index = 0u; index < node->child_count; ++index) {
+                    const vitte_ast_node_t *operand_node =
+                        vitte_sema_node(context, node->children[index]);
+                    vitte_sema_type_id_t operand_type =
+                        vitte_sema_analyze_expression(
+                            context, node->children[index], scope_id);
+                    const vitte_sema_type_t *operand_record =
+                        vitte_sema_type_private(context, operand_type);
+                    bool supported = operand_record != NULL &&
+                        (vitte_sema_type_is_numeric_private(context, operand_type) ||
+                         vitte_sema_type_is_bool_private(context, operand_type) ||
+                         operand_record->kind == VITTE_SEMA_TYPE_POINTER ||
+                         operand_record->kind == VITTE_SEMA_TYPE_REFERENCE ||
+                         vitte_sema_type_is_enum_private(context, operand_type));
+                    if (operand_type != context->type_error && !supported &&
+                        vitte_sema_add_diagnostic(
+                            context,
+                            VITTE_SEMA_DIAGNOSTIC_ERROR,
+                            VITTE_SEMA_DIAGNOSTIC_INVALID_ASM,
+                            operand_node != NULL ? operand_node->span : node->span,
+                            operand_node != NULL ? operand_node->id : node->id,
+                            VITTE_SCOPE_INVALID_SYMBOL_ID,
+                            VITTE_SEMA_INVALID_TYPE_ID,
+                            operand_type)) {
+                        (void)snprintf(context->diagnostics[context->diagnostic_count - 1u].help,
+                            sizeof(context->diagnostics[context->diagnostic_count - 1u].help),
+                            "This input cannot use the C17 backend's `\"g\"` assembly constraint. Use a scalar, pointer, reference, or pick value; aggregates, strings, functions, and `void` are unsupported.");
+                    }
+                }
+            }
+            return context->type_void;
+        }
 
         case VITTE_AST_NODE_UNSAFE_BLOCK: {
             bool previous_unsafe = context->current_unsafe;
@@ -14167,6 +18993,10 @@ vitte_sema_diagnostic_code_name(
             return "unknown_type";
         case VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE:
             return "not_a_type";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_CAST:
+            return "invalid_cast";
+        case VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE:
+            return "not_a_value";
         case VITTE_SEMA_DIAGNOSTIC_TYPE_MISMATCH:
             return "type_mismatch";
         case VITTE_SEMA_DIAGNOSTIC_INVALID_UNARY_OPERAND:
@@ -14187,6 +19017,52 @@ vitte_sema_diagnostic_code_name(
             return "invalid_index_type";
         case VITTE_SEMA_DIAGNOSTIC_UNKNOWN_MEMBER:
             return "unknown_member";
+        case VITTE_SEMA_DIAGNOSTIC_INCOMPLETE_TYPE:
+            return "incomplete_type";
+        case VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE:
+            return "recursive_type";
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_BOUND_UNSATISFIED:
+            return "generic_bound_unsatisfied";
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_COUNT:
+            return "generic_argument_count";
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_KIND:
+            return "generic_argument_kind";
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT:
+            return "generic_inference_conflict";
+        case VITTE_SEMA_DIAGNOSTIC_TRAIT_NOT_IMPLEMENTED:
+            return "trait_not_implemented";
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_IMPL:
+            return "ambiguous_impl";
+        case VITTE_SEMA_DIAGNOSTIC_CONFLICTING_IMPL:
+            return "conflicting_impl";
+        case VITTE_SEMA_DIAGNOSTIC_MISSING_TRAIT_MEMBER:
+            return "missing_trait_member";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_TRAIT_MEMBER:
+            return "invalid_trait_member";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_IMPL_TARGET:
+            return "invalid_impl_target";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE:
+            return "invalid_where_predicate";
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_METHOD:
+            return "ambiguous_method";
+        case VITTE_SEMA_DIAGNOSTIC_NO_MATCHING_PROCEDURE:
+            return "no_matching_procedure";
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_CALL:
+            return "ambiguous_call";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_MODIFIER:
+            return "invalid_procedure_modifier";
+        case VITTE_SEMA_DIAGNOSTIC_ASYNC_CONTEXT:
+            return "async_context";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_TASK_TYPE:
+            return "invalid_task_type";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_PARAMETER:
+            return "invalid_procedure_parameter";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_PATTERN_BINDINGS:
+            return "invalid_pattern_bindings";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_DEFER_CONTROL_FLOW:
+            return "invalid_defer_control_flow";
+        case VITTE_SEMA_DIAGNOSTIC_OVERLAPPING_PATTERN:
+            return "overlapping_pattern";
         case VITTE_SEMA_DIAGNOSTIC_CONTRACT_REQUIRES:
             return "contract_requires";
         case VITTE_SEMA_DIAGNOSTIC_CONTRACT_ENSURES:
@@ -14209,6 +19085,12 @@ vitte_sema_diagnostic_code_name(
             return "index_out_of_bounds";
         case VITTE_SEMA_DIAGNOSTIC_CONTRACT_EFFECT:
             return "contract_effect";
+        case VITTE_SEMA_DIAGNOSTIC_CONTRACT_OLD_VALUE:
+            return "contract_old_value";
+        case VITTE_SEMA_DIAGNOSTIC_CONSTANT_NOT_CONSTANT:
+            return "constant_not_constant";
+        case VITTE_SEMA_DIAGNOSTIC_CONSTANT_REMAINDER_BY_ZERO:
+            return "constant_remainder_by_zero";
         case VITTE_SEMA_DIAGNOSTIC_MATCH_NON_EXHAUSTIVE:
             return "match_non_exhaustive";
         case VITTE_SEMA_DIAGNOSTIC_MATCH_UNREACHABLE:
@@ -14219,6 +19101,12 @@ vitte_sema_diagnostic_code_name(
             return "match_type";
         case VITTE_SEMA_DIAGNOSTIC_UNSAFE_REQUIRED:
             return "unsafe_required";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_ASM:
+            return "invalid_asm";
+        case VITTE_SEMA_DIAGNOSTIC_FFI_ABI:
+            return "ffi_abi";
+        case VITTE_SEMA_DIAGNOSTIC_FFI_TYPE:
+            return "ffi_type";
         case VITTE_SEMA_DIAGNOSTIC_REFERENCE_ESCAPE:
             return "reference_escape";
         case VITTE_SEMA_DIAGNOSTIC_BORROW_CONFLICT:
@@ -14229,6 +19117,18 @@ vitte_sema_diagnostic_code_name(
             return "move_borrowed";
         case VITTE_SEMA_DIAGNOSTIC_USE_AFTER_MOVE:
             return "use_after_move";
+        case VITTE_SEMA_DIAGNOSTIC_CANNOT_INFER:
+            return "cannot_infer";
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME:
+            return "ambiguous_name";
+        case VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT:
+            return "duplicate_import";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_SCOPE:
+            return "invalid_scope";
+        case VITTE_SEMA_DIAGNOSTIC_DUPLICATE_BINDING:
+            return "duplicate_binding";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT:
+            return "invalid_export";
         case VITTE_SEMA_DIAGNOSTIC_CONDITION_NOT_BOOL:
             return "condition_not_bool";
         case VITTE_SEMA_DIAGNOSTIC_RETURN_OUTSIDE_PROC:
@@ -14595,6 +19495,30 @@ vitte_sema_run(
         context,
         root,
         root_scope);
+
+    /* Literal/range/variant patterns cannot bind a procedure parameter.
+     * Older declaration inference tried to compare those pattern nodes with
+     * the parameter type before procedure analysis emitted E0608, producing
+     * a secondary value/type mismatch at the same token. Keep the dedicated
+     * parameter diagnostic and remove only those redundant mismatches. */
+    for (size_t node_index = 0u;
+         node_index < context->parser->node_count;
+         ++node_index) {
+        const vitte_ast_node_t *parameter =
+            &context->parser->nodes[node_index];
+        const vitte_ast_node_t *pattern;
+        if (parameter->kind != VITTE_AST_NODE_PARAMETER ||
+            parameter->child_count == 0u) {
+            continue;
+        }
+        pattern = vitte_sema_node(context, parameter->children[0]);
+        if (vitte_sema_parameter_pattern_refutable_private(
+                context, pattern, 0u)) {
+            vitte_sema_suppress_pattern_type_cascades_private(
+                context, 0u,
+                pattern != NULL ? &pattern->span : &parameter->span);
+        }
+    }
 
     if (context->last_error == VITTE_SEMA_ERROR_NONE) {
         vitte_sema_check_static_program(context);

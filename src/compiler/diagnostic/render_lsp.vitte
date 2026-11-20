@@ -180,21 +180,37 @@ export proc vitte_diagnostic_lsp_source_position_converter(
         byte_offset
     } else { return false; };
 
+    // UTF-8 LSP characters are byte offsets and may address any byte.
+    if encoding == DiagnosticLSPPositionEncoding.Utf8 {
+        set *position = DiagnosticLSPPosition {
+            line: line_index,
+            character: target_offset - line_start,
+            valid: true
+        };
+        return true;
+    }
+
     let mut cursor = line_start;
     let mut character: usize = 0;
     while cursor < target_offset {
         let decoded = vitte_unicode_decode_utf8(source_entry.data, cursor, source_entry.length);
-        if decoded.error != UnicodeError.None or decoded.length == 0 or
-           decoded.length > target_offset - cursor { return false; }
-
-        let units: usize = if encoding == DiagnosticLSPPositionEncoding.Utf8 {
+        let codepoint = if decoded.error == UnicodeError.None {
+            decoded.codepoint
+        } else { 0xfffd };
+        let decoded_width = if decoded.error == UnicodeError.None {
             decoded.length
-        } else if encoding == DiagnosticLSPPositionEncoding.Utf16 and decoded.codepoint > 0xffff {
+        } else { 1 };
+        if decoded_width == 0 or decoded_width > target_offset - cursor {
+            // UTF-16/32 positions cannot split a valid UTF-8 scalar.
+            return false;
+        }
+
+        let units: usize = if encoding == DiagnosticLSPPositionEncoding.Utf16 and codepoint > 0xffff {
             2
         } else { 1 };
         if character > usize.MAX - units { return false; }
         set character += units;
-        set cursor += decoded.length;
+        set cursor += decoded_width;
     }
 
     set *position = DiagnosticLSPPosition {

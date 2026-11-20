@@ -344,7 +344,67 @@ INVALID_CASES = {
         "    );\n"
         "    return result.value;\n"
         "}\n",
-        "VITTE_CALL_E_ARGUMENT_TYPE",
+        "VITTE_GENERIC_E_INFERENCE_CONFLICT",
+    ),
+    "generic procedure rejects conflicting substitutions": (
+        "proc same<T>(left: T, right: T) -> T { return left; }\n"
+        "proc main() -> i64 { return same(42, true); }\n",
+        "VITTE_GENERIC_E_INFERENCE_CONFLICT",
+    ),
+    "generic bound reports concrete type": (
+        "trait Marker { proc mark(); }\n"
+        "proc needs<T: Marker>(value: T) -> i64 { return 0; }\n"
+        "proc main() -> i64 { return needs(1); }\n",
+        "VITTE_GENERIC_E_BOUND",
+    ),
+    "generic type arity is validated": (
+        "form Box<T> { value: T }\n"
+        "proc use(value: Box) -> i64 { return 0; }\n",
+        "VITTE_GENERIC_E_ARGUMENT_COUNT",
+    ),
+    "const generic argument kind is diagnosed": (
+        "form Buffer<const N: usize> { value: i64 }\n"
+        "proc use(value: Buffer<i64>) -> i64 { return 0; }\n",
+        "VITTE_GENERIC_E_ARGUMENT_KIND",
+    ),
+    "opaque layout use reports incomplete type": (
+        "opaque Hidden;\n"
+        "proc size(value: Hidden) -> i64 { return sizeof(value); }\n",
+        "VITTE_TYPE_E_INCOMPLETE",
+    ),
+    "recursive aliases are diagnosed": (
+        "type Loop = Loop;\n"
+        "proc use(value: Loop) -> i64 { return 0; }\n",
+        "VITTE_TYPE_E_RECURSIVE",
+    ),
+    "trait implementation must provide required methods": (
+        "trait Marker { proc mark(); }\n"
+        "form Item {}\n"
+        "impl Marker for Item {}\n",
+        "VITTE_TRAIT_E_MISSING_MEMBER",
+    ),
+    "duplicate trait implementations conflict": (
+        "trait Marker { proc mark(); }\n"
+        "form Item {}\n"
+        "impl Marker for Item { proc mark() {} }\n"
+        "impl Marker for Item { proc mark() {} }\n",
+        "VITTE_TRAIT_E_CONFLICTING_IMPL",
+    ),
+    "non-trait implementation targets are rejected": (
+        "form Item {}\n"
+        "impl Item for Item {}\n",
+        "VITTE_TRAIT_E_INVALID_IMPL_TARGET",
+    ),
+    "invalid where predicates are diagnosed": (
+        "proc bounded<T>() where T == 1 { }\n",
+        "VITTE_TRAIT_E_INVALID_WHERE_PREDICATE",
+    ),
+    "ambiguous generic method candidates are diagnosed": (
+        "trait ReadNumber { proc read() -> i64; }\n"
+        "trait ReadFlag { proc read() -> bool; }\n"
+        "proc use<T: ReadNumber + ReadFlag>(value: T) -> i64 { "
+        "let result = value.read(); return 0; }\n",
+        "VITTE_TRAIT_E_AMBIGUOUS_METHOD",
     ),
     "generic form first parameter checks field type": (
         "form Pair<T, U> { first: T, second: U }\n"
@@ -903,6 +963,19 @@ def main() -> int:
                 raise AssertionError(
                     f"{name}: expected {expected_code}, got {diagnostics!r}"
                 )
+            if name == "ambiguous generic method candidates are diagnosed":
+                diagnostic = next(
+                    item for item in diagnostics
+                    if item.get("internal_code") == expected_code
+                )
+                related = diagnostic.get("related_locations", [])
+                if len(related) != 1 or related[0].get("label") != (
+                    "other applicable method candidate declared here"
+                ):
+                    raise AssertionError(
+                        f"{name}: expected the other trait method declaration as a related location, "
+                        f"got {related!r}"
+                    )
             if name.startswith("generic form "):
                 compiled = subprocess.run(
                     [

@@ -8,10 +8,12 @@ typedef struct vitte_sema_reference_loan {
     vitte_symbol_id_t borrower;
     vitte_scope_id_t borrower_scope;
     vitte_parser_span_t origin;
+    vitte_ast_node_id_t origin_node_id;
     size_t start;
     size_t end;
     bool is_mutable;
     bool temporary;
+    vitte_ast_node_id_t defer_node_id;
 } vitte_sema_reference_loan_t;
 
 typedef struct vitte_sema_reference_state {
@@ -27,6 +29,7 @@ typedef struct vitte_sema_reference_state {
     size_t move_capacity;
     size_t *last_uses;
     size_t last_use_capacity;
+    vitte_ast_node_id_t active_defer_node_id;
 } vitte_sema_reference_state_t;
 
 typedef struct vitte_sema_reference_origin {
@@ -471,11 +474,18 @@ vitte_sema_reference_check_access(vitte_sema_reference_state_t *state,
         if (origin.through_borrower != VITTE_SCOPE_INVALID_SYMBOL_ID &&
             origin.through_borrower == loan->borrower) continue;
         if (loan->is_mutable || write) {
+            size_t diagnostic_count = state->context->diagnostic_count;
             vitte_sema_reference_diagnose_symbol(state,
                 VITTE_SEMA_DIAGNOSTIC_BORROWED_MUTATION, node,
                 loan->borrower != VITTE_SCOPE_INVALID_SYMBOL_ID ? loan->borrower : loan->root,
                 write ? "End or stop using the live reference before mutating this value."
                       : "This value is exclusively borrowed. Use the mutable reference or wait until it is no longer used.");
+            if (state->context->diagnostic_count > diagnostic_count) {
+                vitte_sema_set_last_related_location(
+                    state->context,
+                    vitte_sema_node(state->context, loan->origin_node_id),
+                    loan->is_mutable ? "exclusive borrow begins here" : "shared borrow begins here");
+            }
             return;
         }
     }
@@ -574,9 +584,16 @@ vitte_sema_reference_add_loan(vitte_sema_reference_state_t *state,
                 origin.through_borrower != VITTE_SCOPE_INVALID_SYMBOL_ID)
                 continue;
             if (existing->is_mutable || is_mutable) {
+                size_t diagnostic_count = state->context->diagnostic_count;
                 vitte_sema_reference_diagnose_symbol(state, VITTE_SEMA_DIAGNOSTIC_BORROW_CONFLICT,
                     site, existing->borrower != VITTE_SCOPE_INVALID_SYMBOL_ID ? existing->borrower : existing->root,
                     "End the existing reference before creating an overlapping exclusive reference.");
+                if (state->context->diagnostic_count > diagnostic_count) {
+                    vitte_sema_set_last_related_location(
+                        state->context,
+                        vitte_sema_node(state->context, existing->origin_node_id),
+                        existing->is_mutable ? "earlier exclusive borrow begins here" : "earlier shared borrow begins here");
+                }
                 break;
             }
         }
@@ -585,11 +602,122 @@ vitte_sema_reference_add_loan(vitte_sema_reference_state_t *state,
     state->loans[state->loan_count].borrower = borrower;
     state->loans[state->loan_count].borrower_scope = borrower_scope;
     state->loans[state->loan_count].origin = site != NULL ? site->span : (vitte_parser_span_t){0};
+    state->loans[state->loan_count].origin_node_id = site != NULL
+        ? site->id : VITTE_AST_INVALID_ID;
     state->loans[state->loan_count].start = start;
     state->loans[state->loan_count].end = end;
     state->loans[state->loan_count].is_mutable = is_mutable;
     state->loans[state->loan_count].temporary = temporary;
+    state->loans[state->loan_count].defer_node_id = VITTE_AST_INVALID_ID;
     return state->loan_count++;
+}
+
+static void
+vitte_sema_reference_collect_defer_body(
+    vitte_sema_reference_state_t *state,
+    const vitte_ast_node_t *defer_node,
+    const vitte_ast_node_t *node,
+    size_t scope_end,
+    size_t depth)
+{
+    size_t index;
+    if (state == NULL || defer_node == NULL || node == NULL ||
+        depth >= 128u || node->id == VITTE_AST_INVALID_ID ||
+        node->id > state->context->parser->node_count ||
+        node->kind == VITTE_AST_NODE_PROC_DECL ||
+        node->kind == VITTE_AST_NODE_EXTERN_PROC_DECL ||
+        node->kind == VITTE_AST_NODE_DEFER_STMT) return;
+    if (node->kind == VITTE_AST_NODE_IDENTIFIER ||
+        node->kind == VITTE_AST_NODE_PATH) {
+        const vitte_sema_node_info_t *info =
+            vitte_sema_node_info_private(state->context, node->id);
+        const vitte_symbol_t *symbol = info != NULL &&
+                info->symbol_id != VITTE_SCOPE_INVALID_SYMBOL_ID
+            ? vitte_scope_get_symbol(
+                  &state->context->scopes, info->symbol_id) : NULL;
+        const vitte_ast_node_t *declaration = symbol != NULL
+            ? (const vitte_ast_node_t *)symbol->payload : NULL;
+        size_t existing;
+        bool already_captured = false;
+        if (symbol != NULL && declaration != NULL &&
+            (symbol->kind == VITTE_SYMBOL_KIND_LOCAL ||
+             symbol->kind == VITTE_SYMBOL_KIND_PARAMETER) &&
+            declaration->span.valid && defer_node->span.valid &&
+            declaration->span.begin < defer_node->span.begin) {
+            for (existing = 0u; existing < state->loan_count; ++existing) {
+                if (state->loans[existing].defer_node_id == defer_node->id &&
+                    state->loans[existing].root == symbol->id) {
+                    already_captured = true;
+                    break;
+                }
+            }
+            if (!already_captured) {
+                size_t loan_index = vitte_sema_reference_add_loan(
+                    state,
+                    (vitte_sema_reference_origin_t){
+                        symbol->id, VITTE_SCOPE_INVALID_SYMBOL_ID,
+                        symbol->scope_id, false, true},
+                    VITTE_SCOPE_INVALID_SYMBOL_ID,
+                    VITTE_SCOPE_INVALID_SCOPE_ID,
+                    defer_node,
+                    defer_node->span.begin,
+                    scope_end,
+                    false,
+                    true,
+                    false);
+                if (loan_index != SIZE_MAX)
+                    state->loans[loan_index].defer_node_id = defer_node->id;
+            }
+            if (state->last_uses != NULL &&
+                symbol->id < state->last_use_capacity &&
+                scope_end > state->last_uses[symbol->id]) {
+                state->last_uses[symbol->id] = scope_end;
+            }
+        }
+    }
+    for (index = 0u; index < node->child_count; ++index) {
+        vitte_sema_reference_collect_defer_body(
+            state,
+            defer_node,
+            vitte_sema_node(state->context, node->children[index]),
+            scope_end,
+            depth + 1u);
+    }
+}
+
+static void
+vitte_sema_reference_collect_defer_captures(
+    vitte_sema_reference_state_t *state,
+    const vitte_ast_node_t *node,
+    size_t lexical_scope_end,
+    size_t depth)
+{
+    size_t index;
+    if (state == NULL || node == NULL || depth >= 128u ||
+        node->id == VITTE_AST_INVALID_ID ||
+        node->id > state->context->parser->node_count ||
+        node->kind == VITTE_AST_NODE_PROC_DECL ||
+        node->kind == VITTE_AST_NODE_EXTERN_PROC_DECL) return;
+    if (node->kind == VITTE_AST_NODE_BLOCK && node->span.valid)
+        lexical_scope_end = node->span.end;
+    if (node->kind == VITTE_AST_NODE_DEFER_STMT) {
+        for (index = 0u; index < node->child_count; ++index) {
+            vitte_sema_reference_collect_defer_body(
+                state,
+                node,
+                vitte_sema_node(state->context, node->children[index]),
+                lexical_scope_end,
+                0u);
+        }
+        return;
+    }
+    for (index = 0u; index < node->child_count; ++index) {
+        vitte_sema_reference_collect_defer_captures(
+            state,
+            vitte_sema_node(state->context, node->children[index]),
+            lexical_scope_end,
+            depth + 1u);
+    }
 }
 
 static void
@@ -609,6 +737,23 @@ vitte_sema_reference_scan_move(vitte_sema_reference_state_t *state,
         size_t index;
         if (vitte_sema_reference_check_use(state, operand)) return;
         if (type != NULL && type->kind == VITTE_SEMA_TYPE_REFERENCE) {
+            for (index = 0u; index < state->loan_count; ++index) {
+                const vitte_sema_reference_loan_t *loan = &state->loans[index];
+                if (loan->defer_node_id == VITTE_AST_INVALID_ID ||
+                    loan->defer_node_id == state->active_defer_node_id ||
+                    loan->root != symbol_id ||
+                    !vitte_sema_reference_live_at(state, loan, node)) continue;
+                if (vitte_sema_reference_diagnose_symbol(
+                        state, VITTE_SEMA_DIAGNOSTIC_MOVE_BORROWED,
+                        node, symbol_id,
+                        "This binding is captured by deferred work until its enclosing scope exits. Keep the binding available or move the deferred action before this move.")) {
+                    vitte_sema_set_last_related_location(
+                        state->context,
+                        vitte_sema_node(state->context, loan->defer_node_id),
+                        "deferred action captures this binding here");
+                }
+                break;
+            }
             vitte_sema_reference_mark_moved(state, symbol_id, node);
             return;
         }
@@ -620,10 +765,27 @@ vitte_sema_reference_scan_move(vitte_sema_reference_state_t *state,
         }
         for (index = 0u; index < state->loan_count; ++index) {
             const vitte_sema_reference_loan_t *loan = &state->loans[index];
+            if (loan->defer_node_id != VITTE_AST_INVALID_ID &&
+                loan->defer_node_id == state->active_defer_node_id) continue;
             if (loan->root == symbol_id && vitte_sema_reference_live_at(state, loan, node)) {
+                size_t diagnostic_count = state->context->diagnostic_count;
                 vitte_sema_reference_diagnose_symbol(state, VITTE_SEMA_DIAGNOSTIC_MOVE_BORROWED,
                     node, loan->borrower != VITTE_SCOPE_INVALID_SYMBOL_ID ? loan->borrower : symbol_id,
-                    "End all references to this value before moving it.");
+                    loan->defer_node_id != VITTE_AST_INVALID_ID
+                        ? "This value is captured by deferred work until its enclosing scope exits. Keep it available or move the deferred action before this move."
+                        : "End all references to this value before moving it.");
+                if (state->context->diagnostic_count > diagnostic_count &&
+                    loan->defer_node_id != VITTE_AST_INVALID_ID) {
+                    vitte_sema_set_last_related_location(
+                        state->context,
+                        vitte_sema_node(state->context, loan->defer_node_id),
+                        "deferred action captures this value here");
+                } else if (state->context->diagnostic_count > diagnostic_count) {
+                    vitte_sema_set_last_related_location(
+                        state->context,
+                        vitte_sema_node(state->context, loan->origin_node_id),
+                        loan->is_mutable ? "exclusive borrow begins here" : "shared borrow begins here");
+                }
                 break;
             }
         }
@@ -683,6 +845,29 @@ vitte_sema_reference_local_symbol(vitte_sema_reference_state_t *state,
     return true;
 }
 
+static const vitte_ast_node_t *
+vitte_sema_reference_declaration_for_symbol(
+    vitte_sema_reference_state_t *state,
+    vitte_symbol_id_t symbol_id)
+{
+    size_t ordinal;
+    size_t node_count;
+    if (state == NULL || symbol_id == VITTE_SCOPE_INVALID_SYMBOL_ID) return NULL;
+    node_count = vitte_parser_node_count(state->context->parser);
+    for (ordinal = 1u; ordinal <= node_count; ++ordinal) {
+        vitte_ast_node_id_t node_id = (vitte_ast_node_id_t)ordinal;
+        const vitte_ast_node_t *candidate =
+            vitte_sema_node(state->context, node_id);
+        const vitte_sema_node_info_t *info = candidate != NULL
+            ? vitte_sema_node_info_private(state->context, node_id) : NULL;
+        if (info != NULL && info->symbol_id == symbol_id &&
+            (info->flags & VITTE_SEMA_NODE_FLAG_DECLARATION) != 0u) {
+            return candidate;
+        }
+    }
+    return NULL;
+}
+
 static void
 vitte_sema_reference_check_return(vitte_sema_reference_state_t *state,
                                   const vitte_ast_node_t *node)
@@ -708,8 +893,15 @@ vitte_sema_reference_check_return(vitte_sema_reference_state_t *state,
     if ((!origin.is_static && owner != NULL && owner->kind == VITTE_SYMBOL_KIND_LOCAL) ||
         (!origin.is_static && owner != NULL && owner->kind == VITTE_SYMBOL_KIND_PARAMETER &&
          (owner_type == NULL || owner_type->kind != VITTE_SEMA_TYPE_REFERENCE))) {
+        size_t diagnostic_count = state->context->diagnostic_count;
         vitte_sema_reference_diagnose(state, VITTE_SEMA_DIAGNOSTIC_REFERENCE_ESCAPE, node,
             "Return a reference to a static value or to data borrowed from a reference parameter.");
+        if (state->context->diagnostic_count > diagnostic_count) {
+            vitte_sema_set_last_related_location(
+                state->context,
+                vitte_sema_reference_declaration_for_symbol(state, origin.root),
+                "referenced value is declared here");
+        }
     }
 }
 
@@ -744,8 +936,15 @@ vitte_sema_reference_scan(vitte_sema_reference_state_t *state,
             const vitte_ast_node_t *site = initializer != NULL ? initializer : node;
             if (!origin.known) return;
             if (!vitte_sema_reference_owner_outlives(state, origin, borrower_scope)) {
+                size_t diagnostic_count = state->context->diagnostic_count;
                 vitte_sema_reference_diagnose(state, VITTE_SEMA_DIAGNOSTIC_REFERENCE_ESCAPE, site,
                     "The referenced value is declared in a shorter scope. Move the reference into a scope that does not outlive its owner.");
+                if (state->context->diagnostic_count > diagnostic_count) {
+                    vitte_sema_set_last_related_location(
+                        state->context,
+                        vitte_sema_reference_declaration_for_symbol(state, origin.root),
+                        "referenced value is declared here");
+                }
             }
             vitte_sema_reference_add_loan(state, origin, borrower, borrower_scope, site,
                 node->span.end, last_use, reference_type->is_mutable, false, !direct_borrow);
@@ -756,6 +955,22 @@ vitte_sema_reference_scan(vitte_sema_reference_state_t *state,
         vitte_sema_reference_check_return(state, node);
         for (index = 0u; index < node->child_count; ++index)
             vitte_sema_reference_scan(state, vitte_sema_node(state->context, node->children[index]), depth + 1u);
+        return;
+    }
+    if (node->kind == VITTE_AST_NODE_DEFER_STMT) {
+        size_t saved_move_count = state->move_count;
+        size_t saved_loan_count = state->loan_count;
+        vitte_ast_node_id_t saved_defer = state->active_defer_node_id;
+        state->active_defer_node_id = node->id;
+        for (index = 0u; index < node->child_count; ++index) {
+            vitte_sema_reference_scan(
+                state,
+                vitte_sema_node(state->context, node->children[index]),
+                depth + 1u);
+        }
+        state->move_count = saved_move_count;
+        state->loan_count = saved_loan_count;
+        state->active_defer_node_id = saved_defer;
         return;
     }
     if (node->kind == VITTE_AST_NODE_CALL_EXPR) {
@@ -778,8 +993,14 @@ vitte_sema_reference_scan(vitte_sema_reference_state_t *state,
                 right_origin = vitte_sema_reference_resolve_value(state, right, 0u);
                 if (right_origin.known && right_origin.root == left_origin.root &&
                     (left_type->is_mutable || right_type->is_mutable)) {
+                    size_t diagnostic_count = state->context->diagnostic_count;
                     vitte_sema_reference_diagnose(state, VITTE_SEMA_DIAGNOSTIC_BORROW_CONFLICT, right,
                         "Pass references to distinct values, or end the other exclusive borrow before this call.");
+                    if (state->context->diagnostic_count > diagnostic_count) {
+                        vitte_sema_set_last_related_location(
+                            state->context, left,
+                            "conflicting reference is created here");
+                    }
                 }
             }
         }
@@ -814,9 +1035,17 @@ vitte_sema_reference_scan(vitte_sema_reference_state_t *state,
                     vitte_sema_reference_local_symbol(state, left, &target_symbol, &target_scope)) {
                     size_t loan_index;
                     const vitte_ast_node_t *site = vitte_sema_node(state->context, node->children[1]);
-                    if (!vitte_sema_reference_owner_outlives(state, origin, target_scope))
+                    if (!vitte_sema_reference_owner_outlives(state, origin, target_scope)) {
+                        size_t diagnostic_count = state->context->diagnostic_count;
                         vitte_sema_reference_diagnose(state, VITTE_SEMA_DIAGNOSTIC_REFERENCE_ESCAPE, node,
                             "The assigned reference would outlive the value it refers to.");
+                        if (state->context->diagnostic_count > diagnostic_count) {
+                            vitte_sema_set_last_related_location(
+                                state->context,
+                                vitte_sema_reference_declaration_for_symbol(state, origin.root),
+                                "referenced value is declared here");
+                        }
+                    }
                     for (loan_index = 0u; loan_index < state->loan_count; ++loan_index)
                         if (state->loans[loan_index].borrower == target_symbol &&
                             state->loans[loan_index].start <= node->span.begin &&
@@ -874,6 +1103,7 @@ vitte_sema_check_references_proc(vitte_sema_t *context,
     state.dead = dead;
     state.procedure = procedure;
     state.temporary_end = 0u;
+    state.active_defer_node_id = VITTE_AST_INVALID_ID;
     state.loan_capacity = 1u;
     for (index = 0u; index < procedure->child_count; ++index) {
         const vitte_ast_node_t *child = vitte_sema_node(context, procedure->children[index]);
@@ -924,6 +1154,8 @@ vitte_sema_check_references_proc(vitte_sema_t *context,
         const vitte_ast_node_t *child = vitte_sema_node(context, procedure->children[index]);
         if (child != NULL && child->kind == VITTE_AST_NODE_BLOCK) {
             vitte_sema_reference_index_uses(&state, child, 0u);
+            vitte_sema_reference_collect_defer_captures(
+                &state, child, child->span.end, 0u);
             vitte_sema_reference_scan(&state, child, 0u);
         }
     }

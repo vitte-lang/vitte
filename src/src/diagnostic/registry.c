@@ -428,13 +428,23 @@ vitte_registry_entries[] = {
     /* ===================================================================== */
 
     ENTRY(
+        "VITTE_IMPORT_E_MODULE_PATH_MISMATCH",
+        "E0300",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_IMPORT,
+        "module",
+        "module name does not match import path",
+        "The resolved source declares a different module path than the import requests."
+    ),
+
+    ENTRY(
         "VITTE_IMPORT_E_MODULE_NOT_FOUND",
         "E0301",
         VITTE_DIAGNOSTIC_ERROR,
         VITTE_DIAGNOSTIC_ORIGIN_IMPORT,
         "module",
         "module not found",
-        "The requested module could not be resolved."
+        "The requested module path could not be resolved under the import roots checked by the compiler."
     ),
 
     ENTRY(
@@ -474,7 +484,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_IMPORT,
         "package",
         "package not found",
-        "The requested package could not be located."
+        "The project declares this package dependency, but its package source directory was not found under the import roots checked by the compiler."
     ),
 
     ENTRY(
@@ -507,7 +517,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ERROR,
         VITTE_DIAGNOSTIC_ORIGIN_NAME_RESOLUTION,
         "name-resolution",
-        "symbol redeclared",
+        "duplicate declaration",
         "A symbol conflicts with an existing declaration in the same namespace."
     ),
 
@@ -538,7 +548,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_NAME_RESOLUTION,
         "scope",
         "invalid scope",
-        "The referenced declaration is not valid in the current lexical or semantic scope."
+        "An export clause is only valid at the root or module scope."
     ),
 
     ENTRY(
@@ -549,6 +559,16 @@ vitte_registry_entries[] = {
         "scope",
         "duplicate binding",
         "A pattern or declaration introduces the same binding more than once."
+    ),
+
+    ENTRY(
+        "VITTE_RESOLVE_E_INVALID_EXPORT",
+        "E0407",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_NAME_RESOLUTION,
+        "export",
+        "invalid export target",
+        "An export clause must name a declaration in the current module; re-exporting imported symbols is unsupported."
     ),
 
     /* ===================================================================== */
@@ -705,6 +725,16 @@ vitte_registry_entries[] = {
         "A control-flow condition must evaluate to a boolean value."
     ),
 
+    ENTRY(
+        "VITTE_TYPE_E_NOT_A_VALUE",
+        "E0516",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
+        "type",
+        "type name used as a value",
+        "The name resolves to a type, which cannot be evaluated as a value."
+    ),
+
     /* ===================================================================== */
     /* E0600-E0699: calls/procedures                                         */
     /* ===================================================================== */
@@ -777,6 +807,16 @@ vitte_registry_entries[] = {
         "procedure",
         "return outside procedure",
         "A return statement is only valid inside a procedure body."
+    ),
+
+    ENTRY(
+        "VITTE_CALL_E_PARAMETER",
+        "E0608",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
+        "parameter",
+        "invalid procedure parameter",
+        "A procedure parameter uses a refutable binding pattern or a mode the compiler does not support."
     ),
 
     /* ===================================================================== */
@@ -957,6 +997,9 @@ vitte_registry_entries[] = {
         "The generic declaration requires a different number of arguments."
     ),
 
+    ENTRY("VITTE_GENERIC_E_ARGUMENT_KIND", "E0803", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "generic", "incorrect generic argument kind or order", "Generic arguments must match the declared type and const parameter kinds in declaration order."),
+    ENTRY("VITTE_GENERIC_E_INFERENCE_CONFLICT", "E0804", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "generic", "conflicting generic inference", "The call provides arguments that require incompatible substitutions for the same generic parameter."),
+
     ENTRY(
         "VITTE_TRAIT_E_NOT_IMPLEMENTED",
         "E0810",
@@ -986,6 +1029,12 @@ vitte_registry_entries[] = {
         "conflicting implementation",
         "Two implementations overlap in a way that violates coherence rules."
     ),
+
+    ENTRY("VITTE_TRAIT_E_MISSING_MEMBER", "E0813", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "trait", "missing trait member", "The implementation is missing a required trait member without a default implementation."),
+    ENTRY("VITTE_TRAIT_E_INVALID_MEMBER", "E0814", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "trait", "invalid trait member", "An implementation member does not match a trait declaration or is not permitted in this trait."),
+    ENTRY("VITTE_TRAIT_E_INVALID_IMPL_TARGET", "E0815", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "trait", "invalid implementation target", "An implementation target must name a valid trait and target type in the supported implementation form."),
+    ENTRY("VITTE_TRAIT_E_INVALID_WHERE_PREDICATE", "E0816", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "generic", "invalid where predicate", "A where predicate must refer to a declared generic parameter and a valid trait bound."),
+    ENTRY("VITTE_TRAIT_E_AMBIGUOUS_METHOD", "E0817", VITTE_DIAGNOSTIC_ERROR, VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK, "trait", "ambiguous method", "More than one visible trait or implementation method matches this member access."),
 
     /* ===================================================================== */
     /* E0900-E0999: C17 backend                                              */
@@ -1028,7 +1077,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_C_COMPILER,
         "backend",
         "external C compiler failure",
-        "The generated C source was rejected by the external C compiler."
+        "The host C compiler could not be started or returned a failure status while compiling generated C; the driver reports the phase, command shape and compiler output."
     ),
 
     ENTRY(
@@ -1127,6 +1176,16 @@ vitte_registry_entries[] = {
         "control-flow",
         "unreachable operation",
         "A required operation cannot be reached through valid control flow."
+    ),
+
+    ENTRY(
+        "VITTE_CONTROL_E_INVALID_DEFER",
+        "E1105",
+        VITTE_DIAGNOSTIC_ERROR,
+        VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
+        "control-flow",
+        "invalid deferred control flow",
+        "Deferred work cannot return, use an early-exit operator, break or continue an enclosing loop, or register another deferred action."
     ),
 
     /* ===================================================================== */
@@ -1448,7 +1507,7 @@ vitte_registry_entries[] = {
         VITTE_DIAGNOSTIC_ORIGIN_DRIVER,
         "target",
         "unsupported target",
-        "The requested compilation target is not supported."
+        "The requested target triple, platform, architecture or ABI cannot be honored by the selected backend/toolchain; diagnostics include the request, known host properties, and whether the compiler's exact target values were queried."
     ),
 
     ENTRY(
@@ -1601,6 +1660,15 @@ vitte_registry_entries[] = {
         "redundant",
         "redundant condition",
         "The condition is statically known or duplicates an existing condition."
+    ),
+
+    WARNING_ENTRY(
+        "VITTE_WARNING_OVERLAPPING_PATTERN",
+        "W0052",
+        VITTE_DIAGNOSTIC_ORIGIN_TYPE_CHECK,
+        "pattern",
+        "overlapping match patterns",
+        "This pattern matches some values that an earlier match arm can also match."
     ),
 
     WARNING_ENTRY(
@@ -2206,6 +2274,16 @@ vitte_diagnostic_registry_origin_matches_range(
         vitte_diagnostic_registry_range(
             entry->public_code
         );
+
+    /* These four syntax diagnostics are reserved in the module code band. */
+    if (range == VITTE_DIAGNOSTIC_RANGE_MODULE &&
+        entry->origin == VITTE_DIAGNOSTIC_ORIGIN_PARSER &&
+        (strcmp(entry->public_code, "E0308") == 0 ||
+         strcmp(entry->public_code, "E0309") == 0 ||
+         strcmp(entry->public_code, "E0310") == 0 ||
+         strcmp(entry->public_code, "E0311") == 0)) {
+        return true;
+    }
 
     switch (range) {
         case VITTE_DIAGNOSTIC_RANGE_LEXER:

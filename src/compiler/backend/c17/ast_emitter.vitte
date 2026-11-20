@@ -61,6 +61,8 @@ export form C17AstEmitResult {
     success: bool,
     source: string,
     error: string,
+    has_span: bool,
+    span: ParserSpan,
 }
 
 form C17AstLocal {
@@ -179,6 +181,7 @@ form C17AstEmitter {
     source_capacity: usize,
     error: string,
     failed: bool,
+    failure_span: ParserSpan,
     return_void: bool,
     inline_static_initializer: bool,
     current_return_type: ?&ASTNode,
@@ -238,11 +241,28 @@ proc ast_fail(emitter: &mut C17AstEmitter, message: string) {
     set emitter.failed = true;
 }
 
+proc ast_record_source_context(emitter: &mut C17AstEmitter, node: ?&ASTNode) {
+    if not emitter.failed and node != null and node?.span.valid {
+        set emitter.failure_span = node?.span;
+    }
+}
+
+proc ast_failure_result(emitter: &C17AstEmitter) -> C17AstEmitResult {
+    return C17AstEmitResult {
+        success: false,
+        source: "",
+        error: emitter.error,
+        has_span: emitter.failure_span.valid,
+        span: emitter.failure_span
+    };
+}
+
 proc ast_reject_unsupported_modifiers(emitter: &mut C17AstEmitter) {
     let mut index: usize = 0;
     while index < emitter.parser.node_count and not emitter.failed {
         let node: &ASTNode = &emitter.parser.nodes[index];
         if (node.node_flags & PARSER_AST_FLAG_COMPTIME) != 0 {
+            ast_record_source_context(emitter, node);
             ast_fail(emitter, "comptime declarations cannot be emitted until compile-time evaluation is implemented");
             return;
         }
@@ -314,6 +334,7 @@ proc ast_reject_unsupported_attributes(emitter: &mut C17AstEmitter) {
             if node.kind != ASTNodeKind.ProcDecl and
                node.kind != ASTNodeKind.ExternProcDecl and
                node.kind != ASTNodeKind.StaticDecl {
+                ast_record_source_context(emitter, node);
                 ast_fail(emitter, "attributes are supported only on procedures and static declarations");
                 return;
             }
@@ -321,6 +342,7 @@ proc ast_reject_unsupported_attributes(emitter: &mut C17AstEmitter) {
             while attribute_index < node.attribute_count {
                 if node.attribute_start > emitter.parser.attribute_count or
                    attribute_index >= emitter.parser.attribute_count - node.attribute_start {
+                    ast_record_source_context(emitter, node);
                     ast_fail(emitter, "procedure attribute range is invalid");
                     return;
                 }
@@ -331,6 +353,7 @@ proc ast_reject_unsupported_attributes(emitter: &mut C17AstEmitter) {
                     ast_attribute_is_cold(emitter, attribute)
                 };
                 if not supported or attribute.argument_count != 0 {
+                    ast_record_source_context(emitter, node);
                     ast_fail(emitter, "only #[cold] on procedures and #[thread_local] on statics are supported by C17 code generation");
                     return;
                 }
@@ -3861,6 +3884,7 @@ proc ast_generic_alias_slice_element_text(
 }
 
 proc ast_emit_type(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace: string) {
+    ast_record_source_context(emitter, node);
     let text: ?string = ast_type_text(emitter, node, namespace, 0);
     if text == null {
         let line: usize = if node == null { 0 as usize } else { node?.span.line };
@@ -5328,6 +5352,7 @@ proc ast_expression_is_character(emitter: &C17AstEmitter, node: ?&ASTNode) -> bo
 }
 
 proc ast_emit_expression(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace: string, depth: usize) {
+    ast_record_source_context(emitter, node);
     if emitter.failed { return; }
     if node == null {
         ast_fail(emitter, "missing expression node");
@@ -7946,6 +7971,7 @@ proc ast_expression_returns_never(
 }
 
 proc ast_emit_statement(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace: string, depth: usize) {
+    ast_record_source_context(emitter, node);
     if emitter.failed { return; }
     if node == null {
         ast_fail(emitter, "missing statement node");
@@ -10795,7 +10821,7 @@ proc ast_emit_host_intrinsics(emitter: &mut C17AstEmitter) {
 
 export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptions) -> C17AstEmitResult {
     if parser.state != ParserState.Done or parser.root == 0 or parser.node_count == 0 or parser.nodes == null {
-        return C17AstEmitResult { success: false, source: "", error: "parser does not contain a completed AST" };
+        return C17AstEmitResult { success: false, source: "", error: "parser does not contain a completed AST", has_span: false, span: ParserSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, valid: false } };
     }
     let mut emitter: C17AstEmitter = C17AstEmitter {};
     set emitter.error = "";
@@ -10806,16 +10832,16 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
     set emitter.options = &*options;
     let root = ast_node(&emitter, parser.root);
     if root == null or root?.kind != ASTNodeKind.TranslationUnit {
-        return C17AstEmitResult { success: false, source: "", error: "parser root is not a translation unit" };
+        return C17AstEmitResult { success: false, source: "", error: "parser root is not a translation unit", has_span: root != null and root?.span.valid, span: if root == null { ParserSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, valid: false } } else { root?.span } };
     }
     ast_reject_unsupported_modifiers(&mut emitter);
     ast_reject_unsupported_attributes(&mut emitter);
     if emitter.failed {
-        return C17AstEmitResult { success: false, source: "", error: emitter.error };
+        return ast_failure_result(&emitter);
     }
     ast_collect_symbols(&mut emitter, root?, "", 0);
     if emitter.failed {
-        return C17AstEmitResult { success: false, source: "", error: emitter.error };
+        return ast_failure_result(&emitter);
     }
     ast_collect_generic_instances_in_scope(&mut emitter, root?, "", 0);
     ast_collect_generic_proc_instances_in_scope(&mut emitter, root?, "", 0);
@@ -10823,7 +10849,7 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
     ast_collect_impl_methods_in_scope(&mut emitter, root?, "", 0);
     ast_collect_generic_impl_methods_in_scope(&mut emitter, root?, "", 0);
     if emitter.failed {
-        return C17AstEmitResult { success: false, source: "", error: emitter.error };
+        return ast_failure_result(&emitter);
     }
     if options.emit_banner {
         ast_write(&mut emitter, "/* Generated by the native Vitte C17 AST emitter. */\n");
@@ -10867,7 +10893,7 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
             let entry_index = ast_proc_node_index(&emitter, entry_proc?.id);
             if entry_index == usize.MAX {
                 ast_fail(&mut emitter, "entry procedure symbol is ambiguous");
-                return C17AstEmitResult { success: false, source: "", error: emitter.error };
+                return ast_failure_result(&emitter);
             }
             let entry_symbol = ast_mangle(emitter.procedures[entry_index].qualified_name, "vitte_fn_");
             let return_type = ast_function_return_type(&emitter, entry_proc?);
@@ -10895,10 +10921,10 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
     }
     if emitter.failed {
         ast_discard_source(&mut emitter);
-        return C17AstEmitResult { success: false, source: "", error: emitter.error };
+        return ast_failure_result(&emitter);
     }
     let source = ast_finish_source(&mut emitter);
-    return C17AstEmitResult { success: true, source: source, error: "" };
+    return C17AstEmitResult { success: true, source: source, error: "", has_span: false, span: ParserSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, valid: false } };
 }
 
 export proc c17_emit_ast(parser: &Parser) -> C17AstEmitResult {

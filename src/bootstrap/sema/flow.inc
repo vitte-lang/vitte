@@ -12,8 +12,17 @@ typedef enum vitte_sema_exit_flow {
     VITTE_SEMA_EXIT_UNKNOWN
 } vitte_sema_exit_flow_t;
 
+/* Defined with the pattern coverage helpers in static_checks.inc. */
+static bool vitte_sema_pattern_is_wildcard_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *pattern);
+static bool vitte_sema_match_exhaustive_for_flow_private(
+    vitte_sema_t *context,
+    const vitte_ast_node_t *match_node,
+    size_t last_arm_index);
+
 static unsigned int
-vitte_sema_flow(const vitte_sema_t *context, const vitte_ast_node_t *node, size_t depth)
+vitte_sema_flow(vitte_sema_t *context, const vitte_ast_node_t *node, size_t depth)
 {
     size_t index;
     if (node == NULL || depth >= 128u) return VITTE_FLOW_UNKNOWN;
@@ -62,15 +71,16 @@ vitte_sema_flow(const vitte_sema_t *context, const vitte_ast_node_t *node, size_
         }
         case VITTE_AST_NODE_MATCH_STMT: {
             unsigned int outcomes = 0u;
-            bool wildcard = false, has_true = false, has_false = false;
+            bool wildcard = false;
             for (index = 1u; index < node->child_count; ++index) {
                 const vitte_ast_node_t *arm = vitte_sema_node(context, node->children[index]);
                 const vitte_ast_node_t *pattern;
-                const vitte_token_t *token;
                 const vitte_ast_node_t *body;
+                if (index > 1u &&
+                    vitte_sema_match_exhaustive_for_flow_private(
+                        context, node, index - 1u)) break;
                 if (arm == NULL || arm->child_count < 2u) return VITTE_FLOW_UNKNOWN;
                 pattern = vitte_sema_node(context, arm->children[0]);
-                token = vitte_sema_node_token(context, pattern);
                 body = vitte_sema_node(context, arm->children[arm->child_count - 1u]);
                 if (body != NULL && body->kind != VITTE_AST_NODE_BLOCK &&
                     body->kind != VITTE_AST_NODE_RETURN_STMT && body->kind != VITTE_AST_NODE_IF_STMT &&
@@ -78,14 +88,14 @@ vitte_sema_flow(const vitte_sema_t *context, const vitte_ast_node_t *node, size_
                     /* Bare match arm expressions are implicit procedure results. */
                     outcomes |= VITTE_FLOW_RETURN;
                 } else outcomes |= vitte_sema_flow(context, body, depth + 1u);
-                if (arm->child_count == 2u && token != NULL) {
-                    if (token->length == 1u && token->lexeme[0] == '_') wildcard = true;
-                    if (token->kind == VITTE_TOKEN_KW_TRUE) has_true = true;
-                    if (token->kind == VITTE_TOKEN_KW_FALSE) has_false = true;
+                if (arm->child_count == 2u) {
+                    if (vitte_sema_pattern_is_wildcard_private(context, pattern)) wildcard = true;
                 }
                 if (wildcard) break;
             }
-            if (!wildcard && !(has_true && has_false)) outcomes |= VITTE_FLOW_UNKNOWN;
+            if (!vitte_sema_match_exhaustive_for_flow_private(
+                    context, node, node->child_count - 1u))
+                outcomes |= VITTE_FLOW_UNKNOWN;
             return outcomes;
         }
         case VITTE_AST_NODE_ASM_STMT:
@@ -104,7 +114,7 @@ vitte_sema_flow(const vitte_sema_t *context, const vitte_ast_node_t *node, size_
 }
 
 static vitte_sema_exit_flow_t
-vitte_sema_exit_flow(const vitte_sema_t *context, const vitte_ast_node_t *node, size_t depth)
+vitte_sema_exit_flow(vitte_sema_t *context, const vitte_ast_node_t *node, size_t depth)
 {
     unsigned int flow = vitte_sema_flow(context, node, depth);
     if ((flow & VITTE_FLOW_UNKNOWN) != 0u) return VITTE_SEMA_EXIT_UNKNOWN;

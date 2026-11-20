@@ -539,6 +539,14 @@ vitte_diagnostic_lsp_source_position_converter(
         return false;
     }
 
+    /* UTF-8 LSP characters are byte offsets and may address any byte. */
+    if (encoding == VITTE_DIAGNOSTIC_LSP_POSITION_UTF8) {
+        position->line = line_index;
+        position->character = target_offset - line_start;
+        position->valid = true;
+        return true;
+    }
+
     cursor = line_start;
     character = 0u;
     while (cursor < target_offset) {
@@ -547,13 +555,16 @@ vitte_diagnostic_lsp_source_position_converter(
         size_t units;
 
         if (!vitte_source_codepoint_at(sources, source->id, cursor,
-                &codepoint, &width) || width == 0u ||
-            width > target_offset - cursor) {
+                &codepoint, &width)) {
+            /* Invalid source bytes count as U+FFFD for LSP text positions. */
+            codepoint = UINT32_C(0xfffd);
+            width = 1u;
+        }
+        if (width == 0u || width > target_offset - cursor) {
+            /* UTF-16/32 positions cannot split a valid UTF-8 scalar. */
             return false;
         }
-        if (encoding == VITTE_DIAGNOSTIC_LSP_POSITION_UTF8) {
-            units = width;
-        } else if (encoding == VITTE_DIAGNOSTIC_LSP_POSITION_UTF16) {
+        if (encoding == VITTE_DIAGNOSTIC_LSP_POSITION_UTF16) {
             units = codepoint > UINT32_C(0xffff) ? 2u : 1u;
         } else {
             units = 1u;

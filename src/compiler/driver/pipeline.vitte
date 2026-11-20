@@ -39,6 +39,7 @@ use compiler::codegen::codegen::{
 use compiler::backend::c17::ast_emitter::{C17AstEmitResult, c17_emit_ast};
 use compiler::backend::c17::ir_emitter::{c17_emit_ir};
 use compiler::hir::hir::{
+    HIRError,
     HIR,
     HIRState,
     HIRStats,
@@ -87,8 +88,11 @@ use compiler::diagnostic::cli_bridge::{
 use compiler::lexer::lexer::{
     Lexer,
     LexerError,
+    LexerSpan,
     TokenKind,
     vitte_lexer_destroy,
+    vitte_lexer_diagnostic_at,
+    vitte_lexer_diagnostic_count,
     vitte_lexer_error_span,
     vitte_lexer_fingerprint,
     vitte_lexer_init,
@@ -97,7 +101,12 @@ use compiler::lexer::lexer::{
     vitte_lexer_run,
     vitte_lexer_token_count,
     vitte_lexer_validate,
-    vitte_token_kind_name
+    vitte_token_kind_name,
+    vitte_token_kind_is_keyword
+};
+use compiler::unicode::unicode::{
+    UnicodeError,
+    vitte_unicode_decode_utf8
 };
 use compiler::parser::parser::{
     ASTNode,
@@ -117,6 +126,7 @@ use compiler::parser::parser::{
     vitte_parser_init,
     vitte_parser_node_token,
     vitte_parser_fingerprint,
+    vitte_parser_root,
     vitte_parser_run_native,
     vitte_parser_error_name,
     vitte_parser_diagnostic_at,
@@ -124,6 +134,7 @@ use compiler::parser::parser::{
 };
 use compiler::sema::sema::{
     Sema,
+    SemaError,
     SemaType,
     SemaTypeId,
     SemaTypeKind,
@@ -273,21 +284,152 @@ proc native_pipeline_parser_code(error: ParserError) -> string {
         case ParserError.ExpectedDeclaration => return "VITTE_PARSER_E_EXPECTED_DECLARATION";
         case ParserError.UnexpectedToken => return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
         case ParserError.ExpectedStatement => return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
-        else => return "VITTE_INFRA_E_PHASE";
+        case ParserError.Unsupported => return "VITTE_PARSER_E_UNSUPPORTED_SYNTAX";
+        case ParserError.InvalidModulePath => return "VITTE_PARSER_E_INVALID_MODULE_PATH";
+        case ParserError.DuplicateModuleHeader => return "VITTE_PARSER_E_DUPLICATE_MODULE_HEADER";
+        case ParserError.MisplacedModuleHeader => return "VITTE_PARSER_E_MISPLACED_MODULE_HEADER";
+        case ParserError.InvalidUseDeclaration => return "VITTE_PARSER_E_INVALID_USE_DECLARATION";
+        case ParserError.InvalidUseAlias => return "VITTE_PARSER_E_INVALID_USE_ALIAS";
+        case ParserError.InvalidImportGroup => return "VITTE_PARSER_E_INVALID_IMPORT_GROUP";
+        case ParserError.InvalidGlobImport => return "VITTE_PARSER_E_INVALID_GLOB_IMPORT";
+        case ParserError.InvalidExportClause => return "VITTE_PARSER_E_INVALID_EXPORT_CLAUSE";
+        case ParserError.EmptyExportGroup => return "VITTE_PARSER_E_EMPTY_EXPORT_GROUP";
+        case ParserError.InvalidExportAlias => return "VITTE_PARSER_E_INVALID_EXPORT_ALIAS";
+        case ParserError.TrailingTokens => return "VITTE_PARSER_E_TRAILING_TOKENS";
+        case ParserError.MissingModuleHeader => return "VITTE_PARSER_E_MISSING_MODULE_HEADER";
+        case ParserError.InvalidValueDeclaration => return "VITTE_PARSER_E_INVALID_VALUE_DECLARATION";
+        case ParserError.MissingValueInitializer => return "VITTE_PARSER_E_MISSING_VALUE_INITIALIZER";
+        case ParserError.InvalidTypeDeclaration => return "VITTE_PARSER_E_INVALID_TYPE_DECLARATION";
+        case ParserError.InvalidOpaqueDeclaration => return "VITTE_PARSER_E_INVALID_OPAQUE_DECLARATION";
+        case ParserError.InvalidFormDeclaration => return "VITTE_PARSER_E_INVALID_FORM_DECLARATION";
+        case ParserError.DuplicateFormField => return "VITTE_PARSER_E_DUPLICATE_FORM_FIELD";
+        case ParserError.InvalidFormFieldSeparator => return "VITTE_PARSER_E_INVALID_FORM_FIELD_SEPARATOR";
+        case ParserError.InvalidPickDeclaration => return "VITTE_PARSER_E_INVALID_PICK_DECLARATION";
+        case ParserError.DuplicatePickVariant => return "VITTE_PARSER_E_DUPLICATE_PICK_VARIANT";
+        case ParserError.InvalidPickVariantPayload => return "VITTE_PARSER_E_INVALID_PICK_VARIANT_PAYLOAD";
+        case ParserError.InvalidTraitDeclaration => return "VITTE_PARSER_E_INVALID_TRAIT_DECLARATION";
+        case ParserError.InvalidImplDeclaration => return "VITTE_PARSER_E_INVALID_IMPL_DECLARATION";
+        case ParserError.MissingImplTargetType => return "VITTE_PARSER_E_MISSING_IMPL_TARGET_TYPE";
+        case ParserError.InvalidImplForClause => return "VITTE_PARSER_E_INVALID_IMPL_FOR_CLAUSE";
+        case ParserError.InvalidProcedureDeclaration => return "VITTE_PARSER_E_INVALID_PROCEDURE_DECLARATION";
+        case ParserError.InvalidProcedureParameters => return "VITTE_PARSER_E_INVALID_PROCEDURE_PARAMETERS";
+        case ParserError.InvalidProcedureReturnType => return "VITTE_PARSER_E_INVALID_PROCEDURE_RETURN_TYPE";
+        case ParserError.InvalidProcedureModifier => return "VITTE_PARSER_E_INVALID_PROCEDURE_MODIFIER";
+        case ParserError.InvalidProcedureBodyForm => return "VITTE_PARSER_E_INVALID_PROCEDURE_BODY_FORM";
+        case ParserError.InvalidExternalProcedure => return "VITTE_PARSER_E_INVALID_EXTERNAL_PROCEDURE";
+        case ParserError.InvalidIntrinsicDeclaration => return "VITTE_PARSER_E_INVALID_INTRINSIC_DECLARATION";
+        case ParserError.InvalidAbiStringLiteral => return "VITTE_PARSER_E_INVALID_ABI_STRING_LITERAL";
+        case ParserError.InvalidGenericParameterList => return "VITTE_PARSER_E_INVALID_GENERIC_PARAMETER_LIST";
+        case ParserError.InvalidConstGenericParameter => return "VITTE_PARSER_E_INVALID_CONST_GENERIC_PARAMETER";
+        case ParserError.InvalidGenericBound => return "VITTE_PARSER_E_INVALID_GENERIC_BOUND";
+        case ParserError.InvalidWhereClause => return "VITTE_PARSER_E_INVALID_WHERE_CLAUSE";
+        case ParserError.InvalidRequiresClause => return "VITTE_PARSER_E_INVALID_REQUIRES_CLAUSE";
+        case ParserError.InvalidEnsuresClause => return "VITTE_PARSER_E_INVALID_ENSURES_CLAUSE";
+        case ParserError.InvalidMacroDeclaration => return "VITTE_PARSER_E_INVALID_MACRO_DECLARATION";
+        case ParserError.InvalidMacroParameters => return "VITTE_PARSER_E_INVALID_MACRO_PARAMETERS";
+        case ParserError.InvalidTestDeclaration => return "VITTE_PARSER_E_INVALID_TEST_DECLARATION";
+        case ParserError.InvalidDeclarationModifierOrder => return "VITTE_PARSER_E_INVALID_DECLARATION_MODIFIER_ORDER";
+        case ParserError.InvalidAttribute => return "VITTE_PARSER_E_INVALID_ATTRIBUTE";
+        case ParserError.InvalidAttributeName => return "VITTE_PARSER_E_INVALID_ATTRIBUTE_NAME";
+        case ParserError.InvalidAttributeArguments => return "VITTE_PARSER_E_INVALID_ATTRIBUTE_ARGUMENTS";
+        case ParserError.MissingAttributeValue => return "VITTE_PARSER_E_MISSING_ATTRIBUTE_VALUE";
+        case ParserError.InvalidAttributeLiteral => return "VITTE_PARSER_E_INVALID_ATTRIBUTE_LITERAL";
+        case ParserError.UnexpectedDeclaration => return "VITTE_PARSER_E_UNEXPECTED_DECLARATION";
+        case ParserError.UnexpectedStatement => return "VITTE_PARSER_E_UNEXPECTED_STATEMENT";
+        case ParserError.UnexpectedExpression => return "VITTE_PARSER_E_UNEXPECTED_EXPRESSION";
+        case ParserError.InvalidProcedureType => return "VITTE_PARSER_E_INVALID_PROCEDURE_TYPE";
+        case ParserError.InvalidReferenceType => return "VITTE_PARSER_E_INVALID_REFERENCE_TYPE";
+        case ParserError.InvalidPointerType => return "VITTE_PARSER_E_INVALID_POINTER_TYPE";
+        case ParserError.InvalidArrayType => return "VITTE_PARSER_E_INVALID_ARRAY_TYPE";
+        case ParserError.InvalidSliceType => return "VITTE_PARSER_E_INVALID_SLICE_TYPE";
+        case ParserError.InvalidOptionalType => return "VITTE_PARSER_E_INVALID_OPTIONAL_TYPE";
+        case ParserError.InvalidTypePath => return "VITTE_PARSER_E_INVALID_TYPE_PATH";
+        case ParserError.InvalidGenericArguments => return "VITTE_PARSER_E_INVALID_GENERIC_ARGUMENTS";
+        case ParserError.InvalidLetStatement => return "VITTE_PARSER_E_INVALID_LET_STATEMENT";
+        case ParserError.InvalidSetStatement => return "VITTE_PARSER_E_INVALID_SET_STATEMENT";
+        case ParserError.InvalidAssignmentOperator => return "VITTE_PARSER_E_INVALID_ASSIGNMENT_OPERATOR";
+        case ParserError.InvalidReturnStatement => return "VITTE_PARSER_E_INVALID_RETURN_STATEMENT";
+        case ParserError.InvalidJumpStatement => return "VITTE_PARSER_E_INVALID_JUMP_STATEMENT";
+        case ParserError.InvalidDeferStatement => return "VITTE_PARSER_E_INVALID_DEFER_STATEMENT";
+        case ParserError.InvalidAssertStatement => return "VITTE_PARSER_E_INVALID_ASSERT_STATEMENT";
+        case ParserError.InvalidUnsafeStatement => return "VITTE_PARSER_E_INVALID_UNSAFE_STATEMENT";
+        case ParserError.InvalidAsmStatement => return "VITTE_PARSER_E_INVALID_ASM_STATEMENT";
+        case ParserError.InvalidControlFlowStatement => return "VITTE_PARSER_E_INVALID_CONTROL_FLOW_STATEMENT";
+        case ParserError.InvalidMatchStatement => return "VITTE_PARSER_E_INVALID_MATCH_STATEMENT";
+        case ParserError.InvalidMatchArm => return "VITTE_PARSER_E_INVALID_MATCH_ARM";
+        case ParserError.InvalidPattern => return "VITTE_PARSER_E_INVALID_PATTERN";
+        case ParserError.InvalidRangePattern => return "VITTE_PARSER_E_INVALID_RANGE_PATTERN";
+        case ParserError.InvalidAssignmentExpression => return "VITTE_PARSER_E_INVALID_ASSIGNMENT_EXPRESSION";
+        case ParserError.InvalidCoalescingExpression => return "VITTE_PARSER_E_INVALID_COALESCING_EXPRESSION";
+        case ParserError.InvalidLogicalExpression => return "VITTE_PARSER_E_INVALID_LOGICAL_EXPRESSION";
+        case ParserError.InvalidBitwiseExpression => return "VITTE_PARSER_E_INVALID_BITWISE_EXPRESSION";
+        case ParserError.InvalidComparisonExpression => return "VITTE_PARSER_E_INVALID_COMPARISON_EXPRESSION";
+        case ParserError.InvalidShiftExpression => return "VITTE_PARSER_E_INVALID_SHIFT_EXPRESSION";
+        case ParserError.InvalidArithmeticExpression => return "VITTE_PARSER_E_INVALID_ARITHMETIC_EXPRESSION";
+        case ParserError.InvalidRangeExpression => return "VITTE_PARSER_E_INVALID_RANGE_EXPRESSION";
+        case ParserError.InvalidUnaryExpression => return "VITTE_PARSER_E_INVALID_UNARY_EXPRESSION";
+        case ParserError.InvalidCastExpression => return "VITTE_PARSER_E_INVALID_CAST_EXPRESSION";
+        case ParserError.InvalidPostfixExpression => return "VITTE_PARSER_E_INVALID_POSTFIX_EXPRESSION";
+        case ParserError.InvalidIfExpression => return "VITTE_PARSER_E_INVALID_IF_EXPRESSION";
+        case ParserError.InvalidBlockExpression => return "VITTE_PARSER_E_INVALID_BLOCK_EXPRESSION";
+        case ParserError.InvalidArrayExpression => return "VITTE_PARSER_E_INVALID_ARRAY_EXPRESSION";
+        case ParserError.InvalidSizeofExpression => return "VITTE_PARSER_E_INVALID_SIZEOF_EXPRESSION";
+        case ParserError.InvalidAlignofExpression => return "VITTE_PARSER_E_INVALID_ALIGNOF_EXPRESSION";
+        case ParserError.InvalidNullConstruction => return "VITTE_PARSER_E_INVALID_NULL_CONSTRUCTION";
+        case ParserError.InvalidExpressionList => return "VITTE_PARSER_E_INVALID_EXPRESSION_LIST";
+        case ParserError.OutOfMemory => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError.Overflow => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError.NodeLimit => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError.DiagnosticLimit => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError.RecursionLimit => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError.InvalidToken => return "VITTE_INFRA_E_INVARIANT";
+        case ParserError.InvalidNode => return "VITTE_INFRA_E_INVARIANT";
+        case ParserError.Validation => return "VITTE_INFRA_E_INVARIANT";
+        case ParserError.Corruption => return "VITTE_INFRA_E_INVARIANT";
+        else => return "VITTE_INFRA_E_INTERNAL";
     }
 }
 
 proc native_pipeline_sema_code(code: SemaDiagnosticCode) -> string {
     match code {
         case SemaDiagnosticCode.UnresolvedName => return "VITTE_RESOLVE_E_UNKNOWN_SYMBOL";
+        case SemaDiagnosticCode.AmbiguousName => return "VITTE_RESOLVE_E_AMBIGUOUS_SYMBOL";
+        case SemaDiagnosticCode.DuplicateImport => return "VITTE_IMPORT_E_DUPLICATE";
         case SemaDiagnosticCode.PrivateSymbol => return "VITTE_RESOLVE_E_PRIVATE";
         case SemaDiagnosticCode.DuplicateDeclaration => return "VITTE_RESOLVE_E_REDECLARATION";
+        case SemaDiagnosticCode.InvalidScope => return "VITTE_RESOLVE_E_INVALID_SCOPE";
+        case SemaDiagnosticCode.DuplicateBinding => return "VITTE_RESOLVE_E_DUPLICATE_BINDING";
+        case SemaDiagnosticCode.InvalidExport => return "VITTE_RESOLVE_E_INVALID_EXPORT";
         case SemaDiagnosticCode.ShadowedDeclaration => return "VITTE_WARNING_SHADOWING";
         case SemaDiagnosticCode.NotCallable => return "VITTE_TYPE_E_NOT_CALLABLE";
         case SemaDiagnosticCode.InvalidArgumentCount => return "VITTE_CALL_E_ARITY";
         case SemaDiagnosticCode.InvalidArgumentType => return "VITTE_CALL_E_ARGUMENT_TYPE";
         case SemaDiagnosticCode.UnknownType => return "VITTE_TYPE_E_UNKNOWN_TYPE";
         case SemaDiagnosticCode.NotAType => return "VITTE_TYPE_E_NOT_A_TYPE";
+        case SemaDiagnosticCode.InvalidCast => return "VITTE_TYPE_E_INVALID_CAST";
+        case SemaDiagnosticCode.NotAValue => return "VITTE_TYPE_E_NOT_A_VALUE";
+        case SemaDiagnosticCode.IncompleteType => return "VITTE_TYPE_E_INCOMPLETE";
+        case SemaDiagnosticCode.RecursiveType => return "VITTE_TYPE_E_RECURSIVE";
+        case SemaDiagnosticCode.GenericBoundUnsatisfied => return "VITTE_GENERIC_E_BOUND";
+        case SemaDiagnosticCode.GenericArgumentCount => return "VITTE_GENERIC_E_ARGUMENT_COUNT";
+        case SemaDiagnosticCode.GenericArgumentKind => return "VITTE_GENERIC_E_ARGUMENT_KIND";
+        case SemaDiagnosticCode.GenericInferenceConflict => return "VITTE_GENERIC_E_INFERENCE_CONFLICT";
+        case SemaDiagnosticCode.TraitNotImplemented => return "VITTE_TRAIT_E_NOT_IMPLEMENTED";
+        case SemaDiagnosticCode.AmbiguousImpl => return "VITTE_TRAIT_E_AMBIGUOUS_IMPL";
+        case SemaDiagnosticCode.ConflictingImpl => return "VITTE_TRAIT_E_CONFLICTING_IMPL";
+        case SemaDiagnosticCode.MissingTraitMember => return "VITTE_TRAIT_E_MISSING_MEMBER";
+        case SemaDiagnosticCode.InvalidTraitMember => return "VITTE_TRAIT_E_INVALID_MEMBER";
+        case SemaDiagnosticCode.InvalidImplTarget => return "VITTE_TRAIT_E_INVALID_IMPL_TARGET";
+        case SemaDiagnosticCode.InvalidWherePredicate => return "VITTE_TRAIT_E_INVALID_WHERE_PREDICATE";
+        case SemaDiagnosticCode.AmbiguousMethod => return "VITTE_TRAIT_E_AMBIGUOUS_METHOD";
+        case SemaDiagnosticCode.InvalidRequiresClause => return "VITTE_CONTRACT_E_REQUIRES";
+        case SemaDiagnosticCode.InvalidEnsuresClause => return "VITTE_CONTRACT_E_ENSURES";
+        case SemaDiagnosticCode.OldValueUnavailable => return "VITTE_CONTRACT_E_OLD_VALUE";
+        case SemaDiagnosticCode.ResultUnavailable => return "VITTE_CONTRACT_E_RESULT";
+        case SemaDiagnosticCode.ConstantNotConstant => return "VITTE_CONST_E_NOT_CONSTANT";
+        case SemaDiagnosticCode.ConstantOverflow => return "VITTE_CONST_E_OVERFLOW";
+        case SemaDiagnosticCode.ConstantDivideByZero => return "VITTE_CONST_E_DIVIDE_BY_ZERO";
+        case SemaDiagnosticCode.ConstantRemainderByZero => return "VITTE_CONST_E_REMAINDER_BY_ZERO";
         case SemaDiagnosticCode.InvalidUnaryOperand => return "VITTE_TYPE_E_INVALID_OPERAND";
         case SemaDiagnosticCode.InvalidBinaryOperands => return "VITTE_TYPE_E_INVALID_OPERAND";
         case SemaDiagnosticCode.NotAssignable => return "VITTE_TYPE_E_NOT_ASSIGNABLE";
@@ -296,10 +438,17 @@ proc native_pipeline_sema_code(code: SemaDiagnosticCode) -> string {
         case SemaDiagnosticCode.UnknownMember => return "VITTE_TYPE_E_NO_MEMBER";
         case SemaDiagnosticCode.ConditionNotBool => return "VITTE_TYPE_E_CONDITION_NOT_BOOL";
         case SemaDiagnosticCode.ReturnTypeMismatch => return "VITTE_CALL_E_RETURN_TYPE";
+        case SemaDiagnosticCode.InvalidProcedureParameter => return "VITTE_CALL_E_PARAMETER";
         case SemaDiagnosticCode.ReturnOutsideProc => return "VITTE_CALL_E_RETURN_OUTSIDE_PROC";
         case SemaDiagnosticCode.BreakOutsideLoop => return "VITTE_CONTROL_E_INVALID_BREAK";
         case SemaDiagnosticCode.ContinueOutsideLoop => return "VITTE_CONTROL_E_INVALID_CONTINUE";
         case SemaDiagnosticCode.UnreachableCode => return "VITTE_WARNING_UNREACHABLE_CODE";
+        case SemaDiagnosticCode.MissingReturn => return "VITTE_CONTROL_E_MISSING_RETURN";
+        case SemaDiagnosticCode.MatchNonExhaustive => return "VITTE_PATTERN_E_NON_EXHAUSTIVE";
+        case SemaDiagnosticCode.MatchUnreachable => return "VITTE_PATTERN_E_UNREACHABLE";
+        case SemaDiagnosticCode.MatchType => return "VITTE_PATTERN_E_TYPE";
+        case SemaDiagnosticCode.InvalidDeferredControlFlow => return "VITTE_CONTROL_E_INVALID_DEFER";
+        case SemaDiagnosticCode.OverlappingPattern => return "VITTE_WARNING_OVERLAPPING_PATTERN";
         case SemaDiagnosticCode.RecursionLimit => return "VITTE_INFRA_E_LIMIT";
         case SemaDiagnosticCode.TypeMismatch => return "VITTE_TYPE_E_MISMATCH";
         case SemaDiagnosticCode.InvalidType => return "VITTE_TYPE_E_MISMATCH";
@@ -309,6 +458,11 @@ proc native_pipeline_sema_code(code: SemaDiagnosticCode) -> string {
         case SemaDiagnosticCode.BorrowedMutation => return "VITTE_MEMORY_E_BORROWED_MUTATION";
         case SemaDiagnosticCode.MoveBorrowed => return "VITTE_MEMORY_E_MOVE_BORROWED";
         case SemaDiagnosticCode.UseAfterMove => return "VITTE_MEMORY_E_USE_AFTER_MOVE";
+        case SemaDiagnosticCode.CannotInfer => return "VITTE_TYPE_E_CANNOT_INFER";
+        case SemaDiagnosticCode.UnsafeRequired => return "VITTE_UNSAFE_E_REQUIRED";
+        case SemaDiagnosticCode.InvalidAsm => return "VITTE_UNSAFE_E_INVALID_ASM";
+        case SemaDiagnosticCode.FfiAbi => return "VITTE_FFI_E_ABI";
+        case SemaDiagnosticCode.FfiType => return "VITTE_FFI_E_TYPE";
         else => return "VITTE_INFRA_E_FALLBACK";
     }
 }
@@ -320,7 +474,33 @@ proc native_pipeline_codegen_code(error: string) -> string {
     if error == "the native pipeline currently emits only the C17 backend" {
         return "VITTE_BACKEND_E_UNSUPPORTED";
     }
+    if native_pipeline_string_contains(error, "unsupported") or
+       native_pipeline_string_contains(error, "not supported") or
+       native_pipeline_string_contains(error, "cannot be emitted") or
+       native_pipeline_string_contains(error, "must be expanded") or
+       native_pipeline_string_contains(error, "not implemented") or
+       native_pipeline_string_contains(error, "monomorphized") or
+       native_pipeline_string_contains(error, "must be lowered") or
+       native_pipeline_string_contains(error, "cannot be lowered") or
+       native_pipeline_string_contains(error, "needs task lowering") {
+        return "VITTE_BACKEND_E_UNSUPPORTED";
+    }
     return "VITTE_BACKEND_E_CODEGEN";
+}
+
+proc native_pipeline_string_contains(text: string, needle: string) -> bool {
+    if needle.len() == 0 { return true; }
+    if needle.len() > text.len() { return false; }
+    let mut start: usize = 0;
+    while start <= text.len() - needle.len() {
+        let mut offset: usize = 0;
+        while offset < needle.len() and text[start + offset] == needle[offset] {
+            set offset += 1;
+        }
+        if offset == needle.len() { return true; }
+        set start += 1;
+    }
+    return false;
 }
 
 proc native_pipeline_codegen_error(error: string) -> CodegenError {
@@ -328,6 +508,17 @@ proc native_pipeline_codegen_error(error: string) -> CodegenError {
         return CodegenError.OutputLimit;
     }
     if error == "the native pipeline currently emits only the C17 backend" {
+        return CodegenError.Unsupported;
+    }
+    if native_pipeline_string_contains(error, "unsupported") or
+       native_pipeline_string_contains(error, "not supported") or
+       native_pipeline_string_contains(error, "cannot be emitted") or
+       native_pipeline_string_contains(error, "must be expanded") or
+       native_pipeline_string_contains(error, "not implemented") or
+       native_pipeline_string_contains(error, "monomorphized") or
+       native_pipeline_string_contains(error, "must be lowered") or
+       native_pipeline_string_contains(error, "cannot be lowered") or
+       native_pipeline_string_contains(error, "needs task lowering") {
         return CodegenError.Unsupported;
     }
     return CodegenError.Backend;
@@ -347,7 +538,9 @@ form NativePipelineEmitResult {
     help: string,
     diagnostic_code: *const char,
     diagnostic_origin: CliDiagnosticOrigin,
-    codegen_error: CodegenError
+    codegen_error: CodegenError,
+    has_source_span: bool,
+    source_span: ParserSpan
 }
 
 proc native_pipeline_emit_failure(
@@ -363,8 +556,47 @@ proc native_pipeline_emit_failure(
         help: "",
         diagnostic_code: code,
         diagnostic_origin: origin,
-        codegen_error: codegen_error
+        codegen_error: codegen_error,
+        has_source_span: false,
+        source_span: ParserSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, valid: false }
     };
+}
+
+proc native_pipeline_sema_failure(error: SemaError, initialization: bool) -> NativePipelineEmitResult {
+    if initialization {
+        return native_pipeline_emit_failure(
+            "semantic analysis could not acquire required resources",
+            native_pipeline_c_string("VITTE_INFRA_E_RESOURCE"),
+            CliDiagnosticOrigin.Internal,
+            CodegenError.OutOfMemory
+        );
+    }
+    if error == SemaError.OutOfMemory or error == SemaError.Overflow or
+       error == SemaError.TypeLimit or error == SemaError.DiagnosticLimit or
+       error == SemaError.RecursionLimit {
+        return native_pipeline_emit_failure(
+            "compiler resource failure during semantic analysis",
+            native_pipeline_c_string("VITTE_INFRA_E_RESOURCE"),
+            CliDiagnosticOrigin.Internal,
+            CodegenError.OutOfMemory
+        );
+    }
+    if error == SemaError.InvalidAst or error == SemaError.InvalidScope or
+       error == SemaError.InvalidType or error == SemaError.Validation or
+       error == SemaError.Corruption {
+        return native_pipeline_emit_failure(
+            "compiler invariant failed during semantic analysis",
+            native_pipeline_c_string("VITTE_INFRA_E_INVARIANT"),
+            CliDiagnosticOrigin.Internal,
+            CodegenError.Corruption
+        );
+    }
+    return native_pipeline_emit_failure(
+        "internal compiler failure during semantic analysis",
+        native_pipeline_c_string("VITTE_INFRA_E_INTERNAL"),
+        CliDiagnosticOrigin.Internal,
+        CodegenError.Internal
+    );
 }
 
 proc native_pipeline_ir_error_description(error: IRError) -> string {
@@ -415,19 +647,104 @@ proc native_pipeline_ir_error_help(error: IRError, verification: bool) -> string
     return "Report the smallest reproducing source, compiler version, and this IR error so the failing compiler phase can be diagnosed."
 }
 
+proc native_pipeline_hir_failure(error: HIRError, validation: bool) -> NativePipelineEmitResult {
+    let effective_error: HIRError = if error == HIRError.None {
+        if validation { HIRError.Validation } else { HIRError.Internal }
+    } else { error };
+    if effective_error == HIRError.Unsupported {
+        return native_pipeline_emit_failure(
+            "source construct is not supported by HIR lowering",
+            native_pipeline_c_string("VITTE_HIR_E_UNSUPPORTED"),
+            CliDiagnosticOrigin.Hir,
+            CodegenError.Unsupported
+        );
+    }
+    if effective_error == HIRError.OutOfMemory or effective_error == HIRError.Overflow or
+       effective_error == HIRError.TooManyNodes or effective_error == HIRError.TooManySymbols or
+       effective_error == HIRError.TooManyTypes or effective_error == HIRError.StringLimit or
+       effective_error == HIRError.RecursionLimit {
+        return native_pipeline_emit_failure(
+            "compiler resource failure during HIR lowering",
+            native_pipeline_c_string("VITTE_INFRA_E_RESOURCE"),
+            CliDiagnosticOrigin.Internal,
+            CodegenError.OutOfMemory
+        );
+    }
+    if effective_error == HIRError.Internal or effective_error == HIRError.InvalidContext or
+       effective_error == HIRError.InvalidState or effective_error == HIRError.InvalidArgument {
+        return native_pipeline_emit_failure(
+            "internal compiler failure during HIR lowering",
+            native_pipeline_c_string("VITTE_INFRA_E_INTERNAL"),
+            CliDiagnosticOrigin.Internal,
+            CodegenError.Internal
+        );
+    }
+    if validation or effective_error == HIRError.Validation or effective_error == HIRError.Corruption {
+        return native_pipeline_emit_failure(
+            "compiler produced invalid HIR",
+            native_pipeline_c_string("VITTE_HIR_E_INVALID"),
+            CliDiagnosticOrigin.Hir,
+            CodegenError.Corruption
+        );
+    }
+    return native_pipeline_emit_failure(
+        "HIR lowering failed",
+        native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
+        CliDiagnosticOrigin.Hir,
+        CodegenError.Backend
+    );
+}
+
 proc native_pipeline_ir_failure(error: IRError, verification: bool) -> NativePipelineEmitResult {
     let effective_error: IRError = if error == IRError.None {
         if verification { IRError.Validation } else { IRError.Internal }
     } else { error };
-    let stage: string = if verification { "IR verification" } else { "IR lowering" };
-    let code: string = if verification { "VITTE_IR_E_VERIFY" } else { "VITTE_IR_E_LOWERING" };
+    if effective_error == IRError.Unsupported {
+        return native_pipeline_emit_failure(
+            "source construct is not supported by IR lowering",
+            native_pipeline_c_string("VITTE_IR_E_UNSUPPORTED"),
+            CliDiagnosticOrigin.Ir,
+            CodegenError.Unsupported
+        );
+    }
+    if effective_error == IRError.OutOfMemory or effective_error == IRError.Overflow or
+       effective_error == IRError.Limit {
+        return native_pipeline_emit_failure(
+            "compiler resource failure during IR lowering",
+            native_pipeline_c_string("VITTE_INFRA_E_RESOURCE"),
+            CliDiagnosticOrigin.Internal,
+            CodegenError.OutOfMemory
+        );
+    }
+    if effective_error == IRError.Internal or effective_error == IRError.InvalidContext or
+       effective_error == IRError.InvalidState or effective_error == IRError.InvalidArgument {
+        return native_pipeline_emit_failure(
+            "internal compiler failure during IR lowering",
+            native_pipeline_c_string("VITTE_INFRA_E_INTERNAL"),
+            CliDiagnosticOrigin.Internal,
+            CodegenError.Internal
+        );
+    }
+    if verification or effective_error == IRError.Validation or effective_error == IRError.Corruption or
+       effective_error == IRError.InvalidCfg or effective_error == IRError.InvalidPhi or
+       effective_error == IRError.InvalidInstruction or effective_error == IRError.MissingTerminator or
+       effective_error == IRError.TerminatedBlock {
+        let mut result = native_pipeline_emit_failure(
+            "IR verification failed",
+            native_pipeline_c_string("VITTE_IR_E_VERIFY"),
+            CliDiagnosticOrigin.Ir,
+            CodegenError.Corruption
+        );
+        set result.help = native_pipeline_ir_error_help(effective_error, true);
+        return result;
+    }
     let mut result = native_pipeline_emit_failure(
-        stage + " failed (" + vitte_ir_error_name(effective_error) + "): " + native_pipeline_ir_error_description(effective_error),
-        native_pipeline_c_string(code),
+        "IR lowering failed",
+        native_pipeline_c_string("VITTE_IR_E_LOWERING"),
         CliDiagnosticOrigin.Ir,
         CodegenError.Backend
     );
-    set result.help = native_pipeline_ir_error_help(effective_error, verification);
+    set result.help = native_pipeline_ir_error_help(effective_error, false);
     return result;
 }
 
@@ -512,6 +829,99 @@ proc native_pipeline_parser_message(error: ParserError) -> string {
         case ParserError.ExpectedDeclaration => return "expected declaration";
         case ParserError.ExpectedStatement => return "expected statement";
         case ParserError.UnexpectedToken => return "unexpected token";
+        case ParserError.Unsupported => return "unsupported syntax in declaration position";
+        case ParserError.InvalidModulePath => return "malformed module path";
+        case ParserError.DuplicateModuleHeader => return "duplicate module header";
+        case ParserError.MisplacedModuleHeader => return "module header must precede declarations";
+        case ParserError.InvalidUseDeclaration => return "malformed use declaration";
+        case ParserError.InvalidUseAlias => return "invalid import alias";
+        case ParserError.InvalidImportGroup => return "malformed import group";
+        case ParserError.InvalidGlobImport => return "invalid glob import";
+        case ParserError.InvalidExportClause => return "malformed export clause";
+        case ParserError.EmptyExportGroup => return "empty export group";
+        case ParserError.InvalidExportAlias => return "invalid export alias";
+        case ParserError.TrailingTokens => return "unexpected trailing tokens";
+        case ParserError.MissingModuleHeader => return "missing module header";
+        case ParserError.InvalidValueDeclaration => return "malformed const or static declaration";
+        case ParserError.MissingValueInitializer => return "missing const or static initializer";
+        case ParserError.InvalidTypeDeclaration => return "malformed type declaration";
+        case ParserError.InvalidOpaqueDeclaration => return "malformed opaque declaration";
+        case ParserError.InvalidFormDeclaration => return "malformed form declaration";
+        case ParserError.DuplicateFormField => return "duplicate form field";
+        case ParserError.InvalidFormFieldSeparator => return "missing form field separator";
+        case ParserError.InvalidPickDeclaration => return "malformed pick declaration";
+        case ParserError.DuplicatePickVariant => return "duplicate pick variant";
+        case ParserError.InvalidPickVariantPayload => return "invalid pick variant payload";
+        case ParserError.InvalidTraitDeclaration => return "malformed trait declaration";
+        case ParserError.InvalidImplDeclaration => return "malformed implementation declaration";
+        case ParserError.MissingImplTargetType => return "missing implementation target type";
+        case ParserError.InvalidImplForClause => return "invalid implementation `for` clause";
+        case ParserError.InvalidProcedureDeclaration => return "malformed procedure declaration";
+        case ParserError.InvalidProcedureParameters => return "malformed procedure parameter list";
+        case ParserError.InvalidProcedureReturnType => return "invalid procedure return type";
+        case ParserError.InvalidProcedureModifier => return "invalid procedure modifier";
+        case ParserError.InvalidProcedureBodyForm => return "invalid procedure body form";
+        case ParserError.InvalidExternalProcedure => return "malformed external procedure declaration";
+        case ParserError.InvalidIntrinsicDeclaration => return "malformed intrinsic declaration";
+        case ParserError.InvalidAbiStringLiteral => return "invalid ABI string literal";
+        case ParserError.InvalidGenericParameterList => return "malformed generic parameter list";
+        case ParserError.InvalidConstGenericParameter => return "malformed const generic parameter";
+        case ParserError.InvalidGenericBound => return "malformed generic bound";
+        case ParserError.InvalidWhereClause => return "malformed where clause";
+        case ParserError.InvalidRequiresClause => return "malformed requires clause";
+        case ParserError.InvalidEnsuresClause => return "malformed ensures clause";
+        case ParserError.InvalidMacroDeclaration => return "malformed macro declaration";
+        case ParserError.InvalidMacroParameters => return "malformed macro parameter list";
+        case ParserError.InvalidTestDeclaration => return "malformed test declaration";
+        case ParserError.InvalidDeclarationModifierOrder => return "invalid declaration modifier order or combination";
+        case ParserError.InvalidAttribute => return "malformed attribute";
+        case ParserError.InvalidAttributeName => return "missing or invalid attribute name";
+        case ParserError.InvalidAttributeArguments => return "malformed attribute arguments";
+        case ParserError.MissingAttributeValue => return "missing attribute value";
+        case ParserError.InvalidAttributeLiteral => return "invalid attribute literal";
+        case ParserError.UnexpectedDeclaration => return "unexpected declaration";
+        case ParserError.UnexpectedStatement => return "unexpected statement";
+        case ParserError.UnexpectedExpression => return "unexpected expression";
+        case ParserError.InvalidProcedureType => return "malformed procedure type";
+        case ParserError.InvalidReferenceType => return "malformed reference type";
+        case ParserError.InvalidPointerType => return "malformed pointer type";
+        case ParserError.InvalidArrayType => return "malformed array type";
+        case ParserError.InvalidSliceType => return "malformed slice type";
+        case ParserError.InvalidOptionalType => return "malformed optional type";
+        case ParserError.InvalidTypePath => return "malformed type path";
+        case ParserError.InvalidGenericArguments => return "malformed generic arguments";
+        case ParserError.InvalidLetStatement => return "malformed let binding statement";
+        case ParserError.InvalidSetStatement => return "malformed set statement";
+        case ParserError.InvalidAssignmentOperator => return "invalid assignment operator";
+        case ParserError.InvalidReturnStatement => return "malformed return statement";
+        case ParserError.InvalidJumpStatement => return "malformed jump statement";
+        case ParserError.InvalidDeferStatement => return "malformed defer statement";
+        case ParserError.InvalidAssertStatement => return "malformed assert statement";
+        case ParserError.InvalidUnsafeStatement => return "malformed unsafe statement";
+        case ParserError.InvalidAsmStatement => return "malformed assembly statement";
+        case ParserError.InvalidControlFlowStatement => return "malformed control-flow statement";
+        case ParserError.InvalidMatchStatement => return "malformed match statement";
+        case ParserError.InvalidMatchArm => return "malformed match arm";
+        case ParserError.InvalidPattern => return "malformed pattern";
+        case ParserError.InvalidRangePattern => return "malformed range pattern";
+        case ParserError.InvalidAssignmentExpression => return "malformed assignment expression";
+        case ParserError.InvalidCoalescingExpression => return "malformed coalescing expression";
+        case ParserError.InvalidLogicalExpression => return "malformed logical expression";
+        case ParserError.InvalidBitwiseExpression => return "malformed bitwise expression";
+        case ParserError.InvalidComparisonExpression => return "malformed comparison expression";
+        case ParserError.InvalidShiftExpression => return "malformed shift expression";
+        case ParserError.InvalidArithmeticExpression => return "malformed arithmetic expression";
+        case ParserError.InvalidRangeExpression => return "malformed range expression";
+        case ParserError.InvalidUnaryExpression => return "malformed unary expression";
+        case ParserError.InvalidCastExpression => return "malformed cast expression";
+        case ParserError.InvalidPostfixExpression => return "malformed postfix expression";
+        case ParserError.InvalidIfExpression => return "malformed if expression";
+        case ParserError.InvalidBlockExpression => return "malformed block expression";
+        case ParserError.InvalidArrayExpression => return "malformed array expression";
+        case ParserError.InvalidSizeofExpression => return "malformed sizeof expression";
+        case ParserError.InvalidAlignofExpression => return "malformed alignof expression";
+        case ParserError.InvalidNullConstruction => return "malformed null construction";
+        case ParserError.InvalidExpressionList => return "malformed expression list";
         else => return "parser error";
     }
 }
@@ -535,6 +945,370 @@ proc native_pipeline_parser_token_index(
     }
     return usize.MAX;
 }
+
+proc native_pipeline_parser_delimiter_related(
+    parser: *const Parser,
+    parser_diagnostic: *const ParserDiagnostic,
+    file_id: u64,
+    source: string,
+    related_begin: *mut usize,
+    related_end: *mut usize,
+    related_start_line: *mut usize,
+    related_start_column: *mut usize,
+    related_end_line: *mut usize,
+    related_end_column: *mut usize,
+    related_label: *mut string
+) -> bool {
+    if parser == null or parser_diagnostic == null or
+       related_begin == null or related_end == null or
+       related_start_line == null or related_start_column == null or
+       related_end_line == null or related_end_column == null or
+       related_label == null {
+        return false;
+    }
+
+    let expected = (*parser_diagnostic).expected;
+    let mut opener_kind: TokenKind = TokenKind.Invalid;
+    let token_index = native_pipeline_parser_token_index(parser, parser_diagnostic);
+    if token_index == usize.MAX { return false; }
+
+    let mut opener: *const ParserToken = null;
+    let expected_is_closer = expected == TokenKind.RightParen or
+        expected == TokenKind.RightBracket or expected == TokenKind.RightBrace or
+        expected == TokenKind.Greater;
+    if expected_is_closer {
+        match expected {
+            case TokenKind.RightParen => set opener_kind = TokenKind.LeftParen,
+            case TokenKind.RightBracket => set opener_kind = TokenKind.LeftBracket,
+            case TokenKind.RightBrace => set opener_kind = TokenKind.LeftBrace,
+            case TokenKind.Greater => set opener_kind = TokenKind.Less,
+            else => return false
+        }
+        let mut nesting: usize = 0;
+        let mut scan_index = token_index;
+        while scan_index != 0 {
+            set scan_index -= 1;
+            let token = &(*parser).tokens[scan_index];
+            if expected == TokenKind.Greater and
+               (*token).kind == TokenKind.ShiftRight {
+                set nesting += 2;
+            } elif (*token).kind == expected {
+                set nesting += 1;
+            } elif (*token).kind == opener_kind {
+                if nesting == 0 {
+                    set opener = token;
+                    break;
+                }
+                set nesting -= 1;
+            }
+        }
+    } elif (*parser_diagnostic).found == TokenKind.RightParen or
+           (*parser_diagnostic).found == TokenKind.RightBracket or
+           (*parser_diagnostic).found == TokenKind.RightBrace or
+           (*parser_diagnostic).found == TokenKind.Greater or
+           (*parser_diagnostic).found == TokenKind.ShiftRight {
+        let mut paren_nesting: usize = 0;
+        let mut bracket_nesting: usize = 0;
+        let mut brace_nesting: usize = 0;
+        let mut scan_index = token_index;
+        while scan_index != 0 {
+            set scan_index -= 1;
+            let token = &(*parser).tokens[scan_index];
+            match (*token).kind {
+                case TokenKind.RightParen => set paren_nesting += 1,
+                case TokenKind.LeftParen => {
+                    if paren_nesting != 0 {
+                        set paren_nesting -= 1;
+                    } else {
+                        set opener = token;
+                        set opener_kind = TokenKind.LeftParen;
+                        break;
+                    }
+                },
+                case TokenKind.RightBracket => set bracket_nesting += 1,
+                case TokenKind.LeftBracket => {
+                    if bracket_nesting != 0 {
+                        set bracket_nesting -= 1;
+                    } else {
+                        set opener = token;
+                        set opener_kind = TokenKind.LeftBracket;
+                        break;
+                    }
+                },
+                case TokenKind.RightBrace => set brace_nesting += 1,
+                case TokenKind.LeftBrace => {
+                    if brace_nesting != 0 {
+                        set brace_nesting -= 1;
+                    } else {
+                        set opener = token;
+                        set opener_kind = TokenKind.LeftBrace;
+                        break;
+                    }
+                },
+                else => {}
+            }
+        }
+    } else {
+        return false;
+    }
+    if opener == null or not (*opener).span.valid { return false; }
+
+    let opener_name = vitte_token_kind_name(opener_kind);
+    let expected_name = vitte_token_kind_name(expected);
+    if not expected_is_closer {
+        let found_name = vitte_token_kind_name((*parser_diagnostic).found);
+        set *related_label = "opening `" + opener_name +
+            "` does not match closing `" + found_name + "`";
+    } elif (*parser_diagnostic).found == TokenKind.RightParen or
+          (*parser_diagnostic).found == TokenKind.RightBracket or
+          (*parser_diagnostic).found == TokenKind.RightBrace or
+          (*parser_diagnostic).found == TokenKind.Greater or
+          (*parser_diagnostic).found == TokenKind.ShiftRight {
+        if (*parser_diagnostic).found != expected {
+            let found_name = vitte_token_kind_name((*parser_diagnostic).found);
+            set *related_label = "opening `" + opener_name +
+                "` does not match closing `" + found_name +
+                "`; expected `" + expected_name + "`";
+        } else {
+            set *related_label = "opening `" + opener_name +
+                "` here; closing `" + expected_name + "` expected";
+        }
+    } else {
+        set *related_label = "opening `" + opener_name +
+            "` here; closing `" + expected_name + "` expected";
+    }
+
+    let mut scanner: Scanner;
+    if (*opener).span.begin > (*opener).span.end or
+       (*opener).span.end > source.length or
+       not vitte_scanner_init(&mut scanner, source, source.length, file_id as u32) {
+        return false;
+    }
+    let mut start: ScannerPosition;
+    let mut end: ScannerPosition;
+    let positions_valid =
+        vitte_scanner_position_at(&mut scanner, (*opener).span.begin, &mut start) and
+        vitte_scanner_position_at(&mut scanner, (*opener).span.end, &mut end);
+    vitte_scanner_destroy(&mut scanner);
+    if not positions_valid { return false; }
+
+    set *related_begin = (*opener).span.begin;
+    set *related_end = (*opener).span.end;
+    set *related_start_line = start.line - 1;
+    set *related_start_column = start.column - 1;
+    set *related_end_line = end.line - 1;
+    set *related_end_column = end.column - 1;
+    return true;
+}
+
+proc native_pipeline_parser_duplicate_form_field_related(
+    parser: *const Parser,
+    parser_diagnostic: *const ParserDiagnostic,
+    file_id: u64,
+    source: str,
+    related_begin: *mut usize,
+    related_end: *mut usize,
+    related_start_line: *mut usize,
+    related_start_column: *mut usize,
+    related_end_line: *mut usize,
+    related_end_column: *mut usize
+) -> bool {
+    if parser == null or parser_diagnostic == null or
+       (*parser_diagnostic).error != ParserError.DuplicateFormField or
+       not (*parser_diagnostic).span.valid or related_begin == null or
+       related_end == null or related_start_line == null or
+       related_start_column == null or related_end_line == null or
+       related_end_column == null {
+        return false;
+    }
+    let root = vitte_parser_get_node(parser, vitte_parser_root(parser));
+    if root == null or (*root).kind != ASTNodeKind.TranslationUnit {
+        return false;
+    }
+    let mut declaration_index: usize = 0;
+    while declaration_index < (*root).child_count {
+        let declaration = vitte_parser_get_node(parser, (*root).children[declaration_index]);
+        if declaration != null and (*declaration).kind == ASTNodeKind.FormDecl {
+            let mut field_index: usize = 1;
+            while field_index < (*declaration).child_count {
+                let field = vitte_parser_get_node(parser, (*declaration).children[field_index]);
+                if field != null and (*field).kind == ASTNodeKind.FieldDecl and
+                   (*field).child_count != 0 {
+                    let field_name = vitte_parser_get_node(parser, (*field).children[0]);
+                    if field_name != null and (*field_name).span.valid and
+                       (*field_name).span.begin == (*parser_diagnostic).span.begin and
+                       (*field_name).span.end == (*parser_diagnostic).span.end {
+                        let field_token = if (*field_name).token_index < (*parser).token_count {
+                            &(*parser).tokens[(*field_name).token_index]
+                        } else { null };
+                        if field_token == null {
+                            return false;
+                        }
+                        let mut previous_index: usize = 1;
+                        while previous_index < field_index {
+                            let previous_field = vitte_parser_get_node(
+                                parser, (*declaration).children[previous_index]
+                            );
+                            if previous_field != null and
+                               (*previous_field).kind == ASTNodeKind.FieldDecl and
+                               (*previous_field).child_count != 0 {
+                                let previous_name = vitte_parser_get_node(
+                                    parser, (*previous_field).children[0]
+                                );
+                                if previous_name != null and
+                                   (*previous_name).token_index < (*parser).token_count {
+                                    let previous_token = &(*parser).tokens[(*previous_name).token_index];
+                                    if (*previous_token).length == (*field_token).length and
+                                       (*previous_token).lexeme == (*field_token).lexeme and
+                                       (*previous_name).span.valid {
+                                        let mut scanner: Scanner;
+                                        if (*previous_name).span.begin > (*previous_name).span.end or
+                                           (*previous_name).span.end > source.length or
+                                           not vitte_scanner_init(
+                                               &mut scanner, source, source.length, file_id as u32
+                                           ) {
+                                            return false;
+                                        }
+                                        let mut start: ScannerPosition;
+                                        let mut end: ScannerPosition;
+                                        let positions_valid =
+                                            vitte_scanner_position_at(
+                                                &mut scanner, (*previous_name).span.begin, &mut start
+                                            ) and
+                                            vitte_scanner_position_at(
+                                                &mut scanner, (*previous_name).span.end, &mut end
+                                            );
+                                        vitte_scanner_destroy(&mut scanner);
+                                        if not positions_valid {
+                                            return false;
+                                        }
+                                        set *related_begin = (*previous_name).span.begin;
+                                        set *related_end = (*previous_name).span.end;
+                                        set *related_start_line = start.line - 1;
+                                        set *related_start_column = start.column - 1;
+                                        set *related_end_line = end.line - 1;
+                                        set *related_end_column = end.column - 1;
+                                        return true;
+                                    }
+                                }
+                            }
+                            set previous_index += 1;
+                        }
+                        return false;
+                    }
+                }
+                set field_index += 1;
+            }
+        }
+        set declaration_index += 1;
+    }
+    return false;
+}
+
+proc native_pipeline_parser_duplicate_pick_variant_related(
+    parser: *const Parser,
+    parser_diagnostic: *const ParserDiagnostic,
+    file_id: u64,
+    source: str,
+    related_begin: *mut usize,
+    related_end: *mut usize,
+    related_start_line: *mut usize,
+    related_start_column: *mut usize,
+    related_end_line: *mut usize,
+    related_end_column: *mut usize
+) -> bool {
+    if parser == null or parser_diagnostic == null or
+       (*parser_diagnostic).error != ParserError.DuplicatePickVariant or
+       not (*parser_diagnostic).span.valid or related_begin == null or
+       related_end == null or related_start_line == null or
+       related_start_column == null or related_end_line == null or
+       related_end_column == null {
+        return false;
+    }
+    let root = vitte_parser_get_node(parser, vitte_parser_root(parser));
+    if root == null or (*root).kind != ASTNodeKind.TranslationUnit {
+        return false;
+    }
+    let mut declaration_index: usize = 0;
+    while declaration_index < (*root).child_count {
+        let declaration = vitte_parser_get_node(parser, (*root).children[declaration_index]);
+        if declaration != null and (*declaration).kind == ASTNodeKind.PickDecl {
+            let mut variant_index: usize = 1;
+            while variant_index < (*declaration).child_count {
+                let variant = vitte_parser_get_node(parser, (*declaration).children[variant_index]);
+                if variant != null and (*variant).kind == ASTNodeKind.VariantDecl and
+                   (*variant).child_count != 0 {
+                    let variant_name = vitte_parser_get_node(parser, (*variant).children[0]);
+                    if variant_name != null and (*variant_name).span.valid and
+                       (*variant_name).span.begin == (*parser_diagnostic).span.begin and
+                       (*variant_name).span.end == (*parser_diagnostic).span.end {
+                        let variant_token = if (*variant_name).token_index < (*parser).token_count {
+                            &(*parser).tokens[(*variant_name).token_index]
+                        } else { null };
+                        if variant_token == null {
+                            return false;
+                        }
+                        let mut previous_index: usize = 1;
+                        while previous_index < variant_index {
+                            let previous_variant = vitte_parser_get_node(
+                                parser, (*declaration).children[previous_index]
+                            );
+                            if previous_variant != null and
+                               (*previous_variant).kind == ASTNodeKind.VariantDecl and
+                               (*previous_variant).child_count != 0 {
+                                let previous_name = vitte_parser_get_node(
+                                    parser, (*previous_variant).children[0]
+                                );
+                                if previous_name != null and
+                                   (*previous_name).token_index < (*parser).token_count {
+                                    let previous_token = &(*parser).tokens[(*previous_name).token_index];
+                                    if (*previous_token).length == (*variant_token).length and
+                                       (*previous_token).lexeme == (*variant_token).lexeme and
+                                       (*previous_name).span.valid {
+                                        let mut scanner: Scanner;
+                                        if (*previous_name).span.begin > (*previous_name).span.end or
+                                           (*previous_name).span.end > source.length or
+                                           not vitte_scanner_init(
+                                               &mut scanner, source, source.length, file_id as u32
+                                           ) {
+                                            return false;
+                                        }
+                                        let mut start: ScannerPosition;
+                                        let mut end: ScannerPosition;
+                                        let positions_valid =
+                                            vitte_scanner_position_at(
+                                                &mut scanner, (*previous_name).span.begin, &mut start
+                                            ) and
+                                            vitte_scanner_position_at(
+                                                &mut scanner, (*previous_name).span.end, &mut end
+                                            );
+                                        vitte_scanner_destroy(&mut scanner);
+                                        if not positions_valid {
+                                            return false;
+                                        }
+                                        set *related_begin = (*previous_name).span.begin;
+                                        set *related_end = (*previous_name).span.end;
+                                        set *related_start_line = start.line - 1;
+                                        set *related_start_column = start.column - 1;
+                                        set *related_end_line = end.line - 1;
+                                        set *related_end_column = end.column - 1;
+                                        return true;
+                                    }
+                                }
+                            }
+                            set previous_index += 1;
+                        }
+                        return false;
+                    }
+                }
+                set variant_index += 1;
+            }
+        }
+        set declaration_index += 1;
+    }
+    return false;
+}
+
 
 proc native_pipeline_parser_inside_import(
     parser: *const Parser,
@@ -584,6 +1358,488 @@ proc native_pipeline_parser_advice(
     if parser == null or parser_diagnostic == null or message == null or help == null or
        (*parser_diagnostic).kind != ParserDiagnosticKind.Error {
         return;
+    }
+    if (*parser_diagnostic).expected == TokenKind.Identifier and
+       vitte_token_kind_is_keyword((*parser_diagnostic).found) {
+        set *message = "reserved word cannot be used as a name";
+        set *help = "Rename this item; Vitte reserved words cannot be used as identifiers.";
+        return;
+    }
+    if (*parser_diagnostic).error == ParserError.Unsupported {
+        set *message = "unsupported syntax in declaration position";
+        set *help = "Use a declaration form supported by Vitte, such as `proc`, `form`, `pick`, `const`, or `type`.";
+        return;
+    }
+    match (*parser_diagnostic).error {
+        case ParserError.InvalidModulePath => {
+            set *message = "malformed module path";
+            let token_index = native_pipeline_parser_token_index(parser, parser_diagnostic);
+            if token_index != usize.MAX and token_index + 1 < (*parser).token_count and
+               native_pipeline_parser_inside_import(parser, token_index) and
+               (*parser).tokens[token_index].kind == TokenKind.ColonColon and
+               (*parser).tokens[token_index + 1].kind == TokenKind.Identifier {
+                set *help = "A `use` path names modules. If the final segment is an exported symbol, import it through a group, for example `use sample::math::{add};`; use `as local_name` inside the group to avoid a name conflict.";
+                return;
+            }
+            set *help = "Write each path segment as an identifier separated by `::` or `/`; remove leading, repeated or trailing separators.";
+            return;
+        },
+        case ParserError.InvalidProcedureType => {
+            set *message = "malformed procedure type";
+            set *help = "Write `proc(Type, Type)`, optionally followed by `-> ReturnType`; separate parameters with commas and close the list with `)`.";
+            return;
+        },
+        case ParserError.InvalidReferenceType => {
+            set *message = "malformed reference type";
+            set *help = "Write `&Type`, `&mut Type`, `ref Type` or `ref mut Type`, with a complete type after the reference marker.";
+            return;
+        },
+        case ParserError.InvalidPointerType => {
+            set *message = "malformed pointer type";
+            set *help = "Write `*Type`, `*mut Type`, `*const Type`, `*volatile Type` or `*const volatile Type`; provide one complete pointee type.";
+            return;
+        },
+        case ParserError.InvalidArrayType => {
+            set *message = "malformed array type";
+            set *help = "Write `[Type; length]` or `[length] Type`, with a valid length expression, closing `]` and element type.";
+            return;
+        },
+        case ParserError.InvalidSliceType => {
+            set *message = "malformed slice type";
+            set *help = "Write a slice as `[ElementType]` and include a complete element type before the closing `]`.";
+            return;
+        },
+        case ParserError.InvalidOptionalType => {
+            set *message = "malformed optional type";
+            set *help = "Write `?Type` and put a complete type after `?`.";
+            return;
+        },
+        case ParserError.InvalidTypePath => {
+            set *message = "malformed type path";
+            set *help = "Use nonempty path segments separated by `::` or `/`; use `::` instead of `:`, add a segment after every separator and remove repeated separators.";
+            return;
+        },
+        case ParserError.InvalidGenericArguments => {
+            set *message = "malformed generic arguments";
+            set *help = "Use comma-separated types in `<Type, Type>` or `[Type, Type]`; close the list with the matching `>` or `]`.";
+            return;
+        },
+        case ParserError.InvalidLetStatement => {
+            set *message = "malformed let binding statement";
+            set *help = "Write `let [mut] pattern [: Type] [= expression];`. Add a type annotation when there is no initializer and the binding type cannot be inferred.";
+            return;
+        },
+        case ParserError.InvalidSetStatement => {
+            set *message = "malformed set statement";
+            set *help = "Write `set target assignment_operator expression;` and provide a complete target, value and terminating semicolon.";
+            return;
+        },
+        case ParserError.InvalidAssignmentOperator => {
+            set *message = "invalid assignment operator";
+            set *help = "Use one of `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` or `>>=` after the assignment target.";
+            return;
+        },
+        case ParserError.InvalidReturnStatement => {
+            set *message = "malformed return statement";
+            set *help = "Write `return;` or `return expression;`. The final return in a block may omit `;` before `}` or end of file; procedure placement and return type are checked semantically.";
+            return;
+        },
+        case ParserError.InvalidJumpStatement => {
+            set *message = "malformed jump statement";
+            set *help = "Write `break;` or `continue;` with a semicolon. A jump must appear inside a loop within a procedure.";
+            return;
+        },
+        case ParserError.InvalidDeferStatement => {
+            set *message = "malformed defer statement";
+            set *help = "Write `defer { ... }` or `defer expression;`; the expression form requires its terminating semicolon.";
+            return;
+        },
+        case ParserError.InvalidAssertStatement => {
+            set *message = "malformed assert statement";
+            set *help = "Write `assert(condition);` with a complete expression between matching parentheses and a final semicolon.";
+            return;
+        },
+        case ParserError.InvalidUnsafeStatement => {
+            set *message = "malformed unsafe statement";
+            set *help = "Write `unsafe { ... }` and close the block with `}`.";
+            return;
+        },
+        case ParserError.InvalidAsmStatement => {
+            set *message = "malformed assembly statement";
+            set *help = "Write `asm(operand, ...);` or `asm(\"template\");`; close the operand list and terminate the statement with `;`.";
+            return;
+        },
+        case ParserError.InvalidControlFlowStatement => {
+            set *message = "malformed control-flow statement";
+            set *help = "Use `if condition { ... } [elif condition { ... }]* [else { ... }]`, `while condition { ... }`, `loop { ... }`, or `for pattern in values { ... }`; put `else` after an if/elif chain and use it only before a block or chained conditional.";
+            return;
+        },
+        case ParserError.InvalidMatchStatement => {
+            set *message = "malformed match statement";
+            set *help = "Write `match value { pattern => body, ... }`; provide a subject and braces, and use complete comma-separated arms when the arm list is nonempty.";
+            return;
+        },
+        case ParserError.InvalidMatchArm => {
+            set *message = "malformed match arm";
+            set *help = "Write `[case] pattern [if guard] => body`, separate adjacent arms with commas, and use a complete expression, statement or block as the body.";
+            return;
+        },
+        case ParserError.InvalidPattern => {
+            set *message = "malformed pattern";
+            set *help = "Use a path or binding, literal, `Path::Variant`, `Variant(pattern, ...)`, `Path { field: pattern, .. }`, `(pattern, ...)`, or `[pattern, ...]`; separate pattern items with commas.";
+            return;
+        },
+        case ParserError.InvalidRangePattern => {
+            set *message = "malformed range pattern";
+            set *help = "Write `lower..upper` or `lower..=upper`; both endpoints must be integer, float or character literals of the same kind.";
+            return;
+        },
+        case ParserError.InvalidAssignmentExpression => {
+            set *message = "malformed assignment expression";
+            set *help = "Write `target = value` or use a supported compound assignment operator; provide both a complete target and right-hand expression.";
+            return;
+        },
+        case ParserError.InvalidCoalescingExpression => {
+            set *message = "malformed coalescing expression";
+            set *help = "Write `value ?? fallback` and provide a complete expression on both sides of `??`.";
+            return;
+        },
+        case ParserError.InvalidLogicalExpression => {
+            set *message = "malformed logical expression";
+            set *help = "Write both operands around `and`, `or`, `&&` or `||`; parenthesize nested conditions when needed.";
+            return;
+        },
+        case ParserError.InvalidBitwiseExpression => {
+            set *message = "malformed bitwise expression";
+            set *help = "Write both operands around `&`, `|` or `^`; use a complete expression on each side.";
+            return;
+        },
+        case ParserError.InvalidComparisonExpression => {
+            set *message = "malformed comparison expression";
+            set *help = "Write a complete left and right expression around `==`, `!=`, `<`, `<=`, `>` or `>=`.";
+            return;
+        },
+        case ParserError.InvalidShiftExpression => {
+            set *message = "malformed shift expression";
+            set *help = "Write a value and shift count around `<<` or `>>`.";
+            return;
+        },
+        case ParserError.InvalidArithmeticExpression => {
+            set *message = "malformed arithmetic expression";
+            set *help = "Write complete operands around `+`, `-`, `*`, `/` or `%`; add parentheses to make grouping clear.";
+            return;
+        },
+        case ParserError.InvalidRangeExpression => {
+            set *message = "malformed range expression";
+            set *help = "Write `start..end` for an exclusive range or `start..=end` for an inclusive range, with a complete expression at each endpoint.";
+            return;
+        },
+        case ParserError.InvalidUnaryExpression => {
+            set *message = "malformed unary expression";
+            set *help = "Put one complete operand after the unary operator, for example `-value`, `not ready`, `&value` or `*pointer`.";
+            return;
+        },
+        case ParserError.InvalidCastExpression => {
+            set *message = "malformed cast expression";
+            set *help = "Write `value as Type` and provide a complete type after `as`.";
+            return;
+        },
+        case ParserError.InvalidPostfixExpression => {
+            set *message = "malformed postfix expression";
+            set *help = "Complete the suffix: use `callee(arguments)`, `value[index]`, `value.field`, `value?`, or `Type { field: value }`; generic form and variant suffixes need nonempty, well-formed type arguments.";
+            return;
+        },
+        case ParserError.InvalidIfExpression => {
+            set *message = "malformed if expression";
+            set *help = "Write `if condition { value } else { fallback }`; an if expression needs an else branch, and `elif` may continue the chain.";
+            return;
+        },
+        case ParserError.InvalidBlockExpression => {
+            set *message = "malformed block expression";
+            set *help = "Close the block with `}`; place complete statements before the optional final expression.";
+            return;
+        },
+        case ParserError.InvalidArrayExpression => {
+            set *message = "malformed array expression";
+            set *help = "Write `[]` or `[expression, ...]`; separate elements with commas and close the array with `]`.";
+            return;
+        },
+        case ParserError.InvalidSizeofExpression => {
+            set *message = "malformed sizeof expression";
+            set *help = "Write `sizeof(Type)` or `sizeof(expression)` with a complete operand and matching parentheses.";
+            return;
+        },
+        case ParserError.InvalidAlignofExpression => {
+            set *message = "malformed alignof expression";
+            set *help = "Write `alignof(Type)` with a complete type and matching parentheses.";
+            return;
+        },
+        case ParserError.InvalidNullConstruction => {
+            set *message = "malformed null construction";
+            set *help = "Write `null()` or `null(expression, ...)` and close the argument list with `)`.";
+            return;
+        },
+        case ParserError.InvalidExpressionList => {
+            set *message = "malformed expression list";
+            set *help = "Provide complete expressions separated by commas. A trailing comma is allowed, but empty items are invalid; a missing-comma insertion is suggested only when the next token clearly starts another item.";
+            return;
+        },
+        case ParserError.DuplicateModuleHeader => {
+            set *message = "duplicate module header";
+            set *help = "Keep one top-level `space path` header in this file and remove the duplicate declaration.";
+            return;
+        },
+        case ParserError.MisplacedModuleHeader => {
+            set *message = "misplaced module header";
+            set *help = "Move `space path;` before the first import or other top-level declaration.";
+            return;
+        },
+        case ParserError.InvalidUseDeclaration => {
+            set *message = "malformed use declaration";
+            set *help = "Use `use path;`, `use path as alias;`, `use path::*;` or `use path::{item, nested::{item}};`, then end it with `;`.";
+            return;
+        },
+        case ParserError.InvalidUseAlias => {
+            set *message = "invalid import alias";
+            set *help = "Add an identifier after `as`, for example `use math::vector as vectors;`.";
+            return;
+        },
+        case ParserError.InvalidImportGroup => {
+            set *message = "malformed import group";
+            set *help = "Add comma-separated import paths, close every brace, and place nested groups after a path.";
+            return;
+        },
+        case ParserError.InvalidGlobImport => {
+            set *message = "invalid glob import";
+            set *help = "Place `::*` at the end of the import, for example `use math::*;`; remove aliases or following path segments.";
+            return;
+        },
+        case ParserError.InvalidExportClause => {
+            set *message = "malformed export clause";
+            set *help = "Use `export path [as alias];`, `export {path, other};` or `export *;`.";
+            return;
+        },
+        case ParserError.EmptyExportGroup => {
+            set *message = "empty export group";
+            set *help = "Add at least one path inside the braces, for example `export {math::add};`.";
+            return;
+        },
+        case ParserError.InvalidExportAlias => {
+            set *message = "invalid export alias";
+            set *help = "Add an identifier after `as`, for example `export math::add as add;`.";
+            return;
+        },
+        case ParserError.TrailingTokens => {
+            set *message = "unexpected trailing tokens";
+            set *help = "Remove the extra token before the required semicolon or finish the clause in the form shown by the diagnostic.";
+            return;
+        },
+        case ParserError.MissingModuleHeader => {
+            set *message = "missing module header";
+            set *help = "Add one top-level `space path;` declaration before the first module import or export clause.";
+            return;
+        },
+        case ParserError.InvalidValueDeclaration => {
+            set *message = "malformed const or static declaration";
+            set *help = "Give the declaration a name, put an optional type after `:`, add `= expression`, and finish with `;`.";
+            return;
+        },
+        case ParserError.MissingValueInitializer => {
+            set *message = "missing const or static initializer";
+            set *help = "Add `= expression` after the name and optional type, for example `const LIMIT: int = 10;`.";
+            return;
+        },
+        case ParserError.InvalidTypeDeclaration => {
+            set *message = "malformed type declaration";
+            set *help = "Complete the type name, each bound or aliased type, and the final `;`.";
+            return;
+        },
+        case ParserError.InvalidOpaqueDeclaration => {
+            set *message = "malformed opaque declaration";
+            set *help = "Give the opaque type a name, use `= Type` for an optional alias, and omit bounds.";
+            return;
+        },
+        case ParserError.InvalidFormDeclaration => {
+            set *message = "malformed form declaration";
+            set *help = "Write a named form with `{}` and fields in the form `name: Type`.";
+            return;
+        },
+        case ParserError.DuplicateFormField => {
+            set *message = "duplicate form field";
+            set *help = "Rename this field; every field in one form must have a unique name.";
+            return;
+        },
+        case ParserError.InvalidFormFieldSeparator => {
+            set *message = "missing form field separator";
+            set *help = "Separate adjacent fields with `,` or `;`, for example `form Point { x: int, y: int }`.";
+            return;
+        },
+        case ParserError.InvalidPickDeclaration => {
+            set *message = "malformed pick declaration";
+            set *help = "Write a named pick with braces and comma-separated variants, for example `pick Option { None, Some(int) }`.";
+            return;
+        },
+        case ParserError.DuplicatePickVariant => {
+            set *message = "duplicate pick variant";
+            set *help = "Rename this variant; each variant name must be unique within its pick.";
+            return;
+        },
+        case ParserError.InvalidPickVariantPayload => {
+            set *message = "invalid pick variant payload";
+            set *help = "Put valid comma-separated types inside the variant parentheses, for example `Some(int, string)`; `()` is also valid.";
+            return;
+        },
+        case ParserError.InvalidTraitDeclaration => {
+            set *message = "malformed trait declaration";
+            set *help = "Write `trait Name { ... }`, with optional generic parameters and a `where` clause before the block.";
+            return;
+        },
+        case ParserError.InvalidImplDeclaration => {
+            set *message = "malformed implementation declaration";
+            set *help = "Write an inherent implementation as `impl Type { ... }` or a trait implementation as `impl Trait for Type { ... }`.";
+            return;
+        },
+        case ParserError.MissingImplTargetType => {
+            set *message = "missing implementation target type";
+            set *help = "Add the type after `for`, for example `impl Display for Point { ... }`.";
+            return;
+        },
+        case ParserError.InvalidImplForClause => {
+            set *message = "invalid implementation `for` clause";
+            set *help = "Use one trait type, `for`, one target type, then an optional `where` clause and the implementation block.";
+            return;
+        },
+        case ParserError.InvalidProcedureDeclaration => {
+            set *message = "malformed procedure declaration";
+            set *help = "Write `proc name(parameters)`, then an optional `-> Type`, optional constraints, and a body or `;`.";
+            return;
+        },
+        case ParserError.InvalidProcedureParameters => {
+            set *message = "malformed procedure parameter list";
+            set *help = "Enclose parameters in `(...)`; each parameter needs a pattern, `:`, a type, commas between entries, and a closing `)`.";
+            return;
+        },
+        case ParserError.InvalidProcedureReturnType => {
+            set *message = "invalid procedure return type";
+            set *help = "Put a valid type after `->`, for example `proc size() -> int;`.";
+            return;
+        },
+        case ParserError.InvalidProcedureModifier => {
+            set *message = "invalid procedure modifier";
+            set *help = "Use `async`, `unsafe` or `comptime` at most once and only before a procedure declaration.";
+            return;
+        },
+        case ParserError.InvalidProcedureBodyForm => {
+            set *message = "invalid procedure body form";
+            set *help = "A normal procedure needs a block or `;`; an `extern` or `intrinsic` procedure must end with `;` and has no body.";
+            return;
+        },
+        case ParserError.InvalidExternalProcedure => {
+            set *message = "malformed external procedure declaration";
+            set *help = "Write `extern [\"ABI\"] proc name(parameters) [-> Type] [where ...] [requires ...;] [ensures ...;];`.";
+            return;
+        },
+        case ParserError.InvalidIntrinsicDeclaration => {
+            set *message = "malformed intrinsic declaration";
+            set *help = "Write `intrinsic name(parameters) [-> Type] [where ...] [requires ...;] [ensures ...;];` without an ABI literal or body.";
+            return;
+        },
+        case ParserError.InvalidAbiStringLiteral => {
+            set *message = "invalid ABI string literal";
+            set *help = "Use a nonempty quoted ABI name after `extern`, for example `extern \"C\" proc write();`.";
+            return;
+        },
+        case ParserError.InvalidGenericParameterList => {
+            set *message = "malformed generic parameter list";
+            set *help = "Write `<T, U>` with comma-separated parameters and a closing `>`; a trailing comma is allowed.";
+            return;
+        },
+        case ParserError.InvalidConstGenericParameter => {
+            set *message = "malformed const generic parameter";
+            set *help = "Write a const parameter as `const NAME`, optionally followed by a type bound, for example `const N: usize`.";
+            return;
+        },
+        case ParserError.InvalidGenericBound => {
+            set *message = "malformed generic bound";
+            set *help = "Add a valid type after `:` or `+`, for example `T: Display + Debug`.";
+            return;
+        },
+        case ParserError.InvalidWhereClause => {
+            set *message = "malformed where clause";
+            set *help = "Write one or more comma-separated predicates after `where`, such as `where T: Display, N > 0`.";
+            return;
+        },
+        case ParserError.InvalidRequiresClause => {
+            set *message = "malformed requires clause";
+            set *help = "Add a boolean expression and its semicolon, for example `requires count > 0;`.";
+            return;
+        },
+        case ParserError.InvalidEnsuresClause => {
+            set *message = "malformed ensures clause";
+            set *help = "Add a boolean expression and its semicolon, for example `ensures result >= 0;`.";
+            return;
+        },
+        case ParserError.InvalidMacroDeclaration => {
+            set *message = "malformed macro declaration";
+            set *help = "Write `macro name` with an optional parameter list and a body, for example `macro log(value: string) { ... }`.";
+            return;
+        },
+        case ParserError.InvalidMacroParameters => {
+            set *message = "malformed macro parameter list";
+            set *help = "Use `(...)` with comma-separated `pattern: Type` parameters and a closing `)`.";
+            return;
+        },
+        case ParserError.InvalidTestDeclaration => {
+            set *message = "malformed test declaration";
+            set *help = "Write `test { ... }`, `test test_name { ... }`, or `test \"description\" { ... }`.";
+            return;
+        },
+        case ParserError.InvalidDeclarationModifierOrder => {
+            set *message = "invalid declaration modifier order or combination";
+            set *help = "Use at most one visibility modifier (`pub` or prefix `export`) before procedure modifiers; write export clauses without declaration modifiers.";
+            return;
+        },
+        case ParserError.InvalidAttribute => {
+            set *message = "malformed attribute";
+            set *help = "Write an attribute as `#[name]` or `#![name]`; include the opening `[` and closing `]` and close any argument parentheses.";
+            return;
+        },
+        case ParserError.InvalidAttributeName => {
+            set *message = "missing or invalid attribute name";
+            set *help = "Provide an identifier or keyword after `#[` or `#![` and after each `::` in a qualified attribute name.";
+            return;
+        },
+        case ParserError.InvalidAttributeArguments => {
+            set *message = "malformed attribute arguments";
+            set *help = "Use comma-separated names or literals in parentheses; write named arguments as `name = literal`.";
+            return;
+        },
+        case ParserError.MissingAttributeValue => {
+            set *message = "missing attribute value";
+            set *help = "Add a literal after `=`, for example `#[cfg(enabled = true)]`.";
+            return;
+        },
+        case ParserError.InvalidAttributeLiteral => {
+            set *message = "invalid attribute literal";
+            set *help = "Use an integer, float, string, character, boolean, or `null` literal as the attribute value.";
+            return;
+        },
+        case ParserError.UnexpectedDeclaration => {
+            set *message = "unexpected declaration";
+            set *help = "Move this declaration to a declaration position, such as the top level or a trait/implementation declaration block.";
+            return;
+        },
+        case ParserError.UnexpectedStatement => {
+            set *message = "unexpected statement";
+            set *help = "Move this statement into a block that accepts statements, such as a procedure body.";
+            return;
+        },
+        case ParserError.UnexpectedExpression => {
+            set *message = "unexpected expression";
+            set *help = "Move this expression into a statement or expression context; declarations require a declaration position.";
+            return;
+        },
+        else => {}
     }
     let token_index = native_pipeline_parser_token_index(parser, parser_diagnostic);
     if token_index != usize.MAX and token_index != 0 {
@@ -646,14 +1902,35 @@ proc native_pipeline_parser_advice(
 proc native_pipeline_sema_message(code: SemaDiagnosticCode) -> string {
     match code {
         case SemaDiagnosticCode.UnresolvedName => return "unknown symbol";
-        case SemaDiagnosticCode.PrivateSymbol => return "this symbol is private";
+        case SemaDiagnosticCode.AmbiguousName => return "ambiguous symbol";
+        case SemaDiagnosticCode.DuplicateImport => return "duplicate import";
+        case SemaDiagnosticCode.PrivateSymbol => return "symbol is not visible";
         case SemaDiagnosticCode.DuplicateDeclaration => return "duplicate declaration";
+        case SemaDiagnosticCode.InvalidScope => return "invalid scope";
+        case SemaDiagnosticCode.DuplicateBinding => return "duplicate binding";
+        case SemaDiagnosticCode.InvalidExport => return "invalid export target";
         case SemaDiagnosticCode.ShadowedDeclaration => return "declaration shadows an existing name";
         case SemaDiagnosticCode.NotCallable => return "this value is not callable";
         case SemaDiagnosticCode.InvalidArgumentCount => return "invalid number of arguments";
         case SemaDiagnosticCode.InvalidArgumentType => return "invalid argument type";
         case SemaDiagnosticCode.UnknownType => return "unknown type";
-        case SemaDiagnosticCode.NotAType => return "this name does not refer to a type";
+        case SemaDiagnosticCode.NotAType => return "name is not a type";
+        case SemaDiagnosticCode.InvalidCast => return "invalid cast";
+        case SemaDiagnosticCode.NotAValue => return "type name used as a value";
+        case SemaDiagnosticCode.IncompleteType => return "incomplete type";
+        case SemaDiagnosticCode.RecursiveType => return "invalid recursive type";
+        case SemaDiagnosticCode.GenericBoundUnsatisfied => return "generic bound not satisfied";
+        case SemaDiagnosticCode.GenericArgumentCount => return "incorrect generic argument count";
+        case SemaDiagnosticCode.GenericArgumentKind => return "incorrect generic argument kind or order";
+        case SemaDiagnosticCode.GenericInferenceConflict => return "conflicting generic inference";
+        case SemaDiagnosticCode.TraitNotImplemented => return "trait not implemented";
+        case SemaDiagnosticCode.AmbiguousImpl => return "ambiguous trait implementation";
+        case SemaDiagnosticCode.ConflictingImpl => return "conflicting trait implementation";
+        case SemaDiagnosticCode.MissingTraitMember => return "missing trait member";
+        case SemaDiagnosticCode.InvalidTraitMember => return "invalid trait member";
+        case SemaDiagnosticCode.InvalidImplTarget => return "invalid implementation target";
+        case SemaDiagnosticCode.InvalidWherePredicate => return "invalid where predicate";
+        case SemaDiagnosticCode.AmbiguousMethod => return "ambiguous method";
         case SemaDiagnosticCode.InvalidUnaryOperand => return "invalid unary operand";
         case SemaDiagnosticCode.InvalidBinaryOperands => return "invalid binary operands";
         case SemaDiagnosticCode.NotAssignable => return "this expression is not assignable";
@@ -666,6 +1943,20 @@ proc native_pipeline_sema_message(code: SemaDiagnosticCode) -> string {
         case SemaDiagnosticCode.BreakOutsideLoop => return "break used outside a loop";
         case SemaDiagnosticCode.ContinueOutsideLoop => return "continue used outside a loop";
         case SemaDiagnosticCode.UnreachableCode => return "unreachable code";
+        case SemaDiagnosticCode.MissingReturn => return "procedure may fall through without returning a value";
+        case SemaDiagnosticCode.MatchNonExhaustive => return "match does not cover every possible value";
+        case SemaDiagnosticCode.MatchUnreachable => return "match arm is unreachable";
+        case SemaDiagnosticCode.MatchType => return "pattern does not match the subject type or shape";
+        case SemaDiagnosticCode.InvalidDeferredControlFlow => return "deferred work cannot exit its enclosing control flow";
+        case SemaDiagnosticCode.OverlappingPattern => return "match arm overlaps an earlier pattern";
+        case SemaDiagnosticCode.InvalidRequiresClause => return "requires clause must evaluate to bool";
+        case SemaDiagnosticCode.InvalidEnsuresClause => return "ensures clause must evaluate to bool";
+        case SemaDiagnosticCode.OldValueUnavailable => return "old value is unavailable in this contract";
+        case SemaDiagnosticCode.ResultUnavailable => return "result is unavailable in this contract";
+        case SemaDiagnosticCode.ConstantNotConstant => return "expression is not constant";
+        case SemaDiagnosticCode.ConstantOverflow => return "constant arithmetic overflows its supported range";
+        case SemaDiagnosticCode.ConstantDivideByZero => return "division by zero during constant evaluation";
+        case SemaDiagnosticCode.ConstantRemainderByZero => return "remainder by zero during constant evaluation";
         case SemaDiagnosticCode.RecursionLimit => return "semantic analysis recursion limit reached";
         case SemaDiagnosticCode.TypeMismatch => return "type mismatch";
         case SemaDiagnosticCode.InvalidType => return "invalid type";
@@ -675,6 +1966,11 @@ proc native_pipeline_sema_message(code: SemaDiagnosticCode) -> string {
         case SemaDiagnosticCode.BorrowedMutation => return "access conflicts with a live reference";
         case SemaDiagnosticCode.MoveBorrowed => return "cannot move a borrowed or unsupported value";
         case SemaDiagnosticCode.UseAfterMove => return "use of moved value";
+        case SemaDiagnosticCode.CannotInfer => return "type cannot be inferred";
+        case SemaDiagnosticCode.UnsafeRequired => return "unsafe context required";
+        case SemaDiagnosticCode.InvalidAsm => return "invalid assembly block";
+        case SemaDiagnosticCode.FfiAbi => return "unsupported foreign ABI or calling convention";
+        case SemaDiagnosticCode.FfiType => return "type is unsupported in this foreign signature";
         else => return "semantic analysis error";
     }
 }
@@ -776,6 +2072,26 @@ proc native_pipeline_sema_type_name(sema: *const Sema, type_id: SemaTypeId) -> s
 
 proc native_pipeline_sema_has_type_context(code: SemaDiagnosticCode) -> bool {
     return code == SemaDiagnosticCode.TypeMismatch or
+        code == SemaDiagnosticCode.InvalidRequiresClause or
+        code == SemaDiagnosticCode.InvalidEnsuresClause or
+        code == SemaDiagnosticCode.InvalidCast or
+        code == SemaDiagnosticCode.NotAType or
+        code == SemaDiagnosticCode.NotAValue or
+        code == SemaDiagnosticCode.IncompleteType or
+        code == SemaDiagnosticCode.RecursiveType or
+        code == SemaDiagnosticCode.GenericBoundUnsatisfied or
+        code == SemaDiagnosticCode.GenericArgumentCount or
+        code == SemaDiagnosticCode.GenericArgumentKind or
+        code == SemaDiagnosticCode.GenericInferenceConflict or
+        code == SemaDiagnosticCode.TraitNotImplemented or
+        code == SemaDiagnosticCode.AmbiguousImpl or
+        code == SemaDiagnosticCode.ConflictingImpl or
+        code == SemaDiagnosticCode.MissingTraitMember or
+        code == SemaDiagnosticCode.InvalidTraitMember or
+        code == SemaDiagnosticCode.InvalidImplTarget or
+        code == SemaDiagnosticCode.InvalidWherePredicate or
+        code == SemaDiagnosticCode.AmbiguousMethod or
+        code == SemaDiagnosticCode.CannotInfer or
         code == SemaDiagnosticCode.InvalidArgumentType or
         code == SemaDiagnosticCode.ReturnTypeMismatch or
         code == SemaDiagnosticCode.InvalidUnaryOperand or
@@ -896,7 +2212,8 @@ proc native_pipeline_argument_context(
     let prefix: string = "argument ";
     let middle: string = " / parameter `";
     let mut digit_count: usize = 1;
-    let mut remaining: usize = argument_index;
+    let display_index: usize = argument_index + 1;
+    let mut remaining: usize = display_index;
     while remaining >= 10 {
         set remaining = remaining / 10;
         set digit_count = digit_count + 1;
@@ -910,10 +2227,10 @@ proc native_pipeline_argument_context(
     copy(native_pipeline_add_bytes(output, offset), prefix.as_ptr() as *const u8, prefix.length);
     set offset = offset + prefix.length;
     let mut divisor: usize = 1;
-    while argument_index / divisor >= 10 {
+    while display_index / divisor >= 10 {
         set divisor = divisor * 10;
     }
-    set remaining = argument_index;
+    set remaining = display_index;
     while divisor != 0 {
         set output[offset] = (48 + (remaining / divisor)) as u8;
         set offset = offset + 1;
@@ -983,22 +2300,94 @@ proc native_pipeline_export_diagnostics(
             set expected = vitte_token_kind_name((*source_diagnostic).expected).as_ptr() as *const char;
         }
         if (*source_diagnostic).found != TokenKind.Invalid {
-            set found = vitte_token_kind_name((*source_diagnostic).found).as_ptr() as *const char;
+            set found = if (*source_diagnostic).found == TokenKind.Eof {
+                native_pipeline_c_string("end of file")
+            } else {
+                vitte_token_kind_name((*source_diagnostic).found).as_ptr() as *const char
+            };
         }
         let span = (*source_diagnostic).span;
+        let reserved_word_as_name = (*source_diagnostic).expected == TokenKind.Identifier and
+            vitte_token_kind_is_keyword((*source_diagnostic).found);
+        let parser_code = if reserved_word_as_name {
+            "VITTE_PARSER_E_RESERVED_WORD_AS_NAME"
+        } else {
+            native_pipeline_parser_code((*source_diagnostic).error)
+        };
+        let parser_severity: CliDiagnosticSeverity = if parser_code == "VITTE_INFRA_E_INTERNAL" or
+           parser_code == "VITTE_INFRA_E_INVARIANT" or parser_code == "VITTE_INFRA_E_RESOURCE" {
+            CliDiagnosticSeverity.Fatal
+        } else {
+            native_pipeline_parser_severity((*source_diagnostic).kind)
+        };
         let mut parser_message = native_pipeline_parser_message((*source_diagnostic).error);
         let mut parser_help: string = "";
+        let mut parser_details: string = "";
+        let mut related_begin: usize = 0;
+        let mut related_end: usize = 0;
+        let mut related_start_line: usize = 0;
+        let mut related_start_column: usize = 0;
+        let mut related_end_line: usize = 0;
+        let mut related_end_column: usize = 0;
+        let mut related_label: string = "";
+        let mut has_related = native_pipeline_parser_delimiter_related(
+            parser, source_diagnostic, file_id, source,
+            &mut related_begin, &mut related_end,
+            &mut related_start_line, &mut related_start_column,
+            &mut related_end_line, &mut related_end_column,
+            &mut related_label
+        );
+        if not has_related and (*source_diagnostic).error == ParserError.DuplicatePickVariant {
+            set has_related = native_pipeline_parser_duplicate_pick_variant_related(
+                parser, source_diagnostic, file_id, source,
+                &mut related_begin, &mut related_end,
+                &mut related_start_line, &mut related_start_column,
+                &mut related_end_line, &mut related_end_column
+            );
+            if has_related { set related_label = "first variant declared here"; }
+        } elif not has_related {
+            set has_related = native_pipeline_parser_duplicate_form_field_related(
+                parser, source_diagnostic, file_id, source,
+                &mut related_begin, &mut related_end,
+                &mut related_start_line, &mut related_start_column,
+                &mut related_end_line, &mut related_end_column
+            );
+            if has_related { set related_label = "first form field declared here"; }
+        }
         native_pipeline_parser_advice(parser, source_diagnostic, &mut parser_message, &mut parser_help);
+        if reserved_word_as_name {
+            set parser_details = "reserved word `";
+            set parser_details += source.slice(span.begin, span.end);
+            set parser_details += "` cannot be used as a name";
+        } elif (*source_diagnostic).expected != TokenKind.Invalid {
+            set parser_details = "expected ";
+            set parser_details += vitte_token_kind_name((*source_diagnostic).expected);
+            if (*source_diagnostic).found != TokenKind.Invalid {
+                set parser_details += ", found ";
+                set parser_details += if (*source_diagnostic).found == TokenKind.Eof {
+                    "end of file"
+                } else {
+                    vitte_token_kind_name((*source_diagnostic).found)
+                };
+            }
+        } elif (*source_diagnostic).found != TokenKind.Invalid {
+            set parser_details = "found ";
+            set parser_details += if (*source_diagnostic).found == TokenKind.Eof {
+                "end of file"
+            } else {
+                vitte_token_kind_name((*source_diagnostic).found)
+            };
+        }
         if not native_pipeline_export_cli_diagnostic(
             diagnostics,
             count,
             index,
             (index + 1) as u64,
-            native_pipeline_c_string(native_pipeline_parser_code((*source_diagnostic).error)),
-            native_pipeline_parser_severity((*source_diagnostic).kind),
+            native_pipeline_c_string(parser_code),
+            parser_severity,
             CliDiagnosticOrigin.Parser,
             native_pipeline_c_string(parser_message),
-            null,
+            if parser_details.length == 0 { null } else { native_pipeline_c_string(parser_details) },
             if parser_help.len() == 0 { null } else { native_pipeline_c_string(parser_help) },
             span.valid,
             span.file_id,
@@ -1009,6 +2398,28 @@ proc native_pipeline_export_diagnostics(
             source,
             expected,
             found
+        ) {
+            vitte_cli_diagnostic_transport_destroy(diagnostics);
+            return false;
+        }
+        if has_related and not vitte_cli_diagnostic_transport_set_semantic(
+            diagnostics,
+            count,
+            index,
+            null,
+            null,
+            null,
+            true,
+            file_id as u32,
+            file_id,
+            source_name,
+            related_begin,
+            related_end,
+            related_start_line,
+            related_start_column,
+            related_end_line,
+            related_end_column,
+            native_pipeline_c_string(related_label)
         ) {
             vitte_cli_diagnostic_transport_destroy(diagnostics);
             return false;
@@ -1040,13 +2451,57 @@ proc native_pipeline_export_diagnostics(
                     (*source_diagnostic).found_type
                 );
             }
-            set details = native_pipeline_type_details(expected_type, found_type);
+            if (*source_diagnostic).code == SemaDiagnosticCode.InvalidUnaryOperand and
+               found_type.length != 0 {
+                set details = native_pipeline_message3(
+                    "operator does not support operand type ",
+                    found_type,
+                    ""
+                );
+            } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidBinaryOperands and
+                   expected_type.length != 0 and found_type.length != 0 {
+                set details = native_pipeline_message5(
+                    "operator does not support operand types ",
+                    expected_type,
+                    " and ",
+                    found_type,
+                    ""
+                );
+            } else {
+                set details = native_pipeline_type_details(expected_type, found_type);
+            }
+            if (*source_diagnostic).code == SemaDiagnosticCode.GenericBoundUnsatisfied and
+               expected_type.len() != 0 and found_type.len() != 0 {
+                set details = native_pipeline_message5(
+                    "concrete type `",
+                    found_type,
+                    "` does not satisfy required bound `",
+                    expected_type,
+                    "`"
+                );
+            }
         }
-        let origin: CliDiagnosticOrigin = if (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName or
+        let origin: CliDiagnosticOrigin = if (*source_diagnostic).code == SemaDiagnosticCode.InvalidRequiresClause or
+            (*source_diagnostic).code == SemaDiagnosticCode.InvalidEnsuresClause or
+            (*source_diagnostic).code == SemaDiagnosticCode.OldValueUnavailable or
+            (*source_diagnostic).code == SemaDiagnosticCode.ResultUnavailable {
+            CliDiagnosticOrigin.Contract
+        } elif (*source_diagnostic).code == SemaDiagnosticCode.ConstantNotConstant or
+            (*source_diagnostic).code == SemaDiagnosticCode.ConstantOverflow or
+            (*source_diagnostic).code == SemaDiagnosticCode.ConstantDivideByZero or
+            (*source_diagnostic).code == SemaDiagnosticCode.ConstantRemainderByZero {
+            CliDiagnosticOrigin.ConstantEval
+        } elif (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName or
+            (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousName or
             (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol or
             (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration or
-            (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration {
+            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding or
+            (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration or
+            (*source_diagnostic).code == SemaDiagnosticCode.InvalidScope or
+            (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport {
             CliDiagnosticOrigin.NameResolution
+        } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateImport {
+            CliDiagnosticOrigin.Import
         } else {
             CliDiagnosticOrigin.TypeCheck
         };
@@ -1055,11 +2510,14 @@ proc native_pipeline_export_diagnostics(
         let mut subject: string = "";
         let mut subject_owned = false;
         if (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName or
+            (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousName or
+            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateImport or
             (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol or
             (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration or
+            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding or
+            (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport or
             (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration or
             (*source_diagnostic).code == SemaDiagnosticCode.UnknownType or
-            (*source_diagnostic).code == SemaDiagnosticCode.NotAType or
             (*source_diagnostic).code == SemaDiagnosticCode.UnknownMember {
             set subject = native_pipeline_sema_subject(source, span);
             set subject_owned = subject.length != 0;
@@ -1069,19 +2527,22 @@ proc native_pipeline_export_diagnostics(
                 set message = native_pipeline_message3("unknown symbol `", subject, "`");
                 set message_owned = true;
             } elif (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol {
-                set message = native_pipeline_message3("symbol `", subject, "` is private and cannot be used here");
+                set message = native_pipeline_message3("symbol `", subject, "` is not visible here");
                 set message_owned = true;
             } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration {
                 set message = native_pipeline_message3("duplicate declaration of `", subject, "`");
+                set message_owned = true;
+            } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding {
+                set message = native_pipeline_message3("duplicate binding of `", subject, "`");
+                set message_owned = true;
+            } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport {
+                set message = native_pipeline_message3("invalid export target `", subject, "`");
                 set message_owned = true;
             } elif (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration {
                 set message = native_pipeline_message3("declaration of `", subject, "` shadows an existing name");
                 set message_owned = true;
             } elif (*source_diagnostic).code == SemaDiagnosticCode.UnknownType {
                 set message = native_pipeline_message3("unknown type `", subject, "`");
-                set message_owned = true;
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.NotAType {
-                set message = native_pipeline_message3("`", subject, "` does not name a type");
                 set message_owned = true;
             } elif (*source_diagnostic).code == SemaDiagnosticCode.UnknownMember {
                 if found_type.len() != 0 {
@@ -1092,7 +2553,21 @@ proc native_pipeline_export_diagnostics(
                 set message_owned = true;
             }
         }
-        if (*source_diagnostic).code == SemaDiagnosticCode.NotCallable and found_type.len() != 0 {
+        if (*source_diagnostic).code == SemaDiagnosticCode.InvalidRequiresClause and found_type.len() != 0 {
+            set message = native_pipeline_message3(
+                "requires clause has type `",
+                found_type,
+                "`; expected `bool`"
+            );
+            set message_owned = true;
+        } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidEnsuresClause and found_type.len() != 0 {
+            set message = native_pipeline_message3(
+                "ensures clause has type `",
+                found_type,
+                "`; expected `bool`"
+            );
+            set message_owned = true;
+        } elif (*source_diagnostic).code == SemaDiagnosticCode.NotCallable and found_type.len() != 0 {
             set message = native_pipeline_message3("value of type `", found_type, "` is not callable");
             set message_owned = true;
         } elif (*source_diagnostic).code == SemaDiagnosticCode.NotIndexable and found_type.len() != 0 {
@@ -1151,7 +2626,14 @@ proc native_pipeline_export_diagnostics(
         let mut related_end_column: usize = 0;
         let mut related_label: *const char = null;
         if (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol or
+           (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousName or
+           (*source_diagnostic).code == SemaDiagnosticCode.DuplicateImport or
            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration or
+           (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding or
+           (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport or
+           (*source_diagnostic).code == SemaDiagnosticCode.NotAType or
+           (*source_diagnostic).code == SemaDiagnosticCode.NotAValue or
+           (*source_diagnostic).code == SemaDiagnosticCode.CannotInfer or
            (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration or
            (*source_diagnostic).code == SemaDiagnosticCode.ReferenceEscape or
            (*source_diagnostic).code == SemaDiagnosticCode.BorrowConflict or
@@ -1201,6 +2683,22 @@ proc native_pipeline_export_diagnostics(
                                 case SemaDiagnosticCode.DuplicateDeclaration => {
                                     set related_label = native_pipeline_c_string("previous declaration is here");
                                 },
+                                case SemaDiagnosticCode.DuplicateBinding => {
+                                    set related_label = native_pipeline_c_string("previous binding is here");
+                                },
+                                case SemaDiagnosticCode.InvalidExport => {
+                                    if (*declaration_symbol).kind == SymbolKind.Space {
+                                        set related_label = native_pipeline_c_string("imported module is bound here");
+                                    } else {
+                                        set related_label = native_pipeline_c_string("imported declaration originates here");
+                                    }
+                                },
+                                case SemaDiagnosticCode.AmbiguousName => {
+                                    set related_label = native_pipeline_c_string("other imported candidate is declared here");
+                                },
+                                case SemaDiagnosticCode.DuplicateImport => {
+                                    set related_label = native_pipeline_c_string("earlier identical import is here");
+                                },
                                 case SemaDiagnosticCode.ShadowedDeclaration => {
                                     set related_label = native_pipeline_c_string("earlier shadowed declaration is here");
                                 },
@@ -1215,6 +2713,9 @@ proc native_pipeline_export_diagnostics(
                                 },
                                 case SemaDiagnosticCode.UseAfterMove => {
                                     set related_label = native_pipeline_c_string("moved value is declared here");
+                                },
+                                case SemaDiagnosticCode.CannotInfer => {
+                                    set related_label = native_pipeline_c_string("generic procedure declared here");
                                 },
                                 case SemaDiagnosticCode.ReferenceEscape => {
                                     set related_label = native_pipeline_c_string("referenced value is declared here");
@@ -1370,9 +2871,87 @@ proc native_pipeline_export_diagnostics(
         } elif (*source_diagnostic).type_context == SemaTypeContextKind.Condition {
             probable_cause = native_pipeline_c_string("the condition must evaluate to a boolean value");
             set context_text = "condition / expected `bool`";
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Cast {
+            probable_cause = native_pipeline_c_string("the source type cannot be converted to the requested target type");
+            set context_text = "cast expression / source and target types";
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Operands {
+            probable_cause = native_pipeline_c_string("the operator does not support these operand types");
+            set context_text = "operator operands";
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Call {
+            probable_cause = native_pipeline_c_string("the call target does not have a callable type");
+            set context_text = "call target / callable type";
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Index {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.InvalidIndexType {
+                native_pipeline_c_string("the index must have an integer type")
+            } else {
+                native_pipeline_c_string("the indexed value does not support indexing")
+            };
+            set context_text = "indexed value / index expression";
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Member {
+            probable_cause = native_pipeline_c_string("the receiver type does not define this member");
+            set context_text = "member access / receiver type";
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Type {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.IncompleteType {
+                native_pipeline_c_string("this operation requires a complete type definition")
+            } elif (*source_diagnostic).code == SemaDiagnosticCode.RecursiveType {
+                native_pipeline_c_string("the type alias expansion contains a recursive cycle")
+            } else {
+                native_pipeline_c_string("the name resolves to a value, which cannot be used as a type")
+            };
+            set context_text = if (*source_diagnostic).code == SemaDiagnosticCode.IncompleteType or
+                (*source_diagnostic).code == SemaDiagnosticCode.RecursiveType {
+                "type use / originating type declaration"
+            } else {
+                "type expression / resolved name"
+            };
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Value {
+            probable_cause = native_pipeline_c_string("the name resolves to a type, which cannot be evaluated as a value");
+            set context_text = "value expression / type name";
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Inference {
+            probable_cause = native_pipeline_c_string("available information does not determine a unique type");
+            set context_text = "type inference / unresolved expression or binding";
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Bound {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.InvalidWherePredicate {
+                native_pipeline_c_string("the predicate does not refer to a declared type parameter and a valid trait bound")
+            } else {
+                native_pipeline_c_string("the concrete type does not implement the required trait bound")
+            };
+            set context_text = if (*source_diagnostic).code == SemaDiagnosticCode.InvalidWherePredicate {
+                "where predicate / generic declaration"
+            } else {
+                "concrete type / required trait bound"
+            };
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.GenericArgument {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.GenericInferenceConflict {
+                native_pipeline_c_string("two arguments require incompatible substitutions for one generic parameter")
+            } else {
+                native_pipeline_c_string("generic arguments must match the declared parameter count, kinds and order")
+            };
+            set context_text = if (*source_diagnostic).code == SemaDiagnosticCode.GenericInferenceConflict {
+                "conflicting arguments / inferred generic parameter"
+            } else {
+                "generic arguments / declaration parameters"
+            };
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.TraitMember {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.MissingTraitMember {
+                native_pipeline_c_string("the trait declares a required member with no default implementation")
+            } elif (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousMethod {
+                native_pipeline_c_string("more than one visible implementation supplies this method")
+            } elif (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousImpl {
+                native_pipeline_c_string("more than one implementation satisfies this trait relation")
+            } elif (*source_diagnostic).code == SemaDiagnosticCode.ConflictingImpl {
+                native_pipeline_c_string("this implementation overlaps an existing implementation")
+            } elif (*source_diagnostic).code == SemaDiagnosticCode.TraitNotImplemented {
+                native_pipeline_c_string("the concrete type has no implementation of the required trait")
+            } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidImplTarget {
+                native_pipeline_c_string("the impl header does not name a trait and target type in a supported form")
+            } else {
+                native_pipeline_c_string("the implementation member does not satisfy the trait declaration")
+            };
+            set context_text = "trait / implementation candidate";
         } elif (*source_diagnostic).type_context == SemaTypeContextKind.Expression {
-            probable_cause = native_pipeline_c_string("the expression operands do not satisfy the operation's type requirements");
-            set context_text = "expression / operand types";
+            probable_cause = native_pipeline_c_string("the expression's actual type does not satisfy the expected type");
+            set context_text = "expression / expected type";
         } elif (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName {
             probable_cause = native_pipeline_c_string("no declaration with this name is visible in the current scope");
             set context_text = "name resolution / visible declarations";
@@ -1382,6 +2961,12 @@ proc native_pipeline_export_diagnostics(
         } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration {
             probable_cause = native_pipeline_c_string("another declaration with this name already exists in this scope");
             set context_text = "declaration / current scope";
+        } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding {
+            probable_cause = native_pipeline_c_string("another binding with this name already exists in this scope");
+            set context_text = "binding / current scope";
+        } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport {
+            probable_cause = native_pipeline_c_string("the export target is missing or comes from an imported module");
+            set context_text = "export / defining module";
         } elif (*source_diagnostic).code == SemaDiagnosticCode.NotCallable {
             probable_cause = native_pipeline_c_string("the expression does not have a procedure or callable type");
             set context_text = "call target / callable type";
@@ -1397,6 +2982,44 @@ proc native_pipeline_export_diagnostics(
         } elif (*source_diagnostic).code == SemaDiagnosticCode.UnknownType {
             probable_cause = native_pipeline_c_string("no visible type declaration has this name");
             set context_text = "type lookup / visible declarations";
+        }
+        if (*source_diagnostic).related_span.valid and
+           (*source_diagnostic).related_span.file_id == file_id and
+           (*source_diagnostic).related_span.end >= (*source_diagnostic).related_span.begin and
+           (*source_diagnostic).related_span.end <= source.length {
+            let mut scanner: Scanner;
+            if vitte_scanner_init(
+                &mut scanner,
+                source,
+                source.length,
+                (*source_diagnostic).related_span.file_id
+            ) {
+                let _ = vitte_scanner_set_strict_utf8(&mut scanner, false);
+                let mut related_start: ScannerPosition;
+                let mut related_end: ScannerPosition;
+                if vitte_scanner_position_at(
+                       &mut scanner,
+                       (*source_diagnostic).related_span.begin,
+                       &mut related_start
+                   ) and
+                   vitte_scanner_position_at(
+                       &mut scanner,
+                       (*source_diagnostic).related_span.end,
+                       &mut related_end
+                   ) {
+                    set has_related = true;
+                    set related_file_id = (*source_diagnostic).related_span.file_id;
+                    set related_source_id = file_id;
+                    set related_start_offset = (*source_diagnostic).related_span.begin;
+                    set related_end_offset = (*source_diagnostic).related_span.end;
+                    set related_start_line = related_start.line - 1;
+                    set related_start_column = related_start.column - 1;
+                    set related_end_line = related_end.line - 1;
+                    set related_end_column = related_end.column - 1;
+                    set related_label = (&(*source_diagnostic).related_label[0]) as *const char;
+                }
+                vitte_scanner_destroy(&mut scanner);
+            }
         }
         let semantic_exported = vitte_cli_diagnostic_transport_set_semantic(
             diagnostics,
@@ -1429,15 +3052,34 @@ proc native_pipeline_export_diagnostics(
 
     if codegen_count != 0 {
         let diagnostic_code = native_pipeline_cstring((*codegen_output).diagnostic_code);
-        let severity: CliDiagnosticSeverity = if diagnostic_code == "VITTE_IR_E_VERIFY" { CliDiagnosticSeverity.Fatal } else { CliDiagnosticSeverity.Error };
+        let severity: CliDiagnosticSeverity = if diagnostic_code == "VITTE_IR_E_VERIFY" or
+           diagnostic_code == "VITTE_IR_E_INVALID" or diagnostic_code == "VITTE_HIR_E_INVALID" or
+           diagnostic_code == "VITTE_INFRA_E_INTERNAL" or diagnostic_code == "VITTE_INFRA_E_INVARIANT" or
+           diagnostic_code == "VITTE_INFRA_E_RESOURCE" {
+            CliDiagnosticSeverity.Fatal
+        } else {
+            CliDiagnosticSeverity.Error
+        };
         let mut codegen_message: string = if (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Ir {
             (*codegen_output).error
         } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Hir {
-            "HIR lowering failed"
+            (*codegen_output).error
+        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Internal {
+            (*codegen_output).error
+        } elif diagnostic_code == "VITTE_BACKEND_E_UNSUPPORTED" {
+            "C17 backend does not support this source construct"
+        } elif diagnostic_code == "VITTE_BACKEND_E_CONFIG" {
+            "invalid C17 backend configuration"
+        } elif (*codegen_output).has_source_span {
+            "C17 code generation failed for this Vitte construct"
         } else {
             "C17 code generation failed"
         };
         let mut codegen_details: string = if (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Ir {
+            ""
+        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Hir {
+            ""
+        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Internal {
             ""
         } else {
             (*codegen_output).error
@@ -1446,6 +3088,15 @@ proc native_pipeline_export_diagnostics(
         let mut codegen_span_file_id: u32 = 0;
         let mut codegen_span_begin: usize = 0;
         let mut codegen_span_end: usize = 0;
+        if (*codegen_output).has_source_span and
+           (*codegen_output).source_span.valid and
+           (*codegen_output).source_span.end >= (*codegen_output).source_span.begin and
+           (*codegen_output).source_span.end <= source.length {
+            set codegen_has_span = true;
+            set codegen_span_file_id = (*codegen_output).source_span.file_id;
+            set codegen_span_begin = (*codegen_output).source_span.begin;
+            set codegen_span_end = (*codegen_output).source_span.end;
+        }
         if parser != null and
            (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.C17Backend and
            (*codegen_output).error == "macros must be expanded before C17 emission" {
@@ -1495,11 +3146,121 @@ proc native_pipeline_export_diagnostics(
     return true;
 }
 
+proc native_pipeline_lexer_hex_byte(byte: u8) -> string {
+    let digits: string = "0123456789ABCDEF";
+    return "\\x" + string.from_byte(digits[(byte >> 4) as usize] as u8) +
+        string.from_byte(digits[(byte & 15) as usize] as u8);
+}
+
+proc native_pipeline_lexer_escape_byte(byte: u8, force_hex: bool) -> string {
+    if byte == 92 { return "\\\\"; }
+    if byte == 96 { return "\\`"; }
+    if byte == 10 { return "\\n"; }
+    if byte == 13 { return "\\r"; }
+    if byte == 9 { return "\\t"; }
+    if byte == 12 { return "\\f"; }
+    if byte == 11 { return "\\v"; }
+    if byte == 8 { return "\\b"; }
+    if byte == 7 { return "\\a"; }
+    if not force_hex and byte >= 32 and byte <= 126 {
+        return string.from_byte(byte);
+    }
+    return native_pipeline_lexer_hex_byte(byte);
+}
+
+proc native_pipeline_lexer_escape_bytes(source: str, begin: usize, end: usize, force_hex: bool) -> string {
+    let mut result: string = "";
+    let mut index: usize = begin;
+    while index < end {
+        set result += native_pipeline_lexer_escape_byte(source[index] as u8, force_hex);
+        set index += 1;
+    }
+    return result;
+}
+
+proc native_pipeline_unicode_encoding_context(error: UnicodeError) -> string {
+    if error == UnicodeError.TruncatedUtf8 { return "truncated UTF-8 sequence"; }
+    if error == UnicodeError.OverlongUtf8 { return "overlong UTF-8 encoding"; }
+    if error == UnicodeError.Surrogate { return "UTF-8 sequence encodes a surrogate value"; }
+    if error == UnicodeError.OutOfRange { return "UTF-8 sequence encodes a value above U+10FFFF"; }
+    return "malformed UTF-8 sequence";
+}
+
+proc native_pipeline_u64_to_hex(value: u64) -> string {
+    let digits: string = "0123456789ABCDEF";
+    if value < 16 { return string.from_byte(digits[value as usize] as u8); }
+    return native_pipeline_u64_to_hex(value / 16) +
+        string.from_byte(digits[(value % 16) as usize] as u8);
+}
+
+proc native_pipeline_lexer_diagnostic_details(
+    error: LexerError,
+    source: str,
+    begin: usize,
+    end: usize
+) -> string {
+    if begin > end or end > source.length { return vitte_lexer_error_name(error); }
+    if error == LexerError.InvalidUtf8 {
+        let decoded = vitte_unicode_decode_utf8(source, begin, source.length);
+        return native_pipeline_unicode_encoding_context(decoded.error) + " `" +
+            native_pipeline_lexer_escape_bytes(source, begin, end, true) +
+            "` at UTF-8 byte range [" + native_pipeline_u64_to_string(begin as u64) +
+            ", " + native_pipeline_u64_to_string(end as u64) +
+            "); UTF-8 must encode Unicode scalar values only";
+    }
+    if error == LexerError.InvalidIdentifier {
+        let decoded = vitte_unicode_decode_utf8(source, begin, source.length);
+        let mut hex = native_pipeline_u64_to_hex(decoded.codepoint);
+        while hex.length < 4 { set hex = "0" + hex; }
+        return "character U+" + hex +
+            " is not allowed at identifier start; UTF-8 byte range [" +
+            native_pipeline_u64_to_string(begin as u64) + ", " +
+            native_pipeline_u64_to_string(end as u64) + ")";
+    }
+    if error == LexerError.InvalidCharacterLiteral {
+        return "malformed character literal `" +
+            native_pipeline_lexer_escape_bytes(source, begin, end, false) +
+            "`; expected exactly one Unicode scalar value or one supported escape sequence at UTF-8 byte range [" +
+            native_pipeline_u64_to_string(begin as u64) + ", " +
+            native_pipeline_u64_to_string(end as u64) + ")";
+    }
+    if error == LexerError.InvalidInteger or error == LexerError.InvalidFloat or
+       error == LexerError.InvalidNumericSeparator or error == LexerError.InvalidNumericBase or
+       error == LexerError.InvalidNumericSuffix or error == LexerError.InvalidExponent {
+        let mut reason: string = "invalid numeric literal";
+        if error == LexerError.InvalidInteger { set reason = "malformed integer literal"; }
+        elif error == LexerError.InvalidFloat { set reason = "malformed floating-point literal"; }
+        elif error == LexerError.InvalidNumericSeparator { set reason = "invalid numeric separator in literal"; }
+        elif error == LexerError.InvalidNumericBase { set reason = "invalid digit or missing digits in based integer literal"; }
+        elif error == LexerError.InvalidNumericSuffix { set reason = "unsupported numeric suffix in literal"; }
+        elif error == LexerError.InvalidExponent { set reason = "invalid exponent in literal"; }
+        return reason + " `" +
+            native_pipeline_lexer_escape_bytes(source, begin, end, false) +
+            "` at UTF-8 byte range [" + native_pipeline_u64_to_string(begin as u64) +
+            ", " + native_pipeline_u64_to_string(end as u64) + ")";
+    }
+    if error == LexerError.InvalidCharacter or error == LexerError.InvalidToken {
+        return "invalid character `" +
+            native_pipeline_lexer_escape_bytes(source, begin, end, false) +
+            "` at UTF-8 byte range [" + native_pipeline_u64_to_string(begin as u64) +
+            ", " + native_pipeline_u64_to_string(end as u64) + ")";
+    }
+    return vitte_lexer_error_name(error);
+}
+
 proc native_pipeline_lexer_code(error: LexerError) -> string {
     match error {
         case LexerError.InvalidUtf8 => return "VITTE_LEXER_E_INVALID_UNICODE";
         case LexerError.InvalidIdentifier => return "VITTE_LEXER_E_INVALID_IDENTIFIER";
         case LexerError.InvalidNumber => return "VITTE_LEXER_E_INVALID_NUMBER";
+        case LexerError.InvalidInteger => return "VITTE_LEXER_E_INVALID_INTEGER";
+        case LexerError.InvalidFloat => return "VITTE_LEXER_E_INVALID_FLOAT";
+        case LexerError.InvalidCharacterLiteral => return "VITTE_LEXER_E_INVALID_CHARACTER_LITERAL";
+        case LexerError.InvalidNumericSeparator => return "VITTE_LEXER_E_INVALID_NUMERIC_SEPARATOR";
+        case LexerError.InvalidNumericBase => return "VITTE_LEXER_E_INVALID_NUMERIC_BASE";
+        case LexerError.InvalidNumericSuffix => return "VITTE_LEXER_E_INVALID_NUMERIC_SUFFIX";
+        case LexerError.InvalidExponent => return "VITTE_LEXER_E_INVALID_EXPONENT";
+        case LexerError.InvalidOperator => return "VITTE_LEXER_E_INVALID_OPERATOR";
         case LexerError.InvalidEscape => return "VITTE_LEXER_E_INVALID_ESCAPE";
         case LexerError.UnterminatedString => return "VITTE_LEXER_E_UNTERMINATED_STRING";
         case LexerError.UnterminatedComment => return "VITTE_LEXER_E_UNTERMINATED_COMMENT";
@@ -1511,8 +3272,136 @@ proc native_pipeline_lexer_code(error: LexerError) -> string {
         case LexerError.NumberOverflow => return "VITTE_LEXER_E_NUMBER_OVERFLOW";
         case LexerError.Overflow => return "VITTE_INFRA_E_LIMIT";
         case LexerError.OutOfMemory => return "VITTE_INFRA_E_RESOURCE";
-        else => return "VITTE_INFRA_E_PHASE";
     }
+}
+
+proc native_pipeline_export_one_lexer_diagnostic(
+    error: LexerError,
+    span: LexerSpan,
+    file_id: u64,
+    source_name: *const char,
+    source: str,
+    batch: *mut u8,
+    count: usize,
+    index: usize
+) -> bool {
+    if batch == null { return false; }
+    if error == LexerError.None { return true; }
+    let mut primary_end = span.end;
+    if span.valid and span.begin <= source.length {
+        if error == LexerError.UnterminatedString and span.begin < source.length {
+            set primary_end = span.begin + 1;
+        } elif error == LexerError.UnterminatedComment and source.length - span.begin >= 2 {
+            set primary_end = span.begin + 2;
+        }
+    }
+    let mut details = native_pipeline_lexer_diagnostic_details(
+        error,
+        source,
+        span.begin,
+        span.end
+    );
+    if span.valid and span.begin <= span.end and span.end <= source.length {
+        if error == LexerError.InvalidEscape {
+            set details = "invalid escape sequence `";
+            set details += source.slice(span.begin, span.end);
+            set details += "`";
+            set details += "; accepted forms: `\\\\`, `\\'`, `\\\"`, `\\0`, `\\a`, `\\b`, `\\f`, `\\n`, `\\r`, `\\t`, `\\v`, `\\xNN` (2 hex digits), `\\uNNNN` (4), and `\\UNNNNNNNN` (8)";
+        } elif error == LexerError.InvalidNumber {
+            set details = "invalid numeric literal `";
+            set details += source.slice(span.begin, span.end);
+            set details += "`";
+        } elif error == LexerError.InvalidInteger {
+            set details = "malformed integer literal `";
+            set details += source.slice(span.begin, span.end);
+            set details += "` at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
+        } elif error == LexerError.InvalidFloat {
+            set details = "malformed floating-point literal `";
+            set details += source.slice(span.begin, span.end);
+            set details += "` at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
+        } elif error == LexerError.InvalidCharacterLiteral {
+            set details = native_pipeline_lexer_diagnostic_details(error, source, span.begin, span.end);
+        } elif error == LexerError.InvalidNumericSeparator {
+            set details = "invalid numeric separator in literal `";
+            set details += source.slice(span.begin, span.end);
+            set details += "`; underscores must occur singly between digits at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
+        } elif error == LexerError.InvalidNumericBase {
+            set details = "invalid digit or missing digits in based integer literal `";
+            let mut expected: string = "`; expected digits valid for the literal's base";
+            if span.end > span.begin + 1 {
+                let base_prefix: u8 = source[span.begin + 1] as u8;
+                if base_prefix == 98 or base_prefix == 66 {
+                    set details = "invalid digit or missing digits in base-2 integer literal `";
+                    set expected = "`; expected binary digits 0-1";
+                } elif base_prefix == 111 or base_prefix == 79 {
+                    set details = "invalid digit or missing digits in base-8 integer literal `";
+                    set expected = "`; expected octal digits 0-7";
+                } elif base_prefix == 120 or base_prefix == 88 {
+                    set details = "invalid digit or missing digits in base-16 integer literal `";
+                    set expected = "`; expected hexadecimal digits 0-9 or A-F";
+                }
+            }
+            set details += source.slice(span.begin, span.end);
+            set details += expected;
+            set details += " at UTF-8 byte range [";
+            set details += native_pipeline_u64_to_string(span.begin as u64);
+            set details += ", ";
+            set details += native_pipeline_u64_to_string(span.end as u64);
+            set details += ")";
+        } elif error == LexerError.InvalidNumericSuffix {
+            set details = "unsupported numeric suffix in literal `";
+            set details += source.slice(span.begin, span.end);
+            set details += "`; Vitte numeric literals do not define suffixes at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
+        } elif error == LexerError.InvalidExponent {
+            set details = "invalid exponent in literal `";
+            set details += source.slice(span.begin, span.end);
+            set details += "`; decimal exponents use `e` and hexadecimal exponents use `p`, followed by decimal digits at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
+        } elif error == LexerError.NumberOverflow {
+            set details = "integer literal `";
+            set details += source.slice(span.begin, span.end);
+            set details += "` exceeds the supported unsigned 64-bit range [0, 18446744073709551615] (u64) at UTF-8 byte range [";
+            set details += native_pipeline_u64_to_string(span.begin as u64);
+            set details += ", ";
+            set details += native_pipeline_u64_to_string(span.end as u64);
+            set details += ")";
+        } elif error == LexerError.InvalidOperator {
+            set details = "invalid or incomplete operator/punctuation sequence `";
+            set details += source.slice(span.begin, span.end);
+            set details += "` is not a supported Vitte operator at UTF-8 byte range [";
+            set details += native_pipeline_u64_to_string(span.begin as u64);
+            set details += ", ";
+            set details += native_pipeline_u64_to_string(span.end as u64);
+            set details += ")";
+        } elif error == LexerError.UnterminatedString {
+            set details = "string opened with `\"` here is missing its closing `\"` delimiter";
+        } elif error == LexerError.UnterminatedComment {
+            set details = "block comment opened with `/*` here is missing its matching `*/` terminator";
+        }
+    }
+    if not native_pipeline_export_cli_diagnostic(
+        batch,
+        count,
+        index,
+        (index + 1) as u64,
+        native_pipeline_c_string(native_pipeline_lexer_code(error)),
+        CliDiagnosticSeverity.Error,
+        CliDiagnosticOrigin.Lexer,
+        native_pipeline_c_string("lexical analysis failed"),
+        native_pipeline_c_string(details),
+        null,
+        span.valid,
+        span.file_id as u32,
+        file_id,
+        source_name,
+        span.begin,
+        primary_end,
+        source,
+        null,
+        null
+    ) {
+        return false;
+    }
+    return true;
 }
 
 proc native_pipeline_export_lexer_diagnostic(
@@ -1526,62 +3415,56 @@ proc native_pipeline_export_lexer_diagnostic(
     if output != null { set *output = null; }
     if output_count != null { set *output_count = 0; }
     if output == null or output_count == null or lexer == null { return true; }
-    let error = vitte_lexer_last_error(lexer);
-    let span = vitte_lexer_error_span(lexer);
-    if error == LexerError.None { return true; }
-    let mut details = vitte_lexer_error_name(error);
-    if span.valid and span.begin <= span.end and span.end <= source.length {
-        if error == LexerError.InvalidEscape {
-            set details = "invalid escape sequence `" + source.slice(span.begin, span.end);
-            set details += "`";
-        } elif error == LexerError.InvalidCharacter or error == LexerError.InvalidToken {
-            set details = "invalid character `" + source.slice(span.begin, span.end);
-            set details += "`";
-        } elif error == LexerError.InvalidUtf8 {
-            set details = "source contains a malformed UTF-8 sequence";
-        } elif error == LexerError.InvalidIdentifier {
-            set details = "character `" + source.slice(span.begin, span.end);
-            set details += "` cannot start an identifier";
-        } elif error == LexerError.InvalidNumber {
-            set details = "invalid numeric literal `" + source.slice(span.begin, span.end);
-            set details += "`";
-        } elif error == LexerError.NumberOverflow {
-            set details = "integer literal `" + source.slice(span.begin, span.end);
-            set details += "` exceeds the supported 64-bit range";
-        } elif error == LexerError.UnterminatedString {
-            set details = "string literal is missing its closing quote";
-        } elif error == LexerError.UnterminatedComment {
-            set details = "block comment is missing its matching `*/` terminator";
+    let diagnostic_count: usize = vitte_lexer_diagnostic_count(lexer);
+    if diagnostic_count == 0 {
+        let error = vitte_lexer_last_error(lexer);
+        if error == LexerError.None { return true; }
+        let batch = vitte_cli_diagnostic_transport_create(1);
+        if batch == null { return false; }
+        if not native_pipeline_export_one_lexer_diagnostic(
+            error,
+            vitte_lexer_error_span(lexer),
+            file_id,
+            source_name,
+            source,
+            batch,
+            1,
+            0
+        ) {
+            vitte_cli_diagnostic_transport_destroy(batch);
+            return false;
         }
+        set *output = batch;
+        set *output_count = 1;
+        return true;
     }
-    let diag_value = vitte_cli_diagnostic_transport_create(1);
-    if diag_value == null { return false; }
-    if not native_pipeline_export_cli_diagnostic(
-        diag_value,
-        1,
-        0,
-        1,
-        native_pipeline_c_string(native_pipeline_lexer_code(error)),
-        CliDiagnosticSeverity.Error,
-        CliDiagnosticOrigin.Lexer,
-        native_pipeline_c_string("lexical analysis failed"),
-        native_pipeline_c_string(details),
-        null,
-        span.valid,
-        span.file_id as u32,
-        file_id,
-        source_name,
-        span.begin,
-        span.end,
-        source,
-        null,
-        null
-    ) {
-        vitte_cli_diagnostic_transport_destroy(diag_value);
-        return false;
+    let batch = vitte_cli_diagnostic_transport_create(diagnostic_count);
+    if batch == null { return false; }
+    let mut index: usize = 0;
+    while index < diagnostic_count {
+        let item = vitte_lexer_diagnostic_at(lexer, index);
+        if item == null {
+            vitte_cli_diagnostic_transport_destroy(batch);
+            return false;
+        }
+        let lexer_item = item?;
+        if not native_pipeline_export_one_lexer_diagnostic(
+            (*lexer_item).error,
+            (*lexer_item).span,
+            file_id,
+            source_name,
+            source,
+            batch,
+            diagnostic_count,
+            index
+        ) {
+            vitte_cli_diagnostic_transport_destroy(batch);
+            return false;
+        }
+        set index += 1;
     }
-    set *output = diag_value;
-    set *output_count = 1;
+    set *output = batch;
+    set *output_count = diagnostic_count;
     return true;
 }
 
@@ -1632,7 +3515,9 @@ export proc native_pipeline_emit_c17_unit(
             help: "",
             diagnostic_code: native_pipeline_c_string(native_pipeline_codegen_code(emitted_error)),
             diagnostic_origin: native_pipeline_codegen_origin(emitted_error),
-            codegen_error: native_pipeline_codegen_error(emitted_error)
+            codegen_error: native_pipeline_codegen_error(emitted_error),
+            has_source_span: (*input).ast_fallback and emitted.has_span,
+            source_span: emitted.span
         };
         return false;
     }
@@ -1652,7 +3537,9 @@ export proc native_pipeline_emit_c17_unit(
         help: "",
         diagnostic_code: null,
         diagnostic_origin: CliDiagnosticOrigin.Unknown,
-        codegen_error: CodegenError.None
+        codegen_error: CodegenError.None,
+        has_source_span: false,
+        source_span: ParserSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, valid: false }
     };
     return true;
 }
@@ -2458,11 +4345,29 @@ proc native_pipeline_run_with_config(
     if not vitte_sema_init(&mut sema, &parser) {
         let sema_last_error = vitte_sema_last_error(&sema);
         let sema_error = sema_last_error as u32;
+        let failure = native_pipeline_sema_failure(sema_last_error, true);
+        let _ = native_pipeline_export_diagnostics(
+            &parser,
+            null,
+            &failure,
+            file_id,
+            diagnostic_source_name,
+            source_text,
+            diagnostics,
+            diagnostic_count
+        );
         vitte_sema_destroy(&mut sema);
         vitte_parser_destroy(&mut parser);
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
-        let mut result = native_pipeline_result(Status.ErrorInternal, NativePipelinePhase.Parsed, LexerError.None, token_count, lexer_hash, false);
+        let mut result = native_pipeline_result(
+            if failure.codegen_error == CodegenError.OutOfMemory { Status.ErrorOutOfMemory } else { Status.ErrorInternal },
+            NativePipelinePhase.Parsed,
+            LexerError.None,
+            token_count,
+            lexer_hash,
+            false
+        );
         set result.parser_error = parser_error;
         set result.parser_diagnostic_count = parser_diagnostics;
         set result.parser_fingerprint = parser_hash;
@@ -2493,21 +4398,43 @@ proc native_pipeline_run_with_config(
         set sema_errors = 0;
     }
     if (not sema_valid or sema_errors != 0 or not analyzed) and not sema_ast_fallback {
-        let _ = native_pipeline_export_diagnostics(
-            &parser,
-            &sema,
-            null,
-            file_id,
-            diagnostic_source_name,
-            source_text,
-            diagnostics,
-            diagnostic_count
-        );
+        let has_source_error = sema_errors != 0 and sema_diagnostics != 0;
+        let failure = native_pipeline_sema_failure(sema_last_error, false);
+        if has_source_error {
+            let _ = native_pipeline_export_diagnostics(
+                &parser,
+                &sema,
+                null,
+                file_id,
+                diagnostic_source_name,
+                source_text,
+                diagnostics,
+                diagnostic_count
+            );
+        } else {
+            let _ = native_pipeline_export_diagnostics(
+                &parser,
+                &sema,
+                &failure,
+                file_id,
+                diagnostic_source_name,
+                source_text,
+                diagnostics,
+                diagnostic_count
+            );
+        }
         vitte_sema_destroy(&mut sema);
         vitte_parser_destroy(&mut parser);
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
-        let mut result = native_pipeline_result(Status.ErrorParse, NativePipelinePhase.Parsed, LexerError.None, token_count, lexer_hash, false);
+        let mut result = native_pipeline_result(
+            if has_source_error { Status.ErrorParse } elif failure.codegen_error == CodegenError.OutOfMemory { Status.ErrorOutOfMemory } else { Status.ErrorInternal },
+            NativePipelinePhase.Parsed,
+            LexerError.None,
+            token_count,
+            lexer_hash,
+            false
+        );
         set result.parser_error = parser_error;
         set result.sema_error = sema_error;
         set result.parser_diagnostic_count = parser_diagnostics;
@@ -2568,18 +4495,45 @@ proc native_pipeline_run_with_config(
 
     if action == NATIVE_FRONTEND_ACTION_COMPILE and
        not vitte_codegen_config_validate(&native_codegen_config) {
+        let failure = native_pipeline_emit_failure(
+            "the backend received an invalid or incompatible compilation configuration",
+            native_pipeline_c_string("VITTE_BACKEND_E_CONFIG"),
+            CliDiagnosticOrigin.C17Backend,
+            CodegenError.InvalidConfig
+        );
+        let diagnostics_exported = native_pipeline_export_diagnostics(
+            &parser,
+            &sema,
+            &failure,
+            file_id,
+            diagnostic_source_name,
+            source_text,
+            diagnostics,
+            diagnostic_count
+        );
         vitte_sema_destroy(&mut sema);
         vitte_parser_destroy(&mut parser);
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
-        return native_pipeline_result(
-            Status.ErrorInternal,
+        let mut result = native_pipeline_result(
+            if diagnostics_exported { Status.ErrorBackend } else { Status.ErrorOutOfMemory },
             NativePipelinePhase.Analyzed,
-            LexerError.Internal,
+            LexerError.None,
             token_count,
             lexer_hash,
             false
         );
+        set result.parser_error = parser_error;
+        set result.sema_error = sema_error;
+        set result.parser_diagnostic_count = parser_diagnostics;
+        set result.sema_diagnostic_count = sema_diagnostics;
+        set result.parser_fingerprint = parser_hash;
+        set result.codegen_error = CodegenError.InvalidConfig as u32;
+        set result.codegen_detail = failure.error;
+        set result.native_parser_attempted = true;
+        set result.native_parser_succeeded = true;
+        set result.native_ast_lowered = true;
+        return result;
     }
 
     let mut hir: HIR = HIR {};
@@ -2607,12 +4561,7 @@ proc native_pipeline_run_with_config(
                (ast_fallback or generic_proc_c17_fallback) {
                 set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
             } else {
-                set output = native_pipeline_emit_failure(
-                    "native HIR lowering failed: " + vitte_hir_error_name(hir.last_error),
-                    native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
-                    CliDiagnosticOrigin.Hir,
-                    CodegenError.Backend
-                );
+                set output = native_pipeline_hir_failure(hir.last_error, false);
             }
         } elif not vitte_hir_is_valid(&hir) or not vitte_hir_validate(&mut hir) or hir.state != HIRState.Validated {
             set hir_error = hir.last_error as u32;
@@ -2620,12 +4569,7 @@ proc native_pipeline_run_with_config(
                (ast_fallback or generic_proc_c17_fallback) {
                 set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
             } else {
-                set output = native_pipeline_emit_failure(
-                    "native HIR validation failed: " + vitte_hir_error_name(hir.last_error),
-                    native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
-                    CliDiagnosticOrigin.Hir,
-                    CodegenError.Backend
-                );
+                set output = native_pipeline_hir_failure(hir.last_error, true);
             }
         } else {
             let hir_statistics: HIRStats = vitte_hir_stats(&hir);
@@ -2667,7 +4611,9 @@ proc native_pipeline_run_with_config(
                             help: "",
                             diagnostic_code: null,
                             diagnostic_origin: CliDiagnosticOrigin.Unknown,
-                            codegen_error: CodegenError.None
+                            codegen_error: CodegenError.None,
+                            has_source_span: false,
+                            source_span: ParserSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, valid: false }
                         };
                     } elif ast_fallback {
                         set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
@@ -2684,12 +4630,7 @@ proc native_pipeline_run_with_config(
         }
     } else {
         set hir_error = hir.last_error as u32;
-        set output = native_pipeline_emit_failure(
-            "native HIR initialization failed",
-            native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
-            CliDiagnosticOrigin.Hir,
-            CodegenError.Backend
-        );
+        set output = native_pipeline_hir_failure(hir.last_error, false);
     }
 
     if not native_pipeline_export_diagnostics(

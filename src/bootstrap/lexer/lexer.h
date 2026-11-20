@@ -68,7 +68,7 @@ extern "C" {
 /* API version                                                               */
 /* ========================================================================= */
 
-#define VITTE_LEXER_API_VERSION_MAJOR 1u
+#define VITTE_LEXER_API_VERSION_MAJOR 2u
 #define VITTE_LEXER_API_VERSION_MINOR 0u
 #define VITTE_LEXER_API_VERSION_PATCH 0u
 
@@ -99,6 +99,9 @@ extern "C" {
 
 #define VITTE_LEXER_DEFAULT_MAX_COMMENT_DEPTH \
     ((size_t)4096u)
+
+#define VITTE_LEXER_DEFAULT_MAX_DIAGNOSTICS \
+    ((size_t)256u)
 
 /* ========================================================================= */
 /* Errors                                                                    */
@@ -134,6 +137,14 @@ typedef enum vitte_lexer_error {
     /* Appended to preserve the numeric values of the existing error codes. */
     VITTE_LEXER_ERROR_INVALID_IDENTIFIER,
     VITTE_LEXER_ERROR_NUMBER_OVERFLOW,
+    VITTE_LEXER_ERROR_INVALID_INTEGER,
+    VITTE_LEXER_ERROR_INVALID_FLOAT,
+    VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL,
+    VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR,
+    VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE,
+    VITTE_LEXER_ERROR_INVALID_NUMERIC_SUFFIX,
+    VITTE_LEXER_ERROR_INVALID_EXPONENT,
+    VITTE_LEXER_ERROR_INVALID_OPERATOR,
 
     VITTE_LEXER_ERROR_COUNT
 } vitte_lexer_error_t;
@@ -404,6 +415,11 @@ typedef struct vitte_lexer_span {
     bool valid;
 } vitte_lexer_span_t;
 
+typedef struct vitte_lexer_diagnostic {
+    vitte_lexer_error_t error;
+    vitte_lexer_span_t span;
+} vitte_lexer_diagnostic_t;
+
 /* ========================================================================= */
 /* Token                                                                     */
 /* ========================================================================= */
@@ -472,7 +488,7 @@ typedef struct vitte_lexer_stats {
 /* ========================================================================= */
 
 /*
- * API-v1 representation.
+ * API-v2 representation.
  *
  * The structure is intentionally visible so compiler stages may stack
  * allocate lexer contexts and inspect them during low-level debugging.
@@ -520,6 +536,10 @@ typedef struct vitte_lexer {
     size_t token_count;
     size_t token_capacity;
 
+    vitte_lexer_diagnostic_t *diagnostics;
+    size_t diagnostic_count;
+    size_t diagnostic_capacity;
+
     /* --------------------------------------------------------------------- */
     /* Last error                                                            */
     /* --------------------------------------------------------------------- */
@@ -533,6 +553,7 @@ typedef struct vitte_lexer {
     size_t max_tokens;
     size_t max_source_bytes;
     size_t max_comment_depth;
+    size_t max_diagnostics;
 
     /* --------------------------------------------------------------------- */
     /* Statistics                                                            */
@@ -555,6 +576,12 @@ typedef struct vitte_lexer {
 const char *
 vitte_token_kind_name(
     vitte_token_kind_t kind);
+
+/* Classify an exact identifier spelling without lexing surrounding source. */
+vitte_token_kind_t
+vitte_lexer_keyword_kind(
+    const char *text,
+    size_t length);
 
 const char *
 vitte_lexer_error_name(
@@ -849,6 +876,16 @@ vitte_lexer_error_span(
 
     return lexer->error_span;
 }
+
+size_t
+vitte_lexer_diagnostic_count(
+    const vitte_lexer_t *lexer);
+
+bool
+vitte_lexer_diagnostic_at(
+    const vitte_lexer_t *lexer,
+    size_t index,
+    vitte_lexer_diagnostic_t *diagnostic);
 
 static inline uint64_t
 vitte_lexer_generation(

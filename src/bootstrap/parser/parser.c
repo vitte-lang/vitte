@@ -774,6 +774,126 @@ vitte_parser_error_here(
 }
 
 static bool
+vitte_parser_error_at_position(
+    vitte_parser_t *parser,
+    vitte_parser_error_t error,
+    vitte_token_kind_t expected,
+    size_t position)
+{
+    const vitte_token_t *token =
+        vitte_parser_token_at_private(parser, position);
+    return vitte_parser_emit_diagnostic(
+        parser,
+        VITTE_PARSER_DIAGNOSTIC_ERROR,
+        error,
+        token != NULL
+            ? vitte_parser_span_from_token(token)
+            : vitte_parser_span_invalid_private(),
+        expected,
+        token != NULL ? token->kind : VITTE_TOKEN_INVALID);
+}
+
+static void
+vitte_parser_reclassify_last_diagnostic(
+    vitte_parser_t *parser,
+    size_t diagnostic_start,
+    vitte_parser_error_t error)
+{
+    vitte_parser_diagnostic_t *diagnostic;
+
+    if (parser == NULL || parser->diagnostic_count <= diagnostic_start) {
+        return;
+    }
+    diagnostic = &parser->diagnostics[parser->diagnostic_count - 1u];
+    if (diagnostic->kind != VITTE_PARSER_DIAGNOSTIC_ERROR) {
+        return;
+    }
+    if (diagnostic->expected == VITTE_TOKEN_IDENTIFIER &&
+        vitte_token_kind_is_keyword(diagnostic->found)) {
+        return;
+    }
+    if (diagnostic->error == VITTE_PARSER_ERROR_INVALID_ARGUMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_CONTEXT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_STATE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_TOKEN ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_NODE ||
+        diagnostic->error == VITTE_PARSER_ERROR_NODE_LIMIT ||
+        diagnostic->error == VITTE_PARSER_ERROR_DIAGNOSTIC_LIMIT ||
+        diagnostic->error == VITTE_PARSER_ERROR_RECURSION_LIMIT ||
+        diagnostic->error == VITTE_PARSER_ERROR_OVERFLOW ||
+        diagnostic->error == VITTE_PARSER_ERROR_OUT_OF_MEMORY ||
+        diagnostic->error == VITTE_PARSER_ERROR_VALIDATION ||
+        diagnostic->error == VITTE_PARSER_ERROR_CORRUPTION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INTERNAL) {
+        return;
+    }
+    /* Outer declarations must not hide a more precise parser failure. */
+    if (diagnostic->error == VITTE_PARSER_ERROR_INVALID_EXTERNAL_PROCEDURE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_INTRINSIC_DECLARATION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ABI_STRING_LITERAL ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_GENERIC_PARAMETER_LIST ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_CONST_GENERIC_PARAMETER ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_GENERIC_BOUND ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_REQUIRES_CLAUSE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ENSURES_CLAUSE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_MACRO_DECLARATION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_MACRO_PARAMETERS ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_TEST_DECLARATION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_DECLARATION_MODIFIER_ORDER ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_PROCEDURE_TYPE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_REFERENCE_TYPE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_POINTER_TYPE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ARRAY_TYPE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_SLICE_TYPE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_OPTIONAL_TYPE ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_TYPE_PATH ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_LET_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_SET_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_OPERATOR ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_RETURN_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_DEFER_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ASSERT_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_UNSAFE_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ASM_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_MATCH_STATEMENT ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_MATCH_ARM ||
+        (diagnostic->error == VITTE_PARSER_ERROR_INVALID_PATTERN &&
+         !(error == VITTE_PARSER_ERROR_INVALID_LET_STATEMENT &&
+           (diagnostic->found == VITTE_TOKEN_EQUAL ||
+            diagnostic->found == VITTE_TOKEN_COLON ||
+            diagnostic->found == VITTE_TOKEN_SEMICOLON ||
+            diagnostic->found == VITTE_TOKEN_RIGHT_BRACE ||
+            diagnostic->found == VITTE_TOKEN_INVALID))) ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_COALESCING_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_LOGICAL_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_BITWISE_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_COMPARISON_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_SHIFT_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ARITHMETIC_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_RANGE_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_UNARY_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_CAST_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_IF_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_BLOCK_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ARRAY_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_SIZEOF_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_ALIGNOF_EXPRESSION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_NULL_CONSTRUCTION ||
+        diagnostic->error == VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST) {
+        return;
+    }
+    diagnostic->error = error;
+    parser->last_error = error;
+}
+
+static bool
 vitte_parser_expect_can_insert(
     const vitte_parser_t *parser,
     vitte_token_kind_t expected);
@@ -1635,7 +1755,7 @@ vitte_parser_parse_literal(
     vitte_parser_t *parser);
 
 static vitte_ast_node_id_t
-vitte_parser_parse_pattern(
+vitte_parser_parse_pattern_inner(
     vitte_parser_t *parser);
 
 static bool
@@ -1765,6 +1885,7 @@ vitte_parser_parse_attribute_prefix(
     size_t argument_end;
     vitte_ast_attribute_t attribute;
     bool inner;
+    bool invalid;
 
     if (parser == NULL || flags == NULL ||
         !vitte_parser_check(parser, VITTE_TOKEN_HASH)) {
@@ -1775,11 +1896,18 @@ vitte_parser_parse_attribute_prefix(
     (void)vitte_parser_advance(parser);
     inner = vitte_parser_match(parser, VITTE_TOKEN_BANG);
 
-    if (vitte_parser_expect(parser, VITTE_TOKEN_LEFT_BRACKET) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACKET)) {
+        const vitte_token_t *found = vitte_parser_current(parser);
+        if (found == NULL || found->kind != VITTE_TOKEN_INVALID) {
+            (void)vitte_parser_error_here(
+                parser, VITTE_PARSER_ERROR_INVALID_ATTRIBUTE,
+                VITTE_TOKEN_LEFT_BRACKET);
+        }
         vitte_parser_synchronize(parser, VITTE_PARSER_RECOVERY_DECLARATION,
                                   start);
         return false;
     }
+    (void)vitte_parser_advance(parser);
 
     name_start = parser->position;
     if (!vitte_parser_token_is_identifier(vitte_parser_current(parser)) &&
@@ -1787,12 +1915,17 @@ vitte_parser_parse_attribute_prefix(
             vitte_parser_current(parser) != NULL
                 ? vitte_parser_current(parser)->kind
                 : VITTE_TOKEN_INVALID)) {
-        (void)vitte_parser_error_here(parser,
-                                      VITTE_PARSER_ERROR_EXPECTED_IDENTIFIER,
-                                      VITTE_TOKEN_IDENTIFIER);
+        const vitte_token_t *found = vitte_parser_current(parser);
+        if (found == NULL || found->kind != VITTE_TOKEN_INVALID) {
+            (void)vitte_parser_error_here(parser,
+                                          VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_NAME,
+                                          VITTE_TOKEN_IDENTIFIER);
+        }
         vitte_parser_synchronize_list(parser, VITTE_TOKEN_RIGHT_BRACKET,
                                       false, start);
-        (void)vitte_parser_expect(parser, VITTE_TOKEN_RIGHT_BRACKET);
+        if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACKET)) {
+            (void)vitte_parser_advance(parser);
+        }
         return false;
     }
     (void)vitte_parser_advance(parser);
@@ -1802,12 +1935,19 @@ vitte_parser_parse_attribute_prefix(
                 vitte_parser_current(parser) != NULL
                     ? vitte_parser_current(parser)->kind
                     : VITTE_TOKEN_INVALID)) {
-            (void)vitte_parser_error_here(parser,
-                                          VITTE_PARSER_ERROR_EXPECTED_IDENTIFIER,
-                                          VITTE_TOKEN_IDENTIFIER);
+            {
+                const vitte_token_t *found = vitte_parser_current(parser);
+                if (found == NULL || found->kind != VITTE_TOKEN_INVALID) {
+                    (void)vitte_parser_error_here(parser,
+                                                  VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_NAME,
+                                                  VITTE_TOKEN_IDENTIFIER);
+                }
+            }
             vitte_parser_synchronize_list(parser, VITTE_TOKEN_RIGHT_BRACKET,
                                           false, start);
-            (void)vitte_parser_expect(parser, VITTE_TOKEN_RIGHT_BRACKET);
+            if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACKET)) {
+                (void)vitte_parser_advance(parser);
+            }
             return false;
         }
         (void)vitte_parser_advance(parser);
@@ -1815,43 +1955,80 @@ vitte_parser_parse_attribute_prefix(
     name_end = parser->position;
     argument_start = VITTE_PARSER_NO_TOKEN;
     argument_end = VITTE_PARSER_NO_TOKEN;
+    invalid = false;
 
     if (vitte_parser_match(parser, VITTE_TOKEN_LEFT_PAREN)) {
         argument_start = parser->position;
         if (!vitte_parser_check(parser, VITTE_TOKEN_RIGHT_PAREN)) {
             for (;;) {
                 vitte_token_kind_t kind;
+                const vitte_token_t *current_token;
+                bool is_name;
+                bool is_literal;
 
-                kind = vitte_parser_current(parser) != NULL
-                    ? vitte_parser_current(parser)->kind
+                current_token = vitte_parser_current(parser);
+                kind = current_token != NULL
+                    ? current_token->kind
                     : VITTE_TOKEN_INVALID;
-                if (!vitte_parser_token_is_identifier(
-                        vitte_parser_current(parser)) &&
-                    !vitte_token_kind_is_keyword(kind) &&
-                    vitte_parser_literal_node_kind(kind) ==
-                        VITTE_AST_NODE_INVALID) {
-                    (void)vitte_parser_error_here(
-                        parser, VITTE_PARSER_ERROR_EXPECTED_IDENTIFIER,
-                        VITTE_TOKEN_IDENTIFIER);
+                is_name = vitte_parser_token_is_identifier(
+                              vitte_parser_current(parser)) ||
+                          vitte_token_kind_is_keyword(kind);
+                is_literal = vitte_parser_literal_node_kind(kind) !=
+                             VITTE_AST_NODE_INVALID;
+                if (!is_name && !is_literal) {
+                    if (current_token == NULL || kind != VITTE_TOKEN_INVALID) {
+                        (void)vitte_parser_error_here(
+                            parser,
+                            VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_ARGUMENTS,
+                            VITTE_TOKEN_IDENTIFIER);
+                    }
+                    invalid = true;
                     (void)vitte_parser_synchronize_list(
                         parser, VITTE_TOKEN_RIGHT_PAREN, false, start);
                     break;
                 }
                 (void)vitte_parser_advance(parser);
-                if (vitte_parser_match(parser, VITTE_TOKEN_EQUAL)) {
-                    kind = vitte_parser_current(parser) != NULL
-                        ? vitte_parser_current(parser)->kind
+                if (is_name && vitte_parser_match(parser, VITTE_TOKEN_EQUAL)) {
+                    current_token = vitte_parser_current(parser);
+                    kind = current_token != NULL
+                        ? current_token->kind
                         : VITTE_TOKEN_INVALID;
                     if (vitte_parser_literal_node_kind(kind) ==
                         VITTE_AST_NODE_INVALID) {
-                        (void)vitte_parser_error_here(
-                            parser, VITTE_PARSER_ERROR_EXPECTED_EXPRESSION,
-                            VITTE_TOKEN_STRING_LITERAL);
+                        if (kind == VITTE_TOKEN_RIGHT_PAREN ||
+                            kind == VITTE_TOKEN_RIGHT_BRACKET ||
+                            kind == VITTE_TOKEN_COMMA ||
+                            current_token == NULL ||
+                            (kind == VITTE_TOKEN_INVALID && current_token != NULL)) {
+                            if (current_token == NULL ||
+                                kind != VITTE_TOKEN_INVALID) {
+                                (void)vitte_parser_error_here(
+                                    parser,
+                                    VITTE_PARSER_ERROR_MISSING_ATTRIBUTE_VALUE,
+                                    VITTE_TOKEN_STRING_LITERAL);
+                            }
+                        } else {
+                            (void)vitte_parser_error_here(
+                                parser,
+                                VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_LITERAL,
+                                VITTE_TOKEN_STRING_LITERAL);
+                        }
+                        invalid = true;
                         (void)vitte_parser_synchronize_list(
                             parser, VITTE_TOKEN_RIGHT_PAREN, false, start);
                         break;
                     }
                     (void)vitte_parser_advance(parser);
+                } else if (is_literal &&
+                           vitte_parser_check(parser, VITTE_TOKEN_EQUAL)) {
+                    (void)vitte_parser_error_here(
+                        parser,
+                        VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_ARGUMENTS,
+                        VITTE_TOKEN_COMMA);
+                    invalid = true;
+                    (void)vitte_parser_synchronize_list(
+                        parser, VITTE_TOKEN_RIGHT_PAREN, false, start);
+                    break;
                 }
                 if (vitte_parser_match(parser, VITTE_TOKEN_COMMA)) {
                     if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_PAREN)) {
@@ -1860,9 +2037,13 @@ vitte_parser_parse_attribute_prefix(
                     continue;
                 }
                 if (!vitte_parser_check(parser, VITTE_TOKEN_RIGHT_PAREN)) {
-                    (void)vitte_parser_error_here(
-                        parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
-                        VITTE_TOKEN_COMMA);
+                    const vitte_token_t *found = vitte_parser_current(parser);
+                    if (found == NULL || found->kind != VITTE_TOKEN_INVALID) {
+                        (void)vitte_parser_error_here(
+                            parser, VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_ARGUMENTS,
+                            VITTE_TOKEN_COMMA);
+                    }
+                    invalid = true;
                     (void)vitte_parser_synchronize_list(
                         parser, VITTE_TOKEN_RIGHT_PAREN, false, start);
                 }
@@ -1870,12 +2051,43 @@ vitte_parser_parse_attribute_prefix(
             }
         }
         argument_end = parser->position;
-        if (vitte_parser_expect(parser, VITTE_TOKEN_RIGHT_PAREN) == NULL) {
+        if (!vitte_parser_check(parser, VITTE_TOKEN_RIGHT_PAREN)) {
+            if (!invalid) {
+                const vitte_token_t *found = vitte_parser_current(parser);
+                if (found == NULL || found->kind != VITTE_TOKEN_INVALID) {
+                    (void)vitte_parser_error_here(
+                        parser,
+                        VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_ARGUMENTS,
+                        VITTE_TOKEN_RIGHT_PAREN);
+                }
+            }
+            vitte_parser_synchronize_list(
+                parser, VITTE_TOKEN_RIGHT_PAREN, false, start);
+        }
+        if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_PAREN)) {
+            (void)vitte_parser_advance(parser);
+        } else {
             return false;
         }
     }
 
-    if (vitte_parser_expect(parser, VITTE_TOKEN_RIGHT_BRACKET) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACKET)) {
+        const vitte_token_t *found = vitte_parser_current(parser);
+        if (found == NULL || found->kind != VITTE_TOKEN_INVALID) {
+            (void)vitte_parser_error_here(
+                parser, VITTE_PARSER_ERROR_INVALID_ATTRIBUTE,
+                VITTE_TOKEN_RIGHT_BRACKET);
+        }
+        vitte_parser_synchronize_list(
+            parser, VITTE_TOKEN_RIGHT_BRACKET, false, start);
+    }
+    if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACKET)) {
+        (void)vitte_parser_advance(parser);
+    } else {
+        return false;
+    }
+
+    if (invalid) {
         return false;
     }
 
@@ -1900,6 +2112,10 @@ vitte_parser_parse_attribute_prefix(
 
 static vitte_ast_node_id_t
 vitte_parser_parse_pattern_atom(
+    vitte_parser_t *parser);
+
+static vitte_ast_node_id_t
+vitte_parser_parse_pattern(
     vitte_parser_t *parser);
 
 static vitte_ast_node_id_t
@@ -2005,6 +2221,7 @@ vitte_parser_parse_pattern_sequence(
     size_t begin)
 {
     vitte_ast_node_id_t wrapper;
+    bool had_separator = false;
 
     wrapper = vitte_parser_add_node(
         parser,
@@ -2031,6 +2248,9 @@ vitte_parser_parse_pattern_sequence(
                 recovery = vitte_parser_synchronize_list(
                     parser, closing, false, item_begin);
                 if (recovery == VITTE_PARSER_LIST_NEXT) {
+                    if (vitte_parser_check(parser, closing)) {
+                        break;
+                    }
                     continue;
                 }
                 if (recovery == VITTE_PARSER_LIST_END) {
@@ -2042,6 +2262,7 @@ vitte_parser_parse_pattern_sequence(
                 return VITTE_AST_INVALID_ID;
             }
             if (vitte_parser_match(parser, VITTE_TOKEN_COMMA)) {
+                had_separator = true;
                 if (vitte_parser_check(parser, closing)) {
                     break;
                 }
@@ -2069,6 +2290,10 @@ vitte_parser_parse_pattern_sequence(
         vitte_ast_node_t *node = vitte_parser_get_node_mut(parser, wrapper);
         if (node != NULL) {
             node->flags |= flags;
+            if ((flags & VITTE_AST_FLAG_PATTERN_TUPLE) != 0u &&
+                node->child_count == 1u && !had_separator) {
+                node->flags &= ~VITTE_AST_FLAG_PATTERN_TUPLE;
+            }
             node->span = vitte_parser_span_from_range(
                 parser, begin, parser->position);
         }
@@ -2123,12 +2348,14 @@ vitte_parser_parse_pattern_atom(
     if (vitte_parser_check(parser, VITTE_TOKEN_LEFT_PAREN)) {
         (void)vitte_parser_advance(parser);
         return vitte_parser_parse_pattern_sequence(
-            parser, VITTE_TOKEN_RIGHT_PAREN, VITTE_AST_FLAG_NONE, begin);
+            parser, VITTE_TOKEN_RIGHT_PAREN,
+            VITTE_AST_FLAG_PATTERN_TUPLE, begin);
     }
     if (vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACKET)) {
         (void)vitte_parser_advance(parser);
         return vitte_parser_parse_pattern_sequence(
-            parser, VITTE_TOKEN_RIGHT_BRACKET, VITTE_AST_FLAG_NONE, begin);
+            parser, VITTE_TOKEN_RIGHT_BRACKET,
+            VITTE_AST_FLAG_PATTERN_ARRAY, begin);
     }
 
     if (vitte_parser_match(parser, VITTE_TOKEN_KW_ELSE)) {
@@ -2152,12 +2379,42 @@ vitte_parser_parse_pattern_atom(
              vitte_parser_check(parser, VITTE_TOKEN_DOT_DOT_EQUAL))) {
             vitte_token_kind_t operator_kind =
                 vitte_parser_current(parser)->kind;
+            const vitte_token_t *upper_token;
             vitte_ast_node_id_t lower = pattern;
             vitte_ast_node_id_t upper;
             vitte_ast_node_id_t range;
             vitte_ast_node_t *node;
 
+            if (token->kind != VITTE_TOKEN_INTEGER_LITERAL &&
+                token->kind != VITTE_TOKEN_FLOAT_LITERAL &&
+                token->kind != VITTE_TOKEN_CHARACTER_LITERAL) {
+                (void)vitte_parser_error_at_position(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN,
+                    VITTE_TOKEN_INVALID,
+                    begin);
+                return VITTE_AST_INVALID_ID;
+            }
             (void)vitte_parser_advance(parser);
+            upper_token = vitte_parser_current(parser);
+            if (upper_token == NULL ||
+                (upper_token->kind != VITTE_TOKEN_INTEGER_LITERAL &&
+                 upper_token->kind != VITTE_TOKEN_FLOAT_LITERAL &&
+                 upper_token->kind != VITTE_TOKEN_CHARACTER_LITERAL)) {
+                (void)vitte_parser_error_here(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN,
+                    token->kind);
+                return VITTE_AST_INVALID_ID;
+            }
+            if (upper_token->kind != token->kind) {
+                (void)vitte_parser_error_at_position(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN,
+                    token->kind,
+                    parser->position);
+                return VITTE_AST_INVALID_ID;
+            }
             upper = vitte_parser_parse_literal(parser);
             if (upper == VITTE_AST_INVALID_ID) {
                 return VITTE_AST_INVALID_ID;
@@ -2337,7 +2594,8 @@ vitte_parser_parse_pattern_atom(
             }
             node = vitte_parser_get_node_mut(parser, structure);
             if (node != NULL) {
-                node->flags |= VITTE_AST_FLAG_PATTERN_HEAD;
+                node->flags |= VITTE_AST_FLAG_PATTERN_HEAD |
+                               VITTE_AST_FLAG_PATTERN_STRUCT;
             }
             return structure;
         }
@@ -2355,7 +2613,7 @@ vitte_parser_parse_pattern_atom(
  * existing AST consumers keep their stable layout; compound patterns use a
  * wrapper with explicit children and flags for constructor/range/or forms. */
 static vitte_ast_node_id_t
-vitte_parser_parse_pattern(
+vitte_parser_parse_pattern_inner(
     vitte_parser_t *parser)
 {
     vitte_ast_node_id_t first;
@@ -2398,6 +2656,105 @@ vitte_parser_parse_pattern(
         return alternatives;
     }
     return first;
+}
+
+static bool
+vitte_parser_pattern_has_top_level_range_operator(
+    const vitte_parser_t *parser,
+    size_t begin,
+    size_t end)
+{
+    size_t index;
+    size_t parentheses = 0u;
+    size_t brackets = 0u;
+    size_t braces = 0u;
+
+    if (parser == NULL) {
+        return false;
+    }
+    /* Include the current token: a non-literal endpoint such as `name..4`
+     * stops parsing just before the range operator. Delimiter depth keeps a
+     * struct-rest `..` from being mistaken for a range-pattern operator. */
+    if (end < parser->token_count) {
+        ++end;
+    }
+    if (end > parser->token_count) {
+        end = parser->token_count;
+    }
+    for (index = begin; index < end; ++index) {
+        const vitte_token_t *token =
+            vitte_parser_token_at_private(parser, index);
+        if (token == NULL) {
+            continue;
+        }
+        if ((token->kind == VITTE_TOKEN_DOT_DOT ||
+             token->kind == VITTE_TOKEN_DOT_DOT_EQUAL) &&
+            parentheses == 0u && brackets == 0u && braces == 0u) {
+            return true;
+        }
+        switch (token->kind) {
+            case VITTE_TOKEN_LEFT_PAREN:
+                ++parentheses;
+                break;
+            case VITTE_TOKEN_RIGHT_PAREN:
+                if (parentheses != 0u) --parentheses;
+                break;
+            case VITTE_TOKEN_LEFT_BRACKET:
+                ++brackets;
+                break;
+            case VITTE_TOKEN_RIGHT_BRACKET:
+                if (brackets != 0u) --brackets;
+                break;
+            case VITTE_TOKEN_LEFT_BRACE:
+                ++braces;
+                break;
+            case VITTE_TOKEN_RIGHT_BRACE:
+                if (braces != 0u) --braces;
+                break;
+            default:
+                break;
+        }
+    }
+    return false;
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_pattern(
+    vitte_parser_t *parser)
+{
+    size_t begin = parser != NULL ? parser->position : 0u;
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t pattern =
+        vitte_parser_parse_pattern_inner(parser);
+
+    if (pattern != VITTE_AST_INVALID_ID && parser != NULL &&
+        parser->position < parser->token_count && begin < parser->token_count &&
+        (parser->tokens[parser->position].kind == VITTE_TOKEN_DOT_DOT ||
+         parser->tokens[parser->position].kind == VITTE_TOKEN_DOT_DOT_EQUAL)) {
+        vitte_token_kind_t lower_kind = parser->tokens[begin].kind;
+        if (lower_kind != VITTE_TOKEN_INTEGER_LITERAL &&
+            lower_kind != VITTE_TOKEN_FLOAT_LITERAL &&
+            lower_kind != VITTE_TOKEN_CHARACTER_LITERAL) {
+            (void)vitte_parser_error_at_position(
+                parser,
+                VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN,
+                VITTE_TOKEN_INVALID,
+                begin);
+            return VITTE_AST_INVALID_ID;
+        }
+    }
+    if (parser == NULL || parser->diagnostic_count <= diagnostic_start) {
+        return pattern;
+    }
+    vitte_parser_reclassify_last_diagnostic(
+        parser,
+        diagnostic_start,
+        vitte_parser_pattern_has_top_level_range_operator(
+            parser, begin, parser->position)
+            ? VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN
+            : VITTE_PARSER_ERROR_INVALID_PATTERN);
+    return pattern;
 }
 
 /* Bindings in declarations keep the historical AST shape: a simple name is
@@ -2485,20 +2842,25 @@ vitte_parser_parse_path_mode(
         }
     }
 
-    while ((vitte_parser_check(
-                parser,
-                VITTE_TOKEN_COLON_COLON) &&
-            vitte_parser_peek(parser, 1u) != NULL &&
-            vitte_parser_token_is_path_segment(
-                vitte_parser_peek(parser, 1u))) ||
+    while ((vitte_parser_check(parser, VITTE_TOKEN_COLON_COLON) &&
+            !(allow_slash_separator &&
+              vitte_parser_peek(parser, 1u) != NULL &&
+              (vitte_parser_peek(parser, 1u)->kind ==
+                   VITTE_TOKEN_LEFT_BRACE ||
+               vitte_parser_peek(parser, 1u)->kind ==
+                   VITTE_TOKEN_STAR))) ||
            (allow_slash_separator &&
-            vitte_parser_check(
-                parser,
-                VITTE_TOKEN_SLASH) &&
-            vitte_parser_peek(parser, 1u) != NULL &&
-            vitte_parser_token_is_path_segment(
-                vitte_parser_peek(parser, 1u)))) {
+            vitte_parser_check(parser, VITTE_TOKEN_SLASH))) {
         (void)vitte_parser_advance(parser);
+
+        if (!vitte_parser_token_is_path_segment(
+                vitte_parser_current(parser))) {
+            (void)vitte_parser_error_here(
+                parser,
+                VITTE_PARSER_ERROR_INVALID_MODULE_PATH,
+                VITTE_TOKEN_IDENTIFIER);
+            return VITTE_AST_INVALID_ID;
+        }
 
         segment_id =
             vitte_parser_parse_path_segment_node(
@@ -2534,6 +2896,263 @@ vitte_parser_parse_path(
     vitte_parser_t *parser)
 {
     return vitte_parser_parse_path_mode(parser, true, false);
+}
+
+static vitte_ast_node_id_t
+vitte_parser_path_concat(
+    vitte_parser_t *parser,
+    vitte_ast_node_id_t prefix_id,
+    vitte_ast_node_id_t suffix_id)
+{
+    const vitte_ast_node_t *prefix;
+    const vitte_ast_node_t *suffix;
+    vitte_ast_node_id_t joined_id;
+    vitte_ast_node_t *joined;
+    size_t side;
+
+    if (prefix_id == VITTE_AST_INVALID_ID) {
+        return suffix_id;
+    }
+    prefix = vitte_parser_get_node(parser, prefix_id);
+    suffix = vitte_parser_get_node(parser, suffix_id);
+    if (prefix == NULL || suffix == NULL ||
+        prefix->kind != VITTE_AST_NODE_PATH ||
+        suffix->kind != VITTE_AST_NODE_PATH) {
+        return VITTE_AST_INVALID_ID;
+    }
+
+    joined_id = vitte_parser_add_node(
+        parser,
+        VITTE_AST_NODE_PATH,
+        vitte_parser_span_join(prefix->span, suffix->span));
+    if (joined_id == VITTE_AST_INVALID_ID) {
+        return joined_id;
+    }
+    joined = vitte_parser_get_node_mut(parser, joined_id);
+    if (joined != NULL) {
+        joined->token_index = prefix->token_index;
+    }
+
+    for (side = 0u; side < 2u; ++side) {
+        const vitte_ast_node_t *source_path = side == 0u ? prefix : suffix;
+        size_t index;
+        for (index = 0u; index < source_path->child_count; ++index) {
+            const vitte_ast_node_t *source_segment =
+                vitte_parser_get_node(parser, source_path->children[index]);
+            const vitte_token_t *token;
+            vitte_ast_node_id_t segment_id;
+            vitte_ast_node_t *segment;
+            if (source_segment == NULL ||
+                source_segment->kind != VITTE_AST_NODE_IDENTIFIER) {
+                return VITTE_AST_INVALID_ID;
+            }
+            token = vitte_parser_token_at_private(
+                parser,
+                source_segment->token_index);
+            if (token == NULL) {
+                return VITTE_AST_INVALID_ID;
+            }
+            segment_id = vitte_parser_add_node(
+                parser,
+                VITTE_AST_NODE_IDENTIFIER,
+                vitte_parser_span_from_token(token));
+            if (segment_id == VITTE_AST_INVALID_ID) {
+                return segment_id;
+            }
+            segment = vitte_parser_get_node_mut(parser, segment_id);
+            if (segment != NULL) {
+                segment->token_index = source_segment->token_index;
+            }
+            if (!vitte_parser_node_append_child(
+                    parser,
+                    joined_id,
+                    segment_id)) {
+                return VITTE_AST_INVALID_ID;
+            }
+        }
+    }
+    return joined_id;
+}
+
+static bool
+vitte_parser_parse_import_group(
+    vitte_parser_t *parser,
+    vitte_ast_node_id_t declaration,
+    vitte_ast_node_id_t prefix_id)
+{
+    bool success = false;
+
+    if (!vitte_parser_enter_recursion(parser)) {
+        return false;
+    }
+    if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+        (void)vitte_parser_error_here(
+            parser,
+            VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP,
+            VITTE_TOKEN_IDENTIFIER);
+        (void)vitte_parser_advance(parser);
+        success = true;
+        goto done;
+    }
+
+    for (;;) {
+        vitte_ast_node_id_t item;
+        vitte_ast_node_id_t full_item;
+        vitte_ast_node_id_t alias = VITTE_AST_INVALID_ID;
+        const vitte_token_t *current;
+        size_t item_begin = parser->position;
+        vitte_parser_list_recovery_t recovery;
+
+        current = vitte_parser_current(parser);
+        if (!vitte_parser_token_is_path_segment(current)) {
+            (void)vitte_parser_error_here(
+                parser,
+                current != NULL && current->kind == VITTE_TOKEN_STAR
+                    ? VITTE_PARSER_ERROR_INVALID_GLOB_IMPORT
+                    : VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP,
+                VITTE_TOKEN_IDENTIFIER);
+            recovery = vitte_parser_synchronize_list(
+                parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+            if (recovery == VITTE_PARSER_LIST_NEXT) {
+                continue;
+            }
+            if (recovery == VITTE_PARSER_LIST_END) {
+                break;
+            }
+            goto done;
+        }
+        item = vitte_parser_parse_path(parser);
+        if (item == VITTE_AST_INVALID_ID) {
+            recovery = vitte_parser_synchronize_list(
+                parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+            if (recovery == VITTE_PARSER_LIST_NEXT) {
+                continue;
+            }
+            if (recovery == VITTE_PARSER_LIST_END) {
+                break;
+            }
+            goto done;
+        }
+        full_item = vitte_parser_path_concat(parser, prefix_id, item);
+        if (full_item == VITTE_AST_INVALID_ID) {
+            goto done;
+        }
+
+        if (vitte_parser_check(parser, VITTE_TOKEN_COLON_COLON) &&
+            vitte_parser_peek(parser, 1u) != NULL &&
+            vitte_parser_peek(parser, 1u)->kind == VITTE_TOKEN_LEFT_BRACE) {
+            (void)vitte_parser_advance(parser);
+            (void)vitte_parser_advance(parser);
+            if (!vitte_parser_parse_import_group(
+                    parser,
+                    declaration,
+                    full_item)) {
+                goto done;
+            }
+        } else {
+            if (vitte_parser_check(parser, VITTE_TOKEN_COLON_COLON)) {
+                const vitte_token_t *next = vitte_parser_peek(parser, 1u);
+                (void)vitte_parser_error_here(
+                    parser,
+                    next != NULL && next->kind == VITTE_TOKEN_STAR
+                        ? VITTE_PARSER_ERROR_INVALID_GLOB_IMPORT
+                        : VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP,
+                    VITTE_TOKEN_LEFT_BRACE);
+                recovery = vitte_parser_synchronize_list(
+                    parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+                if (recovery == VITTE_PARSER_LIST_NEXT) {
+                    continue;
+                }
+                if (recovery == VITTE_PARSER_LIST_END) {
+                    break;
+                }
+                goto done;
+            }
+            current = vitte_parser_current(parser);
+            if (current != NULL &&
+                (current->kind == VITTE_TOKEN_KW_AS ||
+                 (current->kind == VITTE_TOKEN_IDENTIFIER &&
+                  vitte_parser_token_text_equal(current, "as", 2u)))) {
+                (void)vitte_parser_advance(parser);
+                if (!vitte_parser_token_is_identifier(
+                        vitte_parser_current(parser))) {
+                    (void)vitte_parser_error_here(
+                        parser,
+                        VITTE_PARSER_ERROR_INVALID_USE_ALIAS,
+                        VITTE_TOKEN_IDENTIFIER);
+                    recovery = vitte_parser_synchronize_list(
+                        parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+                    if (recovery == VITTE_PARSER_LIST_NEXT) {
+                        continue;
+                    }
+                    if (recovery == VITTE_PARSER_LIST_END) {
+                        break;
+                    }
+                    goto done;
+                }
+                alias = vitte_parser_parse_identifier_node(parser);
+                if (alias == VITTE_AST_INVALID_ID) {
+                    recovery = vitte_parser_synchronize_list(
+                        parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+                    if (recovery == VITTE_PARSER_LIST_NEXT) {
+                        continue;
+                    }
+                    if (recovery == VITTE_PARSER_LIST_END) {
+                        break;
+                    }
+                    goto done;
+                }
+            }
+            if (!vitte_parser_node_append_child(
+                    parser, declaration, full_item) ||
+                (alias != VITTE_AST_INVALID_ID &&
+                 !vitte_parser_node_append_child(
+                     parser, declaration, alias))) {
+                goto done;
+            }
+        }
+
+        if (vitte_parser_match(parser, VITTE_TOKEN_COMMA)) {
+            if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+                break;
+            }
+            continue;
+        }
+        if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+            break;
+        }
+        (void)vitte_parser_error_here(
+            parser,
+            VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP,
+            VITTE_TOKEN_COMMA);
+        if (vitte_parser_token_is_path_segment(
+                vitte_parser_current(parser))) {
+            parser->recovering = false;
+            continue;
+        }
+        recovery = vitte_parser_synchronize_list(
+            parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+        if (recovery == VITTE_PARSER_LIST_NEXT) {
+            continue;
+        }
+        if (recovery == VITTE_PARSER_LIST_END) {
+            break;
+        }
+        goto done;
+    }
+
+    if (!vitte_parser_match(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+        (void)vitte_parser_error_here(
+            parser,
+            VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP,
+            VITTE_TOKEN_RIGHT_BRACE);
+        goto done;
+    }
+    success = true;
+
+done:
+    vitte_parser_leave_recursion(parser);
+    return success;
 }
 
 /* ========================================================================= */
@@ -2863,7 +3482,7 @@ vitte_parser_sizeof_operand_is_type(
 }
 
 static vitte_ast_node_id_t
-vitte_parser_parse_sizeof_expression(
+vitte_parser_parse_sizeof_expression_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -2912,7 +3531,23 @@ vitte_parser_parse_sizeof_expression(
 }
 
 static vitte_ast_node_id_t
-vitte_parser_parse_alignof_expression(
+vitte_parser_parse_sizeof_expression(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t expression =
+        vitte_parser_parse_sizeof_expression_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_SIZEOF_EXPRESSION);
+    }
+    return expression;
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_alignof_expression_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -2955,7 +3590,23 @@ vitte_parser_parse_alignof_expression(
 }
 
 static vitte_ast_node_id_t
-vitte_parser_parse_primary(
+vitte_parser_parse_alignof_expression(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t expression =
+        vitte_parser_parse_alignof_expression_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_ALIGNOF_EXPRESSION);
+    }
+    return expression;
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_primary_inner(
     vitte_parser_t *parser)
 {
     const vitte_token_t *token;
@@ -3052,8 +3703,12 @@ vitte_parser_parse_primary(
             vitte_parser_list_recovery_t recovery;
 
             item_begin = parser->position;
+            size_t item_diagnostic_start = parser->diagnostic_count;
             item = vitte_parser_parse_expression(parser);
             if (item == VITTE_AST_INVALID_ID) {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, item_diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST);
                 if (!parser->recovering) {
                     return VITTE_AST_INVALID_ID;
                 }
@@ -3078,9 +3733,16 @@ vitte_parser_parse_primary(
             if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACKET)) {
                 break;
             }
+            if (!vitte_parser_token_can_start_expression(
+                    vitte_parser_current(parser))) {
+                break;
+            }
             (void)vitte_parser_error_here(
                 parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
                 VITTE_TOKEN_COMMA);
+            vitte_parser_reclassify_last_diagnostic(
+                parser, item_diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST);
             recovery = vitte_parser_synchronize_list(
                 parser, VITTE_TOKEN_RIGHT_BRACKET, false,
                 parser->position);
@@ -3158,12 +3820,45 @@ vitte_parser_parse_primary(
         return vitte_parser_parse_block_expression(parser);
     }
 
-    (void)vitte_parser_error_here(
-        parser,
-        VITTE_PARSER_ERROR_EXPECTED_EXPRESSION,
-        VITTE_TOKEN_INVALID);
+    if (token->kind == VITTE_TOKEN_AT ||
+        token->kind == VITTE_TOKEN_DOLLAR) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_UNSUPPORTED,
+            VITTE_TOKEN_INVALID);
+    } else if (vitte_parser_is_statement_start(token->kind)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_UNEXPECTED_STATEMENT,
+            VITTE_TOKEN_INVALID);
+    } else if (vitte_parser_is_declaration_start(token->kind)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_UNEXPECTED_DECLARATION,
+            VITTE_TOKEN_INVALID);
+    } else {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_EXPECTED_EXPRESSION,
+            VITTE_TOKEN_INVALID);
+    }
 
     return VITTE_AST_INVALID_ID;
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_primary(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    const vitte_token_t *first = vitte_parser_current(parser);
+    vitte_ast_node_id_t expression =
+        vitte_parser_parse_primary_inner(parser);
+
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start &&
+        first != NULL && first->kind == VITTE_TOKEN_LEFT_BRACKET) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_ARRAY_EXPRESSION);
+    }
+    return expression;
 }
 
 /* ========================================================================= */
@@ -3171,10 +3866,15 @@ vitte_parser_parse_primary(
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_postfix(
-    vitte_parser_t *parser)
+vitte_parser_parse_postfix_inner(
+    vitte_parser_t *parser,
+    bool *suffix_seen)
 {
     vitte_ast_node_id_t expression;
+
+    if (suffix_seen != NULL) {
+        *suffix_seen = false;
+    }
 
     expression = vitte_parser_parse_primary(parser);
 
@@ -3192,6 +3892,9 @@ vitte_parser_parse_postfix(
                  parser, VITTE_TOKEN_LEFT_BRACE) ||
              vitte_parser_has_generic_bracket_suffix(
                  parser, VITTE_TOKEN_COLON_COLON))) {
+            if (suffix_seen != NULL) {
+                *suffix_seen = true;
+            }
             const vitte_ast_node_t *base_node =
                 vitte_parser_get_node(parser, expression);
             vitte_ast_node_id_t generic;
@@ -3226,6 +3929,32 @@ vitte_parser_parse_postfix(
                         break;
                     }
                 }
+            } else {
+                (void)vitte_parser_error_here(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS,
+                    VITTE_TOKEN_IDENTIFIER);
+                /* Keep an invalid generic form initializer together during
+                 * recovery so its field colons are not reinterpreted as
+                 * independent malformed expressions. */
+                (void)vitte_parser_advance(parser); /* closing `]` */
+                if (vitte_parser_match(parser, VITTE_TOKEN_LEFT_BRACE)) {
+                    size_t brace_depth = 1u;
+                    while (!vitte_parser_at_end(parser) && brace_depth != 0u) {
+                        const vitte_token_t *body_token =
+                            vitte_parser_current(parser);
+                        if (body_token == NULL) {
+                            break;
+                        }
+                        if (body_token->kind == VITTE_TOKEN_LEFT_BRACE) {
+                            ++brace_depth;
+                        } else if (body_token->kind == VITTE_TOKEN_RIGHT_BRACE) {
+                            --brace_depth;
+                        }
+                        (void)vitte_parser_advance(parser);
+                    }
+                }
+                return VITTE_AST_INVALID_ID;
             }
             if (!vitte_parser_expect(parser, VITTE_TOKEN_RIGHT_BRACKET)) {
                 return VITTE_AST_INVALID_ID;
@@ -3249,6 +3978,9 @@ vitte_parser_parse_postfix(
          * semantic analysis can retain and validate its arguments. */
         if (vitte_parser_check(parser, VITTE_TOKEN_LESS) &&
             vitte_parser_has_generic_form_suffix(parser)) {
+            if (suffix_seen != NULL) {
+                *suffix_seen = true;
+            }
             const vitte_ast_node_t *base_node =
                 vitte_parser_get_node(parser, expression);
             vitte_ast_node_id_t generic;
@@ -3291,6 +4023,12 @@ vitte_parser_parse_postfix(
                         break;
                     }
                 }
+            } else {
+                (void)vitte_parser_error_here(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS,
+                    VITTE_TOKEN_IDENTIFIER);
+                return VITTE_AST_INVALID_ID;
             }
             if (!vitte_parser_consume_type_closer(
                     parser,
@@ -3323,6 +4061,9 @@ vitte_parser_parse_postfix(
                 type_node->kind != VITTE_AST_NODE_TYPE_EXPR ||
                 type_node->child_count < 2u) {
                 break;
+            }
+            if (suffix_seen != NULL) {
+                *suffix_seen = true;
             }
             (void)vitte_parser_advance(parser);
             member_name = vitte_parser_parse_identifier_node(parser);
@@ -3375,6 +4116,9 @@ vitte_parser_parse_postfix(
                 break;
             }
 
+            if (suffix_seen != NULL) {
+                *suffix_seen = true;
+            }
             type_span = type_path->span;
             (void)vitte_parser_advance(parser);
             form = vitte_parser_add_node(
@@ -3492,9 +4236,13 @@ vitte_parser_parse_postfix(
         if (vitte_parser_match(
                 parser,
                 VITTE_TOKEN_LEFT_PAREN)) {
+            if (suffix_seen != NULL) {
+                *suffix_seen = true;
+            }
             vitte_ast_node_id_t call;
             vitte_ast_node_t *node;
             vitte_parser_span_t span;
+            size_t list_diagnostic_start = parser->diagnostic_count;
 
             span =
                 vitte_parser_get_node(
@@ -3524,15 +4272,20 @@ vitte_parser_parse_postfix(
                 for (;;) {
                     vitte_ast_node_id_t argument;
                     size_t argument_begin;
+                    size_t argument_diagnostic_start;
                     vitte_parser_list_recovery_t recovery;
 
                     argument_begin = parser->position;
+                    argument_diagnostic_start = parser->diagnostic_count;
                     argument =
                         vitte_parser_parse_expression(
                             parser);
 
                     if (argument ==
                         VITTE_AST_INVALID_ID) {
+                        vitte_parser_reclassify_last_diagnostic(
+                            parser, argument_diagnostic_start,
+                            VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST);
                         if (!parser->recovering) {
                             return argument;
                         }
@@ -3540,6 +4293,10 @@ vitte_parser_parse_postfix(
                             parser, VITTE_TOKEN_RIGHT_PAREN, false,
                             argument_begin);
                         if (recovery == VITTE_PARSER_LIST_NEXT) {
+                            if (vitte_parser_check(
+                                    parser, VITTE_TOKEN_RIGHT_PAREN)) {
+                                break;
+                            }
                             continue;
                         }
                         if (recovery == VITTE_PARSER_LIST_END) {
@@ -3566,10 +4323,17 @@ vitte_parser_parse_postfix(
                             parser, VITTE_TOKEN_RIGHT_PAREN)) {
                         break;
                     }
+                    if (!vitte_parser_token_can_start_expression(
+                            vitte_parser_current(parser))) {
+                        break;
+                    }
 
                     (void)vitte_parser_error_here(
                         parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
                         VITTE_TOKEN_COMMA);
+                    vitte_parser_reclassify_last_diagnostic(
+                        parser, list_diagnostic_start,
+                        VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST);
                     recovery = vitte_parser_synchronize_list(
                         parser, VITTE_TOKEN_RIGHT_PAREN, false,
                         parser->position);
@@ -3613,6 +4377,9 @@ vitte_parser_parse_postfix(
         if (vitte_parser_match(
                 parser,
                 VITTE_TOKEN_LEFT_BRACKET)) {
+            if (suffix_seen != NULL) {
+                *suffix_seen = true;
+            }
             vitte_ast_node_id_t index_expression;
             vitte_ast_node_id_t index_node;
             vitte_ast_node_t *node;
@@ -3682,6 +4449,9 @@ vitte_parser_parse_postfix(
         if (vitte_parser_match(
                 parser,
                 VITTE_TOKEN_DOT)) {
+            if (suffix_seen != NULL) {
+                *suffix_seen = true;
+            }
             vitte_ast_node_id_t member;
             vitte_ast_node_id_t member_name;
             vitte_ast_node_t *node;
@@ -3750,6 +4520,9 @@ vitte_parser_parse_postfix(
         if (vitte_parser_match(
                 parser,
                 VITTE_TOKEN_QUESTION)) {
+            if (suffix_seen != NULL) {
+                *suffix_seen = true;
+            }
             vitte_ast_node_id_t postfix;
             vitte_ast_node_t *node;
 
@@ -3796,6 +4569,37 @@ vitte_parser_parse_postfix(
     return expression;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_postfix(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start =
+        parser != NULL ? parser->diagnostic_count : 0u;
+    size_t begin = parser != NULL ? parser->position : 0u;
+    bool suffix_seen = false;
+    vitte_ast_node_id_t expression =
+        vitte_parser_parse_postfix_inner(parser, &suffix_seen);
+
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start &&
+        (suffix_seen ||
+         (begin < parser->token_count &&
+          parser->tokens[begin].kind == VITTE_TOKEN_QUESTION))) {
+        if (begin + 1u < parser->token_count &&
+            parser->tokens[begin].kind == VITTE_TOKEN_KW_NULL &&
+            parser->tokens[begin + 1u].kind == VITTE_TOKEN_LEFT_PAREN) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_NULL_CONSTRUCTION);
+        } else {
+            vitte_parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION);
+        }
+    }
+    return expression;
+}
+
 /* ========================================================================= */
 /* Unary expressions                                                         */
 /* ========================================================================= */
@@ -3836,8 +4640,10 @@ vitte_parser_parse_unary(
         vitte_ast_node_id_t unary;
         vitte_ast_node_t *node;
         bool mutable_reference;
+        size_t diagnostic_start;
 
         (void)vitte_parser_advance(parser);
+        diagnostic_start = parser->diagnostic_count;
 
         mutable_reference =
             (operator_token->kind == VITTE_TOKEN_AMP ||
@@ -3847,6 +4653,9 @@ vitte_parser_parse_unary(
         operand = vitte_parser_parse_unary(parser);
 
         if (operand == VITTE_AST_INVALID_ID) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_UNARY_EXPRESSION);
             return operand;
         }
 
@@ -3916,6 +4725,7 @@ vitte_parser_parse_unary(
 
         while (vitte_parser_match(parser, VITTE_TOKEN_KW_AS)) {
             const vitte_token_t *cast_token;
+            size_t diagnostic_start = parser->diagnostic_count;
             vitte_ast_node_id_t target_type;
             vitte_ast_node_id_t cast;
             vitte_ast_node_t *cast_node;
@@ -3924,6 +4734,9 @@ vitte_parser_parse_unary(
             cast_token = vitte_parser_previous(parser);
             target_type = vitte_parser_parse_type_expression(parser);
             if (target_type == VITTE_AST_INVALID_ID) {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_CAST_EXPRESSION);
                 return target_type;
             }
 
@@ -3969,6 +4782,58 @@ vitte_parser_parse_unary(
     }
 }
 
+static vitte_parser_error_t
+vitte_parser_expression_error_for_operator(
+    vitte_token_kind_t operator_kind)
+{
+    switch (operator_kind) {
+        case VITTE_TOKEN_EQUAL:
+        case VITTE_TOKEN_PLUS_EQUAL:
+        case VITTE_TOKEN_MINUS_EQUAL:
+        case VITTE_TOKEN_STAR_EQUAL:
+        case VITTE_TOKEN_SLASH_EQUAL:
+        case VITTE_TOKEN_PERCENT_EQUAL:
+        case VITTE_TOKEN_AMP_EQUAL:
+        case VITTE_TOKEN_PIPE_EQUAL:
+        case VITTE_TOKEN_CARET_EQUAL:
+        case VITTE_TOKEN_SHIFT_LEFT_EQUAL:
+        case VITTE_TOKEN_SHIFT_RIGHT_EQUAL:
+            return VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_EXPRESSION;
+        case VITTE_TOKEN_QUESTION_QUESTION:
+            return VITTE_PARSER_ERROR_INVALID_COALESCING_EXPRESSION;
+        case VITTE_TOKEN_AMP_AMP:
+        case VITTE_TOKEN_PIPE_PIPE:
+        case VITTE_TOKEN_KW_AND:
+        case VITTE_TOKEN_KW_OR:
+            return VITTE_PARSER_ERROR_INVALID_LOGICAL_EXPRESSION;
+        case VITTE_TOKEN_AMP:
+        case VITTE_TOKEN_PIPE:
+        case VITTE_TOKEN_CARET:
+            return VITTE_PARSER_ERROR_INVALID_BITWISE_EXPRESSION;
+        case VITTE_TOKEN_EQUAL_EQUAL:
+        case VITTE_TOKEN_BANG_EQUAL:
+        case VITTE_TOKEN_LESS:
+        case VITTE_TOKEN_LESS_EQUAL:
+        case VITTE_TOKEN_GREATER:
+        case VITTE_TOKEN_GREATER_EQUAL:
+            return VITTE_PARSER_ERROR_INVALID_COMPARISON_EXPRESSION;
+        case VITTE_TOKEN_SHIFT_LEFT:
+        case VITTE_TOKEN_SHIFT_RIGHT:
+            return VITTE_PARSER_ERROR_INVALID_SHIFT_EXPRESSION;
+        case VITTE_TOKEN_PLUS:
+        case VITTE_TOKEN_MINUS:
+        case VITTE_TOKEN_STAR:
+        case VITTE_TOKEN_SLASH:
+        case VITTE_TOKEN_PERCENT:
+            return VITTE_PARSER_ERROR_INVALID_ARITHMETIC_EXPRESSION;
+        case VITTE_TOKEN_DOT_DOT:
+        case VITTE_TOKEN_DOT_DOT_EQUAL:
+            return VITTE_PARSER_ERROR_INVALID_RANGE_EXPRESSION;
+        default:
+            return VITTE_PARSER_ERROR_EXPECTED_EXPRESSION;
+    }
+}
+
 /* ========================================================================= */
 /* Binary expressions                                                        */
 /* ========================================================================= */
@@ -3999,6 +4864,7 @@ vitte_parser_parse_binary_precedence(
         size_t operator_token_index;
         vitte_parser_span_t left_span;
         vitte_parser_span_t right_span;
+        size_t diagnostic_start;
 
         operator_token = vitte_parser_current(parser);
 
@@ -4022,6 +4888,7 @@ vitte_parser_parse_binary_precedence(
                 operator_token->kind)
                 ? precedence
                 : precedence + 1;
+        diagnostic_start = parser->diagnostic_count;
 
         right =
             vitte_parser_parse_binary_precedence(
@@ -4029,6 +4896,11 @@ vitte_parser_parse_binary_precedence(
                 next_precedence);
 
         if (right == VITTE_AST_INVALID_ID) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                vitte_parser_expression_error_for_operator(
+                    operator_token->kind));
             return right;
         }
 
@@ -4114,6 +4986,11 @@ vitte_parser_parse_expression(
     vitte_parser_t *parser)
 {
     vitte_ast_node_id_t result;
+    size_t diagnostic_start;
+    size_t begin;
+
+    begin = parser != NULL ? parser->position : 0u;
+    diagnostic_start = parser != NULL ? parser->diagnostic_count : 0u;
 
     if (!vitte_parser_enter_recursion(parser)) {
         return VITTE_AST_INVALID_ID;
@@ -4126,6 +5003,26 @@ vitte_parser_parse_expression(
 
     vitte_parser_leave_recursion(parser);
 
+    if (result == VITTE_AST_INVALID_ID && parser != NULL &&
+        parser->diagnostic_count > diagnostic_start &&
+        begin < parser->token_count) {
+        const vitte_token_t *start_token =
+            vitte_parser_token_at_private(parser, begin);
+        if (start_token != NULL && start_token->kind == VITTE_TOKEN_KW_AS) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_CAST_EXPRESSION);
+        } else if (start_token != NULL &&
+                   vitte_parser_binary_precedence(start_token->kind) != 0) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                vitte_parser_expression_error_for_operator(
+                    start_token->kind));
+        }
+    }
+
     return result;
 }
 
@@ -4133,10 +5030,9 @@ vitte_parser_parse_expression(
 /* Type expressions                                                          */
 /* ========================================================================= */
 
-/* A less-than token after a type path is a generic opener only when a
- * matching greater-than token exists before the enclosing separator.  The
- * lookahead keeps relational `where` predicates such as `T < 4` out of the
- * generic-argument recovery path. */
+/* A less-than token after a type path is normally a generic opener.  The
+ * where-clause check keeps relational predicates such as `T < 4` out of the
+ * generic-argument recovery path while still diagnosing a missing `>`. */
 static bool
 vitte_parser_has_generic_closer(
     const vitte_parser_t *parser)
@@ -4186,6 +5082,62 @@ vitte_parser_has_generic_closer(
     }
 
     return false;
+}
+
+static bool
+vitte_parser_type_less_starts_generic(
+    const vitte_parser_t *parser,
+    size_t type_begin)
+{
+    size_t index;
+    size_t where_position;
+    bool predicate_has_type_separator;
+
+    if (vitte_parser_has_generic_closer(parser)) {
+        return true;
+    }
+
+    where_position = SIZE_MAX;
+    index = type_begin;
+    while (index != 0u) {
+        const vitte_token_t *token;
+
+        token = vitte_parser_token_at_private(parser, --index);
+        if (token == NULL ||
+            token->kind == VITTE_TOKEN_SEMICOLON ||
+            token->kind == VITTE_TOKEN_LEFT_BRACE ||
+            token->kind == VITTE_TOKEN_RIGHT_BRACE) {
+            break;
+        }
+        if (token->kind == VITTE_TOKEN_KW_WHERE) {
+            where_position = index;
+            break;
+        }
+    }
+    if (where_position == SIZE_MAX) {
+        return true;
+    }
+
+    predicate_has_type_separator = false;
+    for (index = where_position + 1u;
+         index < type_begin;
+         ++index) {
+        const vitte_token_t *token =
+            vitte_parser_token_at_private(parser, index);
+
+        if (token == NULL) {
+            continue;
+        }
+        if (token->kind == VITTE_TOKEN_COMMA) {
+            predicate_has_type_separator = false;
+        } else if (token->kind == VITTE_TOKEN_COLON) {
+            predicate_has_type_separator = true;
+        } else if (token->kind == VITTE_TOKEN_KW_AS) {
+            return true;
+        }
+    }
+
+    return predicate_has_type_separator;
 }
 
 static bool
@@ -4370,11 +5322,112 @@ vitte_parser_parse_type_expression(
 }
 
 static vitte_ast_node_id_t
+vitte_parser_parse_type_expression_inner(
+    vitte_parser_t *parser,
+    size_t *pending_generic_closers);
+
+static vitte_parser_error_t
+vitte_parser_type_expression_error(
+    const vitte_parser_t *parser,
+    size_t begin,
+    const vitte_token_t *begin_token)
+{
+    size_t index;
+    size_t nested_brackets;
+
+    if (begin_token == NULL) {
+        return VITTE_PARSER_ERROR_EXPECTED_TYPE;
+    }
+
+    switch (begin_token->kind) {
+        case VITTE_TOKEN_KW_PROC:
+            return VITTE_PARSER_ERROR_INVALID_PROCEDURE_TYPE;
+        case VITTE_TOKEN_QUESTION:
+            return VITTE_PARSER_ERROR_INVALID_OPTIONAL_TYPE;
+        case VITTE_TOKEN_AMP:
+        case VITTE_TOKEN_KW_REF:
+            return VITTE_PARSER_ERROR_INVALID_REFERENCE_TYPE;
+        case VITTE_TOKEN_STAR:
+            return VITTE_PARSER_ERROR_INVALID_POINTER_TYPE;
+        case VITTE_TOKEN_LEFT_BRACKET:
+            if (parser != NULL && parser->token_count != 0u &&
+                begin < parser->token_count - 1u &&
+                parser->tokens[begin + 1u].kind ==
+                    VITTE_TOKEN_INTEGER_LITERAL) {
+                return VITTE_PARSER_ERROR_INVALID_ARRAY_TYPE;
+            }
+
+            if (parser == NULL) {
+                return VITTE_PARSER_ERROR_INVALID_SLICE_TYPE;
+            }
+            nested_brackets = 0u;
+            for (index = begin + 1u;
+                 index < parser->token_count;
+                 ++index) {
+                const vitte_token_t *token = &parser->tokens[index];
+
+                if (token->kind == VITTE_TOKEN_EOF) {
+                    break;
+                }
+                if (token->kind == VITTE_TOKEN_LEFT_BRACKET) {
+                    ++nested_brackets;
+                } else if (token->kind == VITTE_TOKEN_RIGHT_BRACKET) {
+                    if (nested_brackets == 0u) {
+                        break;
+                    }
+                    --nested_brackets;
+                } else if (token->kind == VITTE_TOKEN_SEMICOLON &&
+                           nested_brackets == 0u) {
+                    return VITTE_PARSER_ERROR_INVALID_ARRAY_TYPE;
+                }
+            }
+            return VITTE_PARSER_ERROR_INVALID_SLICE_TYPE;
+        default:
+            if (vitte_parser_token_is_path_segment(begin_token) ||
+                begin_token->kind == VITTE_TOKEN_COLON_COLON ||
+                begin_token->kind == VITTE_TOKEN_COLON ||
+                begin_token->kind == VITTE_TOKEN_SLASH) {
+                return VITTE_PARSER_ERROR_INVALID_TYPE_PATH;
+            }
+            return VITTE_PARSER_ERROR_EXPECTED_TYPE;
+    }
+}
+
+static vitte_ast_node_id_t
 vitte_parser_parse_type_expression_with_pending(
     vitte_parser_t *parser,
     size_t *pending_generic_closers)
 {
+    const vitte_token_t *begin_token;
     size_t begin;
+    size_t diagnostic_start;
+    vitte_ast_node_id_t type;
+    vitte_parser_error_t specific_error;
+
+    begin = parser != NULL ? parser->position : 0u;
+    diagnostic_start = parser != NULL ? parser->diagnostic_count : 0u;
+    begin_token = vitte_parser_current(parser);
+    type = vitte_parser_parse_type_expression_inner(
+        parser, pending_generic_closers);
+    if (parser != NULL &&
+        parser->diagnostic_count > diagnostic_start) {
+        specific_error = vitte_parser_type_expression_error(
+            parser, begin, begin_token);
+        if (specific_error != VITTE_PARSER_ERROR_NONE) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, specific_error);
+        }
+    }
+    return type;
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_type_expression_inner(
+    vitte_parser_t *parser,
+    size_t *pending_generic_closers)
+{
+    size_t begin;
+    size_t generic_diagnostic_start;
     vitte_ast_node_id_t type;
     vitte_ast_node_id_t base;
     vitte_ast_node_t *node;
@@ -4744,6 +5797,15 @@ vitte_parser_parse_type_expression_with_pending(
         return base;
     }
 
+    if (vitte_parser_check(parser, VITTE_TOKEN_COLON)) {
+        (void)vitte_parser_error_here(
+            parser,
+            VITTE_PARSER_ERROR_INVALID_TYPE_PATH,
+            VITTE_TOKEN_COLON_COLON);
+        vitte_parser_leave_recursion(parser);
+        return VITTE_AST_INVALID_ID;
+    }
+
     type =
         vitte_parser_add_node(
             parser,
@@ -4763,8 +5825,9 @@ vitte_parser_parse_type_expression_with_pending(
         type,
         base);
 
+    generic_diagnostic_start = parser->diagnostic_count;
     if ((vitte_parser_check(parser, VITTE_TOKEN_LESS) &&
-         vitte_parser_has_generic_closer(parser) &&
+         vitte_parser_type_less_starts_generic(parser, begin) &&
          vitte_parser_match(parser, VITTE_TOKEN_LESS)) ||
         vitte_parser_match(parser, VITTE_TOKEN_LEFT_BRACKET)) {
         vitte_token_kind_t closing_kind;
@@ -4790,6 +5853,10 @@ vitte_parser_parse_type_expression_with_pending(
 
                 if (argument == VITTE_AST_INVALID_ID) {
                     if (!parser->recovering) {
+                        vitte_parser_reclassify_last_diagnostic(
+                            parser,
+                            generic_diagnostic_start,
+                            VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS);
                         vitte_parser_leave_recursion(parser);
                         return VITTE_AST_INVALID_ID;
                     }
@@ -4801,6 +5868,10 @@ vitte_parser_parse_type_expression_with_pending(
                     if (recovery == VITTE_PARSER_LIST_END) {
                         break;
                     }
+                    vitte_parser_reclassify_last_diagnostic(
+                        parser,
+                        generic_diagnostic_start,
+                        VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS);
                     vitte_parser_leave_recursion(parser);
                     return VITTE_AST_INVALID_ID;
                 }
@@ -4830,6 +5901,27 @@ vitte_parser_parse_type_expression_with_pending(
                     }
                     continue;
                 }
+                {
+                    const vitte_token_t *unexpected_closer =
+                        vitte_parser_current(parser);
+                    if (unexpected_closer != NULL &&
+                        (unexpected_closer->kind == VITTE_TOKEN_RIGHT_PAREN ||
+                         unexpected_closer->kind == VITTE_TOKEN_RIGHT_BRACKET ||
+                         unexpected_closer->kind == VITTE_TOKEN_RIGHT_BRACE ||
+                         unexpected_closer->kind == VITTE_TOKEN_GREATER ||
+                         unexpected_closer->kind == VITTE_TOKEN_SHIFT_RIGHT)) {
+                        (void)vitte_parser_error_here(
+                            parser,
+                            VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+                            closing_kind);
+                        vitte_parser_reclassify_last_diagnostic(
+                            parser,
+                            generic_diagnostic_start,
+                            VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS);
+                        vitte_parser_leave_recursion(parser);
+                        return VITTE_AST_INVALID_ID;
+                    }
+                }
                 (void)vitte_parser_error_here(
                     parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
                     VITTE_TOKEN_COMMA);
@@ -4841,18 +5933,37 @@ vitte_parser_parse_type_expression_with_pending(
                 if (recovery == VITTE_PARSER_LIST_END) {
                     break;
                 }
+                vitte_parser_reclassify_last_diagnostic(
+                    parser,
+                    generic_diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS);
                 vitte_parser_leave_recursion(parser);
                 return VITTE_AST_INVALID_ID;
             }
+        } else {
+            (void)vitte_parser_error_here(
+                parser,
+                VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS,
+                VITTE_TOKEN_IDENTIFIER);
+            vitte_parser_leave_recursion(parser);
+            return VITTE_AST_INVALID_ID;
         }
 
         if (!vitte_parser_consume_type_closer(
                 parser,
                 closing_kind,
                 pending_generic_closers)) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser,
+                generic_diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS);
             vitte_parser_leave_recursion(parser);
             return VITTE_AST_INVALID_ID;
         }
+        vitte_parser_reclassify_last_diagnostic(
+            parser,
+            generic_diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS);
     }
 
     node = vitte_parser_get_node_mut(parser, type);
@@ -4896,6 +6007,7 @@ vitte_parser_parse_generic_parameters(
         vitte_ast_node_id_t name;
         vitte_parser_list_recovery_t recovery;
         size_t parameter_begin = parser->position;
+        size_t diagnostic_start = parser->diagnostic_count;
         bool is_const_parameter = vitte_parser_match(
             parser, VITTE_TOKEN_KW_CONST);
 
@@ -4904,6 +6016,11 @@ vitte_parser_parse_generic_parameters(
                 parser);
 
         if (name == VITTE_AST_INVALID_ID) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                is_const_parameter
+                    ? VITTE_PARSER_ERROR_INVALID_CONST_GENERIC_PARAMETER
+                    : VITTE_PARSER_ERROR_INVALID_GENERIC_PARAMETER_LIST);
             goto recover_generic_parameter;
         }
 
@@ -4940,11 +6057,15 @@ vitte_parser_parse_generic_parameters(
                 VITTE_TOKEN_COLON)) {
             vitte_ast_node_id_t bound;
 
+            diagnostic_start = parser->diagnostic_count;
             bound =
                 vitte_parser_parse_type_expression(
                     parser);
 
             if (bound == VITTE_AST_INVALID_ID) {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_GENERIC_BOUND);
                 goto recover_generic_parameter;
             }
             if (!vitte_parser_node_append_child(
@@ -4954,9 +6075,13 @@ vitte_parser_parse_generic_parameters(
                 return false;
             }
             while (vitte_parser_match(parser, VITTE_TOKEN_PLUS)) {
+                diagnostic_start = parser->diagnostic_count;
                 bound = vitte_parser_parse_type_expression(parser);
                 if (bound == VITTE_AST_INVALID_ID ||
                     !vitte_parser_node_append_child(parser, parameter, bound)) {
+                    vitte_parser_reclassify_last_diagnostic(
+                        parser, diagnostic_start,
+                        VITTE_PARSER_ERROR_INVALID_GENERIC_BOUND);
                     goto recover_generic_parameter;
                 }
             }
@@ -4993,6 +6118,9 @@ vitte_parser_parse_generic_parameters(
         (void)vitte_parser_error_here(
             parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
             VITTE_TOKEN_COMMA);
+        vitte_parser_reclassify_last_diagnostic(
+            parser, parser->diagnostic_count - 1u,
+            VITTE_PARSER_ERROR_INVALID_GENERIC_PARAMETER_LIST);
 
 recover_generic_parameter:
         if (!parser->recovering) {
@@ -5010,9 +6138,13 @@ recover_generic_parameter:
         return false;
     }
 
-    return vitte_parser_expect(
-               parser,
-               VITTE_TOKEN_GREATER) != NULL;
+    if (vitte_parser_expect(parser, VITTE_TOKEN_GREATER) == NULL) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, parser->diagnostic_count - 1u,
+            VITTE_PARSER_ERROR_INVALID_GENERIC_PARAMETER_LIST);
+        return false;
+    }
+    return true;
 }
 
 /* ========================================================================= */
@@ -5053,20 +6185,28 @@ vitte_parser_parse_where_clause(
         vitte_token_kind_t relation = VITTE_TOKEN_COLON;
         bool trait_bound = false;
         size_t predicate_begin = parser->position;
+        size_t diagnostic_start = parser->diagnostic_count;
 
         subject =
             vitte_parser_parse_type_expression(
                 parser);
 
         if (subject == VITTE_AST_INVALID_ID) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE);
             goto recover_where_predicate;
         }
 
         if (vitte_parser_match(parser, VITTE_TOKEN_COLON)) {
             trait_bound = true;
+            diagnostic_start = parser->diagnostic_count;
             bound = vitte_parser_parse_type_expression(parser);
 
             if (bound == VITTE_AST_INVALID_ID) {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE);
                 goto recover_where_predicate;
             }
         } else {
@@ -5085,10 +6225,17 @@ vitte_parser_parse_where_clause(
                 (void)vitte_parser_error_here(
                     parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
                     VITTE_TOKEN_COLON);
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, parser->diagnostic_count - 1u,
+                    VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE);
                 goto recover_where_predicate;
             }
+            diagnostic_start = parser->diagnostic_count;
             bound = vitte_parser_parse_expression(parser);
             if (bound == VITTE_AST_INVALID_ID) {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE);
                 goto recover_where_predicate;
             }
         }
@@ -5134,11 +6281,15 @@ vitte_parser_parse_where_clause(
 
         if (trait_bound) {
             while (vitte_parser_match(parser, VITTE_TOKEN_PLUS)) {
+                diagnostic_start = parser->diagnostic_count;
                 vitte_ast_node_id_t extra_bound =
                     vitte_parser_parse_type_expression(parser);
                 if (extra_bound == VITTE_AST_INVALID_ID ||
                     !vitte_parser_node_append_child(
                         parser, predicate, extra_bound)) {
+                    vitte_parser_reclassify_last_diagnostic(
+                        parser, diagnostic_start,
+                        VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE);
                     goto recover_where_predicate;
                 }
                 {
@@ -5178,6 +6329,19 @@ recover_where_predicate:
             continue;
         }
         if (recovery == VITTE_PARSER_LIST_END) {
+            /* Preserve the declaration boundary, but discard malformed
+             * predicate text before it. Otherwise the owning declaration
+             * parses the same invalid token again as a missing body. */
+            while (!vitte_parser_at_end(parser) &&
+                   !vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE) &&
+                   !vitte_parser_check(parser, VITTE_TOKEN_SEMICOLON) &&
+                   !vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE) &&
+                   !vitte_parser_check(parser, VITTE_TOKEN_COMMA)) {
+                (void)vitte_parser_advance(parser);
+            }
+            if (vitte_parser_match(parser, VITTE_TOKEN_COMMA)) {
+                continue;
+            }
             break;
         }
         return false;
@@ -5226,18 +6390,25 @@ vitte_parser_parse_parameters(
             vitte_parser_list_recovery_t recovery;
             size_t begin;
             bool parameter_mutable;
+            uint32_t parameter_mode;
 
             begin = parser->position;
 
             parameter_mutable = false;
+            parameter_mode = 0u;
             if (vitte_parser_match(parser, VITTE_TOKEN_KW_MUT)) {
                 parameter_mutable = true;
-            } else if (vitte_parser_check(parser, VITTE_TOKEN_KW_MOVE) ||
-                       (vitte_parser_check(parser, VITTE_TOKEN_KW_RESERVED) &&
-                        (vitte_parser_token_text_equal(
-                             vitte_parser_current(parser), "owned", 5u) ||
-                         vitte_parser_token_text_equal(
-                             vitte_parser_current(parser), "borrow", 6u)))) {
+            } else if (vitte_parser_match(parser, VITTE_TOKEN_KW_MOVE)) {
+                parameter_mode = VITTE_AST_FLAG_PARAMETER_MOVE;
+            } else if (vitte_parser_check(parser, VITTE_TOKEN_KW_RESERVED) &&
+                       vitte_parser_token_text_equal(
+                           vitte_parser_current(parser), "owned", 5u)) {
+                parameter_mode = VITTE_AST_FLAG_PARAMETER_OWNED;
+                (void)vitte_parser_advance(parser);
+            } else if (vitte_parser_check(parser, VITTE_TOKEN_KW_RESERVED) &&
+                       vitte_parser_token_text_equal(
+                           vitte_parser_current(parser), "borrow", 6u)) {
+                parameter_mode = VITTE_AST_FLAG_PARAMETER_BORROW;
                 (void)vitte_parser_advance(parser);
             }
 
@@ -5279,11 +6450,14 @@ vitte_parser_parse_parameters(
                 return false;
             }
 
-            if (parameter_mutable) {
+            if (parameter_mutable || parameter_mode != 0u) {
                 vitte_ast_node_t *parameter_node =
                     vitte_parser_get_node_mut(parser, parameter);
                 if (parameter_node != NULL) {
-                    parameter_node->flags |= VITTE_AST_FLAG_MUTABLE;
+                    if (parameter_mutable) {
+                        parameter_node->flags |= VITTE_AST_FLAG_MUTABLE;
+                    }
+                    parameter_node->flags |= parameter_mode;
                 }
             }
 
@@ -5314,6 +6488,9 @@ vitte_parser_parse_parameters(
             (void)vitte_parser_error_here(
                 parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
                 VITTE_TOKEN_COMMA);
+            vitte_parser_reclassify_last_diagnostic(
+                parser, parser->diagnostic_count - 1u,
+                VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS);
             recovery = vitte_parser_synchronize_list(
                 parser, VITTE_TOKEN_RIGHT_PAREN, false,
                 parser->position);
@@ -5381,6 +6558,7 @@ vitte_parser_parse_block(
         size_t before;
 
         if (current != NULL &&
+            current->kind != VITTE_TOKEN_KW_ELSE &&
             vitte_parser_is_block_escape_start(current->kind)) {
             break;
         }
@@ -5438,7 +6616,7 @@ vitte_parser_if_has_else_ahead(
     const vitte_parser_t *parser);
 
 static vitte_ast_node_id_t
-vitte_parser_parse_block_expression(
+vitte_parser_parse_block_expression_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -5584,7 +6762,100 @@ vitte_parser_parse_block_expression(
 }
 
 static vitte_ast_node_id_t
-vitte_parser_parse_if_expression(
+vitte_parser_parse_block_expression(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start =
+        parser != NULL ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t block =
+        vitte_parser_parse_block_expression_inner(parser);
+
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_BLOCK_EXPRESSION);
+    }
+    return block;
+}
+
+static void
+vitte_parser_skip_braced_region(vitte_parser_t *parser)
+{
+    size_t depth = 0u;
+
+    if (!vitte_parser_match(parser, VITTE_TOKEN_LEFT_BRACE)) {
+        return;
+    }
+    depth = 1u;
+    while (!vitte_parser_at_end(parser) && depth != 0u) {
+        const vitte_token_t *token = vitte_parser_current(parser);
+        if (token == NULL) {
+            break;
+        }
+        if (token->kind == VITTE_TOKEN_LEFT_BRACE) {
+            ++depth;
+        } else if (token->kind == VITTE_TOKEN_RIGHT_BRACE) {
+            --depth;
+        }
+        (void)vitte_parser_advance(parser);
+    }
+}
+
+/* A failed condition still owns its following branch blocks. Skip that tail
+ * as part of the malformed if so recovery does not report branch tokens as
+ * unrelated statements after preserving the condition's first diagnostic. */
+static void
+vitte_parser_recover_if_tail(vitte_parser_t *parser)
+{
+    while (!vitte_parser_at_end(parser)) {
+        const vitte_token_t *token = vitte_parser_current(parser);
+        if (token == NULL || token->kind == VITTE_TOKEN_RIGHT_BRACE) {
+            return;
+        }
+        if (token->kind == VITTE_TOKEN_LEFT_BRACE) {
+            vitte_parser_skip_braced_region(parser);
+            break;
+        }
+        if (token->kind == VITTE_TOKEN_SEMICOLON ||
+            vitte_parser_is_declaration_start(token->kind)) {
+            if (token->kind != VITTE_TOKEN_SEMICOLON) {
+                return;
+            }
+        }
+        (void)vitte_parser_advance(parser);
+    }
+
+    for (;;) {
+        if (vitte_parser_match(parser, VITTE_TOKEN_KW_ELSE)) {
+            if (vitte_parser_match(parser, VITTE_TOKEN_KW_IF) ||
+                vitte_parser_match(parser, VITTE_TOKEN_KW_ELIF)) {
+                while (!vitte_parser_at_end(parser) &&
+                       !vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE) &&
+                       !vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+                    (void)vitte_parser_advance(parser);
+                }
+                vitte_parser_skip_braced_region(parser);
+                continue;
+            }
+            vitte_parser_skip_braced_region(parser);
+            return;
+        }
+        if (vitte_parser_match(parser, VITTE_TOKEN_KW_ELIF)) {
+            while (!vitte_parser_at_end(parser) &&
+                   !vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE) &&
+                   !vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+                (void)vitte_parser_advance(parser);
+            }
+            vitte_parser_skip_braced_region(parser);
+            continue;
+        }
+        return;
+    }
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_if_expression_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -5606,6 +6877,7 @@ vitte_parser_parse_if_expression(
     (void)vitte_parser_advance(parser);
     condition = vitte_parser_parse_expression(parser);
     if (condition == VITTE_AST_INVALID_ID) {
+        vitte_parser_recover_if_tail(parser);
         return condition;
     }
     then_branch = vitte_parser_parse_block_expression(parser);
@@ -5648,6 +6920,24 @@ vitte_parser_parse_if_expression(
             parser,
             begin,
             parser->position);
+    }
+    return expression;
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_if_expression(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start =
+        parser != NULL ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t expression =
+        vitte_parser_parse_if_expression_inner(parser);
+
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_IF_EXPRESSION);
     }
     return expression;
 }
@@ -5697,7 +6987,7 @@ vitte_parser_if_has_else_ahead(
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_let_statement(
+vitte_parser_parse_let_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -5784,9 +7074,12 @@ vitte_parser_parse_let_statement(
         }
     }
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_SEMICOLON) == NULL) {
+    if (!vitte_parser_match(parser, VITTE_TOKEN_SEMICOLON) &&
+        !(parser->match_arm_depth != 0u &&
+          (vitte_parser_check(parser, VITTE_TOKEN_COMMA) ||
+           vitte_parser_token_text_equal(vitte_parser_current(parser), "case", 4u) ||
+           vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)))) {
+        (void)vitte_parser_expect(parser, VITTE_TOKEN_SEMICOLON);
         return VITTE_AST_INVALID_ID;
     }
 
@@ -5805,12 +7098,31 @@ vitte_parser_parse_let_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_let_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_let_statement_inner(parser);
+
+    if (parser != NULL &&
+        parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_LET_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* return                                                                    */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_return_statement(
+vitte_parser_parse_return_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -5836,7 +7148,13 @@ vitte_parser_parse_return_statement(
 
     if (!vitte_parser_check(
             parser,
-            VITTE_TOKEN_SEMICOLON)) {
+            VITTE_TOKEN_SEMICOLON) &&
+        !(parser->match_arm_depth != 0u &&
+          (vitte_parser_check(parser, VITTE_TOKEN_COMMA) ||
+           vitte_parser_token_text_equal(vitte_parser_current(parser), "case", 4u) ||
+           vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE))) &&
+        !vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE) &&
+        !vitte_parser_at_end(parser)) {
         vitte_ast_node_id_t expression;
 
         expression =
@@ -5854,6 +7172,10 @@ vitte_parser_parse_return_statement(
     if (!vitte_parser_match(
             parser,
             VITTE_TOKEN_SEMICOLON) &&
+        !(parser->match_arm_depth != 0u &&
+          (vitte_parser_check(parser, VITTE_TOKEN_COMMA) ||
+           vitte_parser_token_text_equal(vitte_parser_current(parser), "case", 4u) ||
+           vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE))) &&
         !vitte_parser_check(
             parser,
             VITTE_TOKEN_RIGHT_BRACE) &&
@@ -5879,12 +7201,31 @@ vitte_parser_parse_return_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_return_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_return_statement_inner(parser);
+
+    if (parser != NULL &&
+        parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_RETURN_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* break / continue                                                          */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_jump_statement(
+vitte_parser_parse_jump_statement_inner(
     vitte_parser_t *parser,
     vitte_ast_node_kind_t kind)
 {
@@ -5909,9 +7250,12 @@ vitte_parser_parse_jump_statement(
         return statement;
     }
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_SEMICOLON) == NULL) {
+    if (!vitte_parser_match(parser, VITTE_TOKEN_SEMICOLON) &&
+        !(parser->match_arm_depth != 0u &&
+          (vitte_parser_check(parser, VITTE_TOKEN_COMMA) ||
+           vitte_parser_token_text_equal(vitte_parser_current(parser), "case", 4u) ||
+           vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)))) {
+        (void)vitte_parser_expect(parser, VITTE_TOKEN_SEMICOLON);
         return VITTE_AST_INVALID_ID;
     }
 
@@ -5931,12 +7275,32 @@ vitte_parser_parse_jump_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_jump_statement(
+    vitte_parser_t *parser,
+    vitte_ast_node_kind_t kind)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_jump_statement_inner(parser, kind);
+
+    if (parser != NULL &&
+        parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* defer                                                                     */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_defer_statement(
+vitte_parser_parse_defer_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -6003,12 +7367,28 @@ vitte_parser_parse_defer_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_defer_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_defer_statement_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_DEFER_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* assert                                                                    */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_assert_statement(
+vitte_parser_parse_assert_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -6019,25 +7399,17 @@ vitte_parser_parse_assert_statement(
 
     (void)vitte_parser_advance(parser);
 
-    if (vitte_parser_match(
+    if (vitte_parser_expect(
             parser,
-            VITTE_TOKEN_LEFT_PAREN)) {
-        condition =
-            vitte_parser_parse_expression(parser);
-
-        if (condition == VITTE_AST_INVALID_ID ||
-            vitte_parser_expect(
-                parser,
-                VITTE_TOKEN_RIGHT_PAREN) == NULL) {
-            return VITTE_AST_INVALID_ID;
-        }
-    } else {
-        condition =
-            vitte_parser_parse_expression(parser);
-
-        if (condition == VITTE_AST_INVALID_ID) {
-            return condition;
-        }
+            VITTE_TOKEN_LEFT_PAREN) == NULL) {
+        return VITTE_AST_INVALID_ID;
+    }
+    condition = vitte_parser_parse_expression(parser);
+    if (condition == VITTE_AST_INVALID_ID ||
+        vitte_parser_expect(
+            parser,
+            VITTE_TOKEN_RIGHT_PAREN) == NULL) {
+        return VITTE_AST_INVALID_ID;
     }
 
     statement =
@@ -6083,12 +7455,28 @@ vitte_parser_parse_assert_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_assert_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_assert_statement_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_ASSERT_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* if                                                                        */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_if_statement(
+vitte_parser_parse_if_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -6113,6 +7501,7 @@ vitte_parser_parse_if_statement(
         vitte_parser_parse_expression(parser);
 
     if (condition == VITTE_AST_INVALID_ID) {
+        vitte_parser_recover_if_tail(parser);
         return condition;
     }
 
@@ -6147,7 +7536,7 @@ vitte_parser_parse_if_statement(
         vitte_ast_node_id_t else_branch;
 
         else_branch =
-            vitte_parser_parse_if_statement(parser);
+            vitte_parser_parse_if_statement_inner(parser);
         if (else_branch == VITTE_AST_INVALID_ID ||
             !vitte_parser_node_append_child(
                 parser,
@@ -6167,7 +7556,7 @@ vitte_parser_parse_if_statement(
                 parser,
                 VITTE_TOKEN_KW_ELIF)) {
             else_branch =
-                vitte_parser_parse_if_statement(
+                vitte_parser_parse_if_statement_inner(
                     parser);
         } else {
             else_branch =
@@ -6203,12 +7592,28 @@ vitte_parser_parse_if_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_if_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_if_statement_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* while                                                                     */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_while_statement(
+vitte_parser_parse_while_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -6257,12 +7662,28 @@ vitte_parser_parse_while_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_while_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_while_statement_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* loop                                                                      */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_loop_statement(
+vitte_parser_parse_loop_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -6299,12 +7720,28 @@ vitte_parser_parse_loop_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_loop_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_loop_statement_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* for                                                                       */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_for_statement(
+vitte_parser_parse_for_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -6371,12 +7808,28 @@ vitte_parser_parse_for_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_for_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_for_statement_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* unsafe                                                                    */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_unsafe_statement(
+vitte_parser_parse_unsafe_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -6413,12 +7866,28 @@ vitte_parser_parse_unsafe_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_unsafe_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_unsafe_statement_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_UNSAFE_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* asm                                                                       */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_asm_statement(
+vitte_parser_parse_asm_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -6444,6 +7913,7 @@ vitte_parser_parse_asm_statement(
     if (vitte_parser_match(
             parser,
             VITTE_TOKEN_LEFT_PAREN)) {
+        size_t list_diagnostic_start = parser->diagnostic_count;
         if (!vitte_parser_check(
                 parser,
                 VITTE_TOKEN_RIGHT_PAREN)) {
@@ -6451,12 +7921,16 @@ vitte_parser_parse_asm_statement(
                 vitte_ast_node_id_t operand;
                 vitte_parser_list_recovery_t recovery;
                 size_t operand_begin = parser->position;
+                size_t operand_diagnostic_start = parser->diagnostic_count;
 
                 operand =
                     vitte_parser_parse_expression(
                         parser);
 
                 if (operand == VITTE_AST_INVALID_ID) {
+                    vitte_parser_reclassify_last_diagnostic(
+                        parser, operand_diagnostic_start,
+                        VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST);
                     if (!parser->recovering) {
                         return VITTE_AST_INVALID_ID;
                     }
@@ -6464,6 +7938,13 @@ vitte_parser_parse_asm_statement(
                         parser, VITTE_TOKEN_RIGHT_PAREN, false,
                         operand_begin);
                     if (recovery == VITTE_PARSER_LIST_NEXT) {
+                        /* The separator can be immediately followed by the
+                         * closing delimiter (for example, asm(,)). Do not
+                         * parse the closer as a second empty list item. */
+                        if (vitte_parser_check(
+                                parser, VITTE_TOKEN_RIGHT_PAREN)) {
+                            break;
+                        }
                         continue;
                     }
                     if (recovery == VITTE_PARSER_LIST_END) {
@@ -6488,9 +7969,16 @@ vitte_parser_parse_asm_statement(
                 if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_PAREN)) {
                     break;
                 }
+                if (!vitte_parser_token_can_start_expression(
+                        vitte_parser_current(parser))) {
+                    break;
+                }
                 (void)vitte_parser_error_here(
                     parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
                     VITTE_TOKEN_COMMA);
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, list_diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST);
                 recovery = vitte_parser_synchronize_list(
                     parser, VITTE_TOKEN_RIGHT_PAREN, false,
                     parser->position);
@@ -6558,12 +8046,28 @@ vitte_parser_parse_asm_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_asm_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_asm_statement_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_ASM_STATEMENT);
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* match                                                                     */
 /* ========================================================================= */
 
 static vitte_ast_node_id_t
-vitte_parser_parse_match_statement(
+vitte_parser_parse_match_statement_inner(
     vitte_parser_t *parser)
 {
     size_t begin;
@@ -6620,8 +8124,11 @@ vitte_parser_parse_match_statement(
         vitte_ast_node_id_t guard = VITTE_AST_INVALID_ID;
         vitte_ast_node_id_t body;
         size_t arm_begin;
+        size_t arm_diagnostic_start;
+        size_t previous_match_arm_depth;
 
         arm_begin = parser->position;
+        arm_diagnostic_start = parser->diagnostic_count;
 
         if (vitte_parser_is_declaration_start(
                 vitte_parser_current(parser) != NULL
@@ -6650,6 +8157,10 @@ vitte_parser_parse_match_statement(
         if (vitte_parser_match(parser, VITTE_TOKEN_KW_IF)) {
             guard = vitte_parser_parse_expression(parser);
             if (guard == VITTE_AST_INVALID_ID) {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser,
+                    arm_diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_MATCH_ARM);
                 vitte_parser_synchronize(
                     parser, VITTE_PARSER_RECOVERY_MATCH_ARM,
                     arm_begin);
@@ -6660,12 +8171,19 @@ vitte_parser_parse_match_statement(
         if (vitte_parser_expect(
                 parser,
                 VITTE_TOKEN_FAT_ARROW) == NULL) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser,
+                arm_diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_MATCH_ARM);
             vitte_parser_synchronize(
                 parser, VITTE_PARSER_RECOVERY_MATCH_ARM,
                 arm_begin);
             continue;
         }
 
+        previous_match_arm_depth = parser->match_arm_depth;
+        parser->match_arm_depth = parser->match_arm_depth == SIZE_MAX
+            ? SIZE_MAX : parser->match_arm_depth + 1u;
         if (vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE)) {
             body = vitte_parser_parse_block(parser);
         } else if (vitte_parser_current(parser) != NULL &&
@@ -6676,8 +8194,13 @@ vitte_parser_parse_match_statement(
             body = vitte_parser_parse_expression(parser);
             (void)vitte_parser_match(parser, VITTE_TOKEN_SEMICOLON);
         }
+        parser->match_arm_depth = previous_match_arm_depth;
 
         if (body == VITTE_AST_INVALID_ID) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser,
+                arm_diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_MATCH_ARM);
             if (!parser->recovering) {
                 return body;
             }
@@ -6729,6 +8252,10 @@ vitte_parser_parse_match_statement(
                     parser,
                     VITTE_PARSER_ERROR_EXPECTED_TOKEN,
                     VITTE_TOKEN_COMMA);
+                vitte_parser_reclassify_last_diagnostic(
+                    parser,
+                    arm_diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_MATCH_ARM);
                 vitte_parser_synchronize(
                     parser, VITTE_PARSER_RECOVERY_MATCH_ARM,
                     arm_begin);
@@ -6760,6 +8287,22 @@ vitte_parser_parse_match_statement(
     }
 
     return match_node;
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_match_statement(
+    vitte_parser_t *parser)
+{
+    size_t diagnostic_start = parser != NULL
+        ? parser->diagnostic_count : 0u;
+    vitte_ast_node_id_t statement =
+        vitte_parser_parse_match_statement_inner(parser);
+    if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_MATCH_STATEMENT);
+    }
+    return statement;
 }
 
 /* ========================================================================= */
@@ -6822,6 +8365,99 @@ vitte_parser_parse_expression_statement(
     return statement;
 }
 
+static vitte_ast_node_id_t
+vitte_parser_parse_set_statement(
+    vitte_parser_t *parser)
+{
+    size_t begin;
+    size_t diagnostic_start;
+    vitte_ast_node_id_t assignment;
+    vitte_ast_node_id_t statement;
+    vitte_ast_node_t *assignment_node;
+    vitte_ast_node_t *statement_node;
+
+    begin = parser != NULL ? parser->position : 0u;
+    diagnostic_start = parser != NULL ? parser->diagnostic_count : 0u;
+    if (vitte_parser_expect(parser, VITTE_TOKEN_KW_SET) == NULL) {
+        return VITTE_AST_INVALID_ID;
+    }
+
+    assignment = vitte_parser_parse_expression(parser);
+    if (assignment == VITTE_AST_INVALID_ID) {
+        if (parser != NULL && parser->diagnostic_count > diagnostic_start) {
+            vitte_parser_diagnostic_t *diagnostic =
+                &parser->diagnostics[parser->diagnostic_count - 1u];
+            if (diagnostic->error ==
+                VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_EXPRESSION) {
+                /* `set` has its own statement form; a missing set value is
+                 * reported as a malformed set statement, while malformed
+                 * nested RHS operators keep their expression-family codes. */
+                diagnostic->error =
+                    VITTE_PARSER_ERROR_INVALID_SET_STATEMENT;
+                parser->last_error =
+                    VITTE_PARSER_ERROR_INVALID_SET_STATEMENT;
+            } else {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser,
+                    diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_SET_STATEMENT);
+            }
+        }
+        return assignment;
+    }
+    assignment_node = vitte_parser_get_node_mut(parser, assignment);
+    if (assignment_node == NULL ||
+        assignment_node->kind != VITTE_AST_NODE_ASSIGN_EXPR) {
+        if (assignment_node != NULL &&
+            assignment_node->kind == VITTE_AST_NODE_BINARY_EXPR &&
+            assignment_node->token_index != SIZE_MAX) {
+            (void)vitte_parser_error_at_position(
+                parser,
+                VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_OPERATOR,
+                VITTE_TOKEN_EQUAL,
+                assignment_node->token_index);
+        } else {
+            (void)vitte_parser_error_here(
+                parser,
+                VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_OPERATOR,
+                VITTE_TOKEN_EQUAL);
+        }
+        return VITTE_AST_INVALID_ID;
+    }
+
+    if (!vitte_parser_match(parser, VITTE_TOKEN_SEMICOLON) &&
+        !(parser->match_arm_depth != 0u &&
+          (vitte_parser_check(parser, VITTE_TOKEN_COMMA) ||
+           vitte_parser_token_text_equal(vitte_parser_current(parser), "case", 4u) ||
+           vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)))) {
+        (void)vitte_parser_expect(parser, VITTE_TOKEN_SEMICOLON);
+        vitte_parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_SET_STATEMENT);
+        return VITTE_AST_INVALID_ID;
+    }
+
+    vitte_parser_reclassify_last_diagnostic(
+        parser,
+        diagnostic_start,
+        VITTE_PARSER_ERROR_INVALID_SET_STATEMENT);
+
+    statement = vitte_parser_add_node(
+        parser,
+        VITTE_AST_NODE_EXPR_STMT,
+        vitte_parser_span_from_range(parser, begin, parser->position));
+    if (statement == VITTE_AST_INVALID_ID ||
+        !vitte_parser_node_append_child(parser, statement, assignment)) {
+        return VITTE_AST_INVALID_ID;
+    }
+    statement_node = vitte_parser_get_node_mut(parser, statement);
+    if (statement_node != NULL) {
+        statement_node->token_index = begin;
+    }
+    return statement;
+}
+
 /* ========================================================================= */
 /* Statements                                                                */
 /* ========================================================================= */
@@ -6848,24 +8484,7 @@ vitte_parser_parse_statement(
                 parser);
 
         case VITTE_TOKEN_KW_SET: {
-            size_t begin = parser->position;
-            vitte_ast_node_id_t statement;
-            vitte_ast_node_t *statement_node;
-
-            (void)vitte_parser_advance(parser);
-            statement = vitte_parser_parse_expression_statement(parser);
-            if (statement == VITTE_AST_INVALID_ID) {
-                return statement;
-            }
-            statement_node = vitte_parser_get_node_mut(parser, statement);
-            if (statement_node != NULL) {
-                statement_node->span = vitte_parser_span_from_range(
-                    parser,
-                    begin,
-                    parser->position);
-                statement_node->token_index = begin;
-            }
-            return statement;
+            return vitte_parser_parse_set_statement(parser);
         }
 
         case VITTE_TOKEN_KW_BREAK:
@@ -6889,6 +8508,13 @@ vitte_parser_parse_statement(
         case VITTE_TOKEN_KW_IF:
             return vitte_parser_parse_if_statement(
                 parser);
+
+        case VITTE_TOKEN_KW_ELSE:
+            (void)vitte_parser_error_here(
+                parser,
+                VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT,
+                VITTE_TOKEN_KW_IF);
+            return VITTE_AST_INVALID_ID;
 
         case VITTE_TOKEN_KW_WHILE:
             return vitte_parser_parse_while_statement(
@@ -6921,13 +8547,12 @@ vitte_parser_parse_statement(
             break;
     }
 
-    /*
-     * Local declarations are accepted where appropriate by the semantic
-     * phase. Parsing them here keeps syntax recovery deterministic.
-     */
     if (vitte_parser_is_declaration_start(
             token->kind)) {
-        return vitte_parser_parse_declaration(parser);
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_UNEXPECTED_DECLARATION,
+            VITTE_TOKEN_INVALID);
+        return VITTE_AST_INVALID_ID;
     }
 
     return vitte_parser_parse_expression_statement(
@@ -6952,6 +8577,15 @@ vitte_parser_parse_space_declaration(
 
     (void)vitte_parser_advance(parser);
 
+    if (!vitte_parser_token_is_path_segment(
+            vitte_parser_current(parser))) {
+        (void)vitte_parser_error_here(
+            parser,
+            VITTE_PARSER_ERROR_INVALID_MODULE_PATH,
+            VITTE_TOKEN_IDENTIFIER);
+        return VITTE_AST_INVALID_ID;
+    }
+
     path = vitte_parser_parse_path(parser);
 
     if (path == VITTE_AST_INVALID_ID) {
@@ -6975,6 +8609,20 @@ vitte_parser_parse_space_declaration(
         return VITTE_AST_INVALID_ID;
     }
 
+    {
+        const vitte_token_t *current = vitte_parser_current(parser);
+        if (current != NULL &&
+            (current->kind == VITTE_TOKEN_COLON_COLON ||
+             current->kind == VITTE_TOKEN_SLASH ||
+             current->kind == VITTE_TOKEN_DOT)) {
+            (void)vitte_parser_error_here(
+                parser,
+                VITTE_PARSER_ERROR_INVALID_MODULE_PATH,
+                VITTE_TOKEN_IDENTIFIER);
+            return VITTE_AST_INVALID_ID;
+        }
+    }
+
     node =
         vitte_parser_get_node_mut(
             parser,
@@ -6982,6 +8630,7 @@ vitte_parser_parse_space_declaration(
 
     if (node != NULL) {
         node->flags = flags;
+        node->token_index = begin;
     }
 
     if (vitte_parser_match(
@@ -7138,169 +8787,110 @@ vitte_parser_parse_use_declaration(
     vitte_parser_t *parser,
     uint32_t flags)
 {
-    size_t begin;
+    size_t begin = parser->position;
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t path;
     vitte_ast_node_t *node;
-
-    begin = parser->position;
+    const vitte_token_t *current;
 
     (void)vitte_parser_advance(parser);
-
+    if (!vitte_parser_token_is_path_segment(
+            vitte_parser_current(parser))) {
+        (void)vitte_parser_error_here(
+            parser,
+            VITTE_PARSER_ERROR_INVALID_USE_DECLARATION,
+            VITTE_TOKEN_IDENTIFIER);
+        return VITTE_AST_INVALID_ID;
+    }
     path = vitte_parser_parse_path(parser);
-
     if (path == VITTE_AST_INVALID_ID) {
         return path;
     }
-
-    declaration =
-        vitte_parser_add_node(
-            parser,
-            VITTE_AST_NODE_USE_DECL,
-            vitte_parser_span_from_range(
-                parser,
-                begin,
-                parser->position));
-
+    declaration = vitte_parser_add_node(
+        parser,
+        VITTE_AST_NODE_USE_DECL,
+        vitte_parser_span_from_range(parser, begin, parser->position));
     if (declaration == VITTE_AST_INVALID_ID ||
-        !vitte_parser_node_append_child(
-            parser,
-            declaration,
-            path)) {
+        !vitte_parser_node_append_child(parser, declaration, path)) {
+        return VITTE_AST_INVALID_ID;
+    }
+
+    current = vitte_parser_current(parser);
+    if (current != NULL &&
+        (current->kind == VITTE_TOKEN_SLASH ||
+         current->kind == VITTE_TOKEN_DOT ||
+         (current->kind == VITTE_TOKEN_COLON_COLON &&
+          (vitte_parser_peek(parser, 1u) == NULL ||
+           (vitte_parser_peek(parser, 1u)->kind != VITTE_TOKEN_STAR &&
+            vitte_parser_peek(parser, 1u)->kind != VITTE_TOKEN_LEFT_BRACE))))) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_MODULE_PATH,
+            VITTE_TOKEN_IDENTIFIER);
         return VITTE_AST_INVALID_ID;
     }
 
     if (vitte_parser_match(parser, VITTE_TOKEN_COLON_COLON)) {
         if (vitte_parser_match(parser, VITTE_TOKEN_STAR)) {
             flags |= VITTE_AST_FLAG_GLOB_IMPORT;
-        } else if (vitte_parser_match(parser, VITTE_TOKEN_LEFT_BRACE)) {
-            while (!vitte_parser_at_end(parser) &&
-                   !vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
-                vitte_ast_node_id_t item;
-                vitte_ast_node_id_t alias;
-                const vitte_token_t *alias_keyword;
-                vitte_parser_list_recovery_t recovery;
-                size_t item_begin = parser->position;
-
-                item = vitte_parser_parse_path(parser);
-                if (item == VITTE_AST_INVALID_ID) {
-                    goto recover_use_item;
-                }
-
-                alias = VITTE_AST_INVALID_ID;
-                alias_keyword = vitte_parser_current(parser);
-                if (alias_keyword != NULL &&
-                    (alias_keyword->kind == VITTE_TOKEN_KW_AS ||
-                     (alias_keyword->kind == VITTE_TOKEN_IDENTIFIER &&
-                      vitte_parser_token_text_equal(alias_keyword, "as", 2u)))) {
-                    (void)vitte_parser_advance(parser);
-                    alias = vitte_parser_parse_identifier_node(parser);
-                    if (alias == VITTE_AST_INVALID_ID) {
-                        goto recover_use_item;
-                    }
-                }
-
-                if (!vitte_parser_node_append_child(
-                        parser, declaration, item) ||
-                    (alias != VITTE_AST_INVALID_ID &&
-                     !vitte_parser_node_append_child(
-                         parser, declaration, alias))) {
-                    return VITTE_AST_INVALID_ID;
-                }
-
-                if (vitte_parser_match(parser, VITTE_TOKEN_COMMA)) {
-                    continue;
-                }
-                if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
-                    break;
-                }
+            current = vitte_parser_current(parser);
+            if (current != NULL && current->kind != VITTE_TOKEN_SEMICOLON) {
                 (void)vitte_parser_error_here(
-                    parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
-                    VITTE_TOKEN_COMMA);
-                if (vitte_parser_token_is_identifier(
-                        vitte_parser_current(parser))) {
-                    parser->recovering = false;
-                    continue;
-                }
-
-recover_use_item:
-                if (!parser->recovering) {
-                    return VITTE_AST_INVALID_ID;
-                }
-                recovery = vitte_parser_synchronize_list(
-                    parser, VITTE_TOKEN_RIGHT_BRACE, false,
-                    item_begin);
-                if (recovery == VITTE_PARSER_LIST_NEXT) {
-                    continue;
-                }
-                if (recovery == VITTE_PARSER_LIST_END) {
-                    break;
-                }
+                    parser, VITTE_PARSER_ERROR_INVALID_GLOB_IMPORT,
+                    VITTE_TOKEN_SEMICOLON);
                 return VITTE_AST_INVALID_ID;
             }
-
-            if (vitte_parser_expect(
-                    parser,
-                    VITTE_TOKEN_RIGHT_BRACE) == NULL) {
+        } else if (vitte_parser_match(parser, VITTE_TOKEN_LEFT_BRACE)) {
+            if (!vitte_parser_parse_import_group(
+                    parser, declaration, VITTE_AST_INVALID_ID)) {
                 return VITTE_AST_INVALID_ID;
             }
         } else {
             (void)vitte_parser_error_here(
                 parser,
-                VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+                VITTE_PARSER_ERROR_INVALID_USE_DECLARATION,
                 VITTE_TOKEN_IDENTIFIER);
             return VITTE_AST_INVALID_ID;
         }
     } else {
-        const vitte_token_t *alias_keyword;
-
-        alias_keyword = vitte_parser_current(parser);
-        if (alias_keyword != NULL &&
-            (alias_keyword->kind == VITTE_TOKEN_KW_AS ||
-             (alias_keyword->kind == VITTE_TOKEN_IDENTIFIER &&
-              vitte_parser_token_text_equal(alias_keyword, "as", 2u)))) {
+        current = vitte_parser_current(parser);
+        if (current != NULL &&
+            (current->kind == VITTE_TOKEN_KW_AS ||
+             (current->kind == VITTE_TOKEN_IDENTIFIER &&
+              vitte_parser_token_text_equal(current, "as", 2u)))) {
             vitte_ast_node_id_t alias;
-
             (void)vitte_parser_advance(parser);
+            if (!vitte_parser_token_is_identifier(
+                    vitte_parser_current(parser))) {
+                (void)vitte_parser_error_here(
+                    parser, VITTE_PARSER_ERROR_INVALID_USE_ALIAS,
+                    VITTE_TOKEN_IDENTIFIER);
+                return VITTE_AST_INVALID_ID;
+            }
             alias = vitte_parser_parse_identifier_node(parser);
             if (alias == VITTE_AST_INVALID_ID ||
-                !vitte_parser_node_append_child(
-                    parser,
-                    declaration,
-                    alias)) {
+                !vitte_parser_node_append_child(parser, declaration, alias)) {
                 return VITTE_AST_INVALID_ID;
             }
         }
     }
 
-    node =
-        vitte_parser_get_node_mut(
+    current = vitte_parser_current(parser);
+    if (current == NULL || current->kind != VITTE_TOKEN_SEMICOLON) {
+        (void)vitte_parser_error_here(
             parser,
-            declaration);
-
-    if (node != NULL) {
-        node->flags = flags;
-    }
-
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_SEMICOLON) == NULL) {
+            current != NULL
+                ? VITTE_PARSER_ERROR_TRAILING_TOKENS
+                : VITTE_PARSER_ERROR_INVALID_USE_DECLARATION,
+            VITTE_TOKEN_SEMICOLON);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
-    node =
-        vitte_parser_get_node_mut(
-            parser,
-            declaration);
-
+    node = vitte_parser_get_node_mut(parser, declaration);
     if (node != NULL) {
-        node->span =
-            vitte_parser_span_from_range(
-                parser,
-                begin,
-                parser->position);
+        node->flags = flags;
+        node->span = vitte_parser_span_from_range(parser, begin, parser->position);
     }
-
     return declaration;
 }
 
@@ -7310,6 +8900,9 @@ vitte_parser_parse_export_clause(
 {
     size_t begin;
     vitte_ast_node_id_t export_node;
+    bool grouped = false;
+    bool export_all = false;
+    bool empty_group = false;
 
     begin = parser->position;
     (void)vitte_parser_advance(parser);
@@ -7335,54 +8928,115 @@ vitte_parser_parse_export_clause(
     }
 
     if (vitte_parser_match(parser, VITTE_TOKEN_STAR)) {
-        /* Export-all is represented by the declaration flag. */
-        vitte_ast_node_t *node;
-
-        node = vitte_parser_get_node_mut(parser, export_node);
-        if (node != NULL) {
-            node->flags = VITTE_AST_FLAG_PUBLIC;
+        export_all = true;
+    } else if (vitte_parser_match(parser, VITTE_TOKEN_LEFT_BRACE)) {
+        grouped = true;
+        if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+            (void)vitte_parser_error_here(
+                parser, VITTE_PARSER_ERROR_EMPTY_EXPORT_GROUP,
+                VITTE_TOKEN_IDENTIFIER);
+            (void)vitte_parser_advance(parser);
+            empty_group = true;
         }
-    } else {
-        bool grouped;
+    } else if (!vitte_parser_token_is_path_segment(
+                   vitte_parser_current(parser))) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE,
+            VITTE_TOKEN_IDENTIFIER);
+        return VITTE_AST_INVALID_ID;
+    }
 
-        grouped = vitte_parser_match(parser, VITTE_TOKEN_LEFT_BRACE);
-        do {
+    if (!export_all && !empty_group) {
+        for (;;) {
             vitte_ast_node_id_t item;
-            vitte_ast_node_id_t alias;
-            const vitte_token_t *alias_keyword;
-            vitte_parser_list_recovery_t recovery;
+            vitte_ast_node_id_t alias = VITTE_AST_INVALID_ID;
+            const vitte_token_t *current;
             size_t item_begin = parser->position;
+            vitte_parser_list_recovery_t recovery;
 
+            current = vitte_parser_current(parser);
+            if (!vitte_parser_token_is_path_segment(current)) {
+                (void)vitte_parser_error_here(
+                    parser, VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE,
+                    VITTE_TOKEN_IDENTIFIER);
+                if (!grouped) {
+                    return VITTE_AST_INVALID_ID;
+                }
+                recovery = vitte_parser_synchronize_list(
+                    parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+                if (recovery == VITTE_PARSER_LIST_NEXT) {
+                    continue;
+                }
+                if (recovery == VITTE_PARSER_LIST_END) {
+                    break;
+                }
+                return VITTE_AST_INVALID_ID;
+            }
             item = vitte_parser_parse_path(parser);
             if (item == VITTE_AST_INVALID_ID) {
-                goto recover_export_item;
+                if (!grouped) {
+                    return item;
+                }
+                recovery = vitte_parser_synchronize_list(
+                    parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+                if (recovery == VITTE_PARSER_LIST_NEXT) {
+                    continue;
+                }
+                if (recovery == VITTE_PARSER_LIST_END) {
+                    break;
+                }
+                return item;
             }
 
-            alias = VITTE_AST_INVALID_ID;
-            alias_keyword = vitte_parser_current(parser);
-            if (alias_keyword != NULL &&
-                (alias_keyword->kind == VITTE_TOKEN_KW_AS ||
-                 (alias_keyword->kind == VITTE_TOKEN_IDENTIFIER &&
-                  vitte_parser_token_text_equal(alias_keyword, "as", 2u)))) {
+            current = vitte_parser_current(parser);
+            if (current != NULL &&
+                (current->kind == VITTE_TOKEN_KW_AS ||
+                 (current->kind == VITTE_TOKEN_IDENTIFIER &&
+                  vitte_parser_token_text_equal(current, "as", 2u)))) {
                 (void)vitte_parser_advance(parser);
+                if (!vitte_parser_token_is_identifier(
+                        vitte_parser_current(parser))) {
+                    (void)vitte_parser_error_here(
+                        parser, VITTE_PARSER_ERROR_INVALID_EXPORT_ALIAS,
+                        VITTE_TOKEN_IDENTIFIER);
+                    if (!grouped) {
+                        return VITTE_AST_INVALID_ID;
+                    }
+                    recovery = vitte_parser_synchronize_list(
+                        parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+                    if (recovery == VITTE_PARSER_LIST_NEXT) {
+                        continue;
+                    }
+                    if (recovery == VITTE_PARSER_LIST_END) {
+                        break;
+                    }
+                    return VITTE_AST_INVALID_ID;
+                }
                 alias = vitte_parser_parse_identifier_node(parser);
                 if (alias == VITTE_AST_INVALID_ID) {
-                    goto recover_export_item;
+                    if (!grouped) {
+                        return alias;
+                    }
+                    recovery = vitte_parser_synchronize_list(
+                        parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
+                    if (recovery == VITTE_PARSER_LIST_NEXT) {
+                        continue;
+                    }
+                    if (recovery == VITTE_PARSER_LIST_END) {
+                        break;
+                    }
+                    return alias;
                 }
             }
 
-            if (!vitte_parser_node_append_child(
-                    parser, export_node, item) ||
+            if (!vitte_parser_node_append_child(parser, export_node, item) ||
                 (alias != VITTE_AST_INVALID_ID &&
-                 !vitte_parser_node_append_child(
-                     parser, export_node, alias))) {
+                 !vitte_parser_node_append_child(parser, export_node, alias))) {
                 return VITTE_AST_INVALID_ID;
             }
-
             if (!grouped) {
                 break;
             }
-
             if (vitte_parser_match(parser, VITTE_TOKEN_COMMA)) {
                 if (vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
                     break;
@@ -7393,21 +9047,15 @@ vitte_parser_parse_export_clause(
                 break;
             }
             (void)vitte_parser_error_here(
-                parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+                parser, VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE,
                 VITTE_TOKEN_COMMA);
-            if (vitte_parser_token_is_identifier(
+            if (vitte_parser_token_is_path_segment(
                     vitte_parser_current(parser))) {
                 parser->recovering = false;
                 continue;
             }
-
-recover_export_item:
-            if (!grouped || !parser->recovering) {
-                return VITTE_AST_INVALID_ID;
-            }
             recovery = vitte_parser_synchronize_list(
-                parser, VITTE_TOKEN_RIGHT_BRACE, false,
-                item_begin);
+                parser, VITTE_TOKEN_RIGHT_BRACE, false, item_begin);
             if (recovery == VITTE_PARSER_LIST_NEXT) {
                 continue;
             }
@@ -7415,19 +9063,26 @@ recover_export_item:
                 break;
             }
             return VITTE_AST_INVALID_ID;
-        } while (!vitte_parser_at_end(parser));
-
-        if (grouped &&
-            vitte_parser_expect(
-                parser,
-                VITTE_TOKEN_RIGHT_BRACE) == NULL) {
+        }
+        if (grouped && !empty_group &&
+            !vitte_parser_match(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+            (void)vitte_parser_error_here(
+                parser, VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE,
+                VITTE_TOKEN_RIGHT_BRACE);
             return VITTE_AST_INVALID_ID;
         }
     }
 
-    if (vitte_parser_expect(parser, VITTE_TOKEN_SEMICOLON) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_SEMICOLON)) {
+        (void)vitte_parser_error_here(
+            parser,
+            vitte_parser_current(parser) != NULL
+                ? VITTE_PARSER_ERROR_TRAILING_TOKENS
+                : VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE,
+            VITTE_TOKEN_SEMICOLON);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
     {
         vitte_ast_node_t *node = vitte_parser_get_node_mut(parser, export_node);
@@ -7457,6 +9112,7 @@ vitte_parser_parse_value_declaration(
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t name;
     vitte_ast_node_t *node;
+    size_t diagnostic_start;
 
     begin = parser->position;
 
@@ -7467,11 +9123,15 @@ vitte_parser_parse_value_declaration(
         flags |= VITTE_AST_FLAG_MUTABLE;
     }
 
+    diagnostic_start = parser->diagnostic_count;
     name =
         vitte_parser_parse_identifier_node(
             parser);
 
     if (name == VITTE_AST_INVALID_ID) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_VALUE_DECLARATION);
         return name;
     }
 
@@ -7508,6 +9168,7 @@ vitte_parser_parse_value_declaration(
             VITTE_TOKEN_COLON)) {
         vitte_ast_node_id_t type;
 
+        diagnostic_start = parser->diagnostic_count;
         type =
             vitte_parser_parse_type_expression(
                 parser);
@@ -7517,19 +9178,25 @@ vitte_parser_parse_value_declaration(
                 parser,
                 declaration,
                 type)) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_VALUE_DECLARATION);
             return VITTE_AST_INVALID_ID;
         }
     }
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_EQUAL) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_EQUAL)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_MISSING_VALUE_INITIALIZER,
+            VITTE_TOKEN_EQUAL);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
     {
         vitte_ast_node_id_t initializer;
 
+        diagnostic_start = parser->diagnostic_count;
         initializer =
             vitte_parser_parse_expression(parser);
 
@@ -7538,13 +9205,17 @@ vitte_parser_parse_value_declaration(
                 parser,
                 declaration,
                 initializer)) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_MISSING_VALUE_INITIALIZER);
             return VITTE_AST_INVALID_ID;
         }
     }
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_SEMICOLON) == NULL) {
+    if (!vitte_parser_match(parser, VITTE_TOKEN_SEMICOLON)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_VALUE_DECLARATION,
+            VITTE_TOKEN_SEMICOLON);
         return VITTE_AST_INVALID_ID;
     }
 
@@ -7578,6 +9249,7 @@ vitte_parser_parse_type_declaration(
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t name;
     vitte_ast_node_t *node;
+    size_t diagnostic_start;
 
     begin = parser->position;
 
@@ -7589,11 +9261,17 @@ vitte_parser_parse_type_declaration(
         /* `type` is part of the declaration marker, not an AST child. */
     }
 
+    diagnostic_start = parser->diagnostic_count;
     name =
         vitte_parser_parse_identifier_node(
             parser);
 
     if (name == VITTE_AST_INVALID_ID) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            opaque
+                ? VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION
+                : VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION);
         return name;
     }
 
@@ -7625,40 +9303,69 @@ vitte_parser_parse_type_declaration(
         node->flags = flags;
     }
 
-    if (!vitte_parser_parse_generic_parameters(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_generic_parameters(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            opaque
+                ? VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION
+                : VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
 
-    if (!vitte_parser_parse_where_clause(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_where_clause(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            opaque
+                ? VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION
+                : VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION);
+        return VITTE_AST_INVALID_ID;
+    }
+
+    if (opaque && vitte_parser_check(parser, VITTE_TOKEN_COLON)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION,
+            VITTE_TOKEN_EQUAL);
         return VITTE_AST_INVALID_ID;
     }
 
     if (!opaque && vitte_parser_match(parser, VITTE_TOKEN_COLON)) {
         /* Associated types in traits and impls may carry bounds. */
+        diagnostic_start = parser->diagnostic_count;
         vitte_ast_node_id_t bound =
             vitte_parser_parse_type_expression(parser);
         if (bound == VITTE_AST_INVALID_ID ||
             !vitte_parser_node_append_child(parser, declaration, bound)) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION);
             return VITTE_AST_INVALID_ID;
         }
         while (vitte_parser_match(parser, VITTE_TOKEN_PLUS)) {
+            diagnostic_start = parser->diagnostic_count;
             bound = vitte_parser_parse_type_expression(parser);
             if (bound == VITTE_AST_INVALID_ID ||
                 !vitte_parser_node_append_child(parser, declaration, bound)) {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION);
                 return VITTE_AST_INVALID_ID;
             }
         }
     }
 
     if (vitte_parser_match(parser, VITTE_TOKEN_EQUAL)) {
+        diagnostic_start = parser->diagnostic_count;
         vitte_ast_node_id_t target =
             vitte_parser_parse_type_expression(parser);
         if (target == VITTE_AST_INVALID_ID ||
             !vitte_parser_node_append_child(parser, declaration, target)) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                opaque
+                    ? VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION
+                    : VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION);
             return VITTE_AST_INVALID_ID;
         }
         node = vitte_parser_get_node_mut(parser, declaration);
@@ -7668,9 +9375,12 @@ vitte_parser_parse_type_declaration(
     }
 
     if (!vitte_parser_match(parser, VITTE_TOKEN_SEMICOLON)) {
-        (void)vitte_parser_error_here(parser,
-                                      VITTE_PARSER_ERROR_EXPECTED_TOKEN,
-                                      VITTE_TOKEN_SEMICOLON);
+        (void)vitte_parser_error_here(
+            parser,
+            opaque
+                ? VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION
+                : VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION,
+            VITTE_TOKEN_SEMICOLON);
         return VITTE_AST_INVALID_ID;
     }
 
@@ -7694,6 +9404,47 @@ vitte_parser_parse_type_declaration(
 /* form                                                                      */
 /* ========================================================================= */
 
+static bool
+vitte_parser_form_has_field_name(
+    const vitte_parser_t *parser,
+    vitte_ast_node_id_t declaration,
+    const vitte_token_t *field_token)
+{
+    const vitte_ast_node_t *form_node;
+    size_t index;
+
+    if (parser == NULL || field_token == NULL) {
+        return false;
+    }
+    form_node = vitte_parser_get_node(parser, declaration);
+    if (form_node == NULL || form_node->child_count < 2u) {
+        return false;
+    }
+    for (index = 1u; index < form_node->child_count; ++index) {
+        const vitte_ast_node_t *field =
+            vitte_parser_get_node(parser, form_node->children[index]);
+        const vitte_ast_node_t *field_name;
+        const vitte_token_t *previous_token;
+
+        if (field == NULL || field->kind != VITTE_AST_NODE_FIELD_DECL ||
+            field->child_count == 0u) {
+            continue;
+        }
+        field_name = vitte_parser_get_node(parser, field->children[0]);
+        previous_token = field_name != NULL
+            ? vitte_parser_token_at_private(parser, field_name->token_index)
+            : NULL;
+        if (previous_token != NULL &&
+            previous_token->length == field_token->length &&
+            previous_token->lexeme != NULL && field_token->lexeme != NULL &&
+            memcmp(previous_token->lexeme, field_token->lexeme,
+                   field_token->length) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static vitte_ast_node_id_t
 vitte_parser_parse_form_declaration(
     vitte_parser_t *parser,
@@ -7702,16 +9453,21 @@ vitte_parser_parse_form_declaration(
     size_t begin;
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t name;
+    size_t diagnostic_start;
 
     begin = parser->position;
 
     (void)vitte_parser_advance(parser);
 
+    diagnostic_start = parser->diagnostic_count;
     name =
         vitte_parser_parse_identifier_node(
             parser);
 
     if (name == VITTE_AST_INVALID_ID) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION);
         return name;
     }
 
@@ -7745,23 +9501,29 @@ vitte_parser_parse_form_declaration(
         }
     }
 
-    if (!vitte_parser_parse_generic_parameters(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_generic_parameters(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
 
-    if (!vitte_parser_parse_where_clause(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_where_clause(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_LEFT_BRACE) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION,
+            VITTE_TOKEN_LEFT_BRACE);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
     while (!vitte_parser_at_end(parser) &&
            !vitte_parser_check(
@@ -7779,10 +9541,34 @@ vitte_parser_parse_form_declaration(
             vitte_parser_parse_identifier_node(
                 parser);
 
+        if (field_name != VITTE_AST_INVALID_ID &&
+            vitte_parser_form_has_field_name(
+                parser,
+                declaration,
+                vitte_parser_token_at_private(parser, field_begin))) {
+            (void)vitte_parser_error_at_position(
+                parser,
+                VITTE_PARSER_ERROR_DUPLICATE_FORM_FIELD,
+                VITTE_TOKEN_IDENTIFIER,
+                field_begin);
+            parser->recovering = false;
+        }
+
         field_type = VITTE_AST_INVALID_ID;
         if (field_name != VITTE_AST_INVALID_ID &&
-            vitte_parser_expect(parser, VITTE_TOKEN_COLON) != NULL) {
+            vitte_parser_check(parser, VITTE_TOKEN_COLON)) {
+            (void)vitte_parser_advance(parser);
+            diagnostic_start = parser->diagnostic_count;
             field_type = vitte_parser_parse_type_expression(parser);
+            if (field_type == VITTE_AST_INVALID_ID) {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION);
+            }
+        } else if (field_name != VITTE_AST_INVALID_ID) {
+            (void)vitte_parser_error_here(
+                parser, VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION,
+                VITTE_TOKEN_COLON);
         }
         if (field_type == VITTE_AST_INVALID_ID) {
             if (!parser->recovering) {
@@ -7825,6 +9611,10 @@ vitte_parser_parse_form_declaration(
             return VITTE_AST_INVALID_ID;
         }
 
+        if (vitte_parser_at_end(parser)) {
+            break;
+        }
+
         if (vitte_parser_check(
                 parser,
                 VITTE_TOKEN_RIGHT_BRACE)) {
@@ -7836,7 +9626,7 @@ vitte_parser_parse_form_declaration(
             continue;
         }
         (void)vitte_parser_error_here(
-            parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+            parser, VITTE_PARSER_ERROR_INVALID_FORM_FIELD_SEPARATOR,
             VITTE_TOKEN_COMMA);
         if (vitte_parser_token_is_identifier(vitte_parser_current(parser)) &&
             vitte_parser_check_next(parser, VITTE_TOKEN_COLON)) {
@@ -7855,11 +9645,13 @@ vitte_parser_parse_form_declaration(
         return VITTE_AST_INVALID_ID;
     }
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_RIGHT_BRACE) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION,
+            VITTE_TOKEN_RIGHT_BRACE);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
     {
         vitte_ast_node_t *node;
@@ -7891,10 +9683,12 @@ vitte_parser_parse_pick_declaration(
     uint32_t flags)
 {
     size_t begin;
+    size_t diagnostic_start;
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t name;
 
     begin = parser->position;
+    diagnostic_start = parser->diagnostic_count;
 
     (void)vitte_parser_advance(parser);
 
@@ -7903,6 +9697,9 @@ vitte_parser_parse_pick_declaration(
             parser);
 
     if (name == VITTE_AST_INVALID_ID) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION);
         return name;
     }
 
@@ -7936,21 +9733,24 @@ vitte_parser_parse_pick_declaration(
         }
     }
 
-    if (!vitte_parser_parse_generic_parameters(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_generic_parameters(parser, declaration) ||
+        !vitte_parser_parse_where_clause(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
+    vitte_parser_reclassify_last_diagnostic(
+        parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION);
 
-    if (!vitte_parser_parse_where_clause(parser, declaration)) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION,
+            VITTE_TOKEN_LEFT_BRACE);
         return VITTE_AST_INVALID_ID;
     }
-
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_LEFT_BRACE) == NULL) {
-        return VITTE_AST_INVALID_ID;
-    }
+    (void)vitte_parser_advance(parser);
 
     while (!vitte_parser_at_end(parser) &&
            !vitte_parser_check(
@@ -7962,12 +9762,16 @@ vitte_parser_parse_pick_declaration(
         vitte_parser_list_recovery_t recovery;
 
         variant_begin = parser->position;
+        diagnostic_start = parser->diagnostic_count;
 
         variant_name =
             vitte_parser_parse_identifier_node(
                 parser);
 
         if (variant_name == VITTE_AST_INVALID_ID) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION);
             goto recover_variant;
         }
 
@@ -7988,6 +9792,49 @@ vitte_parser_parse_pick_declaration(
             return VITTE_AST_INVALID_ID;
         }
 
+        {
+            const vitte_token_t *variant_token =
+                vitte_parser_token_at_private(parser, variant_begin);
+            const vitte_ast_node_t *pick_node =
+                vitte_parser_get_node(parser, declaration);
+            size_t previous_index;
+
+            for (previous_index = 1u;
+                 variant_token != NULL && pick_node != NULL &&
+                     previous_index < pick_node->child_count;
+                 ++previous_index) {
+                const vitte_ast_node_t *previous_variant =
+                    vitte_parser_get_node(
+                        parser, pick_node->children[previous_index]);
+                const vitte_ast_node_t *previous_name;
+                const vitte_token_t *previous_token;
+
+                if (previous_variant == NULL ||
+                    previous_variant->kind != VITTE_AST_NODE_VARIANT_DECL ||
+                    previous_variant->child_count == 0u) {
+                    continue;
+                }
+                previous_name = vitte_parser_get_node(
+                    parser, previous_variant->children[0]);
+                previous_token = previous_name != NULL
+                    ? vitte_parser_token_at_private(
+                          parser, previous_name->token_index)
+                    : NULL;
+                if (previous_token != NULL &&
+                    previous_token->length == variant_token->length &&
+                    memcmp(previous_token->lexeme, variant_token->lexeme,
+                           variant_token->length) == 0) {
+                    (void)vitte_parser_error_at_position(
+                        parser,
+                        VITTE_PARSER_ERROR_DUPLICATE_PICK_VARIANT,
+                        VITTE_TOKEN_IDENTIFIER,
+                        variant_begin);
+                    parser->recovering = false;
+                    break;
+                }
+            }
+        }
+
         if (vitte_parser_match(
                 parser,
                 VITTE_TOKEN_LEFT_PAREN)) {
@@ -7997,12 +9844,16 @@ vitte_parser_parse_pick_declaration(
                 for (;;) {
                     vitte_ast_node_id_t payload_type;
                     size_t payload_begin = parser->position;
+                    diagnostic_start = parser->diagnostic_count;
 
                     payload_type =
                         vitte_parser_parse_type_expression(
                             parser);
 
                     if (payload_type == VITTE_AST_INVALID_ID) {
+                        vitte_parser_reclassify_last_diagnostic(
+                            parser, diagnostic_start,
+                            VITTE_PARSER_ERROR_INVALID_PICK_VARIANT_PAYLOAD);
                         if (!parser->recovering) {
                             return VITTE_AST_INVALID_ID;
                         }
@@ -8010,6 +9861,10 @@ vitte_parser_parse_pick_declaration(
                             parser, VITTE_TOKEN_RIGHT_PAREN, false,
                             payload_begin);
                         if (recovery == VITTE_PARSER_LIST_NEXT) {
+                            if (vitte_parser_check(
+                                    parser, VITTE_TOKEN_RIGHT_PAREN)) {
+                                break;
+                            }
                             continue;
                         }
                         if (recovery == VITTE_PARSER_LIST_END) {
@@ -8036,7 +9891,7 @@ vitte_parser_parse_pick_declaration(
                         break;
                     }
                     (void)vitte_parser_error_here(
-                        parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+                        parser, VITTE_PARSER_ERROR_INVALID_PICK_VARIANT_PAYLOAD,
                         VITTE_TOKEN_COMMA);
                     recovery = vitte_parser_synchronize_list(
                         parser, VITTE_TOKEN_RIGHT_PAREN, false,
@@ -8054,8 +9909,14 @@ vitte_parser_parse_pick_declaration(
             if (vitte_parser_expect(
                     parser,
                     VITTE_TOKEN_RIGHT_PAREN) == NULL) {
+                vitte_parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start,
+                    VITTE_PARSER_ERROR_INVALID_PICK_VARIANT_PAYLOAD);
                 goto recover_variant;
             }
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_PICK_VARIANT_PAYLOAD);
         }
 
         {
@@ -8087,7 +9948,7 @@ vitte_parser_parse_pick_declaration(
             continue;
         }
         (void)vitte_parser_error_here(
-            parser, VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+            parser, VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION,
             VITTE_TOKEN_COMMA);
         if (vitte_parser_token_is_identifier(vitte_parser_current(parser))) {
             parser->recovering = false;
@@ -8110,11 +9971,13 @@ recover_variant:
         return VITTE_AST_INVALID_ID;
     }
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_RIGHT_BRACE) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION,
+            VITTE_TOKEN_RIGHT_BRACE);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
     {
         vitte_ast_node_t *node;
@@ -8147,16 +10010,19 @@ vitte_parser_parse_proc_declaration(
     bool external)
 {
     size_t begin;
+    size_t diagnostic_start;
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t name;
     vitte_ast_node_t *node;
+    bool intrinsic = false;
+    vitte_parser_error_t external_error =
+        VITTE_PARSER_ERROR_INVALID_EXTERNAL_PROCEDURE;
 
     begin = parser->position;
+    diagnostic_start = parser->diagnostic_count;
 
     if (external) {
         const vitte_token_t *external_token;
-        bool intrinsic;
-
         external_token = vitte_parser_current(parser);
         intrinsic =
             external_token != NULL &&
@@ -8164,10 +10030,15 @@ vitte_parser_parse_proc_declaration(
                 external_token,
                 "intrinsic",
                 9u);
+        if (intrinsic) {
+            external_error =
+                VITTE_PARSER_ERROR_INVALID_INTRINSIC_DECLARATION;
+        }
 
         if (vitte_parser_expect(
                 parser,
                 VITTE_TOKEN_KW_EXTERN) == NULL) {
+            vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, external_error);
             return VITTE_AST_INVALID_ID;
         }
 
@@ -8175,9 +10046,23 @@ vitte_parser_parse_proc_declaration(
             vitte_parser_check(
                 parser,
                 VITTE_TOKEN_STRING_LITERAL)) {
-            /*
-             * Optional ABI literal.
-             */
+            const vitte_token_t *abi_token =
+                vitte_parser_current(parser);
+            if (abi_token == NULL || abi_token->lexeme == NULL ||
+                abi_token->length <= 2u) {
+                (void)vitte_parser_emit_diagnostic(
+                    parser,
+                    VITTE_PARSER_DIAGNOSTIC_ERROR,
+                    VITTE_PARSER_ERROR_INVALID_ABI_STRING_LITERAL,
+                    abi_token != NULL
+                        ? vitte_parser_span_from_token(abi_token)
+                        : vitte_parser_span_invalid_private(),
+                    VITTE_TOKEN_STRING_LITERAL,
+                    abi_token != NULL
+                        ? abi_token->kind
+                        : VITTE_TOKEN_INVALID);
+                return VITTE_AST_INVALID_ID;
+            }
             (void)vitte_parser_advance(parser);
         }
     }
@@ -8190,6 +10075,10 @@ vitte_parser_parse_proc_declaration(
         if (vitte_parser_expect(
                 parser,
                 VITTE_TOKEN_KW_PROC) == NULL) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                external ? external_error
+                         : VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION);
             return VITTE_AST_INVALID_ID;
         }
     }
@@ -8199,6 +10088,10 @@ vitte_parser_parse_proc_declaration(
             parser);
 
     if (name == VITTE_AST_INVALID_ID) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            external ? external_error
+                     : VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION);
         return name;
     }
 
@@ -8232,26 +10125,34 @@ vitte_parser_parse_proc_declaration(
         if (external) {
             node->flags |=
                 VITTE_AST_FLAG_EXTERN;
+            if (intrinsic) {
+                node->flags |= VITTE_AST_FLAG_INTRINSIC;
+            }
         }
     }
 
-    if (!vitte_parser_parse_generic_parameters(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_generic_parameters(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
+    vitte_parser_reclassify_last_diagnostic(
+        parser, diagnostic_start,
+        VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION);
 
-    if (!vitte_parser_parse_parameters(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_parameters(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS);
         return VITTE_AST_INVALID_ID;
     }
+    vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS);
 
     if (vitte_parser_match(
             parser,
             VITTE_TOKEN_ARROW)) {
         vitte_ast_node_id_t return_type;
 
+        diagnostic_start = parser->diagnostic_count;
         return_type =
             vitte_parser_parse_type_expression(
                 parser);
@@ -8261,49 +10162,85 @@ vitte_parser_parse_proc_declaration(
                 parser,
                 declaration,
                 return_type)) {
+            vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_PROCEDURE_RETURN_TYPE);
             return VITTE_AST_INVALID_ID;
         }
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_RETURN_TYPE);
     }
 
-    if (!vitte_parser_parse_where_clause(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_where_clause(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
+    vitte_parser_reclassify_last_diagnostic(
+        parser, diagnostic_start,
+        VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION);
 
     while (vitte_parser_check(parser, VITTE_TOKEN_KW_REQUIRES) ||
            vitte_parser_check(parser, VITTE_TOKEN_KW_ENSURES)) {
         vitte_ast_node_id_t contract;
         vitte_ast_flags_t contract_flag;
+        vitte_parser_error_t contract_error;
 
         contract_flag =
             vitte_parser_check(parser, VITTE_TOKEN_KW_REQUIRES)
                 ? VITTE_AST_FLAG_CONTRACT_REQUIRES
                 : VITTE_AST_FLAG_CONTRACT_ENSURES;
+        contract_error =
+            contract_flag == VITTE_AST_FLAG_CONTRACT_REQUIRES
+                ? VITTE_PARSER_ERROR_INVALID_REQUIRES_CLAUSE
+                : VITTE_PARSER_ERROR_INVALID_ENSURES_CLAUSE;
         (void)vitte_parser_advance(parser);
+        diagnostic_start = parser->diagnostic_count;
         contract = vitte_parser_parse_expression(parser);
+        if (contract == VITTE_AST_INVALID_ID) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, contract_error);
+            /* Keep parsing the procedure body after a missing contract
+             * expression so `{` is not misreported as a top-level
+             * statement. */
+            while (!vitte_parser_at_end(parser) &&
+                   !vitte_parser_check(parser, VITTE_TOKEN_SEMICOLON) &&
+                   !vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE)) {
+                (void)vitte_parser_advance(parser);
+            }
+            (void)vitte_parser_match(parser, VITTE_TOKEN_SEMICOLON);
+            continue;
+        }
         node = vitte_parser_get_node_mut(parser, contract);
         if (node != NULL) {
             node->flags |= contract_flag;
         }
-        if (contract == VITTE_AST_INVALID_ID ||
-            !vitte_parser_node_append_child(
-                parser,
-                declaration,
-                contract) ||
-            vitte_parser_expect(
-                parser,
-                VITTE_TOKEN_SEMICOLON) == NULL) {
+        if (!vitte_parser_node_append_child(
+                parser, declaration, contract)) {
             return VITTE_AST_INVALID_ID;
+        }
+        {
+            const vitte_token_t *terminator =
+                vitte_parser_expect(
+                    parser, VITTE_TOKEN_SEMICOLON);
+            /* A safely insertable `;` still emits an expected-token
+             * diagnostic. Preserve the contract-specific owner for both
+             * recoverable insertion and fatal missing-token paths. */
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, contract_error);
+            if (terminator == NULL) {
+                return VITTE_AST_INVALID_ID;
+            }
         }
     }
 
     if (external) {
-        if (vitte_parser_expect(
-                parser,
-                VITTE_TOKEN_SEMICOLON) == NULL) {
+        if (!vitte_parser_check(parser, VITTE_TOKEN_SEMICOLON)) {
+            (void)vitte_parser_error_here(
+                parser, VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM,
+                VITTE_TOKEN_SEMICOLON);
             return VITTE_AST_INVALID_ID;
         }
+        (void)vitte_parser_advance(parser);
     } else if (vitte_parser_match(
                    parser,
                    VITTE_TOKEN_SEMICOLON)) {
@@ -8311,6 +10248,13 @@ vitte_parser_parse_proc_declaration(
     } else {
         vitte_ast_node_id_t body;
 
+        if (!vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE)) {
+            (void)vitte_parser_error_here(
+                parser, VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM,
+                VITTE_TOKEN_LEFT_BRACE);
+            return VITTE_AST_INVALID_ID;
+        }
+        diagnostic_start = parser->diagnostic_count;
         body = vitte_parser_parse_block(parser);
 
         if (body == VITTE_AST_INVALID_ID ||
@@ -8318,6 +10262,7 @@ vitte_parser_parse_proc_declaration(
                 parser,
                 declaration,
                 body)) {
+            vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM);
             return VITTE_AST_INVALID_ID;
         }
     }
@@ -8348,10 +10293,12 @@ vitte_parser_parse_trait_declaration(
     uint32_t flags)
 {
     size_t begin;
+    size_t diagnostic_start;
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t name;
 
     begin = parser->position;
+    diagnostic_start = parser->diagnostic_count;
 
     (void)vitte_parser_advance(parser);
 
@@ -8360,6 +10307,7 @@ vitte_parser_parse_trait_declaration(
             parser);
 
     if (name == VITTE_AST_INVALID_ID) {
+        vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION);
         return name;
     }
 
@@ -8393,20 +10341,23 @@ vitte_parser_parse_trait_declaration(
         }
     }
 
-    if (!vitte_parser_parse_generic_parameters(
-            parser,
-            declaration) ||
-        !vitte_parser_parse_where_clause(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_generic_parameters(parser, declaration) ||
+        !vitte_parser_parse_where_clause(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
+    vitte_parser_reclassify_last_diagnostic(
+        parser, diagnostic_start,
+        VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION);
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_LEFT_BRACE) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION,
+            VITTE_TOKEN_LEFT_BRACE);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
     while (!vitte_parser_at_end(parser) &&
            !vitte_parser_check(
@@ -8440,11 +10391,13 @@ vitte_parser_parse_trait_declaration(
         }
     }
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_RIGHT_BRACE) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION,
+            VITTE_TOKEN_RIGHT_BRACE);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
     {
         vitte_ast_node_t *node;
@@ -8476,10 +10429,14 @@ vitte_parser_parse_impl_declaration(
     uint32_t flags)
 {
     size_t begin;
+    size_t diagnostic_start;
+    bool has_for_clause;
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t first_type;
 
     begin = parser->position;
+    diagnostic_start = parser->diagnostic_count;
+    has_for_clause = false;
 
     (void)vitte_parser_advance(parser);
 
@@ -8509,12 +10466,16 @@ vitte_parser_parse_impl_declaration(
         }
     }
 
-    if (!vitte_parser_parse_generic_parameters(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_generic_parameters(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
+    vitte_parser_reclassify_last_diagnostic(
+        parser, diagnostic_start,
+        VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION);
 
+    diagnostic_start = parser->diagnostic_count;
     first_type =
         vitte_parser_parse_type_expression(parser);
 
@@ -8523,6 +10484,7 @@ vitte_parser_parse_impl_declaration(
             parser,
             declaration,
             first_type)) {
+        vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
 
@@ -8531,30 +10493,51 @@ vitte_parser_parse_impl_declaration(
             VITTE_TOKEN_KW_FOR)) {
         vitte_ast_node_id_t target_type;
 
+        has_for_clause = true;
+        diagnostic_start = parser->diagnostic_count;
+        if (vitte_parser_at_end(parser) ||
+            vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE) ||
+            vitte_parser_check(parser, VITTE_TOKEN_KW_WHERE) ||
+            vitte_parser_check(parser, VITTE_TOKEN_SEMICOLON)) {
+            (void)vitte_parser_error_here(parser, VITTE_PARSER_ERROR_MISSING_IMPL_TARGET_TYPE, VITTE_TOKEN_IDENTIFIER);
+            return VITTE_AST_INVALID_ID;
+        }
         target_type =
-            vitte_parser_parse_type_expression(
-                parser);
+            vitte_parser_parse_type_expression(parser);
 
         if (target_type == VITTE_AST_INVALID_ID ||
             !vitte_parser_node_append_child(
                 parser,
                 declaration,
                 target_type)) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_IMPL_FOR_CLAUSE);
             return VITTE_AST_INVALID_ID;
         }
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_IMPL_FOR_CLAUSE);
     }
 
-    if (!vitte_parser_parse_where_clause(
-            parser,
-            declaration)) {
+    diagnostic_start = parser->diagnostic_count;
+    if (!vitte_parser_parse_where_clause(parser, declaration)) {
+        vitte_parser_reclassify_last_diagnostic(parser, diagnostic_start, VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
+    vitte_parser_reclassify_last_diagnostic(
+        parser, diagnostic_start,
+        VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION);
 
-    if (vitte_parser_expect(
+    if (!vitte_parser_check(parser, VITTE_TOKEN_LEFT_BRACE)) {
+        (void)vitte_parser_error_here(
             parser,
-            VITTE_TOKEN_LEFT_BRACE) == NULL) {
+            has_for_clause ? VITTE_PARSER_ERROR_INVALID_IMPL_FOR_CLAUSE :
+                             VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION,
+            VITTE_TOKEN_LEFT_BRACE);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
     while (!vitte_parser_at_end(parser) &&
            !vitte_parser_check(
@@ -8588,11 +10571,13 @@ vitte_parser_parse_impl_declaration(
         }
     }
 
-    if (vitte_parser_expect(
-            parser,
-            VITTE_TOKEN_RIGHT_BRACE) == NULL) {
+    if (!vitte_parser_check(parser, VITTE_TOKEN_RIGHT_BRACE)) {
+        (void)vitte_parser_error_here(
+            parser, VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION,
+            VITTE_TOKEN_RIGHT_BRACE);
         return VITTE_AST_INVALID_ID;
     }
+    (void)vitte_parser_advance(parser);
 
     {
         vitte_ast_node_t *node;
@@ -8627,16 +10612,21 @@ vitte_parser_parse_macro_declaration(
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t name;
     vitte_ast_node_id_t body;
+    size_t diagnostic_start;
 
     begin = parser->position;
 
     (void)vitte_parser_advance(parser);
 
+    diagnostic_start = parser->diagnostic_count;
     name =
         vitte_parser_parse_identifier_node(
             parser);
 
     if (name == VITTE_AST_INVALID_ID) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_MACRO_DECLARATION);
         return name;
     }
 
@@ -8673,13 +10663,21 @@ vitte_parser_parse_macro_declaration(
     if (vitte_parser_check(
             parser,
             VITTE_TOKEN_LEFT_PAREN)) {
-        if (!vitte_parser_parse_parameters(
-                parser,
-                declaration)) {
+        diagnostic_start = parser->diagnostic_count;
+        if (!vitte_parser_parse_parameters(parser, declaration)) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_MACRO_PARAMETERS);
             return VITTE_AST_INVALID_ID;
+        }
+        if (parser->diagnostic_count > diagnostic_start) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_MACRO_PARAMETERS);
         }
     }
 
+    diagnostic_start = parser->diagnostic_count;
     body = vitte_parser_parse_block(parser);
 
     if (body == VITTE_AST_INVALID_ID ||
@@ -8687,6 +10685,9 @@ vitte_parser_parse_macro_declaration(
             parser,
             declaration,
             body)) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_MACRO_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
 
@@ -8722,10 +10723,12 @@ vitte_parser_parse_test_declaration(
     size_t begin;
     vitte_ast_node_id_t declaration;
     vitte_ast_node_id_t body;
+    size_t diagnostic_start;
 
     begin = parser->position;
 
     (void)vitte_parser_advance(parser);
+    diagnostic_start = parser->diagnostic_count;
 
     declaration =
         vitte_parser_add_node(
@@ -8765,6 +10768,9 @@ vitte_parser_parse_test_declaration(
                 parser,
                 declaration,
                 name)) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_TEST_DECLARATION);
             return VITTE_AST_INVALID_ID;
         }
     } else if (vitte_parser_token_is_identifier(
@@ -8780,10 +10786,14 @@ vitte_parser_parse_test_declaration(
                 parser,
                 declaration,
                 name)) {
+            vitte_parser_reclassify_last_diagnostic(
+                parser, diagnostic_start,
+                VITTE_PARSER_ERROR_INVALID_TEST_DECLARATION);
             return VITTE_AST_INVALID_ID;
         }
     }
 
+    diagnostic_start = parser->diagnostic_count;
     body = vitte_parser_parse_block(parser);
 
     if (body == VITTE_AST_INVALID_ID ||
@@ -8791,6 +10801,9 @@ vitte_parser_parse_test_declaration(
             parser,
             declaration,
             body)) {
+        vitte_parser_reclassify_last_diagnostic(
+            parser, diagnostic_start,
+            VITTE_PARSER_ERROR_INVALID_TEST_DECLARATION);
         return VITTE_AST_INVALID_ID;
     }
 
@@ -8826,10 +10839,11 @@ vitte_parser_export_precedes_declaration(
 
     next = vitte_parser_peek(parser, 1u);
     if (next == NULL) {
-        return false;
+        return true;
     }
 
     switch (next->kind) {
+        case VITTE_TOKEN_HASH:
         case VITTE_TOKEN_KW_PUB:
         case VITTE_TOKEN_KW_EXPORT:
         case VITTE_TOKEN_KW_ASYNC:
@@ -8888,11 +10902,21 @@ vitte_parser_parse_declaration(
 {
     const vitte_token_t *token;
     uint32_t flags;
+    uint32_t modifier_seen;
+    size_t first_procedure_modifier;
+    size_t first_visibility_modifier;
+    bool visibility_modifier_seen;
+    bool declaration_modifier_invalid;
     size_t attribute_start;
     size_t attribute_count;
     vitte_ast_node_id_t declaration;
 
     flags = VITTE_AST_FLAG_NONE;
+    modifier_seen = 0u;
+    first_procedure_modifier = SIZE_MAX;
+    first_visibility_modifier = SIZE_MAX;
+    visibility_modifier_seen = false;
+    declaration_modifier_invalid = false;
     attribute_start = parser->attribute_count;
     attribute_count = 0u;
 
@@ -8907,11 +10931,39 @@ vitte_parser_parse_declaration(
 
         if (vitte_parser_check(parser, VITTE_TOKEN_KW_EXPORT)) {
             if (vitte_parser_export_precedes_declaration(parser)) {
+                if (first_visibility_modifier == SIZE_MAX) {
+                    first_visibility_modifier = parser->position;
+                }
+                if (visibility_modifier_seen || modifier_seen != 0u) {
+                    (void)vitte_parser_error_at_position(
+                        parser,
+                        VITTE_PARSER_ERROR_INVALID_DECLARATION_MODIFIER_ORDER,
+                        VITTE_TOKEN_INVALID,
+                        parser->position);
+                    parser->recovering = false;
+                    declaration_modifier_invalid = true;
+                }
+                visibility_modifier_seen = true;
                 (void)vitte_parser_advance(parser);
                 flags |= VITTE_AST_FLAG_PUBLIC;
                 continue;
             }
 
+            if (modifier_seen != 0u) {
+                (void)vitte_parser_error_at_position(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_PROCEDURE_MODIFIER,
+                    VITTE_TOKEN_INVALID,
+                    first_procedure_modifier);
+                parser->recovering = false;
+            } else if (visibility_modifier_seen) {
+                (void)vitte_parser_error_at_position(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_DECLARATION_MODIFIER_ORDER,
+                    VITTE_TOKEN_INVALID,
+                    first_visibility_modifier);
+                parser->recovering = false;
+            }
             declaration = vitte_parser_parse_export_clause(parser);
             return vitte_parser_finish_declaration(
                 parser,
@@ -8923,32 +10975,76 @@ vitte_parser_parse_declaration(
         if (vitte_parser_match(
                 parser,
                 VITTE_TOKEN_KW_PUB)) {
+            if (first_visibility_modifier == SIZE_MAX) {
+                first_visibility_modifier = parser->position - 1u;
+            }
+            if (visibility_modifier_seen || modifier_seen != 0u) {
+                (void)vitte_parser_error_at_position(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_DECLARATION_MODIFIER_ORDER,
+                    VITTE_TOKEN_INVALID,
+                    parser->position - 1u);
+                parser->recovering = false;
+                declaration_modifier_invalid = true;
+            }
+            visibility_modifier_seen = true;
             flags |= VITTE_AST_FLAG_PUBLIC;
             continue;
         }
 
-        if (vitte_parser_match(
-                parser,
-                VITTE_TOKEN_KW_ASYNC)) {
-            flags |= VITTE_AST_FLAG_ASYNC;
-            continue;
+        if (vitte_parser_check(parser, VITTE_TOKEN_KW_UNSAFE) &&
+            vitte_parser_check_next(parser, VITTE_TOKEN_LEFT_BRACE)) {
+            break;
         }
 
-        if (vitte_parser_match(
-                parser,
-                VITTE_TOKEN_KW_UNSAFE)) {
-            flags |= VITTE_AST_FLAG_UNSAFE;
-            continue;
-        }
+        if (vitte_parser_check(parser, VITTE_TOKEN_KW_ASYNC) ||
+            vitte_parser_check(parser, VITTE_TOKEN_KW_UNSAFE) ||
+            vitte_parser_check(parser, VITTE_TOKEN_KW_COMPTIME)) {
+            const vitte_token_t *modifier = vitte_parser_current(parser);
+            uint32_t modifier_flag = 0u;
+            vitte_token_kind_t modifier_kind = modifier != NULL
+                ? modifier->kind : VITTE_TOKEN_INVALID;
 
-        if (vitte_parser_match(
-                parser,
-                VITTE_TOKEN_KW_COMPTIME)) {
-            flags |= VITTE_AST_FLAG_COMPTIME;
+            if (first_procedure_modifier == SIZE_MAX) {
+                first_procedure_modifier = parser->position;
+            }
+            if (modifier_kind == VITTE_TOKEN_KW_ASYNC) {
+                modifier_flag = VITTE_AST_FLAG_ASYNC;
+            } else if (modifier_kind == VITTE_TOKEN_KW_UNSAFE) {
+                modifier_flag = VITTE_AST_FLAG_UNSAFE;
+            } else {
+                modifier_flag = VITTE_AST_FLAG_COMPTIME;
+            }
+            if ((modifier_seen & modifier_flag) != 0u) {
+                (void)vitte_parser_error_at_position(
+                    parser, VITTE_PARSER_ERROR_INVALID_PROCEDURE_MODIFIER,
+                    VITTE_TOKEN_INVALID, parser->position);
+                parser->recovering = false;
+            }
+            modifier_seen |= modifier_flag;
+            flags |= modifier_flag;
+            (void)vitte_parser_advance(parser);
             continue;
         }
 
         break;
+    }
+
+    if (modifier_seen != 0u &&
+        !vitte_parser_check(parser, VITTE_TOKEN_KW_PROC) &&
+        !(vitte_parser_check(parser, VITTE_TOKEN_KW_EXTERN) &&
+          (vitte_parser_check_next(parser, VITTE_TOKEN_KW_PROC) ||
+           (vitte_parser_peek(parser, 1u) != NULL &&
+            vitte_parser_peek(parser, 1u)->kind == VITTE_TOKEN_STRING_LITERAL &&
+            vitte_parser_peek(parser, 2u) != NULL &&
+            vitte_parser_peek(parser, 2u)->kind == VITTE_TOKEN_KW_PROC) ||
+           (vitte_parser_peek(parser, 1u) != NULL &&
+            vitte_parser_peek(parser, 1u)->kind == VITTE_TOKEN_IDENTIFIER &&
+            vitte_parser_token_text_equal(vitte_parser_current(parser), "intrinsic", 9u))))) {
+        (void)vitte_parser_error_at_position(
+            parser, VITTE_PARSER_ERROR_INVALID_PROCEDURE_MODIFIER,
+            VITTE_TOKEN_INVALID, first_procedure_modifier);
+        parser->recovering = false;
     }
 
     token = vitte_parser_current(parser);
@@ -9050,10 +11146,19 @@ vitte_parser_parse_declaration(
                      token,
                      "intrinsic",
                      9u))) {
-                (void)vitte_parser_error_here(
-                    parser,
-                    VITTE_PARSER_ERROR_EXPECTED_DECLARATION,
-                    VITTE_TOKEN_KW_PROC);
+                if (vitte_parser_token_text_equal(
+                        token, "intrinsic", 9u)) {
+                    (void)vitte_parser_error_at_position(
+                        parser,
+                        VITTE_PARSER_ERROR_INVALID_INTRINSIC_DECLARATION,
+                        VITTE_TOKEN_IDENTIFIER,
+                        parser->position + 1u);
+                } else {
+                    (void)vitte_parser_error_here(
+                        parser,
+                        VITTE_PARSER_ERROR_INVALID_EXTERNAL_PROCEDURE,
+                        VITTE_TOKEN_KW_PROC);
+                }
 
                 declaration = VITTE_AST_INVALID_ID;
                 break;
@@ -9078,10 +11183,39 @@ vitte_parser_parse_declaration(
             break;
 
         default:
-            (void)vitte_parser_error_here(
-                parser,
-                VITTE_PARSER_ERROR_EXPECTED_DECLARATION,
-                VITTE_TOKEN_INVALID);
+            if (declaration_modifier_invalid) {
+                declaration = VITTE_AST_INVALID_ID;
+            } else if (token->kind == VITTE_TOKEN_KW_RETURN) {
+                (void)vitte_parser_error_here(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_RETURN_STATEMENT,
+                    VITTE_TOKEN_INVALID);
+            } else if (token->kind == VITTE_TOKEN_KW_BREAK ||
+                       token->kind == VITTE_TOKEN_KW_CONTINUE) {
+                (void)vitte_parser_error_here(
+                    parser,
+                    VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT,
+                    VITTE_TOKEN_INVALID);
+            } else if (vitte_parser_is_statement_start(token->kind)) {
+                (void)vitte_parser_error_here(
+                    parser, VITTE_PARSER_ERROR_UNEXPECTED_STATEMENT,
+                    VITTE_TOKEN_INVALID);
+            } else if (vitte_parser_token_can_start_expression(token)) {
+                (void)vitte_parser_error_here(
+                    parser, VITTE_PARSER_ERROR_UNEXPECTED_EXPRESSION,
+                    VITTE_TOKEN_INVALID);
+            } else if (vitte_token_kind_is_keyword(token->kind) ||
+                       token->kind == VITTE_TOKEN_AT ||
+                       token->kind == VITTE_TOKEN_DOLLAR) {
+                (void)vitte_parser_error_here(
+                    parser, VITTE_PARSER_ERROR_UNSUPPORTED,
+                    VITTE_TOKEN_INVALID);
+            } else {
+                (void)vitte_parser_error_here(
+                    parser,
+                    VITTE_PARSER_ERROR_EXPECTED_DECLARATION,
+                    VITTE_TOKEN_INVALID);
+            }
 
             declaration = VITTE_AST_INVALID_ID;
             break;
@@ -9104,6 +11238,9 @@ vitte_parser_parse_translation_unit(
 {
     vitte_ast_node_id_t root;
     vitte_ast_node_t *root_node;
+    bool module_header_seen = false;
+    bool module_directive_seen = false;
+    bool non_header_seen = false;
 
     root =
         vitte_parser_add_node(
@@ -9125,6 +11262,35 @@ vitte_parser_parse_translation_unit(
             vitte_parser_parse_declaration(parser);
 
         if (declaration != VITTE_AST_INVALID_ID) {
+            const vitte_ast_node_t *parsed =
+                vitte_parser_get_node(parser, declaration);
+            if (parsed != NULL &&
+                parsed->kind == VITTE_AST_NODE_SPACE_DECL &&
+                parsed->child_count == 1u) {
+                if (module_header_seen) {
+                    (void)vitte_parser_error_at_position(
+                        parser,
+                        VITTE_PARSER_ERROR_DUPLICATE_MODULE_HEADER,
+                        VITTE_TOKEN_KW_SPACE,
+                        parsed->token_index);
+                } else if (non_header_seen) {
+                    (void)vitte_parser_error_at_position(
+                        parser,
+                        VITTE_PARSER_ERROR_MISPLACED_MODULE_HEADER,
+                        VITTE_TOKEN_KW_SPACE,
+                        parsed->token_index);
+                    module_header_seen = true;
+                } else {
+                    module_header_seen = true;
+                }
+            } else {
+                non_header_seen = true;
+                if (parsed != NULL &&
+                    (parsed->kind == VITTE_AST_NODE_USE_DECL ||
+                     (parsed->flags & VITTE_AST_FLAG_PUBLIC) != 0u)) {
+                    module_directive_seen = true;
+                }
+            }
             if (!vitte_parser_node_append_child(
                     parser,
                     root,
@@ -9147,6 +11313,15 @@ vitte_parser_parse_translation_unit(
             !vitte_parser_at_end(parser)) {
             (void)vitte_parser_advance(parser);
         }
+    }
+
+    if (module_directive_seen && !module_header_seen &&
+        parser->stats.errors == 0u &&
+        parser->last_error == VITTE_PARSER_ERROR_NONE) {
+        (void)vitte_parser_error_here(
+            parser,
+            VITTE_PARSER_ERROR_MISSING_MODULE_HEADER,
+            VITTE_TOKEN_KW_SPACE);
     }
 
     root_node =
@@ -9959,6 +12134,7 @@ vitte_parser_init(
     parser->last_error =
         VITTE_PARSER_ERROR_NONE;
     parser->match_subject_depth = 0u;
+    parser->match_arm_depth = 0u;
     parser->recovering = false;
 
     parser->tokens = tokens;
@@ -10029,6 +12205,7 @@ vitte_parser_reset(
     parser->last_error =
         VITTE_PARSER_ERROR_NONE;
     parser->match_subject_depth = 0u;
+    parser->match_arm_depth = 0u;
     parser->recovering = false;
 
     parser->max_nodes = max_nodes;
@@ -10148,6 +12325,220 @@ vitte_parser_error_name(
 
         case VITTE_PARSER_ERROR_INTERNAL:
             return "internal";
+
+        case VITTE_PARSER_ERROR_INVALID_MODULE_PATH:
+            return "invalid_module_path";
+
+        case VITTE_PARSER_ERROR_DUPLICATE_MODULE_HEADER:
+            return "duplicate_module_header";
+
+        case VITTE_PARSER_ERROR_MISPLACED_MODULE_HEADER:
+            return "misplaced_module_header";
+
+        case VITTE_PARSER_ERROR_INVALID_USE_DECLARATION:
+            return "invalid_use_declaration";
+
+        case VITTE_PARSER_ERROR_INVALID_USE_ALIAS:
+            return "invalid_use_alias";
+
+        case VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP:
+            return "invalid_import_group";
+
+        case VITTE_PARSER_ERROR_INVALID_GLOB_IMPORT:
+            return "invalid_glob_import";
+
+        case VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE:
+            return "invalid_export_clause";
+
+        case VITTE_PARSER_ERROR_EMPTY_EXPORT_GROUP:
+            return "empty_export_group";
+
+        case VITTE_PARSER_ERROR_INVALID_EXPORT_ALIAS:
+            return "invalid_export_alias";
+
+        case VITTE_PARSER_ERROR_TRAILING_TOKENS:
+            return "trailing_tokens";
+        case VITTE_PARSER_ERROR_MISSING_MODULE_HEADER:
+            return "missing_module_header";
+
+        case VITTE_PARSER_ERROR_INVALID_VALUE_DECLARATION:
+            return "invalid_value_declaration";
+
+        case VITTE_PARSER_ERROR_MISSING_VALUE_INITIALIZER:
+            return "missing_value_initializer";
+
+        case VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION:
+            return "invalid_type_declaration";
+
+        case VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION:
+            return "invalid_opaque_declaration";
+
+        case VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION:
+            return "invalid_form_declaration";
+
+        case VITTE_PARSER_ERROR_DUPLICATE_FORM_FIELD:
+            return "duplicate_form_field";
+
+        case VITTE_PARSER_ERROR_INVALID_FORM_FIELD_SEPARATOR:
+            return "invalid_form_field_separator";
+
+        case VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION:
+            return "invalid_pick_declaration";
+        case VITTE_PARSER_ERROR_DUPLICATE_PICK_VARIANT:
+            return "duplicate_pick_variant";
+        case VITTE_PARSER_ERROR_INVALID_PICK_VARIANT_PAYLOAD:
+            return "invalid_pick_variant_payload";
+        case VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION:
+            return "invalid_trait_declaration";
+        case VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION:
+            return "invalid_impl_declaration";
+        case VITTE_PARSER_ERROR_MISSING_IMPL_TARGET_TYPE:
+            return "missing_impl_target_type";
+        case VITTE_PARSER_ERROR_INVALID_IMPL_FOR_CLAUSE:
+            return "invalid_impl_for_clause";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION:
+            return "invalid_procedure_declaration";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS:
+            return "invalid_procedure_parameters";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_RETURN_TYPE:
+            return "invalid_procedure_return_type";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_MODIFIER:
+            return "invalid_procedure_modifier";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM:
+            return "invalid_procedure_body_form";
+        case VITTE_PARSER_ERROR_INVALID_EXTERNAL_PROCEDURE:
+            return "invalid_external_procedure";
+        case VITTE_PARSER_ERROR_INVALID_INTRINSIC_DECLARATION:
+            return "invalid_intrinsic_declaration";
+        case VITTE_PARSER_ERROR_INVALID_ABI_STRING_LITERAL:
+            return "invalid_abi_string_literal";
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_PARAMETER_LIST:
+            return "invalid_generic_parameter_list";
+        case VITTE_PARSER_ERROR_INVALID_CONST_GENERIC_PARAMETER:
+            return "invalid_const_generic_parameter";
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_BOUND:
+            return "invalid_generic_bound";
+        case VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE:
+            return "invalid_where_clause";
+        case VITTE_PARSER_ERROR_INVALID_REQUIRES_CLAUSE:
+            return "invalid_requires_clause";
+        case VITTE_PARSER_ERROR_INVALID_ENSURES_CLAUSE:
+            return "invalid_ensures_clause";
+        case VITTE_PARSER_ERROR_INVALID_MACRO_DECLARATION:
+            return "invalid_macro_declaration";
+        case VITTE_PARSER_ERROR_INVALID_MACRO_PARAMETERS:
+            return "invalid_macro_parameters";
+        case VITTE_PARSER_ERROR_INVALID_TEST_DECLARATION:
+            return "invalid_test_declaration";
+        case VITTE_PARSER_ERROR_INVALID_DECLARATION_MODIFIER_ORDER:
+            return "invalid_declaration_modifier_order";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE:
+            return "invalid_attribute";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_NAME:
+            return "invalid_attribute_name";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_ARGUMENTS:
+            return "invalid_attribute_arguments";
+        case VITTE_PARSER_ERROR_MISSING_ATTRIBUTE_VALUE:
+            return "missing_attribute_value";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_LITERAL:
+            return "invalid_attribute_literal";
+        case VITTE_PARSER_ERROR_UNEXPECTED_DECLARATION:
+            return "unexpected_declaration";
+        case VITTE_PARSER_ERROR_UNEXPECTED_STATEMENT:
+            return "unexpected_statement";
+        case VITTE_PARSER_ERROR_UNEXPECTED_EXPRESSION:
+            return "unexpected_expression";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_TYPE:
+            return "invalid_procedure_type";
+        case VITTE_PARSER_ERROR_INVALID_REFERENCE_TYPE:
+            return "invalid_reference_type";
+        case VITTE_PARSER_ERROR_INVALID_POINTER_TYPE:
+            return "invalid_pointer_type";
+        case VITTE_PARSER_ERROR_INVALID_ARRAY_TYPE:
+            return "invalid_array_type";
+        case VITTE_PARSER_ERROR_INVALID_SLICE_TYPE:
+            return "invalid_slice_type";
+        case VITTE_PARSER_ERROR_INVALID_OPTIONAL_TYPE:
+            return "invalid_optional_type";
+        case VITTE_PARSER_ERROR_INVALID_TYPE_PATH:
+            return "invalid_type_path";
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS:
+            return "invalid_generic_arguments";
+
+        case VITTE_PARSER_ERROR_INVALID_LET_STATEMENT:
+            return "invalid_let_statement";
+
+        case VITTE_PARSER_ERROR_INVALID_SET_STATEMENT:
+            return "invalid_set_statement";
+
+        case VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_OPERATOR:
+            return "invalid_assignment_operator";
+
+        case VITTE_PARSER_ERROR_INVALID_RETURN_STATEMENT:
+            return "invalid_return_statement";
+
+        case VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT:
+            return "invalid_jump_statement";
+
+        case VITTE_PARSER_ERROR_INVALID_DEFER_STATEMENT:
+            return "invalid_defer_statement";
+        case VITTE_PARSER_ERROR_INVALID_ASSERT_STATEMENT:
+            return "invalid_assert_statement";
+        case VITTE_PARSER_ERROR_INVALID_UNSAFE_STATEMENT:
+            return "invalid_unsafe_statement";
+        case VITTE_PARSER_ERROR_INVALID_ASM_STATEMENT:
+            return "invalid_asm_statement";
+        case VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT:
+            return "invalid_control_flow_statement";
+        case VITTE_PARSER_ERROR_INVALID_MATCH_STATEMENT:
+            return "invalid_match_statement";
+        case VITTE_PARSER_ERROR_INVALID_MATCH_ARM:
+            return "invalid_match_arm";
+        case VITTE_PARSER_ERROR_INVALID_PATTERN:
+            return "invalid_pattern";
+        case VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN:
+            return "invalid_range_pattern";
+        case VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_EXPRESSION:
+            return "invalid_assignment_expression";
+        case VITTE_PARSER_ERROR_INVALID_COALESCING_EXPRESSION:
+            return "invalid_coalescing_expression";
+        case VITTE_PARSER_ERROR_INVALID_LOGICAL_EXPRESSION:
+            return "invalid_logical_expression";
+        case VITTE_PARSER_ERROR_INVALID_BITWISE_EXPRESSION:
+            return "invalid_bitwise_expression";
+        case VITTE_PARSER_ERROR_INVALID_COMPARISON_EXPRESSION:
+            return "invalid_comparison_expression";
+        case VITTE_PARSER_ERROR_INVALID_SHIFT_EXPRESSION:
+            return "invalid_shift_expression";
+        case VITTE_PARSER_ERROR_INVALID_ARITHMETIC_EXPRESSION:
+            return "invalid_arithmetic_expression";
+        case VITTE_PARSER_ERROR_INVALID_RANGE_EXPRESSION:
+            return "invalid_range_expression";
+        case VITTE_PARSER_ERROR_INVALID_UNARY_EXPRESSION:
+            return "invalid_unary_expression";
+        case VITTE_PARSER_ERROR_INVALID_CAST_EXPRESSION:
+            return "invalid_cast_expression";
+        case VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION:
+            return "invalid_postfix_expression";
+        case VITTE_PARSER_ERROR_INVALID_IF_EXPRESSION:
+            return "invalid_if_expression";
+        case VITTE_PARSER_ERROR_INVALID_BLOCK_EXPRESSION:
+            return "invalid_block_expression";
+
+        case VITTE_PARSER_ERROR_INVALID_ARRAY_EXPRESSION:
+            return "invalid_array_expression";
+
+        case VITTE_PARSER_ERROR_INVALID_SIZEOF_EXPRESSION:
+            return "invalid_sizeof_expression";
+
+        case VITTE_PARSER_ERROR_INVALID_ALIGNOF_EXPRESSION:
+            return "invalid_alignof_expression";
+
+        case VITTE_PARSER_ERROR_INVALID_NULL_CONSTRUCTION:
+            return "invalid_null_construction";
+
+        case VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST:
+            return "invalid_expression_list";
 
         case VITTE_PARSER_ERROR_COUNT:
             return "count";

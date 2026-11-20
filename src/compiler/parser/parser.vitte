@@ -16,6 +16,7 @@ use compiler::ast::ast::{
     AST_NODE_FLAG_FUNCTION_TYPE_HAS_RETURN,
     AST_NODE_FLAG_GLOB_IMPORT,
     AST_NODE_FLAG_HAS_ATTRIBUTES,
+    AST_NODE_FLAG_INTRINSIC,
     AST_NODE_FLAG_MUTABLE,
     AST_NODE_FLAG_PUBLIC,
     AST_NODE_FLAG_TYPE_ALIAS,
@@ -75,8 +76,12 @@ export const PARSER_AST_FLAG_EXTERN: u32 = 4;
 export const PARSER_AST_FLAG_ASYNC: u32 = 8;
 export const PARSER_AST_FLAG_UNSAFE: u32 = 16;
 export const PARSER_AST_FLAG_COMPTIME: u32 = 32;
-const PARSER_AST_FLAG_CONTRACT_REQUIRES: u32 = 64;
-const PARSER_AST_FLAG_CONTRACT_ENSURES: u32 = 128;
+export const PARSER_AST_FLAG_INTRINSIC: u32 = 524288;
+export const PARSER_AST_FLAG_PARAMETER_MOVE: u32 = 1048576;
+export const PARSER_AST_FLAG_PARAMETER_OWNED: u32 = 2097152;
+export const PARSER_AST_FLAG_PARAMETER_BORROW: u32 = 4194304;
+export const PARSER_AST_FLAG_CONTRACT_REQUIRES: u32 = 64;
+export const PARSER_AST_FLAG_CONTRACT_ENSURES: u32 = 128;
 export const PARSER_AST_FLAG_FUNCTION_TYPE_HAS_RETURN: u32 = 32768;
 export const PARSER_AST_FLAG_TYPE_ALIAS: u32 = 65536;
 export const PARSER_AST_FLAG_TYPE_QUERY_TYPE_OPERAND: u32 = 131072;
@@ -86,6 +91,8 @@ export const PARSER_AST_FLAG_PATTERN_HEAD: u32 = 1048576;
 export const PARSER_AST_FLAG_PATTERN_OR: u32 = 2097152;
 export const PARSER_AST_FLAG_PATTERN_RANGE: u32 = 4194304;
 export const PARSER_AST_FLAG_PATTERN_STRUCT: u32 = 8388608;
+export const PARSER_AST_FLAG_PATTERN_TUPLE: u32 = 16777216;
+export const PARSER_AST_FLAG_PATTERN_ARRAY: u32 = 33554432;
 export const PARSER_AST_FLAG_CONST_GENERIC: u32 = 16777216;
 const PARSER_AST_CONVERSION_MAX_DEPTH: usize = 1024;
 export pick ParserError {
@@ -111,6 +118,98 @@ export pick ParserError {
     Corruption,
     Unsupported,
     Internal,
+    InvalidModulePath,
+    DuplicateModuleHeader,
+    MisplacedModuleHeader,
+    InvalidUseDeclaration,
+    InvalidUseAlias,
+    InvalidImportGroup,
+    InvalidGlobImport,
+    InvalidExportClause,
+    EmptyExportGroup,
+    InvalidExportAlias,
+    TrailingTokens,
+    MissingModuleHeader,
+    InvalidValueDeclaration,
+    MissingValueInitializer,
+    InvalidTypeDeclaration,
+    InvalidOpaqueDeclaration,
+    InvalidFormDeclaration,
+    DuplicateFormField,
+    InvalidFormFieldSeparator,
+    InvalidPickDeclaration,
+    DuplicatePickVariant,
+    InvalidPickVariantPayload,
+    InvalidTraitDeclaration,
+    InvalidImplDeclaration,
+    MissingImplTargetType,
+    InvalidImplForClause,
+    InvalidProcedureDeclaration,
+    InvalidProcedureParameters,
+    InvalidProcedureReturnType,
+    InvalidProcedureModifier,
+    InvalidProcedureBodyForm,
+    InvalidExternalProcedure,
+    InvalidIntrinsicDeclaration,
+    InvalidAbiStringLiteral,
+    InvalidGenericParameterList,
+    InvalidConstGenericParameter,
+    InvalidGenericBound,
+    InvalidWhereClause,
+    InvalidRequiresClause,
+    InvalidEnsuresClause,
+    InvalidMacroDeclaration,
+    InvalidMacroParameters,
+    InvalidTestDeclaration,
+    InvalidDeclarationModifierOrder,
+    InvalidAttribute,
+    InvalidAttributeName,
+    InvalidAttributeArguments,
+    MissingAttributeValue,
+    InvalidAttributeLiteral,
+    UnexpectedDeclaration,
+    UnexpectedStatement,
+    UnexpectedExpression,
+    InvalidProcedureType,
+    InvalidReferenceType,
+    InvalidPointerType,
+    InvalidArrayType,
+    InvalidSliceType,
+    InvalidOptionalType,
+    InvalidTypePath,
+    InvalidGenericArguments,
+    InvalidLetStatement,
+    InvalidSetStatement,
+    InvalidAssignmentOperator,
+    InvalidReturnStatement,
+    InvalidJumpStatement,
+    InvalidDeferStatement,
+    InvalidAssertStatement,
+    InvalidUnsafeStatement,
+    InvalidAsmStatement,
+    InvalidControlFlowStatement,
+    InvalidMatchStatement,
+    InvalidMatchArm,
+    InvalidPattern,
+    InvalidRangePattern,
+    InvalidAssignmentExpression,
+    InvalidCoalescingExpression,
+    InvalidLogicalExpression,
+    InvalidBitwiseExpression,
+    InvalidComparisonExpression,
+    InvalidShiftExpression,
+    InvalidArithmeticExpression,
+    InvalidRangeExpression,
+    InvalidUnaryExpression,
+    InvalidCastExpression,
+    InvalidPostfixExpression,
+    InvalidIfExpression,
+    InvalidBlockExpression,
+    InvalidArrayExpression,
+    InvalidSizeofExpression,
+    InvalidAlignofExpression,
+    InvalidNullConstruction,
+    InvalidExpressionList,
     Count
 }
 
@@ -310,6 +409,7 @@ export form Parser {
     max_recovery_tokens: usize,
     recursion_depth: usize,
     match_subject_depth: usize,
+    match_arm_depth: usize,
     recovering: bool,
     stats: ParserStats,
     generation: u64
@@ -807,6 +907,129 @@ proc parser_error_here(parser: *mut Parser, error: ParserError, expected: TokenK
     return false;
 }
 
+proc parser_error_at_position(
+    parser: *mut Parser,
+    error: ParserError,
+    expected: TokenKind,
+    position: usize
+) -> bool {
+    let token = parser_token_at_private(parser, position);
+    if token != null {
+        return parser_emit_diagnostic(
+            parser,
+            ParserDiagnosticKind.Error,
+            error,
+            parser_span_from_token(token),
+            expected,
+            (*token).kind
+        );
+    }
+    return parser_emit_diagnostic(
+        parser,
+        ParserDiagnosticKind.Error,
+        error,
+        parser_span_invalid(),
+        expected,
+        TokenKind.Invalid
+    );
+}
+
+proc parser_reclassify_last_diagnostic(
+    parser: *mut Parser,
+    diagnostic_start: usize,
+    error: ParserError
+) {
+    if parser == null or (*parser).diagnostic_count <= diagnostic_start {
+        return;
+    }
+    let diag_entry = (&mut (*parser).diagnostics[(*parser).diagnostic_count - 1]) as *mut ParserDiagnostic;
+    if (*diag_entry).kind != ParserDiagnosticKind.Error {
+        return;
+    }
+    if (*diag_entry).expected == TokenKind.Identifier and
+       vitte_token_kind_is_keyword((*diag_entry).found) {
+        return;
+    }
+    if (*diag_entry).error == ParserError.InvalidArgument or
+       (*diag_entry).error == ParserError.InvalidContext or
+       (*diag_entry).error == ParserError.InvalidState or
+       (*diag_entry).error == ParserError.InvalidToken or
+       (*diag_entry).error == ParserError.InvalidNode or
+       (*diag_entry).error == ParserError.NodeLimit or
+       (*diag_entry).error == ParserError.DiagnosticLimit or
+       (*diag_entry).error == ParserError.RecursionLimit or
+       (*diag_entry).error == ParserError.Overflow or
+       (*diag_entry).error == ParserError.OutOfMemory or
+       (*diag_entry).error == ParserError.Validation or
+       (*diag_entry).error == ParserError.Corruption or
+       (*diag_entry).error == ParserError.Internal {
+        return;
+    }
+    if (*diag_entry).error == ParserError.InvalidExternalProcedure or
+       (*diag_entry).error == ParserError.InvalidIntrinsicDeclaration or
+       (*diag_entry).error == ParserError.InvalidAbiStringLiteral or
+       (*diag_entry).error == ParserError.InvalidGenericParameterList or
+       (*diag_entry).error == ParserError.InvalidConstGenericParameter or
+       (*diag_entry).error == ParserError.InvalidGenericBound or
+       (*diag_entry).error == ParserError.InvalidWhereClause or
+       (*diag_entry).error == ParserError.InvalidRequiresClause or
+       (*diag_entry).error == ParserError.InvalidEnsuresClause or
+       (*diag_entry).error == ParserError.InvalidMacroDeclaration or
+       (*diag_entry).error == ParserError.InvalidMacroParameters or
+       (*diag_entry).error == ParserError.InvalidTestDeclaration or
+       (*diag_entry).error == ParserError.InvalidDeclarationModifierOrder or
+       (*diag_entry).error == ParserError.InvalidProcedureType or
+       (*diag_entry).error == ParserError.InvalidReferenceType or
+       (*diag_entry).error == ParserError.InvalidPointerType or
+       (*diag_entry).error == ParserError.InvalidArrayType or
+       (*diag_entry).error == ParserError.InvalidSliceType or
+       (*diag_entry).error == ParserError.InvalidOptionalType or
+       (*diag_entry).error == ParserError.InvalidTypePath or
+       (*diag_entry).error == ParserError.InvalidGenericArguments or
+       (*diag_entry).error == ParserError.InvalidLetStatement or
+       (*diag_entry).error == ParserError.InvalidSetStatement or
+       (*diag_entry).error == ParserError.InvalidAssignmentOperator or
+       (*diag_entry).error == ParserError.InvalidReturnStatement or
+       (*diag_entry).error == ParserError.InvalidJumpStatement or
+       (*diag_entry).error == ParserError.InvalidDeferStatement or
+       (*diag_entry).error == ParserError.InvalidAssertStatement or
+       (*diag_entry).error == ParserError.InvalidUnsafeStatement or
+       (*diag_entry).error == ParserError.InvalidAsmStatement or
+       (*diag_entry).error == ParserError.InvalidControlFlowStatement or
+       (*diag_entry).error == ParserError.InvalidMatchStatement or
+       (*diag_entry).error == ParserError.InvalidMatchArm or
+       ((*diag_entry).error == ParserError.InvalidPattern and not
+        (error == ParserError.InvalidLetStatement and
+         ((*diag_entry).found == TokenKind.Equal or
+          (*diag_entry).found == TokenKind.Colon or
+          (*diag_entry).found == TokenKind.Semicolon or
+          (*diag_entry).found == TokenKind.RightBrace or
+          (*diag_entry).found == TokenKind.Invalid))) or
+       (*diag_entry).error == ParserError.InvalidRangePattern or
+       (*diag_entry).error == ParserError.InvalidAssignmentExpression or
+       (*diag_entry).error == ParserError.InvalidCoalescingExpression or
+       (*diag_entry).error == ParserError.InvalidLogicalExpression or
+       (*diag_entry).error == ParserError.InvalidBitwiseExpression or
+       (*diag_entry).error == ParserError.InvalidComparisonExpression or
+       (*diag_entry).error == ParserError.InvalidShiftExpression or
+       (*diag_entry).error == ParserError.InvalidArithmeticExpression or
+       (*diag_entry).error == ParserError.InvalidRangeExpression or
+       (*diag_entry).error == ParserError.InvalidUnaryExpression or
+       (*diag_entry).error == ParserError.InvalidCastExpression or
+       (*diag_entry).error == ParserError.InvalidPostfixExpression or
+       (*diag_entry).error == ParserError.InvalidIfExpression or
+       (*diag_entry).error == ParserError.InvalidBlockExpression or
+       (*diag_entry).error == ParserError.InvalidArrayExpression or
+       (*diag_entry).error == ParserError.InvalidSizeofExpression or
+       (*diag_entry).error == ParserError.InvalidAlignofExpression or
+       (*diag_entry).error == ParserError.InvalidNullConstruction or
+       (*diag_entry).error == ParserError.InvalidExpressionList {
+        return;
+    }
+    set (*diag_entry).error = error;
+    set (*parser).last_error = error;
+}
+
 proc parser_span_from_range(parser: *const Parser, first: usize, last_exclusive: usize) -> ParserSpan {
     if parser == null or first >= (*parser).token_count or last_exclusive <= first {
         return parser_span_invalid();
@@ -956,11 +1179,17 @@ proc parser_parse_path_segment_node(parser: *mut Parser) -> ASTNodeId {
     return id;
 }
 
-proc parser_path_has_next_segment(parser: *const Parser, allow_slash_separator: bool) -> bool {
-    return (parser_check(parser, TokenKind.ColonColon) and
-            parser_token_is_path_segment(parser_peek(parser, 1))) or
-           (allow_slash_separator and parser_check(parser, TokenKind.Slash) and
-            parser_token_is_path_segment(parser_peek(parser, 1)));
+proc parser_path_has_separator(parser: *const Parser, allow_slash_separator: bool) -> bool {
+    if allow_slash_separator and parser_check(parser, TokenKind.ColonColon) {
+        let next = parser_peek(parser, 1);
+        if next != null and
+           ((*next).kind == TokenKind.LeftBrace or
+            (*next).kind == TokenKind.Star) {
+            return false;
+        }
+    }
+    return parser_check(parser, TokenKind.ColonColon) or
+        (allow_slash_separator and parser_check(parser, TokenKind.Slash));
 }
 
 proc parser_parse_path_mode(
@@ -1002,8 +1231,12 @@ proc parser_parse_path_mode(
         }
     }
 
-    while parser_path_has_next_segment(parser, allow_slash_separator) {
+    while parser_path_has_separator(parser, allow_slash_separator) {
         parser_advance(parser);
+        if not parser_token_is_path_segment(parser_current(parser)) {
+            parser_error_here(parser, ParserError.InvalidModulePath, TokenKind.Identifier);
+            return PARSER_INVALID_NODE_ID;
+        }
         let segment_id = parser_parse_path_segment_node(parser);
         if segment_id == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, path_id, segment_id) {
@@ -1024,6 +1257,234 @@ proc parser_parse_path_mode(
 
 proc parser_parse_path(parser: *mut Parser) -> ASTNodeId {
     return parser_parse_path_mode(parser, true, false);
+}
+
+proc parser_path_concat(
+    parser: *mut Parser,
+    prefix_id: ASTNodeId,
+    suffix_id: ASTNodeId
+) -> ASTNodeId {
+    if prefix_id == PARSER_INVALID_NODE_ID {
+        return suffix_id;
+    }
+    let prefix = vitte_parser_get_node(parser, prefix_id);
+    let suffix = vitte_parser_get_node(parser, suffix_id);
+    if prefix == null or suffix == null or
+       (*prefix).kind != ASTNodeKind.Path or (*suffix).kind != ASTNodeKind.Path {
+        return PARSER_INVALID_NODE_ID;
+    }
+    let joined_id = parser_add_node(
+        parser,
+        ASTNodeKind.Path,
+        parser_span_join((*prefix).span, (*suffix).span)
+    );
+    if joined_id == PARSER_INVALID_NODE_ID {
+        return joined_id;
+    }
+    let joined = vitte_parser_get_node_mut(parser, joined_id);
+    if joined != null {
+        set (*joined).token_index = (*prefix).token_index;
+    }
+    let mut side: usize = 0;
+    while side < 2 {
+        let source_path = if side == 0 { prefix } else { suffix };
+        let mut index: usize = 0;
+        while index < (*source_path).child_count {
+            let source_segment = vitte_parser_get_node(
+                parser,
+                (*source_path).children[index]
+            );
+            if source_segment == null or (*source_segment).kind != ASTNodeKind.Identifier {
+                return PARSER_INVALID_NODE_ID;
+            }
+            let token_index: usize = (*source_segment).token_index;
+            let token = parser_token_at_private(parser, token_index);
+            if token == null {
+                return PARSER_INVALID_NODE_ID;
+            }
+            let segment_id = parser_add_node(
+                parser,
+                ASTNodeKind.Identifier,
+                parser_span_from_token(token)
+            );
+            if segment_id == PARSER_INVALID_NODE_ID {
+                return segment_id;
+            }
+            let segment = vitte_parser_get_node_mut(parser, segment_id);
+            if segment == null {
+                return PARSER_INVALID_NODE_ID;
+            }
+            set (*segment).token_index = token_index;
+            if not parser_node_append_child(parser, joined_id, segment_id) {
+                return PARSER_INVALID_NODE_ID;
+            }
+            set index += 1;
+        }
+        set side += 1;
+    }
+    return joined_id;
+}
+
+proc parser_parse_import_group_inner(
+    parser: *mut Parser,
+    declaration: ASTNodeId,
+    prefix_id: ASTNodeId
+) -> bool {
+    if parser_check(parser, TokenKind.RightBrace) {
+        parser_error_here(parser, ParserError.InvalidImportGroup, TokenKind.Identifier);
+        parser_advance(parser);
+        return true;
+    }
+    loop {
+        let current = parser_current(parser);
+        let item_begin: usize = (*parser).position;
+        if not parser_token_is_path_segment(current) {
+            parser_error_here(
+                parser,
+                if current != null and (*current).kind == TokenKind.Star {
+                    ParserError.InvalidGlobImport
+                } else {
+                    ParserError.InvalidImportGroup
+                },
+                TokenKind.Identifier
+            );
+            let recovery = parser_synchronize_list(
+                parser,
+                TokenKind.RightBrace,
+                false,
+                item_begin
+            );
+            if recovery == ParserListRecovery.Next { continue; }
+            if recovery == ParserListRecovery.End { break; }
+            return false;
+        }
+        let item = parser_parse_path(parser);
+        if item == PARSER_INVALID_NODE_ID {
+            let recovery = parser_synchronize_list(
+                parser,
+                TokenKind.RightBrace,
+                false,
+                item_begin
+            );
+            if recovery == ParserListRecovery.Next { continue; }
+            if recovery == ParserListRecovery.End { break; }
+            return false;
+        }
+        let full_item = parser_path_concat(parser, prefix_id, item);
+        if full_item == PARSER_INVALID_NODE_ID {
+            return false;
+        }
+
+        let nested_group_open = parser_peek(parser, 1);
+        if parser_check(parser, TokenKind.ColonColon) and
+           nested_group_open != null and
+           (*nested_group_open).kind == TokenKind.LeftBrace {
+            parser_advance(parser);
+            parser_advance(parser);
+            if not parser_parse_import_group(parser, declaration, full_item) {
+                return false;
+            }
+        } else {
+            if parser_check(parser, TokenKind.ColonColon) {
+                let next = parser_peek(parser, 1);
+                parser_error_here(
+                    parser,
+                    if next != null and (*next).kind == TokenKind.Star {
+                        ParserError.InvalidGlobImport
+                    } else {
+                        ParserError.InvalidImportGroup
+                    },
+                    TokenKind.LeftBrace
+                );
+                let recovery = parser_synchronize_list(
+                    parser,
+                    TokenKind.RightBrace,
+                    false,
+                    item_begin
+                );
+                if recovery == ParserListRecovery.Next { continue; }
+                if recovery == ParserListRecovery.End { break; }
+                return false;
+            }
+            let mut alias: ASTNodeId = PARSER_INVALID_NODE_ID;
+            if parser_is_as_keyword(parser) {
+                parser_advance(parser);
+                if not parser_token_is_identifier(parser_current(parser)) {
+                    parser_error_here(parser, ParserError.InvalidUseAlias, TokenKind.Identifier);
+                    let recovery = parser_synchronize_list(
+                        parser,
+                        TokenKind.RightBrace,
+                        false,
+                        item_begin
+                    );
+                    if recovery == ParserListRecovery.Next { continue; }
+                    if recovery == ParserListRecovery.End { break; }
+                    return false;
+                }
+                set alias = parser_parse_identifier_node(parser);
+                if alias == PARSER_INVALID_NODE_ID {
+                    let recovery = parser_synchronize_list(
+                        parser,
+                        TokenKind.RightBrace,
+                        false,
+                        item_begin
+                    );
+                    if recovery == ParserListRecovery.Next { continue; }
+                    if recovery == ParserListRecovery.End { break; }
+                    return false;
+                }
+            }
+            if not parser_node_append_child(parser, declaration, full_item) or
+               (alias != PARSER_INVALID_NODE_ID and
+                not parser_node_append_child(parser, declaration, alias)) {
+                return false;
+            }
+        }
+
+        if parser_check(parser, TokenKind.Comma) {
+            parser_advance(parser);
+            if parser_check(parser, TokenKind.RightBrace) {
+                break;
+            }
+            continue;
+        }
+        if parser_check(parser, TokenKind.RightBrace) {
+            break;
+        }
+        parser_error_here(parser, ParserError.InvalidImportGroup, TokenKind.Comma);
+        if parser_token_is_path_segment(parser_current(parser)) {
+            set (*parser).recovering = false;
+            continue;
+        }
+        let recovery = parser_synchronize_list(
+            parser,
+            TokenKind.RightBrace,
+            false,
+            item_begin
+        );
+        if recovery == ParserListRecovery.Next { continue; }
+        if recovery == ParserListRecovery.End { break; }
+        return false;
+    }
+    if not parser_check(parser, TokenKind.RightBrace) {
+        parser_error_here(parser, ParserError.InvalidImportGroup, TokenKind.RightBrace);
+        return false;
+    }
+    parser_advance(parser);
+    return true;
+}
+
+proc parser_parse_import_group(
+    parser: *mut Parser,
+    declaration: ASTNodeId,
+    prefix_id: ASTNodeId
+) -> bool {
+    if not parser_enter_recursion(parser) {
+        return false;
+    }
+    let success = parser_parse_import_group_inner(parser, declaration, prefix_id);
+    parser_leave_recursion(parser);
+    return success;
 }
 
 proc parser_is_declaration_start(kind: TokenKind) -> bool {
@@ -1143,6 +1604,10 @@ proc parser_is_as_keyword(parser: *const Parser) -> bool {
 proc parser_parse_use_declaration(parser: *mut Parser, incoming_node_flags: u32) -> ASTNodeId {
     let begin: usize = (*parser).position;
     parser_advance(parser);
+    if not parser_token_is_path_segment(parser_current(parser)) {
+        parser_error_here(parser, ParserError.InvalidUseDeclaration, TokenKind.Identifier);
+        return PARSER_INVALID_NODE_ID;
+    }
     let path = parser_parse_path(parser);
     if path == PARSER_INVALID_NODE_ID {
         return path;
@@ -1163,97 +1628,44 @@ proc parser_parse_use_declaration(parser: *mut Parser, incoming_node_flags: u32)
     }
 
     let mut use_node_flags = incoming_node_flags;
+    let current = parser_current(parser);
+    let path_tail = parser_current(parser);
+    let path_tail_next = parser_peek(parser, 1);
+    if path_tail != null and
+       ((*path_tail).kind == TokenKind.Slash or
+        (*path_tail).kind == TokenKind.Dot or
+        ((*path_tail).kind == TokenKind.ColonColon and
+         (path_tail_next == null or
+          ((*path_tail_next).kind != TokenKind.Star and
+           (*path_tail_next).kind != TokenKind.LeftBrace)))) {
+        parser_error_here(parser, ParserError.InvalidModulePath, TokenKind.Identifier);
+        return PARSER_INVALID_NODE_ID;
+    }
     if parser_check(parser, TokenKind.ColonColon) {
         parser_advance(parser);
         if parser_check(parser, TokenKind.Star) {
             parser_advance(parser);
             set use_node_flags = use_node_flags | PARSER_AST_FLAG_GLOB_IMPORT;
+            let after_glob = parser_current(parser);
+            if after_glob != null and (*after_glob).kind != TokenKind.Semicolon {
+                parser_error_here(parser, ParserError.InvalidGlobImport, TokenKind.Semicolon);
+                return PARSER_INVALID_NODE_ID;
+            }
         } else if parser_check(parser, TokenKind.LeftBrace) {
             parser_advance(parser);
-            while not parser_at_end(parser) and not parser_check(parser, TokenKind.RightBrace) {
-                let item = parser_parse_path(parser);
-                if item == PARSER_INVALID_NODE_ID {
-                    if not (*parser).recovering {
-                        return PARSER_INVALID_NODE_ID;
-                    }
-                    let recovery = parser_synchronize_list(
-                        parser,
-                        TokenKind.RightBrace,
-                        false,
-                        (*parser).position
-                    );
-                    if recovery == ParserListRecovery.Next {
-                        continue;
-                    }
-                    if recovery == ParserListRecovery.End {
-                        break;
-                    }
-                    return PARSER_INVALID_NODE_ID;
-                }
-                let mut alias: ASTNodeId = PARSER_INVALID_NODE_ID;
-                if parser_is_as_keyword(parser) {
-                    parser_advance(parser);
-                    set alias = parser_parse_identifier_node(parser);
-                    if alias == PARSER_INVALID_NODE_ID {
-                        if not (*parser).recovering {
-                            return PARSER_INVALID_NODE_ID;
-                        }
-                        let recovery = parser_synchronize_list(
-                            parser,
-                            TokenKind.RightBrace,
-                            false,
-                            (*parser).position
-                        );
-                        if recovery == ParserListRecovery.Next {
-                            continue;
-                        }
-                        if recovery == ParserListRecovery.End {
-                            break;
-                        }
-                        return PARSER_INVALID_NODE_ID;
-                    }
-                }
-                if not parser_node_append_child(parser, declaration, item) or
-                   (alias != PARSER_INVALID_NODE_ID and
-                    not parser_node_append_child(parser, declaration, alias)) {
-                    return PARSER_INVALID_NODE_ID;
-                }
-                if parser_check(parser, TokenKind.Comma) {
-                    parser_advance(parser);
-                    continue;
-                }
-                if not parser_check(parser, TokenKind.RightBrace) {
-                    parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
-                    if parser_token_is_identifier(parser_current(parser)) {
-                        set (*parser).recovering = false;
-                        continue;
-                    }
-                    let recovery = parser_synchronize_list(
-                        parser,
-                        TokenKind.RightBrace,
-                        false,
-                        (*parser).position
-                    );
-                    if recovery == ParserListRecovery.Next {
-                        continue;
-                    }
-                    if recovery == ParserListRecovery.End {
-                        break;
-                    }
-                    return PARSER_INVALID_NODE_ID;
-                }
-                break;
-            }
-
-            if parser_expect(parser, TokenKind.RightBrace) == null {
+            if not parser_parse_import_group(parser, declaration, PARSER_INVALID_NODE_ID) {
                 return PARSER_INVALID_NODE_ID;
             }
         } else {
-            parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Identifier);
+            parser_error_here(parser, ParserError.InvalidUseDeclaration, TokenKind.Identifier);
             return PARSER_INVALID_NODE_ID;
         }
     } else if parser_is_as_keyword(parser) {
         parser_advance(parser);
+        if not parser_token_is_identifier(parser_current(parser)) {
+            parser_error_here(parser, ParserError.InvalidUseAlias, TokenKind.Identifier);
+            return PARSER_INVALID_NODE_ID;
+        }
         let alias: ASTNodeId = parser_parse_identifier_node(parser);
         if alias == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, declaration, alias) {
@@ -1265,9 +1677,16 @@ proc parser_parse_use_declaration(parser: *mut Parser, incoming_node_flags: u32)
     if declaration_node != null {
         set (*declaration_node).node_flags = use_node_flags;
     }
-    if parser_expect(parser, TokenKind.Semicolon) == null {
+    let semicolon = parser_current(parser);
+    if semicolon == null or (*semicolon).kind != TokenKind.Semicolon {
+        parser_error_here(
+            parser,
+            if semicolon != null { ParserError.TrailingTokens } else { ParserError.InvalidUseDeclaration },
+            TokenKind.Semicolon
+        );
         return PARSER_INVALID_NODE_ID;
     }
+    parser_advance(parser);
 
     let completed_declaration = vitte_parser_get_node_mut(parser, declaration);
     let completed_path = vitte_parser_get_node(parser, path);
@@ -1300,60 +1719,83 @@ proc parser_parse_export_clause(parser: *mut Parser) -> ASTNodeId {
         set (*export_ast_node).token_index = begin;
     }
 
+    let mut grouped = false;
+    let mut export_all = false;
+    let mut empty_group = false;
     if parser_check(parser, TokenKind.Star) {
         parser_advance(parser);
-    } else {
-        let grouped = parser_check(parser, TokenKind.LeftBrace);
-        if grouped {
+        set export_all = true;
+    } elif parser_check(parser, TokenKind.LeftBrace) {
+        parser_advance(parser);
+        set grouped = true;
+        if parser_check(parser, TokenKind.RightBrace) {
+            parser_error_here(parser, ParserError.EmptyExportGroup, TokenKind.Identifier);
             parser_advance(parser);
+            set empty_group = true;
         }
+    } elif not parser_token_is_path_segment(parser_current(parser)) {
+        parser_error_here(parser, ParserError.InvalidExportClause, TokenKind.Identifier);
+        return PARSER_INVALID_NODE_ID;
+    }
 
-        let mut first_export_item = true;
-        while not parser_at_end(parser) and
-              (first_export_item or not grouped or
-               not parser_check(parser, TokenKind.RightBrace)) {
-            set first_export_item = false;
-            let item = parser_parse_path(parser);
-            if item == PARSER_INVALID_NODE_ID {
-                if not grouped or not (*parser).recovering {
-                    return PARSER_INVALID_NODE_ID;
-                }
+    if not export_all and not empty_group {
+        loop {
+            let item_begin: usize = (*parser).position;
+            if not parser_token_is_path_segment(parser_current(parser)) {
+                parser_error_here(parser, ParserError.InvalidExportClause, TokenKind.Identifier);
+                if not grouped { return PARSER_INVALID_NODE_ID; }
                 let recovery = parser_synchronize_list(
                     parser,
                     TokenKind.RightBrace,
                     false,
-                    (*parser).position
+                    item_begin
                 );
-                if recovery == ParserListRecovery.Next {
-                    continue;
-                }
-                if recovery == ParserListRecovery.End {
-                    break;
-                }
+                if recovery == ParserListRecovery.Next { continue; }
+                if recovery == ParserListRecovery.End { break; }
                 return PARSER_INVALID_NODE_ID;
+            }
+            let item = parser_parse_path(parser);
+            if item == PARSER_INVALID_NODE_ID {
+                if not grouped { return item; }
+                let recovery = parser_synchronize_list(
+                    parser,
+                    TokenKind.RightBrace,
+                    false,
+                    item_begin
+                );
+                if recovery == ParserListRecovery.Next { continue; }
+                if recovery == ParserListRecovery.End { break; }
+                return item;
             }
 
             let mut alias: ASTNodeId = PARSER_INVALID_NODE_ID;
             if parser_is_as_keyword(parser) {
                 parser_advance(parser);
-                set alias = parser_parse_identifier_node(parser);
-                if alias == PARSER_INVALID_NODE_ID {
-                    if not grouped or not (*parser).recovering {
-                        return PARSER_INVALID_NODE_ID;
-                    }
+                if not parser_token_is_identifier(parser_current(parser)) {
+                    parser_error_here(parser, ParserError.InvalidExportAlias, TokenKind.Identifier);
+                    if not grouped { return PARSER_INVALID_NODE_ID; }
                     let recovery = parser_synchronize_list(
                         parser,
                         TokenKind.RightBrace,
                         false,
-                        (*parser).position
+                        item_begin
                     );
-                    if recovery == ParserListRecovery.Next {
-                        continue;
-                    }
-                    if recovery == ParserListRecovery.End {
-                        break;
-                    }
+                    if recovery == ParserListRecovery.Next { continue; }
+                    if recovery == ParserListRecovery.End { break; }
                     return PARSER_INVALID_NODE_ID;
+                }
+                set alias = parser_parse_identifier_node(parser);
+                if alias == PARSER_INVALID_NODE_ID {
+                    if not grouped { return alias; }
+                    let recovery = parser_synchronize_list(
+                        parser,
+                        TokenKind.RightBrace,
+                        false,
+                        item_begin
+                    );
+                    if recovery == ParserListRecovery.Next { continue; }
+                    if recovery == ParserListRecovery.End { break; }
+                    return alias;
                 }
             }
 
@@ -1362,7 +1804,6 @@ proc parser_parse_export_clause(parser: *mut Parser) -> ASTNodeId {
                 not parser_node_append_child(parser, export_node, alias)) {
                 return PARSER_INVALID_NODE_ID;
             }
-
             if not grouped {
                 break;
             }
@@ -1376,9 +1817,8 @@ proc parser_parse_export_clause(parser: *mut Parser) -> ASTNodeId {
             if parser_check(parser, TokenKind.RightBrace) {
                 break;
             }
-
-            parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
-            if parser_token_is_identifier(parser_current(parser)) {
+            parser_error_here(parser, ParserError.InvalidExportClause, TokenKind.Comma);
+            if parser_token_is_path_segment(parser_current(parser)) {
                 set (*parser).recovering = false;
                 continue;
             }
@@ -1386,25 +1826,31 @@ proc parser_parse_export_clause(parser: *mut Parser) -> ASTNodeId {
                 parser,
                 TokenKind.RightBrace,
                 false,
-                (*parser).position
+                item_begin
             );
-            if recovery == ParserListRecovery.Next {
-                continue;
-            }
-            if recovery == ParserListRecovery.End {
-                break;
-            }
+            if recovery == ParserListRecovery.Next { continue; }
+            if recovery == ParserListRecovery.End { break; }
             return PARSER_INVALID_NODE_ID;
         }
-
-        if grouped and parser_expect(parser, TokenKind.RightBrace) == null {
+        if grouped and not empty_group and not parser_check(parser, TokenKind.RightBrace) {
+            parser_error_here(parser, ParserError.InvalidExportClause, TokenKind.RightBrace);
             return PARSER_INVALID_NODE_ID;
+        }
+        if grouped and not empty_group {
+            parser_advance(parser);
         }
     }
 
-    if parser_expect(parser, TokenKind.Semicolon) == null {
+    let semicolon = parser_current(parser);
+    if semicolon == null or (*semicolon).kind != TokenKind.Semicolon {
+        parser_error_here(
+            parser,
+            if semicolon != null { ParserError.TrailingTokens } else { ParserError.InvalidExportClause },
+            TokenKind.Semicolon
+        );
         return PARSER_INVALID_NODE_ID;
     }
+    parser_advance(parser);
     let completed_export_node = vitte_parser_get_node_mut(parser, export_node);
     if completed_export_node != null {
         set (*completed_export_node).span = parser_span_from_range(
@@ -1416,6 +1862,10 @@ proc parser_parse_export_clause(parser: *mut Parser) -> ASTNodeId {
     return export_node;
 }
 
+/*
+ * Keep the parser's public error names stable; these names are also surfaced
+ * through the native parser API and diagnostic JSON.
+ */
 proc parser_has_generic_closer(parser: *const Parser) -> bool {
     if parser == null or not parser_check(parser, TokenKind.Less) {
         return false;
@@ -1464,6 +1914,44 @@ proc parser_has_generic_closer(parser: *const Parser) -> bool {
         set distance += 1;
     }
 }
+
+proc parser_type_less_starts_generic(parser: *const Parser, type_begin: usize) -> bool {
+    if parser_has_generic_closer(parser) { return true; }
+    let mut index = type_begin;
+    let mut where_position: usize = PARSER_SIZE_MAX;
+    while index != 0 {
+        set index -= 1;
+        let token = parser_token_at_private(parser, index);
+        if token == null or (*token).kind == TokenKind.Semicolon or
+           (*token).kind == TokenKind.LeftBrace or (*token).kind == TokenKind.RightBrace {
+            break;
+        }
+        if (*token).kind == TokenKind.KwWhere {
+            set where_position = index;
+            break;
+        }
+    }
+    if where_position == PARSER_SIZE_MAX { return true; }
+
+    index = where_position + 1;
+    let mut predicate_has_type_separator: bool = false;
+    while index < type_begin {
+        let token = parser_token_at_private(parser, index);
+        if token != null {
+            if (*token).kind == TokenKind.Comma {
+                set predicate_has_type_separator = false;
+            } elif (*token).kind == TokenKind.Colon {
+                set predicate_has_type_separator = true;
+            } elif (*token).kind == TokenKind.KwAs {
+                return true;
+            }
+        }
+        set index += 1;
+    }
+    return predicate_has_type_separator;
+}
+
+/* removed old export clause */
 
 proc parser_has_generic_suffix_at(
     parser: *const Parser,
@@ -1643,12 +2131,16 @@ proc parser_parse_type_arguments(
     closing_kind: TokenKind,
     pending_generic_closers: &mut usize
 ) -> bool {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
     if not parser_check_type_closer(parser, closing_kind, pending_generic_closers) {
         while not parser_at_end(parser) {
             let argument_start = parser_current(parser);
             let argument = parser_parse_type_expression_with_pending(parser, pending_generic_closers);
             if argument == PARSER_INVALID_NODE_ID {
                 if not (*parser).recovering {
+                    parser_reclassify_last_diagnostic(
+                        parser, diagnostic_start, ParserError.InvalidGenericArguments
+                    );
                     return false;
                 }
                 if parser_recover_type_argument(
@@ -1661,6 +2153,9 @@ proc parser_parse_type_arguments(
                 if parser_check_type_closer(parser, closing_kind, pending_generic_closers) {
                     break;
                 }
+                parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start, ParserError.InvalidGenericArguments
+                );
                 return false;
             }
             if not parser_node_append_child(parser, owner, argument) {
@@ -1677,6 +2172,20 @@ proc parser_parse_type_arguments(
                 continue;
             }
 
+            let unexpected_closer = parser_current(parser);
+            if unexpected_closer != null and
+               ((*unexpected_closer).kind == TokenKind.RightParen or
+                (*unexpected_closer).kind == TokenKind.RightBracket or
+                (*unexpected_closer).kind == TokenKind.RightBrace or
+                (*unexpected_closer).kind == TokenKind.Greater or
+                (*unexpected_closer).kind == TokenKind.ShiftRight) {
+                parser_error_here(parser, ParserError.ExpectedToken, closing_kind);
+                parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start, ParserError.InvalidGenericArguments
+                );
+                return false;
+            }
+
             parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
             let recovery_start = parser_current(parser);
             if parser_recover_type_argument(
@@ -1689,15 +2198,30 @@ proc parser_parse_type_arguments(
             if parser_check_type_closer(parser, closing_kind, pending_generic_closers) {
                 break;
             }
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidGenericArguments
+            );
             return false;
         }
+    } else {
+        parser_error_here(
+            parser,
+            ParserError.InvalidGenericArguments,
+            TokenKind.Identifier
+        );
+        return false;
     }
 
-    return parser_consume_type_closer(parser, closing_kind, pending_generic_closers);
+    let closed = parser_consume_type_closer(parser, closing_kind, pending_generic_closers);
+    parser_reclassify_last_diagnostic(
+        parser, diagnostic_start, ParserError.InvalidGenericArguments
+    );
+    return closed;
 }
 
 proc parser_parse_generic_parameter(parser: *mut Parser) -> ASTNodeId {
     let begin: usize = (*parser).position;
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
     let mut parameter_flags: u32 = 0;
     if parser_check(parser, TokenKind.KwConst) {
         parser_advance(parser);
@@ -1705,6 +2229,15 @@ proc parser_parse_generic_parameter(parser: *mut Parser) -> ASTNodeId {
     }
     let name = parser_parse_identifier_node(parser);
     if name == PARSER_INVALID_NODE_ID {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            if parameter_flags == PARSER_AST_FLAG_CONST_GENERIC {
+                ParserError.InvalidConstGenericParameter
+            } else {
+                ParserError.InvalidGenericParameterList
+            }
+        );
         return name;
     }
 
@@ -1720,16 +2253,28 @@ proc parser_parse_generic_parameter(parser: *mut Parser) -> ASTNodeId {
 
     if parser_check(parser, TokenKind.Colon) {
         parser_advance(parser);
+        set diagnostic_start = (*parser).diagnostic_count;
         let mut bound: ASTNodeId = parser_parse_type_expression(parser);
-        if bound == PARSER_INVALID_NODE_ID or
-           not parser_node_append_child(parser, parameter, bound) {
+        if bound == PARSER_INVALID_NODE_ID {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidGenericBound
+            );
+            return PARSER_INVALID_NODE_ID;
+        }
+        if not parser_node_append_child(parser, parameter, bound) {
             return PARSER_INVALID_NODE_ID;
         }
         while parser_check(parser, TokenKind.Plus) {
             parser_advance(parser);
+            set diagnostic_start = (*parser).diagnostic_count;
             set bound = parser_parse_type_expression(parser);
-            if bound == PARSER_INVALID_NODE_ID or
-               not parser_node_append_child(parser, parameter, bound) {
+            if bound == PARSER_INVALID_NODE_ID {
+                parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start, ParserError.InvalidGenericBound
+                );
+                return PARSER_INVALID_NODE_ID;
+            }
+            if not parser_node_append_child(parser, parameter, bound) {
                 return PARSER_INVALID_NODE_ID;
             }
         }
@@ -1792,6 +2337,11 @@ proc parser_parse_generic_parameters(parser: *mut Parser, owner: ASTNodeId) -> b
         }
 
         parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+        parser_reclassify_last_diagnostic(
+            parser,
+            (*parser).diagnostic_count - 1,
+            ParserError.InvalidGenericParameterList
+        );
         let recovery = parser_synchronize_list(
             parser,
             TokenKind.Greater,
@@ -1807,7 +2357,15 @@ proc parser_parse_generic_parameters(parser: *mut Parser, owner: ASTNodeId) -> b
         return false;
     }
 
-    return parser_expect(parser, TokenKind.Greater) != null;
+    if parser_expect(parser, TokenKind.Greater) == null {
+        parser_reclassify_last_diagnostic(
+            parser,
+            (*parser).diagnostic_count - 1,
+            ParserError.InvalidGenericParameterList
+        );
+        return false;
+    }
+    return true;
 }
 
 proc parser_parse_where_clause(parser: *mut Parser, owner: ASTNodeId) -> bool {
@@ -1833,8 +2391,12 @@ proc parser_parse_where_clause(parser: *mut Parser, owner: ASTNodeId) -> bool {
 
     while not parser_at_end(parser) {
         let predicate_begin: usize = (*parser).position;
+        let mut diagnostic_start: usize = (*parser).diagnostic_count;
         let subject = parser_parse_type_expression(parser);
         if subject == PARSER_INVALID_NODE_ID {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidWhereClause
+            );
             if not (*parser).recovering {
                 return false;
             }
@@ -1848,6 +2410,17 @@ proc parser_parse_where_clause(parser: *mut Parser, owner: ASTNodeId) -> bool {
                 continue;
             }
             if recovery == ParserListRecovery.End {
+                while not parser_at_end(parser) and
+                      not parser_check(parser, TokenKind.LeftBrace) and
+                      not parser_check(parser, TokenKind.Semicolon) and
+                      not parser_check(parser, TokenKind.RightBrace) and
+                      not parser_check(parser, TokenKind.Comma) {
+                    parser_advance(parser);
+                }
+                if parser_check(parser, TokenKind.Comma) {
+                    parser_advance(parser);
+                    continue;
+                }
                 break;
             }
             return false;
@@ -1859,6 +2432,7 @@ proc parser_parse_where_clause(parser: *mut Parser, owner: ASTNodeId) -> bool {
         if parser_check(parser, TokenKind.Colon) {
             parser_advance(parser);
             set trait_bound = true;
+            set diagnostic_start = (*parser).diagnostic_count;
             set bound = parser_parse_type_expression(parser);
         } else if parser_check(parser, TokenKind.EqualEqual) or
                   parser_check(parser, TokenKind.BangEqual) or
@@ -1870,12 +2444,21 @@ proc parser_parse_where_clause(parser: *mut Parser, owner: ASTNodeId) -> bool {
             if relation_token != null {
                 set relation = (*relation_token).kind;
             }
+            set diagnostic_start = (*parser).diagnostic_count;
             set bound = parser_parse_expression(parser);
         } else {
             parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Colon);
+            parser_reclassify_last_diagnostic(
+                parser,
+                (*parser).diagnostic_count - 1,
+                ParserError.InvalidWhereClause
+            );
         }
 
         if bound == PARSER_INVALID_NODE_ID {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidWhereClause
+            );
             if not (*parser).recovering {
                 return false;
             }
@@ -1889,6 +2472,17 @@ proc parser_parse_where_clause(parser: *mut Parser, owner: ASTNodeId) -> bool {
                 continue;
             }
             if recovery == ParserListRecovery.End {
+                while not parser_at_end(parser) and
+                      not parser_check(parser, TokenKind.LeftBrace) and
+                      not parser_check(parser, TokenKind.Semicolon) and
+                      not parser_check(parser, TokenKind.RightBrace) and
+                      not parser_check(parser, TokenKind.Comma) {
+                    parser_advance(parser);
+                }
+                if parser_check(parser, TokenKind.Comma) {
+                    parser_advance(parser);
+                    continue;
+                }
                 break;
             }
             return false;
@@ -1916,9 +2510,15 @@ proc parser_parse_where_clause(parser: *mut Parser, owner: ASTNodeId) -> bool {
         if trait_bound {
             while parser_check(parser, TokenKind.Plus) {
                 parser_advance(parser);
+                set diagnostic_start = (*parser).diagnostic_count;
                 let extra_bound = parser_parse_type_expression(parser);
-                if extra_bound == PARSER_INVALID_NODE_ID or
-                   not parser_node_append_child(parser, predicate, extra_bound) {
+                if extra_bound == PARSER_INVALID_NODE_ID {
+                    parser_reclassify_last_diagnostic(
+                        parser, diagnostic_start, ParserError.InvalidWhereClause
+                    );
+                    return false;
+                }
+                if not parser_node_append_child(parser, predicate, extra_bound) {
                     return false;
                 }
                 let completed_predicate = vitte_parser_get_node_mut(parser, predicate);
@@ -1946,6 +2546,11 @@ proc parser_parse_where_clause(parser: *mut Parser, owner: ASTNodeId) -> bool {
         }
 
         parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+        parser_reclassify_last_diagnostic(
+            parser,
+            (*parser).diagnostic_count - 1,
+            ParserError.InvalidWhereClause
+        );
         let recovery = parser_synchronize_list(
             parser,
             TokenKind.Invalid,
@@ -1976,6 +2581,51 @@ proc parser_type_span(parser: *const Parser, begin_token: *const ParserToken) ->
     );
 }
 
+proc parser_type_expression_error(
+    parser: *const Parser,
+    begin_position: usize,
+    begin_token: *const ParserToken
+) -> ParserError {
+    if begin_token == null { return ParserError.ExpectedType; }
+    match (*begin_token).kind {
+        case TokenKind.KwProc => return ParserError.InvalidProcedureType,
+        case TokenKind.Question => return ParserError.InvalidOptionalType,
+        case TokenKind.Amp | TokenKind.KwRef => return ParserError.InvalidReferenceType,
+        case TokenKind.Star => return ParserError.InvalidPointerType,
+        case TokenKind.LeftBracket => {
+            let first_item = parser_token_at_private(parser, begin_position + 1);
+            if first_item != null and (*first_item).kind == TokenKind.IntegerLiteral {
+                return ParserError.InvalidArrayType;
+            }
+            let mut index: usize = begin_position + 1;
+            let mut nested_brackets: usize = 0;
+            while index < (*parser).token_count {
+                let token = parser_token_at_private(parser, index);
+                if token == null or (*token).kind == TokenKind.Eof { break; }
+                if (*token).kind == TokenKind.LeftBracket {
+                    set nested_brackets += 1;
+                } elif (*token).kind == TokenKind.RightBracket {
+                    if nested_brackets == 0 { break; }
+                    set nested_brackets -= 1;
+                } elif (*token).kind == TokenKind.Semicolon and nested_brackets == 0 {
+                    return ParserError.InvalidArrayType;
+                }
+                set index += 1;
+            }
+            return ParserError.InvalidSliceType;
+        },
+        else => {
+            if parser_token_is_path_segment(begin_token) or
+               (*begin_token).kind == TokenKind.ColonColon or
+               (*begin_token).kind == TokenKind.Colon or
+               (*begin_token).kind == TokenKind.Slash {
+                return ParserError.InvalidTypePath;
+            }
+            return ParserError.ExpectedType;
+        }
+    }
+}
+
 proc parser_parse_type_expression(parser: *mut Parser) -> ASTNodeId {
     let mut pending_generic_closers: usize = 0;
     return parser_parse_type_expression_with_pending(parser, &mut pending_generic_closers);
@@ -1988,8 +2638,18 @@ proc parser_parse_type_expression_with_pending(
     if not parser_enter_recursion(parser) {
         return PARSER_INVALID_NODE_ID;
     }
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let begin_position: usize = (*parser).position;
     let begin_token = parser_current(parser);
     let parsed_type = parser_parse_type_expression_inner(parser, begin_token, pending_generic_closers);
+    if (*parser).diagnostic_count > diagnostic_start {
+        let specific_error = parser_type_expression_error(
+            parser, begin_position, begin_token
+        );
+        if specific_error != ParserError.None {
+            parser_reclassify_last_diagnostic(parser, diagnostic_start, specific_error);
+        }
+    }
     parser_leave_recursion(parser);
     return parsed_type;
 }
@@ -2222,6 +2882,10 @@ proc parser_parse_type_expression_inner(
     if base_path == PARSER_INVALID_NODE_ID {
         return base_path;
     }
+    if parser_check(parser, TokenKind.Colon) {
+        parser_error_here(parser, ParserError.InvalidTypePath, TokenKind.ColonColon);
+        return PARSER_INVALID_NODE_ID;
+    }
     let named_type = parser_add_node(
         parser,
         ASTNodeKind.TypeExpr,
@@ -2232,7 +2896,10 @@ proc parser_parse_type_expression_inner(
         return PARSER_INVALID_NODE_ID;
     }
 
-    if parser_check(parser, TokenKind.Less) and parser_has_generic_closer(parser) {
+    if parser_check(parser, TokenKind.Less) and
+       parser_type_less_starts_generic(
+           parser, parser_token_index(parser, begin_token)
+       ) {
         parser_advance(parser);
         if not parser_parse_type_arguments(
             parser,
@@ -2305,7 +2972,13 @@ proc parser_parse_value_initializer_atom(parser: *mut Parser) -> ASTNodeId {
     if parser_token_is_path_segment(token) {
         return parser_parse_path_mode(parser, false, false);
     }
-    parser_error_here(parser, ParserError.ExpectedExpression, TokenKind.Invalid);
+    if token != null and parser_is_statement_start((*token).kind) {
+        parser_error_here(parser, ParserError.UnexpectedStatement, TokenKind.Invalid);
+    } elif token != null and parser_is_declaration_start((*token).kind) {
+        parser_error_here(parser, ParserError.UnexpectedDeclaration, TokenKind.Invalid);
+    } else {
+        parser_error_here(parser, ParserError.ExpectedExpression, TokenKind.Invalid);
+    }
     return PARSER_INVALID_NODE_ID;
 }
 
@@ -2543,7 +3216,7 @@ proc parser_sizeof_operand_is_type(parser: *const Parser) -> bool {
     }
 }
 
-proc parser_parse_sizeof_expression(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_sizeof_expression_inner(parser: *mut Parser) -> ASTNodeId {
     let operator_token = parser_current(parser);
     if operator_token == null or
        parser_expect(parser, TokenKind.KwSizeof) == null or
@@ -2581,7 +3254,18 @@ proc parser_parse_sizeof_expression(parser: *mut Parser) -> ASTNodeId {
     return expression;
 }
 
-proc parser_parse_alignof_expression(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_sizeof_expression(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start = (*parser).diagnostic_count;
+    let expression = parser_parse_sizeof_expression_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidSizeofExpression
+        );
+    }
+    return expression;
+}
+
+proc parser_parse_alignof_expression_inner(parser: *mut Parser) -> ASTNodeId {
     let operator_token = parser_current(parser);
     if operator_token == null or
        parser_expect(parser, TokenKind.KwAlignof) == null or
@@ -2611,7 +3295,18 @@ proc parser_parse_alignof_expression(parser: *mut Parser) -> ASTNodeId {
     return expression;
 }
 
-proc parser_parse_array_expression(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_alignof_expression(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start = (*parser).diagnostic_count;
+    let expression = parser_parse_alignof_expression_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidAlignofExpression
+        );
+    }
+    return expression;
+}
+
+proc parser_parse_array_expression_inner(parser: *mut Parser) -> ASTNodeId {
     let open_token = parser_expect(parser, TokenKind.LeftBracket);
     if open_token == null {
         return PARSER_INVALID_NODE_ID;
@@ -2627,8 +3322,14 @@ proc parser_parse_array_expression(parser: *mut Parser) -> ASTNodeId {
 
     while not parser_at_end(parser) and not parser_check(parser, TokenKind.RightBracket) {
         let item_start = parser_current(parser);
+        let item_diagnostic_start = (*parser).diagnostic_count;
         let item = parser_parse_expression(parser);
         if item == PARSER_INVALID_NODE_ID {
+            parser_reclassify_last_diagnostic(
+                parser,
+                item_diagnostic_start,
+                ParserError.InvalidExpressionList
+            );
             if not (*parser).recovering {
                 return PARSER_INVALID_NODE_ID;
             }
@@ -2654,7 +3355,15 @@ proc parser_parse_array_expression(parser: *mut Parser) -> ASTNodeId {
         if parser_check(parser, TokenKind.RightBracket) {
             break;
         }
+        if not parser_token_can_start_expression(parser_current(parser)) {
+            break;
+        }
         parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+        parser_reclassify_last_diagnostic(
+            parser,
+            item_diagnostic_start,
+            ParserError.InvalidExpressionList
+        );
         let recovery_start = parser_current(parser);
         if parser_recover_type_argument(
             parser,
@@ -2682,7 +3391,18 @@ proc parser_parse_array_expression(parser: *mut Parser) -> ASTNodeId {
     return array;
 }
 
-proc parser_parse_let_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_array_expression(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start = (*parser).diagnostic_count;
+    let expression = parser_parse_array_expression_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidArrayExpression
+        );
+    }
+    return expression;
+}
+
+proc parser_parse_let_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or parser_expect(parser, TokenKind.KwLet) == null {
         return PARSER_INVALID_NODE_ID;
@@ -2692,9 +3412,7 @@ proc parser_parse_let_statement(parser: *mut Parser) -> ASTNodeId {
         ASTNodeKind.LetStmt,
         parser_span_from_token(start_token)
     );
-    if statement == PARSER_INVALID_NODE_ID {
-        return statement;
-    }
+    if statement == PARSER_INVALID_NODE_ID { return statement; }
     let statement_node = vitte_parser_get_node_mut(parser, statement);
     if statement_node != null {
         set (*statement_node).token_index = parser_token_index(parser, start_token);
@@ -2728,9 +3446,15 @@ proc parser_parse_let_statement(parser: *mut Parser) -> ASTNodeId {
             return PARSER_INVALID_NODE_ID;
         }
     }
-    if parser_expect(parser, TokenKind.Semicolon) == null {
+    if not parser_check(parser, TokenKind.Semicolon) and
+       not ((*parser).match_arm_depth != 0 and
+            (parser_check(parser, TokenKind.Comma) or
+             (parser_current(parser) != null and (*parser_current(parser)).length == 4 and (*parser_current(parser)).lexeme == "case") or
+             parser_check(parser, TokenKind.RightBrace))) {
+        let _ = parser_expect(parser, TokenKind.Semicolon);
         return PARSER_INVALID_NODE_ID;
     }
+    let _ = parser_check(parser, TokenKind.Semicolon) and parser_advance(parser) != null;
 
     let completed_statement = vitte_parser_get_node_mut(parser, statement);
     if completed_statement != null {
@@ -2738,6 +3462,19 @@ proc parser_parse_let_statement(parser: *mut Parser) -> ASTNodeId {
             parser,
             parser_token_index(parser, start_token),
             (*parser).position
+        );
+    }
+    return statement;
+}
+
+proc parser_parse_let_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start = (*parser).diagnostic_count;
+    let statement = parser_parse_let_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidLetStatement
         );
     }
     return statement;
@@ -2779,7 +3516,7 @@ proc parser_parse_expression_statement(parser: *mut Parser) -> ASTNodeId {
     return statement;
 }
 
-proc parser_parse_return_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_return_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or parser_expect(parser, TokenKind.KwReturn) == null {
         return PARSER_INVALID_NODE_ID;
@@ -2789,10 +3526,14 @@ proc parser_parse_return_statement(parser: *mut Parser) -> ASTNodeId {
         ASTNodeKind.ReturnStmt,
         parser_span_from_token(start_token)
     );
-    if statement == PARSER_INVALID_NODE_ID {
-        return statement;
-    }
-    if not parser_check(parser, TokenKind.Semicolon) {
+    if statement == PARSER_INVALID_NODE_ID { return statement; }
+    if not parser_check(parser, TokenKind.Semicolon) and
+       not ((*parser).match_arm_depth != 0 and
+            (parser_check(parser, TokenKind.Comma) or
+             (parser_current(parser) != null and (*parser_current(parser)).length == 4 and (*parser_current(parser)).lexeme == "case") or
+             parser_check(parser, TokenKind.RightBrace))) and
+       not parser_check(parser, TokenKind.RightBrace) and
+       not parser_at_end(parser) {
         let value = parser_parse_expression(parser);
         if value == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, statement, value) {
@@ -2801,8 +3542,62 @@ proc parser_parse_return_statement(parser: *mut Parser) -> ASTNodeId {
     }
     if parser_check(parser, TokenKind.Semicolon) {
         parser_advance(parser);
-    } else if not parser_check(parser, TokenKind.RightBrace) and
+    } else if not ((*parser).match_arm_depth != 0 and
+                   (parser_check(parser, TokenKind.Comma) or
+                    (parser_current(parser) != null and (*parser_current(parser)).length == 4 and (*parser_current(parser)).lexeme == "case") or
+                    parser_check(parser, TokenKind.RightBrace))) and
+              not parser_check(parser, TokenKind.RightBrace) and
               not parser_at_end(parser) {
+        let _ = parser_expect(parser, TokenKind.Semicolon);
+        return PARSER_INVALID_NODE_ID;
+    }
+    let completed_statement = vitte_parser_get_node_mut(parser, statement);
+    if completed_statement != null {
+        set (*completed_statement).span = parser_span_from_range(
+            parser,
+            parser_token_index(parser, start_token),
+            (*parser).position
+        );
+    }
+    return statement;
+}
+
+proc parser_parse_return_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start = (*parser).diagnostic_count;
+    let statement = parser_parse_return_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidReturnStatement
+        );
+    }
+    return statement;
+}
+
+proc parser_parse_jump_statement_inner(
+    parser: *mut Parser,
+    kind: ASTNodeKind
+) -> ASTNodeId {
+    let start_token = parser_current(parser);
+    if start_token == null {
+        return PARSER_INVALID_NODE_ID;
+    }
+    if parser_check(parser, TokenKind.Semicolon) { parser_advance(parser); }
+    let statement = parser_add_node(
+        parser,
+        kind,
+        parser_span_from_token(start_token)
+    );
+    if statement == PARSER_INVALID_NODE_ID {
+        return PARSER_INVALID_NODE_ID;
+    }
+    if parser_check(parser, TokenKind.Semicolon) {
+        parser_advance(parser);
+    } elif not ((*parser).match_arm_depth != 0 and
+                (parser_check(parser, TokenKind.Comma) or
+                 (parser_current(parser) != null and (*parser_current(parser)).length == 4 and (*parser_current(parser)).lexeme == "case") or
+                 parser_check(parser, TokenKind.RightBrace))) {
         let _ = parser_expect(parser, TokenKind.Semicolon);
         return PARSER_INVALID_NODE_ID;
     }
@@ -2821,32 +3616,19 @@ proc parser_parse_jump_statement(
     parser: *mut Parser,
     kind: ASTNodeKind
 ) -> ASTNodeId {
-    let start_token = parser_current(parser);
-    if start_token == null {
-        return PARSER_INVALID_NODE_ID;
-    }
-    parser_advance(parser);
-    let statement = parser_add_node(
-        parser,
-        kind,
-        parser_span_from_token(start_token)
-    );
-    if statement == PARSER_INVALID_NODE_ID or
-       parser_expect(parser, TokenKind.Semicolon) == null {
-        return PARSER_INVALID_NODE_ID;
-    }
-    let completed_statement = vitte_parser_get_node_mut(parser, statement);
-    if completed_statement != null {
-        set (*completed_statement).span = parser_span_from_range(
+    let diagnostic_start = (*parser).diagnostic_count;
+    let statement = parser_parse_jump_statement_inner(parser, kind);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
             parser,
-            parser_token_index(parser, start_token),
-            (*parser).position
+            diagnostic_start,
+            ParserError.InvalidJumpStatement
         );
     }
     return statement;
 }
 
-proc parser_parse_if_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_if_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or
        (not parser_check(parser, TokenKind.KwIf) and
@@ -2881,7 +3663,7 @@ proc parser_parse_if_statement(parser: *mut Parser) -> ASTNodeId {
     }
 
     if parser_check(parser, TokenKind.KwElif) {
-        let else_branch = parser_parse_if_statement(parser);
+        let else_branch = parser_parse_if_statement_inner(parser);
         if else_branch == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, statement, else_branch) {
             return PARSER_INVALID_NODE_ID;
@@ -2891,7 +3673,7 @@ proc parser_parse_if_statement(parser: *mut Parser) -> ASTNodeId {
         let mut else_branch: ASTNodeId = PARSER_INVALID_NODE_ID;
         if parser_check(parser, TokenKind.KwIf) or
            parser_check(parser, TokenKind.KwElif) {
-            set else_branch = parser_parse_if_statement(parser);
+            set else_branch = parser_parse_if_statement_inner(parser);
         } else {
             set else_branch = parser_parse_block(parser);
         }
@@ -2912,7 +3694,20 @@ proc parser_parse_if_statement(parser: *mut Parser) -> ASTNodeId {
     return statement;
 }
 
-proc parser_parse_while_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_if_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let statement = parser_parse_if_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidControlFlowStatement
+        );
+    }
+    return statement;
+}
+
+proc parser_parse_while_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or parser_expect(parser, TokenKind.KwWhile) == null {
         return PARSER_INVALID_NODE_ID;
@@ -2943,7 +3738,20 @@ proc parser_parse_while_statement(parser: *mut Parser) -> ASTNodeId {
     return statement;
 }
 
-proc parser_parse_loop_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_while_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let statement = parser_parse_while_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidControlFlowStatement
+        );
+    }
+    return statement;
+}
+
+proc parser_parse_loop_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or parser_expect(parser, TokenKind.KwLoop) == null {
         return PARSER_INVALID_NODE_ID;
@@ -2969,7 +3777,20 @@ proc parser_parse_loop_statement(parser: *mut Parser) -> ASTNodeId {
     return statement;
 }
 
-proc parser_parse_for_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_loop_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let statement = parser_parse_loop_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidControlFlowStatement
+        );
+    }
+    return statement;
+}
+
+proc parser_parse_for_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or parser_expect(parser, TokenKind.KwFor) == null {
         return PARSER_INVALID_NODE_ID;
@@ -3006,10 +3827,24 @@ proc parser_parse_for_statement(parser: *mut Parser) -> ASTNodeId {
     return statement;
 }
 
+proc parser_parse_for_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let statement = parser_parse_for_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidControlFlowStatement
+        );
+    }
+    return statement;
+}
+
 proc parser_parse_pattern_sequence(
     parser: *mut Parser,
     closing: TokenKind,
-    begin: usize
+    begin: usize,
+    pattern_flags: u32
 ) -> ASTNodeId {
     let wrapper = parser_add_node(
         parser,
@@ -3017,6 +3852,7 @@ proc parser_parse_pattern_sequence(
         parser_span_from_range(parser, begin, (*parser).position)
     );
     if wrapper == PARSER_INVALID_NODE_ID { return wrapper; }
+    let mut had_separator = false;
 
     while not parser_at_end(parser) and not parser_check(parser, closing) {
         let item_begin: usize = (*parser).position;
@@ -3030,6 +3866,7 @@ proc parser_parse_pattern_sequence(
             return PARSER_INVALID_NODE_ID;
         }
         if parser_check(parser, TokenKind.Comma) {
+            set had_separator = true;
             parser_advance(parser);
             if parser_check(parser, closing) { break; }
             continue;
@@ -3044,7 +3881,13 @@ proc parser_parse_pattern_sequence(
     }
     if parser_expect(parser, closing) == null { return PARSER_INVALID_NODE_ID; }
     let node = vitte_parser_get_node_mut(parser, wrapper);
-    if node != null { set (*node).span = parser_span_from_range(parser, begin, (*parser).position); }
+    if node != null {
+        set (*node).node_flags = if (pattern_flags & PARSER_AST_FLAG_PATTERN_TUPLE) != 0 and
+            (*node).child_count == 1 and not had_separator {
+            0 as u32
+        } else { pattern_flags };
+        set (*node).span = parser_span_from_range(parser, begin, (*parser).position);
+    }
     return wrapper;
 }
 
@@ -3141,7 +3984,16 @@ proc parser_parse_pattern_atom(parser: *mut Parser) -> ASTNodeId {
         } else {
             TokenKind.RightBracket
         };
-        return parser_parse_pattern_sequence(parser, closing, begin);
+        return parser_parse_pattern_sequence(
+            parser,
+            closing,
+            begin,
+            if (*opener).kind == TokenKind.LeftParen {
+                PARSER_AST_FLAG_PATTERN_TUPLE
+            } else {
+                PARSER_AST_FLAG_PATTERN_ARRAY
+            }
+        );
     }
 
     if parser_check(parser, TokenKind.KwElse) {
@@ -3168,13 +4020,37 @@ proc parser_parse_pattern_atom(parser: *mut Parser) -> ASTNodeId {
         let lower = parser_parse_value_literal(parser, literal_kind);
         if lower == PARSER_INVALID_NODE_ID { return lower; }
         if parser_check(parser, TokenKind.DotDot) or parser_check(parser, TokenKind.DotDotEqual) {
+            if (*token).kind != TokenKind.IntegerLiteral and
+               (*token).kind != TokenKind.FloatLiteral and
+               (*token).kind != TokenKind.CharacterLiteral {
+                parser_error_at_position(
+                    parser,
+                    ParserError.InvalidRangePattern,
+                    TokenKind.Invalid,
+                    begin
+                );
+                return PARSER_INVALID_NODE_ID;
+            }
             let operator = parser_advance(parser);
             let mut upper_kind: ASTNodeKind = ASTNodeKind.Invalid;
             if parser_check(parser, TokenKind.IntegerLiteral) { set upper_kind = ASTNodeKind.IntegerLiteral; }
             else if parser_check(parser, TokenKind.FloatLiteral) { set upper_kind = ASTNodeKind.FloatLiteral; }
             else if parser_check(parser, TokenKind.CharacterLiteral) { set upper_kind = ASTNodeKind.CharacterLiteral; }
             if upper_kind == ASTNodeKind.Invalid {
-                parser_error_here(parser, ParserError.ExpectedExpression, TokenKind.Invalid);
+                parser_error_here(
+                    parser,
+                    ParserError.InvalidRangePattern,
+                    (*token).kind
+                );
+                return PARSER_INVALID_NODE_ID;
+            }
+            if upper_kind != literal_kind {
+                parser_error_at_position(
+                    parser,
+                    ParserError.InvalidRangePattern,
+                    (*token).kind,
+                    (*parser).position
+                );
                 return PARSER_INVALID_NODE_ID;
             }
             let upper = parser_parse_value_literal(parser, upper_kind);
@@ -3231,7 +4107,8 @@ proc parser_parse_pattern_atom(parser: *mut Parser) -> ASTNodeId {
         let arguments = parser_parse_pattern_sequence(
             parser,
             TokenKind.RightParen,
-            begin
+            begin,
+            0 as u32
         );
         if arguments == PARSER_INVALID_NODE_ID {
             return PARSER_INVALID_NODE_ID;
@@ -3280,7 +4157,8 @@ proc parser_parse_pattern_atom(parser: *mut Parser) -> ASTNodeId {
         }
         if parser_check(parser, TokenKind.LeftParen) {
             parser_advance(parser);
-            let arguments = parser_parse_pattern_sequence(parser, TokenKind.RightParen, begin);
+            let arguments = parser_parse_pattern_sequence(
+                parser, TokenKind.RightParen, begin, 0 as u32);
             if arguments == PARSER_INVALID_NODE_ID { return arguments; }
             let constructor = parser_add_node(
                 parser,
@@ -3336,7 +4214,7 @@ proc parser_parse_pattern_atom(parser: *mut Parser) -> ASTNodeId {
     return PARSER_INVALID_NODE_ID;
 }
 
-proc parser_parse_pattern(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_pattern_inner(parser: *mut Parser) -> ASTNodeId {
     let begin: usize = (*parser).position;
     let first = parser_parse_pattern_atom(parser);
     if first == PARSER_INVALID_NODE_ID { return first; }
@@ -3367,6 +4245,84 @@ proc parser_parse_pattern(parser: *mut Parser) -> ASTNodeId {
     return alternatives;
 }
 
+proc parser_pattern_has_top_level_range_operator(
+    parser: *const Parser,
+    begin: usize,
+    end: usize
+) -> bool {
+    if parser == null { return false; }
+    let mut scan_end = end;
+    // Include the current token: parsing `name..4` stops just before `..`.
+    // Delimiter depth keeps a struct-rest `..` from being classified as a
+    // range-pattern operator when a later field in that struct is malformed.
+    if scan_end < (*parser).token_count { set scan_end += 1; }
+    if scan_end > (*parser).token_count { set scan_end = (*parser).token_count; }
+    let mut parentheses: usize = 0;
+    let mut brackets: usize = 0;
+    let mut braces: usize = 0;
+    let mut index = begin;
+    while index < scan_end {
+        let token = parser_token_at_private(parser, index);
+        if token != null {
+            if ((*token).kind == TokenKind.DotDot or
+                (*token).kind == TokenKind.DotDotEqual) and
+               parentheses == 0 and brackets == 0 and braces == 0 {
+                return true;
+            }
+            match (*token).kind {
+                case TokenKind.LeftParen => { set parentheses += 1; },
+                case TokenKind.RightParen => { if parentheses != 0 { set parentheses -= 1; } },
+                case TokenKind.LeftBracket => { set brackets += 1; },
+                case TokenKind.RightBracket => { if brackets != 0 { set brackets -= 1; } },
+                case TokenKind.LeftBrace => { set braces += 1; },
+                case TokenKind.RightBrace => { if braces != 0 { set braces -= 1; } },
+                else => {}
+            }
+        }
+        set index += 1;
+    }
+    return false;
+}
+
+proc parser_parse_pattern(parser: *mut Parser) -> ASTNodeId {
+    let begin: usize = (*parser).position;
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let pattern = parser_parse_pattern_inner(parser);
+    if pattern != PARSER_INVALID_NODE_ID and
+       (*parser).position < (*parser).token_count and
+       begin < (*parser).token_count {
+        let next_token = parser_token_at_private(parser, (*parser).position);
+        let lower_token = parser_token_at_private(parser, begin);
+        if next_token != null and lower_token != null and
+           ((*next_token).kind == TokenKind.DotDot or
+            (*next_token).kind == TokenKind.DotDotEqual) and
+           (*lower_token).kind != TokenKind.IntegerLiteral and
+           (*lower_token).kind != TokenKind.FloatLiteral and
+           (*lower_token).kind != TokenKind.CharacterLiteral {
+            parser_error_at_position(
+                parser,
+                ParserError.InvalidRangePattern,
+                TokenKind.Invalid,
+                begin
+            );
+            return PARSER_INVALID_NODE_ID;
+        }
+    }
+    if (*parser).diagnostic_count <= diagnostic_start {
+        return pattern;
+    }
+    parser_reclassify_last_diagnostic(
+        parser,
+        diagnostic_start,
+        if parser_pattern_has_top_level_range_operator(parser, begin, (*parser).position) {
+            ParserError.InvalidRangePattern
+        } else {
+            ParserError.InvalidPattern
+        }
+    );
+    return pattern;
+}
+
 proc parser_recover_match_arm(parser: *mut Parser, start_position: usize) {
     let before: usize = (*parser).position;
     parser_synchronize(parser, ParserRecoveryMode.MatchArm, start_position);
@@ -3377,7 +4333,7 @@ proc parser_recover_match_arm(parser: *mut Parser, start_position: usize) {
     }
 }
 
-proc parser_parse_match_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_match_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start: *const ParserToken = parser_current(parser);
     if start == null or parser_expect(parser, TokenKind.KwMatch) == null {
         return PARSER_INVALID_NODE_ID;
@@ -3404,6 +4360,7 @@ proc parser_parse_match_statement(parser: *mut Parser) -> ASTNodeId {
 
     while not parser_at_end(parser) and not parser_check(parser, TokenKind.RightBrace) {
         let arm_begin: usize = (*parser).position;
+        let arm_diagnostic_start: usize = (*parser).diagnostic_count;
         let current = parser_current(parser);
         if current != null and parser_is_declaration_start((*current).kind) {
             break;
@@ -3421,27 +4378,46 @@ proc parser_parse_match_statement(parser: *mut Parser) -> ASTNodeId {
             parser_advance(parser);
             set guard = parser_parse_expression(parser);
             if guard == PARSER_INVALID_NODE_ID {
+                parser_reclassify_last_diagnostic(
+                    parser,
+                    arm_diagnostic_start,
+                    ParserError.InvalidMatchArm
+                );
                 parser_recover_match_arm(parser, arm_begin);
                 continue;
             }
         }
         if parser_expect(parser, TokenKind.FatArrow) == null {
+            parser_reclassify_last_diagnostic(
+                parser,
+                arm_diagnostic_start,
+                ParserError.InvalidMatchArm
+            );
             parser_recover_match_arm(parser, arm_begin);
             continue;
         }
         let mut body: ASTNodeId = PARSER_INVALID_NODE_ID;
+        let previous_match_arm_depth = (*parser).match_arm_depth;
+        if (*parser).match_arm_depth == PARSER_SIZE_MAX {
+            set (*parser).match_arm_depth = PARSER_SIZE_MAX;
+        } else {
+            set (*parser).match_arm_depth += 1;
+        }
         if parser_check(parser, TokenKind.LeftBrace) {
             set body = parser_parse_block(parser);
-        } else if parser_check(parser, TokenKind.KwSet) {
-            parser_advance(parser);
-            set body = parser_parse_expression_statement(parser);
         } else if parser_is_statement_start((if parser_current(parser) == null { TokenKind.Invalid } else { (*parser_current(parser)).kind })) {
             set body = parser_parse_statement(parser);
         } else {
             set body = parser_parse_expression(parser);
             if body != PARSER_INVALID_NODE_ID { let _ = parser_check(parser, TokenKind.Semicolon) and parser_advance(parser) != null; }
         }
+        set (*parser).match_arm_depth = previous_match_arm_depth;
         if body == PARSER_INVALID_NODE_ID {
+            parser_reclassify_last_diagnostic(
+                parser,
+                arm_diagnostic_start,
+                ParserError.InvalidMatchArm
+            );
             if not (*parser).recovering { return body; }
             parser_recover_match_arm(parser, arm_begin);
             continue;
@@ -3470,6 +4446,11 @@ proc parser_parse_match_statement(parser: *mut Parser) -> ASTNodeId {
             }
             if not next_arm_start {
                 parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+                parser_reclassify_last_diagnostic(
+                    parser,
+                    arm_diagnostic_start,
+                    ParserError.InvalidMatchArm
+                );
                 parser_recover_match_arm(parser, arm_begin);
             }
         }
@@ -3479,6 +4460,19 @@ proc parser_parse_match_statement(parser: *mut Parser) -> ASTNodeId {
     let node = vitte_parser_get_node_mut(parser, match_node);
     if node != null { set (*node).span = parser_span_from_range(parser, parser_token_index(parser, start), (*parser).position); }
     return match_node;
+}
+
+proc parser_parse_match_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let statement = parser_parse_match_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidMatchStatement
+        );
+    }
+    return statement;
 }
 
 proc parser_parse_statement(parser: *mut Parser) -> ASTNodeId {
@@ -3500,6 +4494,14 @@ proc parser_parse_statement(parser: *mut Parser) -> ASTNodeId {
     if parser_check(parser, TokenKind.KwIf) or
        parser_check(parser, TokenKind.KwElif) {
         return parser_parse_if_statement(parser);
+    }
+    if parser_check(parser, TokenKind.KwElse) {
+        parser_error_here(
+            parser,
+            ParserError.InvalidControlFlowStatement,
+            TokenKind.KwIf
+        );
+        return PARSER_INVALID_NODE_ID;
     }
     if parser_check(parser, TokenKind.KwReturn) {
         return parser_parse_return_statement(parser);
@@ -3528,10 +4530,15 @@ proc parser_parse_statement(parser: *mut Parser) -> ASTNodeId {
     if parser_check(parser, TokenKind.KwUnsafe) {
         return parser_parse_unsafe_statement(parser);
     }
+    let current = parser_current(parser);
+    if current != null and parser_is_declaration_start((*current).kind) {
+        parser_error_here(parser, ParserError.UnexpectedDeclaration, TokenKind.Invalid);
+        return PARSER_INVALID_NODE_ID;
+    }
     return parser_parse_expression_statement(parser);
 }
 
-proc parser_parse_assert_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_assert_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start: *const ParserToken = parser_current(parser);
     if start == null or parser_expect(parser, TokenKind.KwAssert) == null or
        parser_expect(parser, TokenKind.LeftParen) == null {
@@ -3556,7 +4563,20 @@ proc parser_parse_assert_statement(parser: *mut Parser) -> ASTNodeId {
     return statement;
 }
 
-proc parser_parse_defer_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_assert_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let statement = parser_parse_assert_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidAssertStatement
+        );
+    }
+    return statement;
+}
+
+proc parser_parse_defer_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or parser_expect(parser, TokenKind.KwDefer) == null {
         return PARSER_INVALID_NODE_ID;
@@ -3590,7 +4610,20 @@ proc parser_parse_defer_statement(parser: *mut Parser) -> ASTNodeId {
     return statement;
 }
 
-proc parser_parse_asm_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_defer_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let statement = parser_parse_defer_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidDeferStatement
+        );
+    }
+    return statement;
+}
+
+proc parser_parse_asm_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or parser_expect(parser, TokenKind.KwAsm) == null {
         return PARSER_INVALID_NODE_ID;
@@ -3605,10 +4638,20 @@ proc parser_parse_asm_statement(parser: *mut Parser) -> ASTNodeId {
     }
     if parser_check(parser, TokenKind.LeftParen) {
         parser_advance(parser);
+        let list_diagnostic_start = (*parser).diagnostic_count;
         while not parser_at_end(parser) and not parser_check(parser, TokenKind.RightParen) {
+            let operand_diagnostic_start = (*parser).diagnostic_count;
             let operand = parser_parse_expression(parser);
             if operand == PARSER_INVALID_NODE_ID or
                not parser_node_append_child(parser, statement, operand) {
+                parser_reclassify_last_diagnostic(
+                    parser,
+                    operand_diagnostic_start,
+                    ParserError.InvalidExpressionList
+                );
+                if parser_check(parser, TokenKind.RightParen) {
+                    break;
+                }
                 return PARSER_INVALID_NODE_ID;
             }
             if parser_check(parser, TokenKind.Comma) {
@@ -3618,6 +4661,18 @@ proc parser_parse_asm_statement(parser: *mut Parser) -> ASTNodeId {
                 }
                 continue;
             }
+            if parser_check(parser, TokenKind.RightParen) {
+                break;
+            }
+            if not parser_token_can_start_expression(parser_current(parser)) {
+                break;
+            }
+            parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+            parser_reclassify_last_diagnostic(
+                parser,
+                list_diagnostic_start,
+                ParserError.InvalidExpressionList
+            );
             break;
         }
         if parser_expect(parser, TokenKind.RightParen) == null {
@@ -3648,7 +4703,20 @@ proc parser_parse_asm_statement(parser: *mut Parser) -> ASTNodeId {
     return statement;
 }
 
-proc parser_parse_unsafe_statement(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_asm_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let statement = parser_parse_asm_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidAsmStatement
+        );
+    }
+    return statement;
+}
+
+proc parser_parse_unsafe_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or parser_expect(parser, TokenKind.KwUnsafe) == null {
         return PARSER_INVALID_NODE_ID;
@@ -3673,32 +4741,87 @@ proc parser_parse_unsafe_statement(parser: *mut Parser) -> ASTNodeId {
     return statement;
 }
 
+proc parser_parse_unsafe_statement(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start: usize = (*parser).diagnostic_count;
+    let statement = parser_parse_unsafe_statement_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidUnsafeStatement
+        );
+    }
+    return statement;
+}
+
 proc parser_parse_set_statement(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
+    let diagnostic_start = (*parser).diagnostic_count;
     if start_token == null or parser_expect(parser, TokenKind.KwSet) == null {
         return PARSER_INVALID_NODE_ID;
     }
 
     let assignment = parser_parse_expression(parser);
     if assignment == PARSER_INVALID_NODE_ID {
+        if (*parser).diagnostic_count > diagnostic_start {
+            let diag_entry = &mut (*parser).diagnostics[(*parser).diagnostic_count - 1];
+            if (*diag_entry).error == ParserError.InvalidAssignmentExpression {
+                // `set` has a statement-specific form; a missing set value
+                // belongs to that diagnostic, while nested RHS operator
+                // failures retain their expression-family identities.
+                set (*diag_entry).error = ParserError.InvalidSetStatement;
+                set (*parser).last_error = ParserError.InvalidSetStatement;
+            } else {
+                parser_reclassify_last_diagnostic(
+                    parser,
+                    diagnostic_start,
+                    ParserError.InvalidSetStatement
+                );
+            }
+        }
         return assignment;
     }
     let assignment_node = vitte_parser_get_node(parser, assignment);
     if assignment_node == null or (*assignment_node).kind != ASTNodeKind.AssignExpr {
-        parser_emit_diagnostic(
-            parser,
-            ParserDiagnosticKind.Error,
-            ParserError.ExpectedStatement,
-            parser_span_from_token(start_token),
-            TokenKind.Invalid,
-            TokenKind.Invalid
-        );
+        if assignment_node != null and
+           (*assignment_node).kind == ASTNodeKind.BinaryExpr and
+           (*assignment_node).token_index != PARSER_SIZE_MAX {
+            parser_error_at_position(
+                parser,
+                ParserError.InvalidAssignmentOperator,
+                TokenKind.Equal,
+                (*assignment_node).token_index
+            );
+        } else {
+            parser_error_here(
+                parser,
+                ParserError.InvalidAssignmentOperator,
+                TokenKind.Equal
+            );
+        }
         return PARSER_INVALID_NODE_ID;
     }
 
-    if parser_expect(parser, TokenKind.Semicolon) == null {
+    if not parser_check(parser, TokenKind.Semicolon) and
+       not ((*parser).match_arm_depth != 0 and
+            (parser_check(parser, TokenKind.Comma) or
+             (parser_current(parser) != null and (*parser_current(parser)).length == 4 and (*parser_current(parser)).lexeme == "case") or
+             parser_check(parser, TokenKind.RightBrace))) {
+        let _ = parser_expect(parser, TokenKind.Semicolon);
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidSetStatement
+        );
         return PARSER_INVALID_NODE_ID;
     }
+    if parser_check(parser, TokenKind.Semicolon) { parser_advance(parser); }
+
+    parser_reclassify_last_diagnostic(
+        parser,
+        diagnostic_start,
+        ParserError.InvalidSetStatement
+    );
 
     let statement = parser_add_node(
         parser,
@@ -3730,13 +4853,14 @@ proc parser_parse_block(parser: *mut Parser) -> ASTNodeId {
         return PARSER_INVALID_NODE_ID;
     }
     let block = parser_add_node(parser, ASTNodeKind.Block, parser_span_from_token(open_token));
-    if block == PARSER_INVALID_NODE_ID {
+    if (*parser).diagnostic_count > diagnostic_start {
         parser_leave_recursion(parser);
         return block;
     }
     while not parser_at_end(parser) and not parser_check(parser, TokenKind.RightBrace) {
         let statement_start = parser_current(parser);
         if statement_start != null and
+           (*statement_start).kind != TokenKind.KwElse and
            parser_is_block_escape_start((*statement_start).kind) {
             break;
         }
@@ -3806,7 +4930,7 @@ proc parser_if_has_else_ahead(parser: *const Parser) -> bool {
     return false;
 }
 
-proc parser_parse_block_expression(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_block_expression_inner(parser: *mut Parser) -> ASTNodeId {
     if not parser_enter_recursion(parser) {
         return PARSER_INVALID_NODE_ID;
     }
@@ -3920,7 +5044,78 @@ proc parser_parse_block_expression(parser: *mut Parser) -> ASTNodeId {
     return block;
 }
 
-proc parser_parse_if_expression(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_block_expression(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start = (*parser).diagnostic_count;
+    let block = parser_parse_block_expression_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidBlockExpression
+        );
+    }
+    return block;
+}
+
+proc parser_skip_braced_region(parser: *mut Parser) {
+    if not parser_check(parser, TokenKind.LeftBrace) { return; }
+    parser_advance(parser);
+    let mut depth: usize = 1;
+    while not parser_at_end(parser) and depth != 0 {
+        let token = parser_current(parser);
+        if token == null { break; }
+        if (*token).kind == TokenKind.LeftBrace {
+            set depth += 1;
+        } elif (*token).kind == TokenKind.RightBrace {
+            set depth -= 1;
+        }
+        parser_advance(parser);
+    }
+}
+
+proc parser_recover_if_tail(parser: *mut Parser) {
+    while not parser_at_end(parser) {
+        let token = parser_current(parser);
+        if token == null or (*token).kind == TokenKind.RightBrace { return; }
+        if (*token).kind == TokenKind.LeftBrace {
+            parser_skip_braced_region(parser);
+            break;
+        }
+        if parser_is_declaration_start((*token).kind) { return; }
+        parser_advance(parser);
+    }
+    loop {
+        if parser_check(parser, TokenKind.KwElse) {
+            parser_advance(parser);
+            if parser_check(parser, TokenKind.KwIf) or
+               parser_check(parser, TokenKind.KwElif) {
+                parser_advance(parser);
+                while not parser_at_end(parser) and
+                      not parser_check(parser, TokenKind.LeftBrace) and
+                      not parser_check(parser, TokenKind.RightBrace) {
+                    parser_advance(parser);
+                }
+                parser_skip_braced_region(parser);
+                continue;
+            }
+            parser_skip_braced_region(parser);
+            return;
+        }
+        if parser_check(parser, TokenKind.KwElif) {
+            parser_advance(parser);
+            while not parser_at_end(parser) and
+                  not parser_check(parser, TokenKind.LeftBrace) and
+                  not parser_check(parser, TokenKind.RightBrace) {
+                parser_advance(parser);
+            }
+            parser_skip_braced_region(parser);
+            continue;
+        }
+        return;
+    }
+}
+
+proc parser_parse_if_expression_inner(parser: *mut Parser) -> ASTNodeId {
     let start_token = parser_current(parser);
     if start_token == null or
        (not parser_check(parser, TokenKind.KwIf) and
@@ -3932,6 +5127,7 @@ proc parser_parse_if_expression(parser: *mut Parser) -> ASTNodeId {
 
     let condition = parser_parse_expression(parser);
     if condition == PARSER_INVALID_NODE_ID {
+        parser_recover_if_tail(parser);
         return condition;
     }
     let then_branch = parser_parse_block_expression(parser);
@@ -3976,6 +5172,19 @@ proc parser_parse_if_expression(parser: *mut Parser) -> ASTNodeId {
     return expression;
 }
 
+proc parser_parse_if_expression(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start = (*parser).diagnostic_count;
+    let expression = parser_parse_if_expression_inner(parser);
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidIfExpression
+        );
+    }
+    return expression;
+}
+
 proc parser_parse_primary_expression(parser: *mut Parser) -> ASTNodeId {
     if parser_check(parser, TokenKind.KwIf) or
        parser_check(parser, TokenKind.KwElif) {
@@ -4015,6 +5224,12 @@ proc parser_parse_primary_expression(parser: *mut Parser) -> ASTNodeId {
     if parser_check(parser, TokenKind.LeftBrace) {
         return parser_parse_block_expression(parser);
     }
+    let current = parser_current(parser);
+    if current != null and
+       ((*current).kind == TokenKind.At or (*current).kind == TokenKind.Dollar) {
+        parser_error_here(parser, ParserError.Unsupported, TokenKind.Invalid);
+        return PARSER_INVALID_NODE_ID;
+    }
     return parser_parse_value_initializer_atom(parser);
 }
 
@@ -4027,7 +5242,11 @@ proc parser_recover_call_argument(parser: *mut Parser, start_position: usize) ->
     ) == ParserListRecovery.Next;
 }
 
-proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
+proc parser_parse_postfix_expression_inner(
+    parser: *mut Parser,
+    suffix_seen: &mut bool
+) -> ASTNodeId {
+    set *suffix_seen = false;
     let mut expression = parser_parse_primary_expression(parser);
     if expression == PARSER_INVALID_NODE_ID {
         return expression;
@@ -4041,6 +5260,7 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
             parser,
             TokenKind.ColonColon
         ) {
+            set *suffix_seen = true;
             let mut pending_generic_closers: usize = 0;
             let base_node = vitte_parser_get_node(parser, expression);
             if base_node == null {
@@ -4057,6 +5277,29 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
                 return PARSER_INVALID_NODE_ID;
             }
             parser_advance(parser);
+            if parser_check(parser, TokenKind.RightBracket) {
+                parser_error_here(
+                    parser,
+                    ParserError.InvalidGenericArguments,
+                    TokenKind.Identifier
+                );
+                parser_advance(parser);
+                if parser_check(parser, TokenKind.LeftBrace) {
+                    parser_advance(parser);
+                    let mut brace_depth: usize = 1;
+                    while not parser_at_end(parser) and brace_depth != 0 {
+                        let body_token = parser_current(parser);
+                        if body_token == null { break; }
+                        if (*body_token).kind == TokenKind.LeftBrace {
+                            set brace_depth += 1;
+                        } elif (*body_token).kind == TokenKind.RightBrace {
+                            set brace_depth -= 1;
+                        }
+                        parser_advance(parser);
+                    }
+                }
+                return PARSER_INVALID_NODE_ID;
+            }
             if not parser_parse_type_arguments(
                 parser,
                 generic_type,
@@ -4078,6 +5321,7 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
 
         if parser_check(parser, TokenKind.Less) and
            parser_has_generic_form_suffix(parser) {
+            set *suffix_seen = true;
             let mut pending_generic_closers: usize = 0;
             let base_node = vitte_parser_get_node(parser, expression);
             if base_node == null {
@@ -4118,6 +5362,7 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
                (*type_node).child_count < 2 {
                 break;
             }
+            set *suffix_seen = true;
             parser_advance(parser);
             let member_name = parser_parse_identifier_node(parser);
             if member_name == PARSER_INVALID_NODE_ID {
@@ -4156,6 +5401,7 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
                 break;
             }
 
+            set *suffix_seen = true;
             let type_span: ParserSpan = (*type_path).span;
             parser_advance(parser);
             let form_expression = parser_add_node(parser, ASTNodeKind.FormExpr, type_span);
@@ -4245,7 +5491,9 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
         }
 
         if parser_check(parser, TokenKind.LeftParen) {
+            set *suffix_seen = true;
             parser_advance(parser);
+            let list_diagnostic_start = (*parser).diagnostic_count;
             let callee_node = vitte_parser_get_node(parser, expression);
             if callee_node == null {
                 return PARSER_INVALID_NODE_ID;
@@ -4259,8 +5507,14 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
             if not parser_check(parser, TokenKind.RightParen) {
                 while true {
                     let argument_start = parser_current(parser);
+                    let argument_diagnostic_start = (*parser).diagnostic_count;
                     let argument = parser_parse_expression(parser);
                     if argument == PARSER_INVALID_NODE_ID {
+                        parser_reclassify_last_diagnostic(
+                            parser,
+                            argument_diagnostic_start,
+                            ParserError.InvalidExpressionList
+                        );
                         if not (*parser).recovering {
                             return argument;
                         }
@@ -4290,8 +5544,16 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
                     if parser_check(parser, TokenKind.RightParen) {
                         break;
                     }
+                    if not parser_token_can_start_expression(parser_current(parser)) {
+                        break;
+                    }
 
                     parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+                    parser_reclassify_last_diagnostic(
+                        parser,
+                        list_diagnostic_start,
+                        ParserError.InvalidExpressionList
+                    );
                     let recovery_start = parser_current(parser);
                     if parser_recover_call_argument(
                         parser,
@@ -4321,6 +5583,7 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
         }
 
         if parser_check(parser, TokenKind.LeftBracket) {
+            set *suffix_seen = true;
             parser_advance(parser);
             let object_node = vitte_parser_get_node(parser, expression);
             if object_node == null {
@@ -4351,6 +5614,7 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
         }
 
         if parser_check(parser, TokenKind.Dot) {
+            set *suffix_seen = true;
             parser_advance(parser);
             let object_node = vitte_parser_get_node(parser, expression);
             if object_node == null {
@@ -4377,6 +5641,7 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
         }
 
         if parser_check(parser, TokenKind.Question) {
+            set *suffix_seen = true;
             let postfix_token = parser_advance(parser);
             let expression_node = vitte_parser_get_node(parser, expression);
             if expression_node == null {
@@ -4402,6 +5667,34 @@ proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
     return expression;
 }
 
+proc parser_parse_postfix_expression(parser: *mut Parser) -> ASTNodeId {
+    let diagnostic_start = (*parser).diagnostic_count;
+    let begin = (*parser).position;
+    let mut suffix_seen: bool = false;
+    let expression = parser_parse_postfix_expression_inner(parser, &mut suffix_seen);
+    let first_token = parser_token_at_private(parser as *const Parser, begin);
+    if (*parser).diagnostic_count > diagnostic_start and
+       (suffix_seen or
+        (first_token != null and (*first_token).kind == TokenKind.Question)) {
+        let second_token = parser_token_at_private(parser as *const Parser, begin + 1);
+        if first_token != null and (*first_token).kind == TokenKind.KwNull and
+           second_token != null and (*second_token).kind == TokenKind.LeftParen {
+            parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                ParserError.InvalidNullConstruction
+            );
+            return expression;
+        }
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidPostfixExpression
+        );
+    }
+    return expression;
+}
+
 proc parser_parse_cast_expression(parser: *mut Parser) -> ASTNodeId {
     let mut expression = parser_parse_postfix_expression(parser);
     if expression == PARSER_INVALID_NODE_ID {
@@ -4410,6 +5703,7 @@ proc parser_parse_cast_expression(parser: *mut Parser) -> ASTNodeId {
 
     while parser_check(parser, TokenKind.KwAs) {
         parser_advance(parser);
+        let diagnostic_start = (*parser).diagnostic_count;
         let expression_node = vitte_parser_get_node(parser, expression);
         if expression_node == null {
             return PARSER_INVALID_NODE_ID;
@@ -4417,6 +5711,11 @@ proc parser_parse_cast_expression(parser: *mut Parser) -> ASTNodeId {
         let expression_span: ParserSpan = (*expression_node).span;
         let target_type: ASTNodeId = parser_parse_type_expression(parser);
         if target_type == PARSER_INVALID_NODE_ID {
+            parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                ParserError.InvalidCastExpression
+            );
             return target_type;
         }
         let target_node = vitte_parser_get_node(parser, target_type);
@@ -4443,6 +5742,7 @@ proc parser_parse_unary_expression(parser: *mut Parser) -> ASTNodeId {
     }
 
     parser_advance(parser);
+    let diagnostic_start = (*parser).diagnostic_count;
     let mutable_reference =
         ((*operator_token).kind == TokenKind.Amp or
          (*operator_token).kind == TokenKind.KwRef) and
@@ -4452,6 +5752,11 @@ proc parser_parse_unary_expression(parser: *mut Parser) -> ASTNodeId {
     }
     let operand = parser_parse_unary_expression(parser);
     if operand == PARSER_INVALID_NODE_ID {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidUnaryExpression
+        );
         return operand;
     }
     if (*operator_token).kind == TokenKind.KwAwait {
@@ -4474,6 +5779,39 @@ proc parser_parse_unary_expression(parser: *mut Parser) -> ASTNodeId {
     );
 }
 
+proc parser_expression_error_for_operator(kind: TokenKind) -> ParserError {
+    match kind {
+        case TokenKind.Equal | TokenKind.PlusEqual | TokenKind.MinusEqual |
+             TokenKind.StarEqual | TokenKind.SlashEqual | TokenKind.PercentEqual |
+             TokenKind.AmpEqual | TokenKind.PipeEqual | TokenKind.CaretEqual |
+             TokenKind.ShiftLeftEqual | TokenKind.ShiftRightEqual => {
+            return ParserError.InvalidAssignmentExpression;
+        },
+        case TokenKind.QuestionQuestion => return ParserError.InvalidCoalescingExpression;
+        case TokenKind.AmpAmp | TokenKind.PipePipe | TokenKind.KwAnd | TokenKind.KwOr => {
+            return ParserError.InvalidLogicalExpression;
+        },
+        case TokenKind.Amp | TokenKind.Pipe | TokenKind.Caret => {
+            return ParserError.InvalidBitwiseExpression;
+        },
+        case TokenKind.EqualEqual | TokenKind.BangEqual | TokenKind.Less |
+             TokenKind.LessEqual | TokenKind.Greater | TokenKind.GreaterEqual => {
+            return ParserError.InvalidComparisonExpression;
+        },
+        case TokenKind.ShiftLeft | TokenKind.ShiftRight => {
+            return ParserError.InvalidShiftExpression;
+        },
+        case TokenKind.Plus | TokenKind.Minus | TokenKind.Star |
+             TokenKind.Slash | TokenKind.Percent => {
+            return ParserError.InvalidArithmeticExpression;
+        },
+        case TokenKind.DotDot | TokenKind.DotDotEqual => {
+            return ParserError.InvalidRangeExpression;
+        },
+        else => return ParserError.ExpectedExpression;
+    }
+}
+
 proc parser_parse_binary_precedence(parser: *mut Parser, minimum_precedence: u32) -> ASTNodeId {
     let mut left = parser_parse_unary_expression(parser);
     if left == PARSER_INVALID_NODE_ID {
@@ -4494,8 +5832,14 @@ proc parser_parse_binary_precedence(parser: *mut Parser, minimum_precedence: u32
         if parser_binary_right_associative((*operator_token).kind) {
             set next_precedence = precedence;
         }
+        let diagnostic_start = (*parser).diagnostic_count;
         let right = parser_parse_binary_precedence(parser, next_precedence);
         if right == PARSER_INVALID_NODE_ID {
+            parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                parser_expression_error_for_operator((*operator_token).kind)
+            );
             return right;
         }
 
@@ -4526,11 +5870,31 @@ proc parser_parse_binary_precedence(parser: *mut Parser, minimum_precedence: u32
 }
 
 proc parser_parse_expression(parser: *mut Parser) -> ASTNodeId {
+    let begin: usize = (*parser).position;
+    let diagnostic_start: usize = (*parser).diagnostic_count;
     if not parser_enter_recursion(parser) {
         return PARSER_INVALID_NODE_ID;
     }
     let expression = parser_parse_binary_precedence(parser, 1);
     parser_leave_recursion(parser);
+    if expression == PARSER_INVALID_NODE_ID and
+       (*parser).diagnostic_count > diagnostic_start {
+        let start_token = parser_token_at_private(parser, begin);
+        if start_token != null and (*start_token).kind == TokenKind.KwAs {
+            parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                ParserError.InvalidCastExpression
+            );
+        } elif start_token != null and
+              parser_binary_precedence((*start_token).kind) != 0 {
+            parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                parser_expression_error_for_operator((*start_token).kind)
+            );
+        }
+    }
     return expression;
 }
 
@@ -4540,6 +5904,7 @@ proc parser_parse_value_declaration(
     is_static: bool
 ) -> ASTNodeId {
     parser_advance(parser);
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
 
     let mut declaration_node_flags = incoming_node_flags;
     let mut has_mutable_static_modifier = false;
@@ -4551,6 +5916,11 @@ proc parser_parse_value_declaration(
 
     let value_name = parser_parse_identifier_node(parser);
     if value_name == PARSER_INVALID_NODE_ID {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidValueDeclaration
+        );
         return value_name;
     }
 
@@ -4610,25 +5980,41 @@ proc parser_parse_value_declaration(
 proc parser_finish_value_declaration(parser: *mut Parser, declaration: ASTNodeId) -> ASTNodeId {
     if parser_check(parser, TokenKind.Colon) {
         parser_advance(parser);
+        let diagnostic_start: usize = (*parser).diagnostic_count;
         let value_type = parser_parse_type_expression(parser);
         if value_type == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, declaration, value_type) {
+            parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                ParserError.InvalidValueDeclaration
+            );
             return PARSER_INVALID_NODE_ID;
         }
     }
 
-    if parser_expect(parser, TokenKind.Equal) == null {
+    if not parser_check(parser, TokenKind.Equal) {
+        parser_error_here(parser, ParserError.MissingValueInitializer, TokenKind.Equal);
         return PARSER_INVALID_NODE_ID;
     }
+    parser_advance(parser);
+    let diagnostic_start: usize = (*parser).diagnostic_count;
     let initializer = parser_parse_expression(parser);
     if initializer == PARSER_INVALID_NODE_ID or
        not parser_node_append_child(parser, declaration, initializer) {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.MissingValueInitializer
+        );
         return PARSER_INVALID_NODE_ID;
     }
 
-    if parser_expect(parser, TokenKind.Semicolon) == null {
+    if not parser_check(parser, TokenKind.Semicolon) {
+        parser_error_here(parser, ParserError.InvalidValueDeclaration, TokenKind.Semicolon);
         return PARSER_INVALID_NODE_ID;
     }
+    parser_advance(parser);
 
     let completed_declaration = vitte_parser_get_node_mut(parser, declaration);
     if completed_declaration != null {
@@ -4652,8 +6038,15 @@ proc parser_parse_type_declaration(
         parser_advance(parser);
     }
 
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
     let name = parser_parse_identifier_node(parser);
     if name == PARSER_INVALID_NODE_ID {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            if is_opaque { ParserError.InvalidOpaqueDeclaration }
+            else { ParserError.InvalidTypeDeclaration }
+        );
         return name;
     }
 
@@ -4675,23 +6068,56 @@ proc parser_parse_type_declaration(
     set (*declaration_node).node_flags = incoming_node_flags;
     set (*declaration_node).token_index = begin;
 
-    if not parser_parse_generic_parameters(parser, declaration) or
-       not parser_parse_where_clause(parser, declaration) {
+    set diagnostic_start = (*parser).diagnostic_count;
+    if not parser_parse_generic_parameters(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            if is_opaque { ParserError.InvalidOpaqueDeclaration }
+            else { ParserError.InvalidTypeDeclaration }
+        );
+        return PARSER_INVALID_NODE_ID;
+    }
+    set diagnostic_start = (*parser).diagnostic_count;
+    if not parser_parse_where_clause(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            if is_opaque { ParserError.InvalidOpaqueDeclaration }
+            else { ParserError.InvalidTypeDeclaration }
+        );
+        return PARSER_INVALID_NODE_ID;
+    }
+
+    if is_opaque and parser_check(parser, TokenKind.Colon) {
+        parser_error_here(parser, ParserError.InvalidOpaqueDeclaration, TokenKind.Equal);
         return PARSER_INVALID_NODE_ID;
     }
 
     if not is_opaque and parser_check(parser, TokenKind.Colon) {
         parser_advance(parser);
+        set diagnostic_start = (*parser).diagnostic_count;
         let mut bound: ASTNodeId = parser_parse_type_expression(parser);
         if bound == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, declaration, bound) {
+            parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                ParserError.InvalidTypeDeclaration
+            );
             return PARSER_INVALID_NODE_ID;
         }
         while parser_check(parser, TokenKind.Plus) {
             parser_advance(parser);
+            set diagnostic_start = (*parser).diagnostic_count;
             set bound = parser_parse_type_expression(parser);
             if bound == PARSER_INVALID_NODE_ID or
                not parser_node_append_child(parser, declaration, bound) {
+                parser_reclassify_last_diagnostic(
+                    parser,
+                    diagnostic_start,
+                    ParserError.InvalidTypeDeclaration
+                );
                 return PARSER_INVALID_NODE_ID;
             }
         }
@@ -4699,9 +6125,16 @@ proc parser_parse_type_declaration(
 
     if parser_check(parser, TokenKind.Equal) {
         parser_advance(parser);
+        set diagnostic_start = (*parser).diagnostic_count;
         let target = parser_parse_type_expression(parser);
         if target == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, declaration, target) {
+            parser_reclassify_last_diagnostic(
+                parser,
+                diagnostic_start,
+                if is_opaque { ParserError.InvalidOpaqueDeclaration }
+                else { ParserError.InvalidTypeDeclaration }
+            );
             return PARSER_INVALID_NODE_ID;
         }
         let completed_alias = vitte_parser_get_node_mut(parser, declaration);
@@ -4712,9 +6145,16 @@ proc parser_parse_type_declaration(
             (*completed_alias).node_flags | PARSER_AST_FLAG_TYPE_ALIAS;
     }
 
-    if parser_expect(parser, TokenKind.Semicolon) == null {
+    if not parser_check(parser, TokenKind.Semicolon) {
+        parser_error_here(
+            parser,
+            if is_opaque { ParserError.InvalidOpaqueDeclaration }
+            else { ParserError.InvalidTypeDeclaration },
+            TokenKind.Semicolon
+        );
         return PARSER_INVALID_NODE_ID;
     }
+    parser_advance(parser);
     let completed_declaration = vitte_parser_get_node_mut(parser, declaration);
     if completed_declaration == null {
         return PARSER_INVALID_NODE_ID;
@@ -4727,6 +6167,37 @@ proc parser_parse_type_declaration(
     return declaration;
 }
 
+proc parser_form_has_field_name(
+    parser: *const Parser,
+    declaration: ASTNodeId,
+    field_token: *const ParserToken
+) -> bool {
+    if parser == null or field_token == null {
+        return false;
+    }
+    let form_node = vitte_parser_get_node(parser, declaration);
+    if form_node == null or (*form_node).child_count < 2 {
+        return false;
+    }
+    let mut index: usize = 1;
+    while index < (*form_node).child_count {
+        let field = vitte_parser_get_node(parser, (*form_node).children[index]);
+        if field != null and (*field).kind == ASTNodeKind.FieldDecl and
+           (*field).child_count >= 1 {
+            let field_name = vitte_parser_get_node(parser, (*field).children[0]);
+            if field_name != null {
+                let previous_token = parser_token_at_private(parser, (*field_name).token_index);
+                if previous_token != null and
+                   (*previous_token).lexeme == (*field_token).lexeme {
+                    return true;
+                }
+            }
+        }
+        set index += 1;
+    }
+    return false;
+}
+
 proc parser_parse_form_declaration(
     parser: *mut Parser,
     incoming_node_flags: u32
@@ -4734,8 +6205,14 @@ proc parser_parse_form_declaration(
     let begin: usize = (*parser).position;
     parser_advance(parser);
 
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
     let name = parser_parse_identifier_node(parser);
     if name == PARSER_INVALID_NODE_ID {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            ParserError.InvalidFormDeclaration
+        );
         return name;
     }
 
@@ -4756,21 +6233,53 @@ proc parser_parse_form_declaration(
     set (*declaration_node).node_flags = incoming_node_flags;
     set (*declaration_node).token_index = begin;
 
-    if not parser_parse_generic_parameters(parser, declaration) or
-       not parser_parse_where_clause(parser, declaration) {
+    set diagnostic_start = (*parser).diagnostic_count;
+    if not parser_parse_generic_parameters(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidFormDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
-    if parser_expect(parser, TokenKind.LeftBrace) == null {
+    set diagnostic_start = (*parser).diagnostic_count;
+    if not parser_parse_where_clause(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidFormDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
+    if not parser_check(parser, TokenKind.LeftBrace) {
+        parser_error_here(parser, ParserError.InvalidFormDeclaration, TokenKind.LeftBrace);
+        return PARSER_INVALID_NODE_ID;
+    }
+    parser_advance(parser);
 
     while not parser_at_end(parser) and not parser_check(parser, TokenKind.RightBrace) {
         let field_begin: usize = (*parser).position;
         let field_name = parser_parse_identifier_node(parser);
+        if field_name != PARSER_INVALID_NODE_ID {
+            let field_token = parser_token_at_private(parser, field_begin);
+            if parser_form_has_field_name(parser, declaration, field_token) {
+                parser_error_at_position(
+                    parser,
+                    ParserError.DuplicateFormField,
+                    TokenKind.Identifier,
+                    field_begin
+                );
+                set (*parser).recovering = false;
+            }
+        }
         let mut field_type: ASTNodeId = PARSER_INVALID_NODE_ID;
-        if field_name != PARSER_INVALID_NODE_ID and
-           parser_expect(parser, TokenKind.Colon) != null {
+        if field_name != PARSER_INVALID_NODE_ID and parser_check(parser, TokenKind.Colon) {
+            parser_advance(parser);
+            set diagnostic_start = (*parser).diagnostic_count;
             set field_type = parser_parse_type_expression(parser);
+            if field_type == PARSER_INVALID_NODE_ID {
+                parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start, ParserError.InvalidFormDeclaration
+                );
+            }
+        } else if field_name != PARSER_INVALID_NODE_ID {
+            parser_error_here(parser, ParserError.InvalidFormDeclaration, TokenKind.Colon);
         }
 
         if field_type == PARSER_INVALID_NODE_ID {
@@ -4804,6 +6313,9 @@ proc parser_parse_form_declaration(
             return PARSER_INVALID_NODE_ID;
         }
 
+        if parser_at_end(parser) {
+            break;
+        }
         if parser_check(parser, TokenKind.RightBrace) {
             continue;
         }
@@ -4812,7 +6324,7 @@ proc parser_parse_form_declaration(
             continue;
         }
 
-        parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+        parser_error_here(parser, ParserError.InvalidFormFieldSeparator, TokenKind.Comma);
         if parser_token_is_identifier(parser_current(parser)) and
            parser_check_next(parser, TokenKind.Colon) {
             set (*parser).recovering = false;
@@ -4833,9 +6345,11 @@ proc parser_parse_form_declaration(
         return PARSER_INVALID_NODE_ID;
     }
 
-    if parser_expect(parser, TokenKind.RightBrace) == null {
+    if not parser_check(parser, TokenKind.RightBrace) {
+        parser_error_here(parser, ParserError.InvalidFormDeclaration, TokenKind.RightBrace);
         return PARSER_INVALID_NODE_ID;
     }
+    parser_advance(parser);
     let completed = vitte_parser_get_node_mut(parser, declaration);
     if completed != null {
         set (*completed).span = parser_span_from_range(parser, begin, (*parser).position);
@@ -4848,10 +6362,12 @@ proc parser_parse_pick_declaration(
     incoming_node_flags: u32
 ) -> ASTNodeId {
     let begin: usize = (*parser).position;
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
     parser_advance(parser);
 
     let name = parser_parse_identifier_node(parser);
     if name == PARSER_INVALID_NODE_ID {
+        parser_reclassify_last_diagnostic(parser, diagnostic_start, ParserError.InvalidPickDeclaration);
         return name;
     }
 
@@ -4872,18 +6388,28 @@ proc parser_parse_pick_declaration(
     set (*declaration_node).node_flags = incoming_node_flags;
     set (*declaration_node).token_index = begin;
 
+    set diagnostic_start = (*parser).diagnostic_count;
     if not parser_parse_generic_parameters(parser, declaration) or
        not parser_parse_where_clause(parser, declaration) {
+        parser_reclassify_last_diagnostic(parser, diagnostic_start, ParserError.InvalidPickDeclaration);
         return PARSER_INVALID_NODE_ID;
     }
-    if parser_expect(parser, TokenKind.LeftBrace) == null {
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(parser, diagnostic_start, ParserError.InvalidPickDeclaration);
+    }
+    if not parser_check(parser, TokenKind.LeftBrace) {
+        parser_error_here(parser, ParserError.InvalidPickDeclaration, TokenKind.LeftBrace);
+        parser_reclassify_last_diagnostic(parser, diagnostic_start, ParserError.InvalidPickDeclaration);
         return PARSER_INVALID_NODE_ID;
     }
+    parser_advance(parser);
 
     while not parser_at_end(parser) and not parser_check(parser, TokenKind.RightBrace) {
         let variant_begin: usize = (*parser).position;
+        set diagnostic_start = (*parser).diagnostic_count;
         let variant_name = parser_parse_identifier_node(parser);
         if variant_name == PARSER_INVALID_NODE_ID {
+            parser_reclassify_last_diagnostic(parser, diagnostic_start, ParserError.InvalidPickDeclaration);
             if not (*parser).recovering {
                 return PARSER_INVALID_NODE_ID;
             }
@@ -4912,12 +6438,49 @@ proc parser_parse_pick_declaration(
             return PARSER_INVALID_NODE_ID;
         }
 
+        let variant_token = parser_token_at_private(parser, variant_begin);
+        let pick_node = vitte_parser_get_node(parser, declaration);
+        if variant_token != null and pick_node != null {
+            let mut previous_index: usize = 1;
+            while previous_index < (*pick_node).child_count {
+                let previous_variant = vitte_parser_get_node(
+                    parser, (*pick_node).children[previous_index]
+                );
+                if previous_variant != null and
+                   (*previous_variant).kind == ASTNodeKind.VariantDecl and
+                   (*previous_variant).child_count != 0 {
+                    let previous_name = vitte_parser_get_node(
+                        parser, (*previous_variant).children[0]
+                    );
+                    if previous_name != null {
+                        let previous_token = parser_token_at_private(
+                            parser, (*previous_name).token_index
+                        );
+                        if previous_token != null and
+                           (*previous_token).lexeme == (*variant_token).lexeme {
+                            parser_error_at_position(
+                                parser, ParserError.DuplicatePickVariant,
+                                TokenKind.Identifier, variant_begin
+                            );
+                            set (*parser).recovering = false;
+                            break;
+                        }
+                    }
+                }
+                set previous_index += 1;
+            }
+        }
+
         if parser_check(parser, TokenKind.LeftParen) {
             parser_advance(parser);
             while not parser_at_end(parser) and not parser_check(parser, TokenKind.RightParen) {
                 let payload_begin: usize = (*parser).position;
+                set diagnostic_start = (*parser).diagnostic_count;
                 let payload_type = parser_parse_type_expression(parser);
                 if payload_type == PARSER_INVALID_NODE_ID {
+                    parser_reclassify_last_diagnostic(
+                        parser, diagnostic_start, ParserError.InvalidPickVariantPayload
+                    );
                     if not (*parser).recovering {
                         return PARSER_INVALID_NODE_ID;
                     }
@@ -4928,6 +6491,9 @@ proc parser_parse_pick_declaration(
                         payload_begin
                     );
                     if recovery == ParserListRecovery.Next {
+                        if parser_check(parser, TokenKind.RightParen) {
+                            break;
+                        }
                         continue;
                     }
                     if recovery == ParserListRecovery.End {
@@ -4950,7 +6516,7 @@ proc parser_parse_pick_declaration(
                     break;
                 }
 
-                parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+                parser_error_here(parser, ParserError.InvalidPickVariantPayload, TokenKind.Comma);
                 let recovery = parser_synchronize_list(
                     parser,
                     TokenKind.RightParen,
@@ -4965,8 +6531,17 @@ proc parser_parse_pick_declaration(
                 }
                 return PARSER_INVALID_NODE_ID;
             }
+            set diagnostic_start = (*parser).diagnostic_count;
             if parser_expect(parser, TokenKind.RightParen) == null {
+                parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start, ParserError.InvalidPickVariantPayload
+                );
                 return PARSER_INVALID_NODE_ID;
+            }
+            if (*parser).diagnostic_count > diagnostic_start {
+                parser_reclassify_last_diagnostic(
+                    parser, diagnostic_start, ParserError.InvalidPickVariantPayload
+                );
             }
         }
 
@@ -4988,7 +6563,7 @@ proc parser_parse_pick_declaration(
             }
             continue;
         }
-        parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+        parser_error_here(parser, ParserError.InvalidPickDeclaration, TokenKind.Comma);
         if parser_token_is_identifier(parser_current(parser)) {
             set (*parser).recovering = false;
             continue;
@@ -5008,8 +6583,13 @@ proc parser_parse_pick_declaration(
         return PARSER_INVALID_NODE_ID;
     }
 
+    set diagnostic_start = (*parser).diagnostic_count;
     if parser_expect(parser, TokenKind.RightBrace) == null {
+        parser_reclassify_last_diagnostic(parser, diagnostic_start, ParserError.InvalidPickDeclaration);
         return PARSER_INVALID_NODE_ID;
+    }
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(parser, diagnostic_start, ParserError.InvalidPickDeclaration);
     }
     let completed = vitte_parser_get_node_mut(parser, declaration);
     if completed != null {
@@ -5044,7 +6624,11 @@ proc parser_parse_procedure_parameters(
     parser: *mut Parser,
     declaration: ASTNodeId
 ) -> bool {
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
     if parser_expect(parser, TokenKind.LeftParen) == null {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidProcedureParameters
+        );
         return false;
     }
 
@@ -5056,10 +6640,16 @@ proc parser_parse_procedure_parameters(
             set parameter_flags = parameter_flags | PARSER_AST_FLAG_MUTABLE;
         } else if parser_check(parser, TokenKind.KwMove) {
             parser_advance(parser);
+            set parameter_flags = parameter_flags | PARSER_AST_FLAG_PARAMETER_MOVE;
         } else {
             let modifier = parser_current(parser);
             if modifier != null and (*modifier).kind == TokenKind.KwReserved and
                ((*modifier).lexeme == "owned" or (*modifier).lexeme == "borrow") {
+                set parameter_flags = parameter_flags | if (*modifier).lexeme == "owned" {
+                    PARSER_AST_FLAG_PARAMETER_OWNED
+                } else {
+                    PARSER_AST_FLAG_PARAMETER_BORROW
+                };
                 parser_advance(parser);
             }
         }
@@ -5071,6 +6661,9 @@ proc parser_parse_procedure_parameters(
             set parameter_type = parser_parse_type_expression(parser);
         }
         if parameter_type == PARSER_INVALID_NODE_ID {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidProcedureParameters
+            );
             if not (*parser).recovering {
                 return false;
             }
@@ -5120,7 +6713,7 @@ proc parser_parse_procedure_parameters(
             break;
         }
 
-        parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+        parser_error_here(parser, ParserError.InvalidProcedureParameters, TokenKind.Comma);
         let recovery = parser_synchronize_list(
             parser,
             TokenKind.RightParen,
@@ -5136,7 +6729,17 @@ proc parser_parse_procedure_parameters(
         return false;
     }
 
-    return parser_expect(parser, TokenKind.RightParen) != null;
+    let closed = parser_expect(parser, TokenKind.RightParen) != null;
+    if not closed {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidProcedureParameters
+        );
+    } else if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidProcedureParameters
+        );
+    }
+    return closed;
 }
 
 proc parser_parse_proc_declaration(
@@ -5145,23 +6748,53 @@ proc parser_parse_proc_declaration(
     external: bool
 ) -> ASTNodeId {
     let begin: usize = (*parser).position;
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
     let external_token = parser_current(parser);
     let is_intrinsic = external and parser_token_is_intrinsic(external_token);
+    let mut external_error: ParserError = ParserError.InvalidExternalProcedure;
+    if is_intrinsic {
+        set external_error = ParserError.InvalidIntrinsicDeclaration;
+    }
 
     if external {
         if parser_expect(parser, TokenKind.KwExtern) == null {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, external_error
+            );
             return PARSER_INVALID_NODE_ID;
         }
         if not is_intrinsic and parser_check(parser, TokenKind.StringLiteral) {
+            let abi_token = parser_current(parser);
+            if abi_token == null or (*abi_token).length <= 2 {
+                parser_emit_diagnostic(
+                    parser,
+                    ParserDiagnosticKind.Error,
+                    ParserError.InvalidAbiStringLiteral,
+                    if abi_token == null { parser_span_invalid() } else { parser_span_from_token(abi_token) },
+                    TokenKind.StringLiteral,
+                    if abi_token == null { TokenKind.Invalid } else { (*abi_token).kind }
+                );
+                return PARSER_INVALID_NODE_ID;
+            }
             parser_advance(parser);
         }
     }
     if not is_intrinsic and parser_expect(parser, TokenKind.KwProc) == null {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            if external { external_error } else { ParserError.InvalidProcedureDeclaration }
+        );
         return PARSER_INVALID_NODE_ID;
     }
 
     let name = parser_parse_identifier_node(parser);
     if name == PARSER_INVALID_NODE_ID {
+        parser_reclassify_last_diagnostic(
+            parser,
+            diagnostic_start,
+            if external { external_error } else { ParserError.InvalidProcedureDeclaration }
+        );
         return name;
     }
 
@@ -5189,26 +6822,61 @@ proc parser_parse_proc_declaration(
         set (*declaration_node).node_flags =
             (*declaration_node).node_flags | PARSER_AST_FLAG_EXTERN;
     }
+    if is_intrinsic {
+        set (*declaration_node).node_flags =
+            (*declaration_node).node_flags | PARSER_AST_FLAG_INTRINSIC;
+    }
     set (*declaration_node).token_index = begin;
 
+    set diagnostic_start = (*parser).diagnostic_count;
     if not parser_parse_generic_parameters(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidProcedureDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidProcedureDeclaration
+        );
+    }
+    set diagnostic_start = (*parser).diagnostic_count;
     if not parser_parse_procedure_parameters(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidProcedureParameters
+        );
         return PARSER_INVALID_NODE_ID;
     }
 
     if parser_check(parser, TokenKind.Arrow) {
         parser_advance(parser);
+        set diagnostic_start = (*parser).diagnostic_count;
         let return_type = parser_parse_type_expression(parser);
         if return_type == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, declaration, return_type) {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidProcedureReturnType
+            );
             return PARSER_INVALID_NODE_ID;
+        }
+        if (*parser).diagnostic_count > diagnostic_start {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidProcedureReturnType
+            );
         }
     }
 
+    set diagnostic_start = (*parser).diagnostic_count;
     if not parser_parse_where_clause(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidProcedureDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
+    }
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidProcedureDeclaration
+        );
     }
     while parser_check(parser, TokenKind.KwRequires) or
           parser_check(parser, TokenKind.KwEnsures) {
@@ -5217,11 +6885,26 @@ proc parser_parse_proc_declaration(
         } else {
             PARSER_AST_FLAG_CONTRACT_ENSURES
         };
+        let contract_error: ParserError = if contract_flag == PARSER_AST_FLAG_CONTRACT_REQUIRES {
+            ParserError.InvalidRequiresClause
+        } else {
+            ParserError.InvalidEnsuresClause
+        };
         parser_advance(parser);
+        set diagnostic_start = (*parser).diagnostic_count;
 
         let condition = parser_parse_expression(parser);
         if condition == PARSER_INVALID_NODE_ID {
-            return PARSER_INVALID_NODE_ID;
+            parser_reclassify_last_diagnostic(parser, diagnostic_start, contract_error);
+            while not parser_at_end(parser) and
+                  not parser_check(parser, TokenKind.Semicolon) and
+                  not parser_check(parser, TokenKind.LeftBrace) {
+                parser_advance(parser);
+            }
+            if parser_check(parser, TokenKind.Semicolon) {
+                parser_advance(parser);
+            }
+            continue;
         }
         let condition_node = vitte_parser_get_node_mut(parser, condition);
         if condition_node == null {
@@ -5230,22 +6913,42 @@ proc parser_parse_proc_declaration(
         set (*condition_node).node_flags =
             (*condition_node).node_flags | contract_flag;
 
-        if not parser_node_append_child(parser, declaration, condition) or
-           parser_expect(parser, TokenKind.Semicolon) == null {
+        if not parser_node_append_child(parser, declaration, condition) {
+            return PARSER_INVALID_NODE_ID;
+        }
+        let terminator = parser_expect(parser, TokenKind.Semicolon);
+        // A safely insertable `;` still emits an expected-token diagnostic.
+        // Preserve the contract-specific owner in recoverable and fatal paths.
+        if (*parser).diagnostic_count > diagnostic_start {
+            parser_reclassify_last_diagnostic(parser, diagnostic_start, contract_error);
+        }
+        if terminator == null {
             return PARSER_INVALID_NODE_ID;
         }
     }
 
     if external {
-        if parser_expect(parser, TokenKind.Semicolon) == null {
+        if not parser_check(parser, TokenKind.Semicolon) {
+            parser_error_here(
+                parser, ParserError.InvalidProcedureBodyForm, TokenKind.Semicolon
+            );
             return PARSER_INVALID_NODE_ID;
         }
+        parser_advance(parser);
     } else if parser_check(parser, TokenKind.Semicolon) {
         parser_advance(parser);
     } else {
+        if not parser_check(parser, TokenKind.LeftBrace) {
+            parser_error_here(parser, ParserError.InvalidProcedureBodyForm, TokenKind.LeftBrace);
+            return PARSER_INVALID_NODE_ID;
+        }
+        set diagnostic_start = (*parser).diagnostic_count;
         let body = parser_parse_block(parser);
         if body == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, declaration, body) {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidProcedureBodyForm
+            );
             return PARSER_INVALID_NODE_ID;
         }
     }
@@ -5259,7 +6962,8 @@ proc parser_parse_proc_declaration(
 
 proc parser_parse_declaration_members(
     parser: *mut Parser,
-    declaration: ASTNodeId
+    declaration: ASTNodeId,
+    close_error: ParserError
 ) -> bool {
     while not parser_at_end(parser) and not parser_check(parser, TokenKind.RightBrace) {
         let before: usize = (*parser).position;
@@ -5277,7 +6981,12 @@ proc parser_parse_declaration_members(
             parser_advance(parser);
         }
     }
-    return parser_expect(parser, TokenKind.RightBrace) != null;
+    if not parser_check(parser, TokenKind.RightBrace) {
+        parser_error_here(parser, close_error, TokenKind.RightBrace);
+        return false;
+    }
+    parser_advance(parser);
+    return true;
 }
 
 proc parser_parse_trait_declaration_inner(
@@ -5285,10 +6994,14 @@ proc parser_parse_trait_declaration_inner(
     incoming_node_flags: u32
 ) -> ASTNodeId {
     let begin: usize = (*parser).position;
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
     parser_advance(parser);
 
     let name = parser_parse_identifier_node(parser);
     if name == PARSER_INVALID_NODE_ID {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidTraitDeclaration
+        );
         return name;
     }
 
@@ -5308,12 +7021,34 @@ proc parser_parse_trait_declaration_inner(
     set (*declaration_node).node_flags = incoming_node_flags;
     set (*declaration_node).token_index = begin;
 
+    set diagnostic_start = (*parser).diagnostic_count;
     if not parser_parse_generic_parameters(parser, declaration) or
        not parser_parse_where_clause(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidTraitDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
-    if parser_expect(parser, TokenKind.LeftBrace) == null or
-       not parser_parse_declaration_members(parser, declaration) {
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidTraitDeclaration
+        );
+    }
+    set diagnostic_start = (*parser).diagnostic_count;
+    if not parser_check(parser, TokenKind.LeftBrace) {
+        parser_error_here(parser, ParserError.InvalidTraitDeclaration, TokenKind.LeftBrace);
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidTraitDeclaration
+        );
+        return PARSER_INVALID_NODE_ID;
+    }
+    parser_advance(parser);
+    if not parser_parse_declaration_members(
+        parser, declaration, ParserError.InvalidTraitDeclaration
+    ) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidTraitDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
 
@@ -5341,6 +7076,8 @@ proc parser_parse_impl_declaration_inner(
     incoming_node_flags: u32
 ) -> ASTNodeId {
     let begin: usize = (*parser).position;
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
+    let mut has_for_clause = false;
     parser_advance(parser);
 
     let declaration = parser_add_node(
@@ -5358,29 +7095,86 @@ proc parser_parse_impl_declaration_inner(
     set (*declaration_node).node_flags = incoming_node_flags;
     set (*declaration_node).token_index = begin;
 
+    set diagnostic_start = (*parser).diagnostic_count;
     if not parser_parse_generic_parameters(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidImplDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidImplDeclaration
+        );
+    }
 
+    set diagnostic_start = (*parser).diagnostic_count;
     let first_type = parser_parse_type_expression(parser);
     if first_type == PARSER_INVALID_NODE_ID or
        not parser_node_append_child(parser, declaration, first_type) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidImplDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
+    }
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidImplDeclaration
+        );
     }
 
     if parser_check(parser, TokenKind.KwFor) {
         parser_advance(parser);
+        set has_for_clause = true;
+        set diagnostic_start = (*parser).diagnostic_count;
+        if parser_at_end(parser) or parser_check(parser, TokenKind.LeftBrace) or
+           parser_check(parser, TokenKind.KwWhere) or parser_check(parser, TokenKind.Semicolon) {
+            parser_error_here(parser, ParserError.MissingImplTargetType, TokenKind.Identifier);
+            return PARSER_INVALID_NODE_ID;
+        }
         let target_type: ASTNodeId = parser_parse_type_expression(parser);
         if target_type == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, declaration, target_type) {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidImplForClause
+            );
             return PARSER_INVALID_NODE_ID;
         }
+        if (*parser).diagnostic_count > diagnostic_start {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidImplForClause
+            );
+        }
     }
+    set diagnostic_start = (*parser).diagnostic_count;
     if not parser_parse_where_clause(parser, declaration) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidImplDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
-    if parser_expect(parser, TokenKind.LeftBrace) == null or
-       not parser_parse_declaration_members(parser, declaration) {
+    if (*parser).diagnostic_count > diagnostic_start {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidImplDeclaration
+        );
+    }
+    if not parser_check(parser, TokenKind.LeftBrace) {
+        parser_error_here(
+            parser,
+            if has_for_clause { ParserError.InvalidImplForClause }
+            else { ParserError.InvalidImplDeclaration },
+            TokenKind.LeftBrace
+        );
+        return PARSER_INVALID_NODE_ID;
+    }
+    set diagnostic_start = (*parser).diagnostic_count;
+    parser_advance(parser);
+    if not parser_parse_declaration_members(
+        parser, declaration, ParserError.InvalidImplDeclaration
+    ) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidImplDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
 
@@ -5408,10 +7202,14 @@ proc parser_parse_macro_declaration(
     incoming_node_flags: u32
 ) -> ASTNodeId {
     let begin: usize = (*parser).position;
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
     parser_advance(parser);
 
     let name = parser_parse_identifier_node(parser);
     if name == PARSER_INVALID_NODE_ID {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidMacroDeclaration
+        );
         return name;
     }
     let declaration = parser_add_node(
@@ -5430,13 +7228,27 @@ proc parser_parse_macro_declaration(
     set (*declaration_node).node_flags = incoming_node_flags;
     set (*declaration_node).token_index = begin;
 
-    if parser_check(parser, TokenKind.LeftParen) and
-       not parser_parse_procedure_parameters(parser, declaration) {
-        return PARSER_INVALID_NODE_ID;
+    if parser_check(parser, TokenKind.LeftParen) {
+        set diagnostic_start = (*parser).diagnostic_count;
+        if not parser_parse_procedure_parameters(parser, declaration) {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidMacroParameters
+            );
+            return PARSER_INVALID_NODE_ID;
+        }
+        if (*parser).diagnostic_count > diagnostic_start {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidMacroParameters
+            );
+        }
     }
+    set diagnostic_start = (*parser).diagnostic_count;
     let body = parser_parse_block(parser);
     if body == PARSER_INVALID_NODE_ID or
        not parser_node_append_child(parser, declaration, body) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidMacroDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
 
@@ -5452,6 +7264,7 @@ proc parser_parse_test_declaration(
     incoming_node_flags: u32
 ) -> ASTNodeId {
     let begin: usize = (*parser).position;
+    let mut diagnostic_start: usize = (*parser).diagnostic_count;
     parser_advance(parser);
 
     let declaration = parser_add_node(
@@ -5473,19 +7286,29 @@ proc parser_parse_test_declaration(
         let name = parser_parse_value_literal(parser, ASTNodeKind.StringLiteral);
         if name == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, declaration, name) {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidTestDeclaration
+            );
             return PARSER_INVALID_NODE_ID;
         }
     } else if parser_token_is_identifier(parser_current(parser)) {
         let name = parser_parse_identifier_node(parser);
         if name == PARSER_INVALID_NODE_ID or
            not parser_node_append_child(parser, declaration, name) {
+            parser_reclassify_last_diagnostic(
+                parser, diagnostic_start, ParserError.InvalidTestDeclaration
+            );
             return PARSER_INVALID_NODE_ID;
         }
     }
 
+    set diagnostic_start = (*parser).diagnostic_count;
     let body = parser_parse_block(parser);
     if body == PARSER_INVALID_NODE_ID or
        not parser_node_append_child(parser, declaration, body) {
+        parser_reclassify_last_diagnostic(
+            parser, diagnostic_start, ParserError.InvalidTestDeclaration
+        );
         return PARSER_INVALID_NODE_ID;
     }
 
@@ -5671,12 +7494,14 @@ proc parser_synchronize_list(
 proc parser_export_starts_clause(parser: *const Parser) -> bool {
     let next = parser_peek(parser, 1);
     if next == null {
-        return false;
+        return true;
     }
-
-    return (*next).kind == TokenKind.Star or
-           (*next).kind == TokenKind.LeftBrace or
-           parser_token_is_path_segment(next);
+    return not parser_is_declaration_start((*next).kind) and
+        (*next).kind != TokenKind.KwExport and
+        (*next).kind != TokenKind.KwPub and
+        (*next).kind != TokenKind.KwAsync and
+        (*next).kind != TokenKind.KwUnsafe and
+        (*next).kind != TokenKind.KwComptime;
 }
 
 proc parser_parse_space_body(parser: *mut Parser) -> ASTNodeId {
@@ -5730,6 +7555,11 @@ proc parser_parse_space_declaration_inner(
     let begin: usize = (*parser).position;
     parser_advance(parser);
 
+    if not parser_token_is_path_segment(parser_current(parser)) {
+        parser_error_here(parser, ParserError.InvalidModulePath, TokenKind.Identifier);
+        return PARSER_INVALID_NODE_ID;
+    }
+
     let path = parser_parse_path(parser);
     if path == PARSER_INVALID_NODE_ID {
         return path;
@@ -5742,6 +7572,15 @@ proc parser_parse_space_declaration_inner(
     );
     if declaration == PARSER_INVALID_NODE_ID or
        not parser_node_append_child(parser, declaration, path) {
+        return PARSER_INVALID_NODE_ID;
+    }
+
+    let path_tail = parser_current(parser);
+    if path_tail != null and
+       ((*path_tail).kind == TokenKind.ColonColon or
+        (*path_tail).kind == TokenKind.Slash or
+        (*path_tail).kind == TokenKind.Dot) {
+        parser_error_here(parser, ParserError.InvalidModulePath, TokenKind.Identifier);
         return PARSER_INVALID_NODE_ID;
     }
 
@@ -5798,11 +7637,6 @@ proc parser_token_is_attribute_literal(token: *const ParserToken) -> bool {
         (*token).kind == TokenKind.KwNull;
 }
 
-proc parser_token_is_attribute_argument(token: *const ParserToken) -> bool {
-    return parser_token_is_attribute_name(token) or
-        parser_token_is_attribute_literal(token);
-}
-
 /// Parse an attribute prefix and retain its qualified name and argument token ranges.
 proc parser_parse_attribute_prefix(parser: *mut Parser, node_flags: &mut u32) -> bool {
     if parser == null or not parser_check(parser, TokenKind.Hash) {
@@ -5815,16 +7649,26 @@ proc parser_parse_attribute_prefix(parser: *mut Parser, node_flags: &mut u32) ->
     if parser_check(parser, TokenKind.Bang) {
         parser_advance(parser);
     }
-    if parser_expect(parser, TokenKind.LeftBracket) == null {
+    if not parser_check(parser, TokenKind.LeftBracket) {
+        let found = parser_current(parser);
+        if found == null or (*found).kind != TokenKind.Invalid {
+            parser_error_here(parser, ParserError.InvalidAttribute, TokenKind.LeftBracket);
+        }
         parser_synchronize(parser, ParserRecoveryMode.Declaration, token_start);
         return false;
     }
+    parser_advance(parser);
 
     let name_start: usize = (*parser).position;
     if not parser_token_is_attribute_name(parser_current(parser)) {
-        parser_error_here(parser, ParserError.ExpectedIdentifier, TokenKind.Identifier);
+        let found = parser_current(parser);
+        if found == null or (*found).kind != TokenKind.Invalid {
+            parser_error_here(parser, ParserError.InvalidAttributeName, TokenKind.Identifier);
+        }
         parser_synchronize_list(parser, TokenKind.RightBracket, false, token_start);
-        parser_expect(parser, TokenKind.RightBracket);
+        if parser_check(parser, TokenKind.RightBracket) {
+            parser_advance(parser);
+        }
         return false;
     }
     parser_advance(parser);
@@ -5832,9 +7676,14 @@ proc parser_parse_attribute_prefix(parser: *mut Parser, node_flags: &mut u32) ->
     while parser_check(parser, TokenKind.ColonColon) {
         parser_advance(parser);
         if not parser_token_is_attribute_name(parser_current(parser)) {
-            parser_error_here(parser, ParserError.ExpectedIdentifier, TokenKind.Identifier);
+            let found = parser_current(parser);
+            if found == null or (*found).kind != TokenKind.Invalid {
+                parser_error_here(parser, ParserError.InvalidAttributeName, TokenKind.Identifier);
+            }
             parser_synchronize_list(parser, TokenKind.RightBracket, false, token_start);
-            parser_expect(parser, TokenKind.RightBracket);
+            if parser_check(parser, TokenKind.RightBracket) {
+                parser_advance(parser);
+            }
             return false;
         }
         parser_advance(parser);
@@ -5842,27 +7691,69 @@ proc parser_parse_attribute_prefix(parser: *mut Parser, node_flags: &mut u32) ->
     let name_end: usize = (*parser).position;
     let mut argument_start: usize = PARSER_SIZE_MAX;
     let mut argument_end: usize = PARSER_SIZE_MAX;
+    let mut invalid: bool = false;
 
     if parser_check(parser, TokenKind.LeftParen) {
         parser_advance(parser);
         set argument_start = (*parser).position;
         if not parser_check(parser, TokenKind.RightParen) {
             while true {
-                if not parser_token_is_attribute_argument(parser_current(parser)) {
-                    parser_error_here(parser, ParserError.ExpectedIdentifier, TokenKind.Identifier);
+                let current = parser_current(parser);
+                let current_kind = if current == null { TokenKind.Invalid } else { (*current).kind };
+                let is_name = parser_token_is_attribute_name(current);
+                let is_literal = parser_token_is_attribute_literal(current);
+                if not is_name and not is_literal {
+                    if current == null or current_kind != TokenKind.Invalid {
+                        parser_error_here(
+                            parser,
+                            ParserError.InvalidAttributeArguments,
+                            TokenKind.Identifier
+                        );
+                    }
+                    set invalid = true;
                     parser_synchronize_list(parser, TokenKind.RightParen, false, token_start);
                     break;
                 }
                 parser_advance(parser);
 
-                if parser_check(parser, TokenKind.Equal) {
+                if is_name and parser_check(parser, TokenKind.Equal) {
                     parser_advance(parser);
-                    if not parser_token_is_attribute_literal(parser_current(parser)) {
-                        parser_error_here(parser, ParserError.ExpectedExpression, TokenKind.StringLiteral);
+                    let value_token = parser_current(parser);
+                    let value_kind = if value_token == null { TokenKind.Invalid } else { (*value_token).kind };
+                    if not parser_token_is_attribute_literal(value_token) {
+                        if value_kind == TokenKind.RightParen or
+                           value_kind == TokenKind.RightBracket or
+                           value_kind == TokenKind.Comma or
+                           value_token == null or
+                           (value_kind == TokenKind.Invalid and value_token != null) {
+                            if value_token == null or value_kind != TokenKind.Invalid {
+                                parser_error_here(
+                                    parser,
+                                    ParserError.MissingAttributeValue,
+                                    TokenKind.StringLiteral
+                                );
+                            }
+                        } else {
+                            parser_error_here(
+                                parser,
+                                ParserError.InvalidAttributeLiteral,
+                                TokenKind.StringLiteral
+                            );
+                        }
+                        set invalid = true;
                         parser_synchronize_list(parser, TokenKind.RightParen, false, token_start);
                         break;
                     }
                     parser_advance(parser);
+                } elif is_literal and parser_check(parser, TokenKind.Equal) {
+                    parser_error_here(
+                        parser,
+                        ParserError.InvalidAttributeArguments,
+                        TokenKind.Comma
+                    );
+                    set invalid = true;
+                    parser_synchronize_list(parser, TokenKind.RightParen, false, token_start);
+                    break;
                 }
 
                 if parser_check(parser, TokenKind.Comma) {
@@ -5873,19 +7764,55 @@ proc parser_parse_attribute_prefix(parser: *mut Parser, node_flags: &mut u32) ->
                     continue;
                 }
                 if not parser_check(parser, TokenKind.RightParen) {
-                    parser_error_here(parser, ParserError.ExpectedToken, TokenKind.Comma);
+                    let found = parser_current(parser);
+                    if found == null or (*found).kind != TokenKind.Invalid {
+                        parser_error_here(
+                            parser,
+                            ParserError.InvalidAttributeArguments,
+                            TokenKind.Comma
+                        );
+                    }
+                    set invalid = true;
                     parser_synchronize_list(parser, TokenKind.RightParen, false, token_start);
                 }
                 break;
             }
         }
         set argument_end = (*parser).position;
-        if parser_expect(parser, TokenKind.RightParen) == null {
+        if not parser_check(parser, TokenKind.RightParen) {
+            if not invalid {
+                let found = parser_current(parser);
+                if found == null or (*found).kind != TokenKind.Invalid {
+                    parser_error_here(
+                        parser,
+                        ParserError.InvalidAttributeArguments,
+                        TokenKind.RightParen
+                    );
+                }
+            }
+            parser_synchronize_list(parser, TokenKind.RightParen, false, token_start);
+        }
+        if parser_check(parser, TokenKind.RightParen) {
+            parser_advance(parser);
+        } else {
             return false;
         }
     }
 
-    if parser_expect(parser, TokenKind.RightBracket) == null {
+    if not parser_check(parser, TokenKind.RightBracket) {
+        let found = parser_current(parser);
+        if found == null or (*found).kind != TokenKind.Invalid {
+            parser_error_here(parser, ParserError.InvalidAttribute, TokenKind.RightBracket);
+        }
+        parser_synchronize_list(parser, TokenKind.RightBracket, false, token_start);
+    }
+    if parser_check(parser, TokenKind.RightBracket) {
+        parser_advance(parser);
+    } else {
+        return false;
+    }
+
+    if invalid {
         return false;
     }
 
@@ -5936,6 +7863,11 @@ proc parser_finish_declaration(
 
 proc parser_parse_declaration(parser: *mut Parser) -> ASTNodeId {
     let mut node_flags: u32 = 0;
+    let mut modifier_seen: u32 = 0;
+    let mut visibility_modifier_seen: bool = false;
+    let mut declaration_modifier_invalid: bool = false;
+    let mut first_procedure_modifier: usize = PARSER_SIZE_MAX;
+    let mut first_visibility_modifier: usize = PARSER_SIZE_MAX;
     let attribute_start: usize = (*parser).attribute_count;
     let mut attribute_count: usize = 0;
 
@@ -5949,6 +7881,23 @@ proc parser_parse_declaration(parser: *mut Parser) -> ASTNodeId {
         }
         if parser_check(parser, TokenKind.KwExport) {
             if parser_export_starts_clause(parser) {
+                if modifier_seen != 0 {
+                    parser_error_at_position(
+                        parser,
+                        ParserError.InvalidProcedureModifier,
+                        TokenKind.Invalid,
+                        first_procedure_modifier
+                    );
+                    set (*parser).recovering = false;
+                } elif visibility_modifier_seen {
+                    parser_error_at_position(
+                        parser,
+                        ParserError.InvalidDeclarationModifierOrder,
+                        TokenKind.Invalid,
+                        first_visibility_modifier
+                    );
+                    set (*parser).recovering = false;
+                }
                 return parser_finish_declaration(
                     parser,
                     parser_parse_export_clause(parser),
@@ -5956,31 +7905,107 @@ proc parser_parse_declaration(parser: *mut Parser) -> ASTNodeId {
                     attribute_count
                 );
             }
+            if first_visibility_modifier == PARSER_SIZE_MAX {
+                set first_visibility_modifier = (*parser).position;
+            }
+            if visibility_modifier_seen or modifier_seen != 0 {
+                parser_error_at_position(
+                    parser,
+                    ParserError.InvalidDeclarationModifierOrder,
+                    TokenKind.Invalid,
+                    (*parser).position
+                );
+                set (*parser).recovering = false;
+                set declaration_modifier_invalid = true;
+            }
+            set visibility_modifier_seen = true;
             parser_advance(parser);
             set node_flags = node_flags | PARSER_AST_FLAG_PUBLIC;
             continue;
         }
         if parser_check(parser, TokenKind.KwPub) {
             parser_advance(parser);
+            if first_visibility_modifier == PARSER_SIZE_MAX {
+                set first_visibility_modifier = (*parser).position - 1;
+            }
+            if visibility_modifier_seen or modifier_seen != 0 {
+                parser_error_at_position(
+                    parser,
+                    ParserError.InvalidDeclarationModifierOrder,
+                    TokenKind.Invalid,
+                    (*parser).position - 1
+                );
+                set (*parser).recovering = false;
+                set declaration_modifier_invalid = true;
+            }
+            set visibility_modifier_seen = true;
             set node_flags = node_flags | PARSER_AST_FLAG_PUBLIC;
             continue;
         }
+        if parser_check(parser, TokenKind.KwUnsafe) and
+           parser_check_next(parser, TokenKind.LeftBrace) {
+            break;
+        }
         if parser_check(parser, TokenKind.KwAsync) {
+            if first_procedure_modifier == PARSER_SIZE_MAX {
+                set first_procedure_modifier = (*parser).position;
+            }
+            if (modifier_seen & PARSER_AST_FLAG_ASYNC) != 0 {
+                parser_error_at_position(
+                    parser, ParserError.InvalidProcedureModifier,
+                    TokenKind.Invalid, (*parser).position
+                );
+                set (*parser).recovering = false;
+            }
+            set modifier_seen = modifier_seen | PARSER_AST_FLAG_ASYNC;
             parser_advance(parser);
             set node_flags = node_flags | PARSER_AST_FLAG_ASYNC;
             continue;
         }
         if parser_check(parser, TokenKind.KwUnsafe) {
+            if first_procedure_modifier == PARSER_SIZE_MAX {
+                set first_procedure_modifier = (*parser).position;
+            }
+            if (modifier_seen & PARSER_AST_FLAG_UNSAFE) != 0 {
+                parser_error_at_position(
+                    parser, ParserError.InvalidProcedureModifier,
+                    TokenKind.Invalid, (*parser).position
+                );
+                set (*parser).recovering = false;
+            }
+            set modifier_seen = modifier_seen | PARSER_AST_FLAG_UNSAFE;
             parser_advance(parser);
             set node_flags = node_flags | PARSER_AST_FLAG_UNSAFE;
             continue;
         }
         if parser_check(parser, TokenKind.KwComptime) {
+            if first_procedure_modifier == PARSER_SIZE_MAX {
+                set first_procedure_modifier = (*parser).position;
+            }
+            if (modifier_seen & PARSER_AST_FLAG_COMPTIME) != 0 {
+                parser_error_at_position(
+                    parser, ParserError.InvalidProcedureModifier,
+                    TokenKind.Invalid, (*parser).position
+                );
+                set (*parser).recovering = false;
+            }
+            set modifier_seen = modifier_seen | PARSER_AST_FLAG_COMPTIME;
             parser_advance(parser);
             set node_flags = node_flags | PARSER_AST_FLAG_COMPTIME;
             continue;
         }
         break;
+    }
+
+    if modifier_seen != 0 and
+       not parser_check(parser, TokenKind.KwProc) and
+       not (parser_check(parser, TokenKind.KwExtern) and
+            parser_extern_starts_procedure(parser)) {
+        parser_error_at_position(
+            parser, ParserError.InvalidProcedureModifier,
+            TokenKind.Invalid, first_procedure_modifier
+        );
+        set (*parser).recovering = false;
     }
 
     if parser_check(parser, TokenKind.KwSpace) {
@@ -6012,7 +8037,20 @@ proc parser_parse_declaration(parser: *mut Parser) -> ASTNodeId {
             return parser_finish_declaration(parser,
                 parser_parse_proc_declaration(parser, node_flags, true), attribute_start, attribute_count);
         }
-        parser_error_here(parser, ParserError.ExpectedDeclaration, TokenKind.KwProc);
+        if parser_token_is_intrinsic(parser_current(parser)) {
+            parser_error_at_position(
+                parser,
+                ParserError.InvalidIntrinsicDeclaration,
+                TokenKind.Identifier,
+                (*parser).position + 1
+            );
+        } else {
+            parser_error_here(
+                parser,
+                ParserError.InvalidExternalProcedure,
+                TokenKind.KwProc
+            );
+        }
         return parser_finish_declaration(parser, PARSER_INVALID_NODE_ID, attribute_start, attribute_count);
     }
     if parser_check(parser, TokenKind.KwProc) {
@@ -6044,7 +8082,24 @@ proc parser_parse_declaration(parser: *mut Parser) -> ASTNodeId {
             parser_parse_test_declaration(parser, node_flags), attribute_start, attribute_count);
     }
 
-    parser_error_here(parser, ParserError.Unsupported, TokenKind.Invalid);
+    let current = parser_current(parser);
+    if declaration_modifier_invalid {
+        return parser_finish_declaration(
+            parser, PARSER_INVALID_NODE_ID, attribute_start, attribute_count
+        );
+    } elif current != null and (*current).kind == TokenKind.KwReturn {
+        parser_error_here(parser, ParserError.InvalidReturnStatement, TokenKind.Invalid);
+    } elif current != null and
+           ((*current).kind == TokenKind.KwBreak or
+            (*current).kind == TokenKind.KwContinue) {
+        parser_error_here(parser, ParserError.InvalidJumpStatement, TokenKind.Invalid);
+    } elif current != null and parser_is_statement_start((*current).kind) {
+        parser_error_here(parser, ParserError.UnexpectedStatement, TokenKind.Invalid);
+    } elif current != null and parser_token_can_start_expression(current) {
+        parser_error_here(parser, ParserError.UnexpectedExpression, TokenKind.Invalid);
+    } else {
+        parser_error_here(parser, ParserError.Unsupported, TokenKind.Invalid);
+    }
     return parser_finish_declaration(parser, PARSER_INVALID_NODE_ID, attribute_start, attribute_count);
 }
 
@@ -6058,10 +8113,42 @@ proc parser_parse_translation_unit(parser: *mut Parser) -> ASTNodeId {
         return root;
     }
 
+    let mut module_header_seen: bool = false;
+    let mut module_directive_seen: bool = false;
+    let mut non_header_seen: bool = false;
     while not parser_at_end(parser) {
         let before: usize = (*parser).position;
         let declaration = parser_parse_declaration(parser);
         if declaration != PARSER_INVALID_NODE_ID {
+            let parsed = vitte_parser_get_node(parser, declaration);
+            if parsed != null and (*parsed).kind == ASTNodeKind.SpaceDecl and
+               (*parsed).child_count == 1 {
+                if module_header_seen {
+                    parser_error_at_position(
+                        parser,
+                        ParserError.DuplicateModuleHeader,
+                        TokenKind.KwSpace,
+                        (*parsed).token_index
+                    );
+                } elif non_header_seen {
+                    parser_error_at_position(
+                        parser,
+                        ParserError.MisplacedModuleHeader,
+                        TokenKind.KwSpace,
+                        (*parsed).token_index
+                    );
+                    set module_header_seen = true;
+                } else {
+                    set module_header_seen = true;
+                }
+            } else {
+                set non_header_seen = true;
+                if parsed != null and
+                   ((*parsed).kind == ASTNodeKind.UseDecl or
+                    ((*parsed).node_flags & PARSER_AST_FLAG_PUBLIC) != 0) {
+                    set module_directive_seen = true;
+                }
+            }
             if not parser_node_append_child(parser, root, declaration) {
                 return PARSER_INVALID_NODE_ID;
             }
@@ -6074,6 +8161,16 @@ proc parser_parse_translation_unit(parser: *mut Parser) -> ASTNodeId {
         if (*parser).position == before and not parser_at_end(parser) {
             parser_advance(parser);
         }
+    }
+
+    if module_directive_seen and not module_header_seen and
+       (*parser).stats.errors == 0 and
+       (*parser).last_error == ParserError.None {
+        parser_error_here(
+            parser,
+            ParserError.MissingModuleHeader,
+            TokenKind.KwSpace
+        );
     }
 
     let root_node = vitte_parser_get_node_mut(parser, root);
@@ -6336,6 +8433,9 @@ proc parser_ast_copy_flags(
     }
     if ((*source).node_flags & PARSER_AST_FLAG_EXTERN) != 0 {
         ast_node_set_flag(target, AST_NODE_FLAG_EXTERN);
+    }
+    if ((*source).node_flags & PARSER_AST_FLAG_INTRINSIC) != 0 {
+        ast_node_set_flag(target, AST_NODE_FLAG_INTRINSIC);
     }
     if ((*source).node_flags & PARSER_AST_FLAG_ASYNC) != 0 {
         ast_node_set_flag(target, AST_NODE_FLAG_ASYNC);
@@ -6662,6 +8762,98 @@ export proc vitte_parser_error_name(error: ParserError) -> string {
         case ParserError.Corruption => return "corruption";
         case ParserError.Unsupported => return "unsupported";
         case ParserError.Internal => return "internal";
+        case ParserError.InvalidModulePath => return "invalid_module_path";
+        case ParserError.DuplicateModuleHeader => return "duplicate_module_header";
+        case ParserError.MisplacedModuleHeader => return "misplaced_module_header";
+        case ParserError.InvalidUseDeclaration => return "invalid_use_declaration";
+        case ParserError.InvalidUseAlias => return "invalid_use_alias";
+        case ParserError.InvalidImportGroup => return "invalid_import_group";
+        case ParserError.InvalidGlobImport => return "invalid_glob_import";
+        case ParserError.InvalidExportClause => return "invalid_export_clause";
+        case ParserError.EmptyExportGroup => return "empty_export_group";
+        case ParserError.InvalidExportAlias => return "invalid_export_alias";
+        case ParserError.TrailingTokens => return "trailing_tokens";
+        case ParserError.MissingModuleHeader => return "missing_module_header";
+        case ParserError.InvalidValueDeclaration => return "invalid_value_declaration";
+        case ParserError.MissingValueInitializer => return "missing_value_initializer";
+        case ParserError.InvalidTypeDeclaration => return "invalid_type_declaration";
+        case ParserError.InvalidOpaqueDeclaration => return "invalid_opaque_declaration";
+        case ParserError.InvalidFormDeclaration => return "invalid_form_declaration";
+        case ParserError.DuplicateFormField => return "duplicate_form_field";
+        case ParserError.InvalidFormFieldSeparator => return "invalid_form_field_separator";
+        case ParserError.InvalidPickDeclaration => return "invalid_pick_declaration";
+        case ParserError.DuplicatePickVariant => return "duplicate_pick_variant";
+        case ParserError.InvalidPickVariantPayload => return "invalid_pick_variant_payload";
+        case ParserError.InvalidTraitDeclaration => return "invalid_trait_declaration";
+        case ParserError.InvalidImplDeclaration => return "invalid_impl_declaration";
+        case ParserError.MissingImplTargetType => return "missing_impl_target_type";
+        case ParserError.InvalidImplForClause => return "invalid_impl_for_clause";
+        case ParserError.InvalidProcedureDeclaration => return "invalid_procedure_declaration";
+        case ParserError.InvalidProcedureParameters => return "invalid_procedure_parameters";
+        case ParserError.InvalidProcedureReturnType => return "invalid_procedure_return_type";
+        case ParserError.InvalidProcedureModifier => return "invalid_procedure_modifier";
+        case ParserError.InvalidProcedureBodyForm => return "invalid_procedure_body_form";
+        case ParserError.InvalidExternalProcedure => return "invalid_external_procedure";
+        case ParserError.InvalidIntrinsicDeclaration => return "invalid_intrinsic_declaration";
+        case ParserError.InvalidAbiStringLiteral => return "invalid_abi_string_literal";
+        case ParserError.InvalidGenericParameterList => return "invalid_generic_parameter_list";
+        case ParserError.InvalidConstGenericParameter => return "invalid_const_generic_parameter";
+        case ParserError.InvalidGenericBound => return "invalid_generic_bound";
+        case ParserError.InvalidWhereClause => return "invalid_where_clause";
+        case ParserError.InvalidRequiresClause => return "invalid_requires_clause";
+        case ParserError.InvalidEnsuresClause => return "invalid_ensures_clause";
+        case ParserError.InvalidMacroDeclaration => return "invalid_macro_declaration";
+        case ParserError.InvalidMacroParameters => return "invalid_macro_parameters";
+        case ParserError.InvalidTestDeclaration => return "invalid_test_declaration";
+        case ParserError.InvalidDeclarationModifierOrder => return "invalid_declaration_modifier_order";
+        case ParserError.InvalidAttribute => return "invalid_attribute";
+        case ParserError.InvalidAttributeName => return "invalid_attribute_name";
+        case ParserError.InvalidAttributeArguments => return "invalid_attribute_arguments";
+        case ParserError.MissingAttributeValue => return "missing_attribute_value";
+        case ParserError.InvalidAttributeLiteral => return "invalid_attribute_literal";
+        case ParserError.UnexpectedDeclaration => return "unexpected_declaration";
+        case ParserError.UnexpectedStatement => return "unexpected_statement";
+        case ParserError.UnexpectedExpression => return "unexpected_expression";
+        case ParserError.InvalidProcedureType => return "invalid_procedure_type";
+        case ParserError.InvalidReferenceType => return "invalid_reference_type";
+        case ParserError.InvalidPointerType => return "invalid_pointer_type";
+        case ParserError.InvalidArrayType => return "invalid_array_type";
+        case ParserError.InvalidSliceType => return "invalid_slice_type";
+        case ParserError.InvalidOptionalType => return "invalid_optional_type";
+        case ParserError.InvalidTypePath => return "invalid_type_path";
+        case ParserError.InvalidGenericArguments => return "invalid_generic_arguments";
+        case ParserError.InvalidLetStatement => return "invalid_let_statement";
+        case ParserError.InvalidSetStatement => return "invalid_set_statement";
+        case ParserError.InvalidAssignmentOperator => return "invalid_assignment_operator";
+        case ParserError.InvalidReturnStatement => return "invalid_return_statement";
+        case ParserError.InvalidJumpStatement => return "invalid_jump_statement";
+        case ParserError.InvalidDeferStatement => return "invalid_defer_statement";
+        case ParserError.InvalidAssertStatement => return "invalid_assert_statement";
+        case ParserError.InvalidUnsafeStatement => return "invalid_unsafe_statement";
+        case ParserError.InvalidAsmStatement => return "invalid_asm_statement";
+        case ParserError.InvalidControlFlowStatement => return "invalid_control_flow_statement";
+        case ParserError.InvalidMatchStatement => return "invalid_match_statement";
+        case ParserError.InvalidMatchArm => return "invalid_match_arm";
+        case ParserError.InvalidPattern => return "invalid_pattern";
+        case ParserError.InvalidRangePattern => return "invalid_range_pattern";
+        case ParserError.InvalidAssignmentExpression => return "invalid_assignment_expression";
+        case ParserError.InvalidCoalescingExpression => return "invalid_coalescing_expression";
+        case ParserError.InvalidLogicalExpression => return "invalid_logical_expression";
+        case ParserError.InvalidBitwiseExpression => return "invalid_bitwise_expression";
+        case ParserError.InvalidComparisonExpression => return "invalid_comparison_expression";
+        case ParserError.InvalidShiftExpression => return "invalid_shift_expression";
+        case ParserError.InvalidArithmeticExpression => return "invalid_arithmetic_expression";
+        case ParserError.InvalidRangeExpression => return "invalid_range_expression";
+        case ParserError.InvalidUnaryExpression => return "invalid_unary_expression";
+        case ParserError.InvalidCastExpression => return "invalid_cast_expression";
+        case ParserError.InvalidPostfixExpression => return "invalid_postfix_expression";
+        case ParserError.InvalidIfExpression => return "invalid_if_expression";
+        case ParserError.InvalidBlockExpression => return "invalid_block_expression";
+        case ParserError.InvalidArrayExpression => return "invalid_array_expression";
+        case ParserError.InvalidSizeofExpression => return "invalid_sizeof_expression";
+        case ParserError.InvalidAlignofExpression => return "invalid_alignof_expression";
+        case ParserError.InvalidNullConstruction => return "invalid_null_construction";
+        case ParserError.InvalidExpressionList => return "invalid_expression_list";
         case ParserError.Count => return "count";
         else => return "unknown";
     }
@@ -6921,6 +9113,7 @@ export proc vitte_parser_reset(parser: *mut Parser, tokens: *const ParserToken, 
     set (*parser).last_error = ParserError.None;
     set (*parser).recursion_depth = 0;
     set (*parser).match_subject_depth = 0;
+    set (*parser).match_arm_depth = 0;
     set (*parser).recovering = false;
     set (*parser).generation = generation;
     return true;

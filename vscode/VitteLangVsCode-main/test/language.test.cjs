@@ -64,7 +64,14 @@ test('all quoted EBNF word terminals remain available in language facts', () => 
   const grammarPath = path.resolve(root, '../../grammar/vitte.ebnf');
   if (!fs.existsSync(grammarPath)) return; // Standalone extension checkout.
   const grammarText = fs.readFileSync(grammarPath, 'utf8').split('(* Lexical forms')[0];
-  const vocabulary = new Set([...facts.KEYWORDS, ...facts.CONTEXTUAL_KEYWORDS, ...facts.BOOL_LITERALS, ...facts.NIL_LITERALS]);
+  const vocabulary = new Set([
+    ...facts.KEYWORDS,
+    ...facts.CONTEXTUAL_KEYWORDS,
+    ...facts.BOOL_LITERALS,
+    ...facts.NIL_LITERALS,
+    ...facts.PRIMITIVE_TYPES,
+    ...facts.BUILTIN_FUNCTIONS,
+  ]);
   for (const match of grammarText.matchAll(/"([a-z][a-z_]*)"/g)) assert.ok(vocabulary.has(match[1]), match[1]);
   assert.ok(facts.suggestCompletions('nu').includes('null'));
   assert.ok(facts.OPERATORS.includes('!'));

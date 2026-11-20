@@ -1110,26 +1110,217 @@ vitte_main_parser_diagnostic_code(
         case VITTE_PARSER_ERROR_EXPECTED_STATEMENT:
             return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
 
+        case VITTE_PARSER_ERROR_UNSUPPORTED:
+            return "VITTE_PARSER_E_UNSUPPORTED_SYNTAX";
+
+        case VITTE_PARSER_ERROR_INVALID_MODULE_PATH:
+            return "VITTE_PARSER_E_INVALID_MODULE_PATH";
+        case VITTE_PARSER_ERROR_DUPLICATE_MODULE_HEADER:
+            return "VITTE_PARSER_E_DUPLICATE_MODULE_HEADER";
+        case VITTE_PARSER_ERROR_MISPLACED_MODULE_HEADER:
+            return "VITTE_PARSER_E_MISPLACED_MODULE_HEADER";
+        case VITTE_PARSER_ERROR_INVALID_USE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_USE_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_USE_ALIAS:
+            return "VITTE_PARSER_E_INVALID_USE_ALIAS";
+        case VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP:
+            return "VITTE_PARSER_E_INVALID_IMPORT_GROUP";
+        case VITTE_PARSER_ERROR_INVALID_GLOB_IMPORT:
+            return "VITTE_PARSER_E_INVALID_GLOB_IMPORT";
+        case VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_EXPORT_CLAUSE";
+        case VITTE_PARSER_ERROR_EMPTY_EXPORT_GROUP:
+            return "VITTE_PARSER_E_EMPTY_EXPORT_GROUP";
+        case VITTE_PARSER_ERROR_INVALID_EXPORT_ALIAS:
+            return "VITTE_PARSER_E_INVALID_EXPORT_ALIAS";
+        case VITTE_PARSER_ERROR_TRAILING_TOKENS:
+            return "VITTE_PARSER_E_TRAILING_TOKENS";
+        case VITTE_PARSER_ERROR_MISSING_MODULE_HEADER:
+            return "VITTE_PARSER_E_MISSING_MODULE_HEADER";
+        case VITTE_PARSER_ERROR_INVALID_VALUE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_VALUE_DECLARATION";
+        case VITTE_PARSER_ERROR_MISSING_VALUE_INITIALIZER:
+            return "VITTE_PARSER_E_MISSING_VALUE_INITIALIZER";
+        case VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_TYPE_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_OPAQUE_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_FORM_DECLARATION";
+        case VITTE_PARSER_ERROR_DUPLICATE_FORM_FIELD:
+            return "VITTE_PARSER_E_DUPLICATE_FORM_FIELD";
+        case VITTE_PARSER_ERROR_INVALID_FORM_FIELD_SEPARATOR:
+            return "VITTE_PARSER_E_INVALID_FORM_FIELD_SEPARATOR";
+        case VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_PICK_DECLARATION";
+        case VITTE_PARSER_ERROR_DUPLICATE_PICK_VARIANT:
+            return "VITTE_PARSER_E_DUPLICATE_PICK_VARIANT";
+        case VITTE_PARSER_ERROR_INVALID_PICK_VARIANT_PAYLOAD:
+            return "VITTE_PARSER_E_INVALID_PICK_VARIANT_PAYLOAD";
+        case VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_TRAIT_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_IMPL_DECLARATION";
+        case VITTE_PARSER_ERROR_MISSING_IMPL_TARGET_TYPE:
+            return "VITTE_PARSER_E_MISSING_IMPL_TARGET_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_IMPL_FOR_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_IMPL_FOR_CLAUSE";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_PARAMETERS";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_RETURN_TYPE:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_RETURN_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_MODIFIER:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_MODIFIER";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_BODY_FORM";
+        case VITTE_PARSER_ERROR_INVALID_EXTERNAL_PROCEDURE:
+            return "VITTE_PARSER_E_INVALID_EXTERNAL_PROCEDURE";
+        case VITTE_PARSER_ERROR_INVALID_INTRINSIC_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_INTRINSIC_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_ABI_STRING_LITERAL:
+            return "VITTE_PARSER_E_INVALID_ABI_STRING_LITERAL";
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_PARAMETER_LIST:
+            return "VITTE_PARSER_E_INVALID_GENERIC_PARAMETER_LIST";
+        case VITTE_PARSER_ERROR_INVALID_CONST_GENERIC_PARAMETER:
+            return "VITTE_PARSER_E_INVALID_CONST_GENERIC_PARAMETER";
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_BOUND:
+            return "VITTE_PARSER_E_INVALID_GENERIC_BOUND";
+        case VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_WHERE_CLAUSE";
+        case VITTE_PARSER_ERROR_INVALID_REQUIRES_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_REQUIRES_CLAUSE";
+        case VITTE_PARSER_ERROR_INVALID_ENSURES_CLAUSE:
+            return "VITTE_PARSER_E_INVALID_ENSURES_CLAUSE";
+        case VITTE_PARSER_ERROR_INVALID_MACRO_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_MACRO_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_MACRO_PARAMETERS:
+            return "VITTE_PARSER_E_INVALID_MACRO_PARAMETERS";
+        case VITTE_PARSER_ERROR_INVALID_TEST_DECLARATION:
+            return "VITTE_PARSER_E_INVALID_TEST_DECLARATION";
+        case VITTE_PARSER_ERROR_INVALID_DECLARATION_MODIFIER_ORDER:
+            return "VITTE_PARSER_E_INVALID_DECLARATION_MODIFIER_ORDER";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE:
+            return "VITTE_PARSER_E_INVALID_ATTRIBUTE";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_NAME:
+            return "VITTE_PARSER_E_INVALID_ATTRIBUTE_NAME";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_ARGUMENTS:
+            return "VITTE_PARSER_E_INVALID_ATTRIBUTE_ARGUMENTS";
+        case VITTE_PARSER_ERROR_MISSING_ATTRIBUTE_VALUE:
+            return "VITTE_PARSER_E_MISSING_ATTRIBUTE_VALUE";
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_LITERAL:
+            return "VITTE_PARSER_E_INVALID_ATTRIBUTE_LITERAL";
+        case VITTE_PARSER_ERROR_UNEXPECTED_DECLARATION:
+            return "VITTE_PARSER_E_UNEXPECTED_DECLARATION";
+        case VITTE_PARSER_ERROR_UNEXPECTED_STATEMENT:
+            return "VITTE_PARSER_E_UNEXPECTED_STATEMENT";
+        case VITTE_PARSER_ERROR_UNEXPECTED_EXPRESSION:
+            return "VITTE_PARSER_E_UNEXPECTED_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_TYPE:
+            return "VITTE_PARSER_E_INVALID_PROCEDURE_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_REFERENCE_TYPE:
+            return "VITTE_PARSER_E_INVALID_REFERENCE_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_POINTER_TYPE:
+            return "VITTE_PARSER_E_INVALID_POINTER_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_ARRAY_TYPE:
+            return "VITTE_PARSER_E_INVALID_ARRAY_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_SLICE_TYPE:
+            return "VITTE_PARSER_E_INVALID_SLICE_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_OPTIONAL_TYPE:
+            return "VITTE_PARSER_E_INVALID_OPTIONAL_TYPE";
+        case VITTE_PARSER_ERROR_INVALID_TYPE_PATH:
+            return "VITTE_PARSER_E_INVALID_TYPE_PATH";
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS:
+            return "VITTE_PARSER_E_INVALID_GENERIC_ARGUMENTS";
+        case VITTE_PARSER_ERROR_INVALID_LET_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_LET_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_SET_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_SET_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_OPERATOR:
+            return "VITTE_PARSER_E_INVALID_ASSIGNMENT_OPERATOR";
+        case VITTE_PARSER_ERROR_INVALID_RETURN_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_RETURN_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_JUMP_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_DEFER_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_DEFER_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_ASSERT_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_ASSERT_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_UNSAFE_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_UNSAFE_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_ASM_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_ASM_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_CONTROL_FLOW_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_MATCH_STATEMENT:
+            return "VITTE_PARSER_E_INVALID_MATCH_STATEMENT";
+        case VITTE_PARSER_ERROR_INVALID_MATCH_ARM:
+            return "VITTE_PARSER_E_INVALID_MATCH_ARM";
+        case VITTE_PARSER_ERROR_INVALID_PATTERN:
+            return "VITTE_PARSER_E_INVALID_PATTERN";
+        case VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN:
+            return "VITTE_PARSER_E_INVALID_RANGE_PATTERN";
+        case VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_ASSIGNMENT_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_COALESCING_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_COALESCING_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_LOGICAL_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_LOGICAL_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_BITWISE_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_BITWISE_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_COMPARISON_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_COMPARISON_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_SHIFT_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_SHIFT_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_ARITHMETIC_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_ARITHMETIC_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_RANGE_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_RANGE_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_UNARY_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_UNARY_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_CAST_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_CAST_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_POSTFIX_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_IF_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_IF_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_BLOCK_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_BLOCK_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_ARRAY_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_ARRAY_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_SIZEOF_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_SIZEOF_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_ALIGNOF_EXPRESSION:
+            return "VITTE_PARSER_E_INVALID_ALIGNOF_EXPRESSION";
+        case VITTE_PARSER_ERROR_INVALID_NULL_CONSTRUCTION:
+            return "VITTE_PARSER_E_INVALID_NULL_CONSTRUCTION";
+        case VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST:
+            return "VITTE_PARSER_E_INVALID_EXPRESSION_LIST";
+
+        case VITTE_PARSER_ERROR_OUT_OF_MEMORY:
+        case VITTE_PARSER_ERROR_OVERFLOW:
+        case VITTE_PARSER_ERROR_NODE_LIMIT:
+        case VITTE_PARSER_ERROR_DIAGNOSTIC_LIMIT:
+        case VITTE_PARSER_ERROR_RECURSION_LIMIT:
+            return "VITTE_INFRA_E_RESOURCE";
+
+        case VITTE_PARSER_ERROR_INVALID_TOKEN:
+        case VITTE_PARSER_ERROR_INVALID_NODE:
+        case VITTE_PARSER_ERROR_VALIDATION:
+        case VITTE_PARSER_ERROR_CORRUPTION:
+            return "VITTE_INFRA_E_INVARIANT";
+
         case VITTE_PARSER_ERROR_NONE:
         case VITTE_PARSER_ERROR_INVALID_ARGUMENT:
         case VITTE_PARSER_ERROR_INVALID_CONTEXT:
         case VITTE_PARSER_ERROR_INVALID_STATE:
-        case VITTE_PARSER_ERROR_INVALID_TOKEN:
-        case VITTE_PARSER_ERROR_INVALID_NODE:
-        case VITTE_PARSER_ERROR_NODE_LIMIT:
-        case VITTE_PARSER_ERROR_DIAGNOSTIC_LIMIT:
-        case VITTE_PARSER_ERROR_RECURSION_LIMIT:
-        case VITTE_PARSER_ERROR_OVERFLOW:
-        case VITTE_PARSER_ERROR_OUT_OF_MEMORY:
-        case VITTE_PARSER_ERROR_VALIDATION:
-        case VITTE_PARSER_ERROR_CORRUPTION:
-        case VITTE_PARSER_ERROR_UNSUPPORTED:
         case VITTE_PARSER_ERROR_INTERNAL:
         case VITTE_PARSER_ERROR_COUNT:
-            return "VITTE_INFRA_E_PHASE";
+            return "VITTE_INFRA_E_INTERNAL";
     }
 
-    return "VITTE_INFRA_E_PHASE";
+    return "VITTE_INFRA_E_INTERNAL";
 }
 
 /*
@@ -1253,6 +1444,7 @@ vitte_main_lexer_format_details(
     size_t length;
     size_t index;
     size_t fixed_length;
+    int written;
 
     if (context == NULL || span == NULL || storage == NULL ||
         capacity == 0u || span->begin > display_end ||
@@ -1260,14 +1452,87 @@ vitte_main_lexer_format_details(
         return false;
     }
 
+    if (error == VITTE_LEXER_ERROR_INVALID_UTF8) {
+        vitte_unicode_result_t decoded;
+        const char *encoding_context;
+
+        decoded = vitte_unicode_decode_utf8(
+            context->file.data + span->begin,
+            display_end - span->begin);
+        switch (decoded.error) {
+            case VITTE_UNICODE_ERROR_TRUNCATED_UTF8:
+                encoding_context = "truncated UTF-8 sequence";
+                break;
+            case VITTE_UNICODE_ERROR_OVERLONG_UTF8:
+                encoding_context = "overlong UTF-8 encoding";
+                break;
+            case VITTE_UNICODE_ERROR_SURROGATE:
+                encoding_context = "UTF-8 sequence encodes a surrogate value";
+                break;
+            case VITTE_UNICODE_ERROR_OUT_OF_RANGE:
+                encoding_context = "UTF-8 sequence encodes a value above U+10FFFF";
+                break;
+            case VITTE_UNICODE_ERROR_INVALID_UTF8:
+            default:
+                encoding_context = "malformed UTF-8 sequence";
+                break;
+        }
+        written = snprintf(
+            storage,
+            capacity,
+            "%s `",
+            encoding_context);
+        if (written < 0 || (size_t)written >= capacity) {
+            return false;
+        }
+        length = (size_t)written;
+        for (index = span->begin; index < display_end; ++index) {
+            if (!vitte_main_lexer_append_escaped_byte(
+                    storage,
+                    capacity,
+                    &length,
+                    context->file.data[index])) {
+                return false;
+            }
+        }
+        written = snprintf(
+            storage + length,
+            capacity - length,
+            "` at UTF-8 byte range [%zu, %zu); UTF-8 must encode Unicode scalar values only",
+            span->begin,
+            display_end);
+        return written >= 0 && (size_t)written < capacity - length;
+    }
+
+    if (error == VITTE_LEXER_ERROR_INVALID_IDENTIFIER) {
+        const vitte_unicode_result_t decoded = vitte_unicode_decode_utf8(
+            context->file.data + span->begin,
+            display_end - span->begin);
+        if (decoded.error != VITTE_UNICODE_ERROR_NONE) {
+            return false;
+        }
+        written = snprintf(
+            storage,
+            capacity,
+            "character U+%04X is not allowed at identifier start; UTF-8 byte range [%zu, %zu)",
+            (unsigned)decoded.codepoint,
+            span->begin,
+            display_end);
+        return written >= 0 && (size_t)written < capacity;
+    }
+
     fixed = NULL;
     suffix = "";
     if (error == VITTE_LEXER_ERROR_UNTERMINATED_STRING) {
-        fixed = "string literal is missing its closing quote";
+        fixed = "string opened with `\"` here is missing its closing `\"` delimiter";
     } else if (error == VITTE_LEXER_ERROR_UNTERMINATED_COMMENT) {
-        fixed = "block comment is missing its matching `*/` terminator";
+        fixed = "block comment opened with `/*` here is missing its matching `*/` terminator";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL) {
+        prefix = "malformed character literal `";
+        suffix = "`; expected exactly one Unicode scalar value or one supported escape sequence";
     } else if (error == VITTE_LEXER_ERROR_INVALID_ESCAPE) {
         prefix = "invalid escape sequence `";
+        suffix = "`; accepted forms: `\\\\`, `\\'`, `\\\"`, `\\0`, `\\a`, `\\b`, `\\f`, `\\n`, `\\r`, `\\t`, `\\v`, `\\xNN` (2 hex digits), `\\uNNNN` (4), and `\\UNNNNNNNN` (8)";
     } else if (error == VITTE_LEXER_ERROR_INVALID_UTF8) {
         prefix = "invalid Unicode sequence `";
     } else if (error == VITTE_LEXER_ERROR_INVALID_IDENTIFIER) {
@@ -1275,9 +1540,41 @@ vitte_main_lexer_format_details(
         suffix = " cannot start an identifier";
     } else if (error == VITTE_LEXER_ERROR_INVALID_NUMBER) {
         prefix = "invalid numeric literal `";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_INTEGER) {
+        prefix = "malformed integer literal `";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_FLOAT) {
+        prefix = "malformed floating-point literal `";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR) {
+        prefix = "invalid numeric separator in literal `";
+        suffix = "`; underscores must occur singly between digits";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE) {
+        prefix = "invalid digit or missing digits in based integer literal `";
+        suffix = "`; expected digits valid for the literal's base";
+        if (span->begin + 1u < display_end) {
+            const unsigned char base_prefix = context->file.data[span->begin + 1u];
+            if (base_prefix == (unsigned char)'b' || base_prefix == (unsigned char)'B') {
+                prefix = "invalid digit or missing digits in base-2 integer literal `";
+                suffix = "`; expected binary digits 0-1";
+            } else if (base_prefix == (unsigned char)'o' || base_prefix == (unsigned char)'O') {
+                prefix = "invalid digit or missing digits in base-8 integer literal `";
+                suffix = "`; expected octal digits 0-7";
+            } else if (base_prefix == (unsigned char)'x' || base_prefix == (unsigned char)'X') {
+                prefix = "invalid digit or missing digits in base-16 integer literal `";
+                suffix = "`; expected hexadecimal digits 0-9 or A-F";
+            }
+        }
+    } else if (error == VITTE_LEXER_ERROR_INVALID_NUMERIC_SUFFIX) {
+        prefix = "unsupported numeric suffix in literal `";
+        suffix = "`; Vitte numeric literals do not define suffixes";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_EXPONENT) {
+        prefix = "invalid exponent in literal `";
+        suffix = "`; decimal exponents use `e` and hexadecimal exponents use `p`, followed by decimal digits";
+    } else if (error == VITTE_LEXER_ERROR_INVALID_OPERATOR) {
+        prefix = "invalid or incomplete operator/punctuation sequence `";
+        suffix = "` is not a supported Vitte operator";
     } else if (error == VITTE_LEXER_ERROR_NUMBER_OVERFLOW) {
         prefix = "integer literal `";
-        suffix = " exceeds the supported 64-bit range";
+        suffix = "` exceeds the supported unsigned 64-bit range [0, 18446744073709551615] (u64)";
     } else {
         prefix = "invalid character `";
     }
@@ -1328,6 +1625,28 @@ vitte_main_lexer_format_details(
         memcpy(storage + length, suffix, strlen(suffix));
         length += strlen(suffix);
     }
+    if (error == VITTE_LEXER_ERROR_INVALID_CHARACTER ||
+        error == VITTE_LEXER_ERROR_INVALID_TOKEN ||
+        error == VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL ||
+        error == VITTE_LEXER_ERROR_INVALID_INTEGER ||
+        error == VITTE_LEXER_ERROR_INVALID_FLOAT ||
+        error == VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR ||
+        error == VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE ||
+        error == VITTE_LEXER_ERROR_INVALID_NUMERIC_SUFFIX ||
+        error == VITTE_LEXER_ERROR_INVALID_EXPONENT ||
+        error == VITTE_LEXER_ERROR_INVALID_OPERATOR ||
+        error == VITTE_LEXER_ERROR_NUMBER_OVERFLOW) {
+        written = snprintf(
+            storage + length,
+            capacity - length,
+            " at UTF-8 byte range [%zu, %zu)",
+            span->begin,
+            display_end);
+        if (written < 0 || (size_t)written >= capacity - length) {
+            return false;
+        }
+        length += (size_t)written;
+    }
     storage[length] = '\0';
     return true;
 }
@@ -1369,6 +1688,7 @@ vitte_main_lexer_add_delimiter_suggestion(
     const char *replacement;
     const char *message;
     size_t offset;
+    bool machine_applicable;
     vitte_source_location_t location;
 
     if (context == NULL || span == NULL || source_name == NULL ||
@@ -1381,11 +1701,12 @@ vitte_main_lexer_add_delimiter_suggestion(
     replacement = NULL;
     message = NULL;
     offset = display_end;
+    machine_applicable = false;
 
     /*
-     * A missing closing quote is unambiguous only when the next byte is a
-     * literal boundary.  Do not guess for a second identifier character
-     * (`'ab'`) or for an already closed empty literal (`''`).
+     * A double-quoted string can be closed automatically at a line boundary.
+     * For a character literal, the same insertion can change the intended
+     * value, so keep it advisory even when the byte boundary looks plausible.
      */
     if (error == VITTE_LEXER_ERROR_UNTERMINATED_STRING &&
         context->file.data[span->begin] == (unsigned char)'"' &&
@@ -1394,14 +1715,33 @@ vitte_main_lexer_add_delimiter_suggestion(
          context->file.data[offset] == (unsigned char)'\r')) {
         replacement = "\"";
         message = "Insert the missing closing `\"` for this string literal.";
-    } else if (error == VITTE_LEXER_ERROR_INVALID_CHARACTER &&
+        machine_applicable = true;
+    } else if ((error == VITTE_LEXER_ERROR_INVALID_CHARACTER ||
+                error == VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL) &&
                context->file.data[span->begin] == (unsigned char)'\'' &&
-               span->end > span->begin + 1u &&
-               (offset == context->file.length ||
-                vitte_main_lexer_literal_boundary(
-                    context->file.data[offset]))) {
-        replacement = "'";
-        message = "Insert the missing closing `'` for this character literal.";
+               span->begin + 1u < context->file.length &&
+               context->file.data[span->begin + 1u] >= 0x20u &&
+               context->file.data[span->begin + 1u] < 0x7fu &&
+               context->file.data[span->begin + 1u] != (unsigned char)'\\' &&
+               context->file.data[span->begin + 1u] != (unsigned char)'\'') {
+        size_t candidate;
+        size_t boundary;
+
+        candidate = span->begin + 2u;
+        boundary = candidate;
+        while (boundary < context->file.length &&
+               (context->file.data[boundary] == (unsigned char)' ' ||
+                context->file.data[boundary] == (unsigned char)'\t')) {
+            ++boundary;
+        }
+        if (candidate <= display_end &&
+            (boundary == context->file.length ||
+             vitte_main_lexer_literal_boundary(
+                 context->file.data[boundary]))) {
+            offset = candidate;
+            replacement = "'";
+            message = "Possible edit: insert a closing `'` after this one ASCII character; review manually because the intended character cannot be inferred.";
+        }
     }
 
     if (replacement == NULL) {
@@ -1410,9 +1750,13 @@ vitte_main_lexer_add_delimiter_suggestion(
 
     memset(suggestion, 0, sizeof(*suggestion));
     suggestion->message = message;
-    suggestion->applicability = VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MACHINE;
-    suggestion->confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_HIGH;
-    suggestion->preferred = true;
+    suggestion->applicability = machine_applicable
+        ? VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MACHINE
+        : VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MANUAL;
+    suggestion->confidence = machine_applicable
+        ? VITTE_CLI_DIAGNOSTIC_CONFIDENCE_HIGH
+        : VITTE_CLI_DIAGNOSTIC_CONFIDENCE_LOW;
+    suggestion->preferred = machine_applicable;
     suggestion->suggestion_id = (uint64_t)offset + UINT64_C(1);
     suggestion->has_span = true;
     suggestion->span.valid = true;
@@ -1440,7 +1784,7 @@ vitte_main_lexer_add_delimiter_suggestion(
     suggestion->replacement = replacement;
     diagnostic->suggestions = suggestion;
     diagnostic->suggestion_count = 1u;
-    diagnostic->has_machine_fix = true;
+    diagnostic->has_machine_fix = machine_applicable;
 }
 
 static vitte_cli_diagnostic_severity_t
@@ -1466,12 +1810,12 @@ vitte_main_parser_diagnostic_severity(
     return VITTE_CLI_DIAGNOSTIC_ERROR;
 }
 
-bool
-vitte_main_render_lexer_diagnostic(
-    const vitte_main_driver_context_t *context)
+static bool
+vitte_main_render_one_lexer_diagnostic(
+    const vitte_main_driver_context_t *context,
+    vitte_lexer_error_t error,
+    vitte_lexer_span_t lexer_span)
 {
-    vitte_lexer_error_t error;
-    vitte_lexer_span_t lexer_span;
     vitte_parser_span_t source_span;
     vitte_cli_diagnostic_t diagnostic;
     vitte_cli_diagnostic_suggestion_t suggestion;
@@ -1486,7 +1830,6 @@ vitte_main_render_lexer_diagnostic(
         return false;
     }
 
-    error = vitte_lexer_last_error(&context->lexer);
     switch (error) {
         case VITTE_LEXER_ERROR_INVALID_UTF8:
             code = "VITTE_LEXER_E_INVALID_UNICODE";
@@ -1498,6 +1841,38 @@ vitte_main_render_lexer_diagnostic(
 
         case VITTE_LEXER_ERROR_INVALID_NUMBER:
             code = "VITTE_LEXER_E_INVALID_NUMBER";
+            break;
+
+        case VITTE_LEXER_ERROR_INVALID_INTEGER:
+            code = "VITTE_LEXER_E_INVALID_INTEGER";
+            break;
+
+        case VITTE_LEXER_ERROR_INVALID_FLOAT:
+            code = "VITTE_LEXER_E_INVALID_FLOAT";
+            break;
+
+        case VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL:
+            code = "VITTE_LEXER_E_INVALID_CHARACTER_LITERAL";
+            break;
+
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR:
+            code = "VITTE_LEXER_E_INVALID_NUMERIC_SEPARATOR";
+            break;
+
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE:
+            code = "VITTE_LEXER_E_INVALID_NUMERIC_BASE";
+            break;
+
+        case VITTE_LEXER_ERROR_INVALID_NUMERIC_SUFFIX:
+            code = "VITTE_LEXER_E_INVALID_NUMERIC_SUFFIX";
+            break;
+
+        case VITTE_LEXER_ERROR_INVALID_EXPONENT:
+            code = "VITTE_LEXER_E_INVALID_EXPONENT";
+            break;
+
+        case VITTE_LEXER_ERROR_INVALID_OPERATOR:
+            code = "VITTE_LEXER_E_INVALID_OPERATOR";
             break;
 
         case VITTE_LEXER_ERROR_INVALID_ESCAPE:
@@ -1550,7 +1925,6 @@ vitte_main_render_lexer_diagnostic(
             break;
     }
 
-    lexer_span = vitte_lexer_error_span(&context->lexer);
     display_end = vitte_main_lexer_display_end(
         context,
         error,
@@ -1562,6 +1936,13 @@ vitte_main_render_lexer_diagnostic(
         source_span.file_id = lexer_span.file_id;
         source_span.begin = lexer_span.begin;
         source_span.end = display_end;
+        if (error == VITTE_LEXER_ERROR_UNTERMINATED_STRING &&
+            source_span.begin < context->file.length) {
+            source_span.end = source_span.begin + 1u;
+        } else if (error == VITTE_LEXER_ERROR_UNTERMINATED_COMMENT &&
+                   context->file.length - source_span.begin >= 2u) {
+            source_span.end = source_span.begin + 2u;
+        }
         source_span.valid = true;
     }
 
@@ -1593,6 +1974,13 @@ vitte_main_render_lexer_diagnostic(
          error == VITTE_LEXER_ERROR_INVALID_UTF8 ||
          error == VITTE_LEXER_ERROR_INVALID_IDENTIFIER ||
          error == VITTE_LEXER_ERROR_INVALID_NUMBER ||
+         error == VITTE_LEXER_ERROR_INVALID_INTEGER ||
+         error == VITTE_LEXER_ERROR_INVALID_FLOAT ||
+         error == VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL ||
+         error == VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR ||
+         error == VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE ||
+         error == VITTE_LEXER_ERROR_INVALID_NUMERIC_SUFFIX ||
+         error == VITTE_LEXER_ERROR_INVALID_EXPONENT ||
          error == VITTE_LEXER_ERROR_NUMBER_OVERFLOW ||
          error == VITTE_LEXER_ERROR_UNTERMINATED_STRING ||
          error == VITTE_LEXER_ERROR_UNTERMINATED_COMMENT)) {
@@ -1619,6 +2007,9 @@ vitte_main_render_lexer_diagnostic(
             &diagnostic,
             &suggestion);
     }
+    if (suggestion.has_span) {
+        vitte_main_diagnostic_map_span(context, &suggestion.span);
+    }
 
     return vitte_diagnostic_render_cli_batch(
         stderr,
@@ -1632,30 +2023,71 @@ vitte_main_render_lexer_diagnostic(
             context->options->diagnostic_format));
 }
 
+bool
+vitte_main_render_lexer_diagnostic(
+    const vitte_main_driver_context_t *context)
+{
+    size_t diagnostic_count;
+    size_t index;
+
+    if (context == NULL || !context->lexer_initialized) {
+        return false;
+    }
+
+    diagnostic_count = vitte_lexer_diagnostic_count(&context->lexer);
+    if (diagnostic_count == 0u) {
+        return vitte_main_render_one_lexer_diagnostic(
+            context,
+            vitte_lexer_last_error(&context->lexer),
+            vitte_lexer_error_span(&context->lexer));
+    }
+
+    for (index = 0u; index < diagnostic_count; ++index) {
+        vitte_lexer_diagnostic_t diagnostic;
+        if (!vitte_lexer_diagnostic_at(
+                &context->lexer,
+                index,
+                &diagnostic) ||
+            !vitte_main_render_one_lexer_diagnostic(
+                context,
+                diagnostic.error,
+                diagnostic.span)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool
 vitte_main_parser_token_can_start_list_item(
     vitte_token_kind_t kind)
 {
     return kind == VITTE_TOKEN_IDENTIFIER ||
-           vitte_token_kind_is_contextual_keyword(kind) ||
-           kind == VITTE_TOKEN_LEFT_PAREN ||
-           kind == VITTE_TOKEN_LEFT_BRACKET ||
-           kind == VITTE_TOKEN_AMP ||
-           kind == VITTE_TOKEN_STAR ||
-           kind == VITTE_TOKEN_KW_NOT ||
-           kind == VITTE_TOKEN_KW_MOVE ||
-           kind == VITTE_TOKEN_KW_REF ||
-           kind == VITTE_TOKEN_KW_AWAIT ||
-           kind == VITTE_TOKEN_KW_IF ||
-           kind == VITTE_TOKEN_KW_SELF ||
-           kind == VITTE_TOKEN_KW_PRINT ||
            kind == VITTE_TOKEN_INTEGER_LITERAL ||
            kind == VITTE_TOKEN_FLOAT_LITERAL ||
            kind == VITTE_TOKEN_STRING_LITERAL ||
            kind == VITTE_TOKEN_CHARACTER_LITERAL ||
            kind == VITTE_TOKEN_KW_TRUE ||
            kind == VITTE_TOKEN_KW_FALSE ||
-           kind == VITTE_TOKEN_KW_NULL;
+           kind == VITTE_TOKEN_KW_NULL ||
+           kind == VITTE_TOKEN_KW_SELF ||
+           kind == VITTE_TOKEN_KW_IF ||
+           kind == VITTE_TOKEN_KW_ELIF ||
+           kind == VITTE_TOKEN_KW_PRINT ||
+           kind == VITTE_TOKEN_KW_SIZEOF ||
+           kind == VITTE_TOKEN_KW_ALIGNOF ||
+           kind == VITTE_TOKEN_LEFT_PAREN ||
+           kind == VITTE_TOKEN_LEFT_BRACKET ||
+           kind == VITTE_TOKEN_LEFT_BRACE ||
+           kind == VITTE_TOKEN_PLUS ||
+           kind == VITTE_TOKEN_MINUS ||
+           kind == VITTE_TOKEN_TILDE ||
+           kind == VITTE_TOKEN_STAR ||
+           kind == VITTE_TOKEN_AMP ||
+           kind == VITTE_TOKEN_KW_NOT ||
+           kind == VITTE_TOKEN_KW_MOVE ||
+           kind == VITTE_TOKEN_KW_REF ||
+           kind == VITTE_TOKEN_KW_AWAIT;
 }
 
 static const char *
@@ -1694,7 +2126,6 @@ vitte_main_parser_punctuation_replacement(
         case VITTE_TOKEN_SEMICOLON:
             if (found == VITTE_TOKEN_EOF ||
                 found == VITTE_TOKEN_RIGHT_BRACE ||
-                found == VITTE_TOKEN_IDENTIFIER ||
                 found == VITTE_TOKEN_KW_LET ||
                 found == VITTE_TOKEN_KW_RETURN ||
                 found == VITTE_TOKEN_KW_PRINT ||
@@ -1794,22 +2225,22 @@ vitte_main_parser_add_grammar_migration_suggestion(
     switch (parser_diagnostic->found) {
         case VITTE_TOKEN_AMP_AMP:
             replacement = "and";
-            message = "Use `and` instead of `&&` for logical conjunction.";
+            message = "If logical conjunction was intended, use `and`; review the surrounding expression because this edit changes the operator token.";
             break;
         case VITTE_TOKEN_PIPE_PIPE:
             replacement = "or";
-            message = "Use `or` instead of `||` for logical disjunction.";
+            message = "If logical disjunction was intended, use `or`; review the surrounding expression because this edit changes the operator token.";
             break;
         case VITTE_TOKEN_BANG:
             replacement = "not";
-            message = "Use `not` instead of `!` for logical negation.";
+            message = "If logical negation was intended, use `not`; review the operand and grouping because this edit changes the operator token.";
             break;
         case VITTE_TOKEN_DOT:
             if (vitte_main_parser_is_import_path_dot(
                     context,
                     parser_diagnostic)) {
                 replacement = "::";
-                message = "Use `::` instead of `.` in an import path.";
+                message = "If this dot separates import path segments, use `::`; review the path before changing its qualification.";
             }
             break;
         default:
@@ -1834,8 +2265,8 @@ vitte_main_parser_add_grammar_migration_suggestion(
 
     suggestion->message = message;
     suggestion->applicability = VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MAYBE;
-    suggestion->confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_HIGH;
-    suggestion->preferred = true;
+    suggestion->confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_MEDIUM;
+    suggestion->preferred = false;
     suggestion->suggestion_id =
         (uint64_t)parser_diagnostic->span.begin + UINT64_C(1);
     suggestion->has_span = true;
@@ -1867,6 +2298,7 @@ vitte_main_parser_add_punctuation_suggestion(
     const char *replacement;
     vitte_source_location_t location;
     size_t offset;
+    bool machine_applicable;
 
     if (context == NULL ||
         parser_diagnostic == NULL ||
@@ -1874,7 +2306,10 @@ vitte_main_parser_add_punctuation_suggestion(
         diagnostic == NULL ||
         suggestion == NULL ||
         parser_diagnostic->kind != VITTE_PARSER_DIAGNOSTIC_ERROR ||
-        parser_diagnostic->error != VITTE_PARSER_ERROR_EXPECTED_TOKEN ||
+        (parser_diagnostic->error != VITTE_PARSER_ERROR_EXPECTED_TOKEN &&
+         !(parser_diagnostic->error ==
+               VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST &&
+           parser_diagnostic->expected == VITTE_TOKEN_COMMA)) ||
         !parser_diagnostic->span.valid) {
         return;
     }
@@ -1889,8 +2324,10 @@ vitte_main_parser_add_punctuation_suggestion(
     }
 
     offset = parser_diagnostic->span.begin;
-    suggestion->message =
-        strcmp(replacement, ")") == 0
+    machine_applicable = strcmp(replacement, ",") != 0;
+    suggestion->message = !machine_applicable
+        ? "Insert a comma only if the following token starts another list item; if one expression was intended, add the intended operator or grouping instead."
+        : strcmp(replacement, ")") == 0
             ? "Insert the missing `)` here."
             : strcmp(replacement, "]") == 0
                 ? "Insert the missing `]` here."
@@ -1899,10 +2336,13 @@ vitte_main_parser_add_punctuation_suggestion(
                     : strcmp(replacement, ";") == 0
                         ? "Insert the missing `;` here."
                         : "Insert the missing `,` here.";
-    suggestion->applicability =
-        VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MACHINE;
-    suggestion->confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_HIGH;
-    suggestion->preferred = true;
+    suggestion->applicability = machine_applicable
+        ? VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MACHINE
+        : VITTE_CLI_DIAGNOSTIC_APPLICABILITY_MAYBE;
+    suggestion->confidence = machine_applicable
+        ? VITTE_CLI_DIAGNOSTIC_CONFIDENCE_HIGH
+        : VITTE_CLI_DIAGNOSTIC_CONFIDENCE_MEDIUM;
+    suggestion->preferred = machine_applicable;
     suggestion->suggestion_id = (uint64_t)offset + UINT64_C(1);
     suggestion->has_span = true;
     suggestion->span.valid = true;
@@ -1931,7 +2371,7 @@ vitte_main_parser_add_punctuation_suggestion(
 
     diagnostic->suggestions = suggestion;
     diagnostic->suggestion_count = 1u;
-    diagnostic->has_machine_fix = true;
+    diagnostic->has_machine_fix = machine_applicable;
 }
 
 static bool
@@ -2086,6 +2526,412 @@ vitte_main_parser_contextual_expectation(
         return false;
     }
 
+    if (parser_diagnostic->expected == VITTE_TOKEN_IDENTIFIER &&
+        vitte_token_kind_is_keyword(parser_diagnostic->found)) {
+        *message = "reserved word cannot be used as a name";
+        *help = "Rename this item; Vitte reserved words cannot be used as identifiers.";
+        return true;
+    }
+
+    if (parser_diagnostic->error == VITTE_PARSER_ERROR_UNSUPPORTED) {
+        *message = "unsupported syntax in this position";
+        *help = "This token is recognized, but it has no supported grammar form here. Replace it with a construct valid in this position, or use a supported declaration such as `proc`, `form`, `pick`, `const`, or `type`.";
+        return true;
+    }
+
+    switch (parser_diagnostic->error) {
+        case VITTE_PARSER_ERROR_INVALID_MODULE_PATH:
+            *message = "malformed module path";
+            if (token_index + 1u < context->lexer.token_count &&
+                context->lexer.tokens[token_index].kind ==
+                    VITTE_TOKEN_COLON_COLON &&
+                context->lexer.tokens[token_index + 1u].kind ==
+                    VITTE_TOKEN_IDENTIFIER) {
+                size_t scan = token_index;
+                while (scan != 0u) {
+                    const vitte_token_t *previous_token =
+                        &context->lexer.tokens[--scan];
+                    if (previous_token->kind == VITTE_TOKEN_SEMICOLON ||
+                        previous_token->kind == VITTE_TOKEN_LEFT_BRACE ||
+                        previous_token->kind == VITTE_TOKEN_RIGHT_BRACE) {
+                        break;
+                    }
+                    if (previous_token->kind == VITTE_TOKEN_KW_USE) {
+                        *help = "A `use` path names modules. If the final segment is an exported symbol, import it through a group, for example `use sample::math::{add};`; use `as local_name` inside the group to avoid a name conflict.";
+                        return true;
+                    }
+                }
+            }
+            *help = "Write each path segment as an identifier separated by `::` or `/`; remove leading, repeated or trailing separators.";
+            return true;
+        case VITTE_PARSER_ERROR_MISSING_MODULE_HEADER:
+            *message = "missing module header";
+            *help = "Add one top-level `space path;` declaration before the first module import or export clause.";
+            return true;
+        case VITTE_PARSER_ERROR_DUPLICATE_MODULE_HEADER:
+            *message = "duplicate module header";
+            *help = "Keep one top-level `space path` header in this file and remove the duplicate declaration.";
+            return true;
+        case VITTE_PARSER_ERROR_MISPLACED_MODULE_HEADER:
+            *message = "misplaced module header";
+            *help = "Move `space path;` before the first import or other top-level declaration.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_USE_DECLARATION:
+            *message = "malformed use declaration";
+            *help = "Use `use path;`, `use path as alias;`, `use path::*;` or `use path::{item, nested::{item}};`, then end it with `;`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_USE_ALIAS:
+            *message = "invalid import alias";
+            *help = "Add an identifier after `as`, for example `use math::vector as vectors;`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP:
+            *message = "malformed import group";
+            *help = "Add comma-separated import paths, close every brace, and place nested groups after a path.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_GLOB_IMPORT:
+            *message = "invalid glob import";
+            *help = "Place `::*` at the end of the import, for example `use math::*;`; remove aliases or following path segments.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE:
+            *message = "malformed export clause";
+            *help = "Use `export path [as alias];`, `export {path, other};` or `export *;`.";
+            return true;
+        case VITTE_PARSER_ERROR_EMPTY_EXPORT_GROUP:
+            *message = "empty export group";
+            *help = "Add at least one path inside the braces, for example `export {math::add};`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_EXPORT_ALIAS:
+            *message = "invalid export alias";
+            *help = "Add an identifier after `as`, for example `export math::add as add;`.";
+            return true;
+        case VITTE_PARSER_ERROR_TRAILING_TOKENS:
+            *message = "unexpected trailing tokens";
+            *help = "Remove the extra token before the required semicolon or finish the clause in the form shown by the diagnostic.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_VALUE_DECLARATION:
+            *message = "malformed const or static declaration";
+            *help = "Give the declaration a name, put an optional type after `:`, add `= expression`, and finish with `;`.";
+            return true;
+        case VITTE_PARSER_ERROR_MISSING_VALUE_INITIALIZER:
+            *message = "missing const or static initializer";
+            *help = "Add `= expression` after the name and optional type, for example `const LIMIT: int = 10;`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION:
+            *message = "malformed type declaration";
+            *help = "Complete the type name, each bound or aliased type, and the final `;`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION:
+            *message = "malformed opaque declaration";
+            *help = "Give the opaque type a name, use `= Type` for an optional alias, and omit bounds.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION:
+            *message = "malformed form declaration";
+            *help = "Write a named form with `{}` and fields in the form `name: Type`.";
+            return true;
+        case VITTE_PARSER_ERROR_DUPLICATE_FORM_FIELD:
+            *message = "duplicate form field";
+            *help = "Rename this field; every field in one form must have a unique name.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_FORM_FIELD_SEPARATOR:
+            *message = "missing form field separator";
+            *help = "Separate adjacent fields with `,` or `;`, for example `form Point { x: int, y: int }`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION:
+            *message = "malformed pick declaration";
+            *help = "Write a named pick with braces and comma-separated variants, for example `pick Option { None, Some(int) }`.";
+            return true;
+        case VITTE_PARSER_ERROR_DUPLICATE_PICK_VARIANT:
+            *message = "duplicate pick variant";
+            *help = "Rename this variant; each variant name must be unique within its pick.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_PICK_VARIANT_PAYLOAD:
+            *message = "invalid pick variant payload";
+            *help = "Put valid comma-separated types inside the variant parentheses, for example `Some(int, string)`; `()` is also valid.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION:
+            *message = "malformed trait declaration";
+            *help = "Write `trait Name { ... }`, with optional generic parameters and a `where` clause before the block.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION:
+            *message = "malformed implementation declaration";
+            *help = "Write an inherent implementation as `impl Type { ... }` or a trait implementation as `impl Trait for Type { ... }`.";
+            return true;
+        case VITTE_PARSER_ERROR_MISSING_IMPL_TARGET_TYPE:
+            *message = "missing implementation target type";
+            *help = "Add the type after `for`, for example `impl Display for Point { ... }`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_IMPL_FOR_CLAUSE:
+            *message = "invalid implementation `for` clause";
+            *help = "Use one trait type, `for`, one target type, then an optional `where` clause and the implementation block.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION:
+            *message = "malformed procedure declaration";
+            *help = "Write `proc name(parameters)`, then an optional `-> Type`, optional constraints, and a body or `;`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS:
+            *message = "malformed procedure parameter list";
+            *help = "Enclose parameters in `(...)`; each parameter needs a pattern, `:`, a type, commas between entries, and a closing `)`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_RETURN_TYPE:
+            *message = "invalid procedure return type";
+            *help = "Put a valid type after `->`, for example `proc size() -> int;`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_MODIFIER:
+            *message = "invalid procedure modifier";
+            *help = "Use `async`, `unsafe` or `comptime` at most once and only before a procedure declaration.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM:
+            *message = "invalid procedure body form";
+            *help = "A normal procedure needs a block or `;`; an `extern` or `intrinsic` procedure must end with `;` and has no body.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_EXTERNAL_PROCEDURE:
+            *message = "malformed external procedure declaration";
+            *help = "Write `extern [\"ABI\"] proc name(parameters) [-> Type] [where ...] [requires ...;] [ensures ...;];`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_INTRINSIC_DECLARATION:
+            *message = "malformed intrinsic declaration";
+            *help = "Write `intrinsic name(parameters) [-> Type] [where ...] [requires ...;] [ensures ...;];` without an ABI literal or body.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ABI_STRING_LITERAL:
+            *message = "invalid ABI string literal";
+            *help = "Use a nonempty quoted ABI name after `extern`, for example `extern \"C\" proc write();`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_PARAMETER_LIST:
+            *message = "malformed generic parameter list";
+            *help = "Write `<T, U>` with comma-separated parameters and a closing `>`; a trailing comma is allowed.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_CONST_GENERIC_PARAMETER:
+            *message = "malformed const generic parameter";
+            *help = "Write a const parameter as `const NAME`, optionally followed by a type bound, for example `const N: usize`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_BOUND:
+            *message = "malformed generic bound";
+            *help = "Add a valid type after `:` or `+`, for example `T: Display + Debug`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_PROCEDURE_TYPE:
+            *message = "malformed procedure type";
+            *help = "Write `proc(Type, Type)`, optionally followed by `-> ReturnType`; separate parameters with commas and close the list with `)`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_REFERENCE_TYPE:
+            *message = "malformed reference type";
+            *help = "Write `&Type`, `&mut Type`, `ref Type` or `ref mut Type`, with a complete type after the reference marker.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_POINTER_TYPE:
+            *message = "malformed pointer type";
+            *help = "Write `*Type`, `*mut Type`, `*const Type`, `*volatile Type` or `*const volatile Type`; provide one complete pointee type.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ARRAY_TYPE:
+            *message = "malformed array type";
+            *help = "Write `[Type; length]` or `[length] Type`, with a valid length expression, closing `]` and element type.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_SLICE_TYPE:
+            *message = "malformed slice type";
+            *help = "Write a slice as `[ElementType]` and include a complete element type before the closing `]`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_OPTIONAL_TYPE:
+            *message = "malformed optional type";
+            *help = "Write `?Type` and put a complete type after `?`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_TYPE_PATH:
+            *message = "malformed type path";
+            *help = "Use nonempty path segments separated by `::` or `/`; use `::` instead of `:`, add a segment after every separator and remove repeated separators.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS:
+            *message = "malformed generic arguments";
+            *help = "Use comma-separated types in `<Type, Type>` or `[Type, Type]`; close the list with the matching `>` or `]`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_LET_STATEMENT:
+            *message = "malformed let binding statement";
+            *help = "Write `let [mut] pattern [: Type] [= expression];`. Add a type annotation when there is no initializer and the binding type cannot be inferred.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_SET_STATEMENT:
+            *message = "malformed set statement";
+            *help = "Write `set target assignment_operator expression;` and provide a complete target, value and terminating semicolon.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_OPERATOR:
+            *message = "invalid assignment operator";
+            *help = "Use one of `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` or `>>=` after the assignment target.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_RETURN_STATEMENT:
+            *message = "malformed return statement";
+            *help = "Write `return;` or `return expression;`. The final return in a block may omit `;` before `}` or end of file; procedure placement and return type are checked semantically.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT:
+            *message = "malformed jump statement";
+            *help = "Write `break;` or `continue;` with a semicolon. A jump must appear inside a loop within a procedure.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_DEFER_STATEMENT:
+            *message = "malformed defer statement";
+            *help = "Write `defer { ... }` or `defer expression;`; the expression form requires its terminating semicolon.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ASSERT_STATEMENT:
+            *message = "malformed assert statement";
+            *help = "Write `assert(condition);` with a complete expression between matching parentheses and a final semicolon.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_UNSAFE_STATEMENT:
+            *message = "malformed unsafe statement";
+            *help = "Write `unsafe { ... }` and close the block with `}`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ASM_STATEMENT:
+            *message = "malformed assembly statement";
+            *help = "Write `asm(operand, ...);` or `asm(\"template\");`; close the operand list and terminate the statement with `;`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT:
+            *message = "malformed control-flow statement";
+            *help = "Use `if condition { ... } [elif condition { ... }]* [else { ... }]`, `while condition { ... }`, `loop { ... }`, or `for pattern in values { ... }`; put `else` after an if/elif chain and use it only before a block or chained conditional.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_MATCH_STATEMENT:
+            *message = "malformed match statement";
+            *help = "Write `match value { pattern => body, ... }`; provide a subject and braces, and use complete comma-separated arms when the arm list is nonempty.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_MATCH_ARM:
+            *message = "malformed match arm";
+            *help = "Write `[case] pattern [if guard] => body`, separate adjacent arms with commas, and use a complete expression, statement or block as the body.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_PATTERN:
+            *message = "malformed pattern";
+            *help = "Use a path or binding, literal, `Path::Variant`, `Variant(pattern, ...)`, `Path { field: pattern, .. }`, `(pattern, ...)`, or `[pattern, ...]`; separate pattern items with commas.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN:
+            *message = "malformed range pattern";
+            *help = "Write `lower..upper` or `lower..=upper`; both endpoints must be integer, float or character literals of the same kind.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_EXPRESSION:
+            *message = "malformed assignment expression";
+            *help = "Write `target = value` or use a supported compound assignment operator; provide both a complete target and right-hand expression.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_COALESCING_EXPRESSION:
+            *message = "malformed coalescing expression";
+            *help = "Write `value ?? fallback` and provide a complete expression on both sides of `??`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_LOGICAL_EXPRESSION:
+            *message = "malformed logical expression";
+            *help = "Write both operands around `and`, `or`, `&&` or `||`; parenthesize nested conditions when needed.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_BITWISE_EXPRESSION:
+            *message = "malformed bitwise expression";
+            *help = "Write both operands around `&`, `|` or `^`; use a complete expression on each side.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_COMPARISON_EXPRESSION:
+            *message = "malformed comparison expression";
+            *help = "Write a complete left and right expression around `==`, `!=`, `<`, `<=`, `>` or `>=`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_SHIFT_EXPRESSION:
+            *message = "malformed shift expression";
+            *help = "Write a value and shift count around `<<` or `>>`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ARITHMETIC_EXPRESSION:
+            *message = "malformed arithmetic expression";
+            *help = "Write complete operands around `+`, `-`, `*`, `/` or `%`; add parentheses to make grouping clear.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_RANGE_EXPRESSION:
+            *message = "malformed range expression";
+            *help = "Write `start..end` for an exclusive range or `start..=end` for an inclusive range, with a complete expression at each endpoint.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_UNARY_EXPRESSION:
+            *message = "malformed unary expression";
+            *help = "Put one complete operand after the unary operator, for example `-value`, `not ready`, `&value` or `*pointer`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_CAST_EXPRESSION:
+            *message = "malformed cast expression";
+            *help = "Write `value as Type` and provide a complete type after `as`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION:
+            *message = "malformed postfix expression";
+            *help = "Complete the suffix: use `callee(arguments)`, `value[index]`, `value.field`, `value?`, or `Type { field: value }`; generic form and variant suffixes need nonempty, well-formed type arguments.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_IF_EXPRESSION:
+            *message = "malformed if expression";
+            *help = "Write `if condition { value } else { fallback }`; an if expression needs an else branch, and `elif` may continue the chain.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_BLOCK_EXPRESSION:
+            *message = "malformed block expression";
+            *help = "Close the block with `}`; place complete statements before the optional final expression.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ARRAY_EXPRESSION:
+            *message = "malformed array expression";
+            *help = "Write `[]` or `[expression, ...]`; separate elements with commas and close the array with `]`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_SIZEOF_EXPRESSION:
+            *message = "malformed sizeof expression";
+            *help = "Write `sizeof(Type)` or `sizeof(expression)` with a complete operand and matching parentheses.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ALIGNOF_EXPRESSION:
+            *message = "malformed alignof expression";
+            *help = "Write `alignof(Type)` with a complete type and matching parentheses.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_NULL_CONSTRUCTION:
+            *message = "malformed null construction";
+            *help = "Write `null()` or `null(expression, ...)` and close the argument list with `)`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST:
+            *message = "malformed expression list";
+            *help = "Provide complete expressions separated by commas. A trailing comma is allowed, but empty items are invalid; a missing-comma insertion is suggested only when the next token clearly starts another item.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_WHERE_CLAUSE:
+            *message = "malformed where clause";
+            *help = "Write one or more comma-separated predicates after `where`, such as `where T: Display, N > 0`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_REQUIRES_CLAUSE:
+            *message = "malformed requires clause";
+            *help = "Add a boolean expression and its semicolon, for example `requires count > 0;`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ENSURES_CLAUSE:
+            *message = "malformed ensures clause";
+            *help = "Add a boolean expression and its semicolon, for example `ensures result >= 0;`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_MACRO_DECLARATION:
+            *message = "malformed macro declaration";
+            *help = "Write `macro name` with an optional parameter list and a body, for example `macro log(value: string) { ... }`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_MACRO_PARAMETERS:
+            *message = "malformed macro parameter list";
+            *help = "Use `(...)` with comma-separated `pattern: Type` parameters and a closing `)`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_TEST_DECLARATION:
+            *message = "malformed test declaration";
+            *help = "Write `test { ... }`, `test test_name { ... }`, or `test \"description\" { ... }`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_DECLARATION_MODIFIER_ORDER:
+            *message = "invalid declaration modifier order or combination";
+            *help = "Use at most one visibility modifier (`pub` or prefix `export`) before procedure modifiers; write export clauses without declaration modifiers.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE:
+            *message = "malformed attribute";
+            *help = "Write an attribute as `#[name]` or `#![name]`; include the opening `[` and closing `]` and close any argument parentheses.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_NAME:
+            *message = "missing or invalid attribute name";
+            *help = "Provide an identifier or keyword after `#[` or `#![` and after each `::` in a qualified attribute name.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_ARGUMENTS:
+            *message = "malformed attribute arguments";
+            *help = "Use comma-separated names or literals in parentheses; write named arguments as `name = literal`.";
+            return true;
+        case VITTE_PARSER_ERROR_MISSING_ATTRIBUTE_VALUE:
+            *message = "missing attribute value";
+            *help = "Add a literal after `=`, for example `#[cfg(enabled = true)]`.";
+            return true;
+        case VITTE_PARSER_ERROR_INVALID_ATTRIBUTE_LITERAL:
+            *message = "invalid attribute literal";
+            *help = "Use an integer, float, string, character, boolean, or `null` literal as the attribute value.";
+            return true;
+        case VITTE_PARSER_ERROR_UNEXPECTED_DECLARATION:
+            *message = "unexpected declaration";
+            *help = "Move this declaration to a declaration position, such as the top level or a trait/implementation declaration block.";
+            return true;
+        case VITTE_PARSER_ERROR_UNEXPECTED_STATEMENT:
+            *message = "unexpected statement";
+            *help = "Move this statement into a block that accepts statements, such as a procedure body.";
+            return true;
+        case VITTE_PARSER_ERROR_UNEXPECTED_EXPRESSION:
+            *message = "unexpected expression";
+            *help = "Move this expression into a statement or expression context; declarations require a declaration position.";
+            return true;
+        default:
+            break;
+    }
+
     previous = token_index != 0u
         ? context->lexer.tokens[token_index - 1u].kind
         : VITTE_TOKEN_INVALID;
@@ -2161,6 +3007,10 @@ vitte_main_parser_matching_opener_location(
             opener = NULL;
             label = "opening `{` here; closing `}` expected";
             break;
+        case VITTE_TOKEN_GREATER:
+            opener = NULL;
+            label = "opening `<` here; closing `>` expected";
+            break;
         default:
             opener = NULL;
             label = NULL;
@@ -2169,7 +3019,8 @@ vitte_main_parser_matching_opener_location(
 
     if (parser_diagnostic->expected == VITTE_TOKEN_RIGHT_PAREN ||
         parser_diagnostic->expected == VITTE_TOKEN_RIGHT_BRACKET ||
-        parser_diagnostic->expected == VITTE_TOKEN_RIGHT_BRACE) {
+        parser_diagnostic->expected == VITTE_TOKEN_RIGHT_BRACE ||
+        parser_diagnostic->expected == VITTE_TOKEN_GREATER) {
         vitte_token_kind_t opener_kind;
         size_t nesting;
 
@@ -2177,13 +3028,18 @@ vitte_main_parser_matching_opener_location(
             ? VITTE_TOKEN_LEFT_PAREN
             : parser_diagnostic->expected == VITTE_TOKEN_RIGHT_BRACKET
                 ? VITTE_TOKEN_LEFT_BRACKET
-                : VITTE_TOKEN_LEFT_BRACE;
+                : parser_diagnostic->expected == VITTE_TOKEN_RIGHT_BRACE
+                    ? VITTE_TOKEN_LEFT_BRACE
+                    : VITTE_TOKEN_LESS;
         nesting = 0u;
         while (token_index != 0u) {
             const vitte_token_t *token;
 
             token = &context->lexer.tokens[--token_index];
-            if (token->kind == parser_diagnostic->expected) {
+            if (parser_diagnostic->expected == VITTE_TOKEN_GREATER &&
+                token->kind == VITTE_TOKEN_SHIFT_RIGHT) {
+                nesting += 2u;
+            } else if (token->kind == parser_diagnostic->expected) {
                 ++nesting;
             } else if (token->kind == opener_kind) {
                 if (nesting == 0u) {
@@ -2191,6 +3047,49 @@ vitte_main_parser_matching_opener_location(
                     break;
                 }
                 --nesting;
+            }
+        }
+
+        if (opener != NULL &&
+            (parser_diagnostic->found == VITTE_TOKEN_RIGHT_PAREN ||
+             parser_diagnostic->found == VITTE_TOKEN_RIGHT_BRACKET ||
+             parser_diagnostic->found == VITTE_TOKEN_RIGHT_BRACE ||
+             parser_diagnostic->found == VITTE_TOKEN_GREATER ||
+             parser_diagnostic->found == VITTE_TOKEN_SHIFT_RIGHT) &&
+            parser_diagnostic->found != parser_diagnostic->expected) {
+            if (parser_diagnostic->expected == VITTE_TOKEN_GREATER) {
+                label = parser_diagnostic->found == VITTE_TOKEN_RIGHT_PAREN
+                    ? "opening `<` does not match closing `)`; expected `>`"
+                    : parser_diagnostic->found == VITTE_TOKEN_RIGHT_BRACKET
+                        ? "opening `<` does not match closing `]`; expected `>`"
+                        : parser_diagnostic->found == VITTE_TOKEN_RIGHT_BRACE
+                            ? "opening `<` does not match closing `}`; expected `>`"
+                            : "opening `<` does not match closing `>>`; expected `>`";
+            } else if (parser_diagnostic->expected == VITTE_TOKEN_RIGHT_PAREN) {
+                label = parser_diagnostic->found == VITTE_TOKEN_RIGHT_BRACKET
+                    ? "opening `(` does not match closing `]`; expected `)`"
+                    : parser_diagnostic->found == VITTE_TOKEN_RIGHT_BRACE
+                        ? "opening `(` does not match closing `}`; expected `)`"
+                        : parser_diagnostic->found == VITTE_TOKEN_SHIFT_RIGHT
+                            ? "opening `(` does not match closing `>>`; expected `)`"
+                            : "opening `(` does not match closing `>`; expected `)`";
+            } else if (parser_diagnostic->expected ==
+                       VITTE_TOKEN_RIGHT_BRACKET) {
+                label = parser_diagnostic->found == VITTE_TOKEN_RIGHT_PAREN
+                    ? "opening `[` does not match closing `)`; expected `]`"
+                    : parser_diagnostic->found == VITTE_TOKEN_RIGHT_BRACE
+                        ? "opening `[` does not match closing `}`; expected `]`"
+                        : parser_diagnostic->found == VITTE_TOKEN_SHIFT_RIGHT
+                            ? "opening `[` does not match closing `>>`; expected `]`"
+                            : "opening `[` does not match closing `>`; expected `]`";
+            } else if (parser_diagnostic->expected == VITTE_TOKEN_RIGHT_BRACE) {
+                label = parser_diagnostic->found == VITTE_TOKEN_RIGHT_PAREN
+                    ? "opening `{` does not match closing `)`; expected `}`"
+                    : parser_diagnostic->found == VITTE_TOKEN_RIGHT_BRACKET
+                        ? "opening `{` does not match closing `]`; expected `}`"
+                        : parser_diagnostic->found == VITTE_TOKEN_SHIFT_RIGHT
+                            ? "opening `{` does not match closing `>>`; expected `}`"
+                            : "opening `{` does not match closing `>`; expected `}`";
             }
         }
     } else if (parser_diagnostic->found == VITTE_TOKEN_RIGHT_PAREN ||
@@ -2268,11 +3167,19 @@ vitte_main_parser_matching_opener_location(
         }
         if (selected_index != 3u) {
             opener = candidates[selected_index];
-            label = selected_index == 0u
-                ? "unmatched opening `(` here; closing `)` expected"
-                : selected_index == 1u
-                    ? "unmatched opening `[` here; closing `]` expected"
-                    : "unmatched opening `{` here; closing `}` expected";
+            if (selected_index == 0u) {
+                label = parser_diagnostic->found == VITTE_TOKEN_RIGHT_BRACKET
+                    ? "opening `(` does not match closing `]`"
+                    : "opening `(` does not match closing `}`";
+            } else if (selected_index == 1u) {
+                label = parser_diagnostic->found == VITTE_TOKEN_RIGHT_PAREN
+                    ? "opening `[` does not match closing `)`"
+                    : "opening `[` does not match closing `}`";
+            } else {
+                label = parser_diagnostic->found == VITTE_TOKEN_RIGHT_PAREN
+                    ? "opening `{` does not match closing `)`"
+                    : "opening `{` does not match closing `]`";
+            }
         }
     }
 
@@ -2313,6 +3220,360 @@ vitte_main_parser_matching_opener_location(
         location->span.end_line = end.line - 1u;
         location->span.end_column = end.column - 1u;
     }
+    return true;
+}
+
+static bool
+vitte_main_parser_module_header_related_location(
+    const vitte_main_driver_context_t *context,
+    const vitte_parser_diagnostic_t *parser_diagnostic,
+    const char *source_name,
+    vitte_cli_diagnostic_location_t *location)
+{
+    size_t current_child_index;
+    size_t index;
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *candidate = NULL;
+    const vitte_source_entry_t *source;
+    vitte_source_location_t start;
+    vitte_source_location_t end;
+    const char *label = NULL;
+
+    if (context == NULL || parser_diagnostic == NULL ||
+        source_name == NULL || location == NULL ||
+        (parser_diagnostic->error !=
+             VITTE_PARSER_ERROR_DUPLICATE_MODULE_HEADER &&
+         parser_diagnostic->error !=
+             VITTE_PARSER_ERROR_MISPLACED_MODULE_HEADER) ||
+        !parser_diagnostic->span.valid) {
+        return false;
+    }
+
+    root = vitte_parser_get_node(
+        &context->parser,
+        vitte_parser_root(&context->parser));
+    source = vitte_source_get(&context->sources, context->source_id);
+    if (root == NULL || root->kind != VITTE_AST_NODE_TRANSLATION_UNIT) {
+        return false;
+    }
+
+    current_child_index = root->child_count;
+    for (index = 0u; index < root->child_count; ++index) {
+        const vitte_ast_node_t *declaration =
+            vitte_parser_get_node(&context->parser, root->children[index]);
+        if (declaration != NULL &&
+            declaration->kind == VITTE_AST_NODE_SPACE_DECL &&
+            declaration->child_count == 1u &&
+            declaration->span.valid &&
+            declaration->span.begin == parser_diagnostic->span.begin) {
+            current_child_index = index;
+            break;
+        }
+    }
+    if (current_child_index == root->child_count) {
+        return false;
+    }
+
+    for (index = 0u; index < current_child_index; ++index) {
+        const vitte_ast_node_t *declaration =
+            vitte_parser_get_node(&context->parser, root->children[index]);
+        if (declaration == NULL) {
+            continue;
+        }
+        if (parser_diagnostic->error ==
+                VITTE_PARSER_ERROR_DUPLICATE_MODULE_HEADER &&
+            declaration->kind == VITTE_AST_NODE_SPACE_DECL &&
+            declaration->child_count == 1u) {
+            candidate = declaration;
+            label = "first module header declared here";
+            break;
+        }
+        if (parser_diagnostic->error ==
+                VITTE_PARSER_ERROR_MISPLACED_MODULE_HEADER &&
+            !(declaration->kind == VITTE_AST_NODE_SPACE_DECL &&
+              declaration->child_count == 1u)) {
+            candidate = declaration;
+            label = "preceding top-level declaration is here";
+            break;
+        }
+    }
+    if (candidate == NULL || label == NULL || !candidate->span.valid ||
+        source == NULL || candidate->span.begin > candidate->span.end ||
+        candidate->span.end > source->length ||
+        !vitte_source_location_from_offset(
+            &context->sources,
+            context->source_id,
+            candidate->span.begin,
+            &start) ||
+        !start.valid ||
+        !vitte_source_location_from_offset(
+            &context->sources,
+            context->source_id,
+            candidate->span.end,
+            &end) ||
+        !end.valid) {
+        return false;
+    }
+
+    memset(location, 0, sizeof(*location));
+    location->kind = VITTE_CLI_DIAGNOSTIC_LOCATION_RELATED;
+    location->label = label;
+    location->span.valid = true;
+    location->span.file_id = (uint32_t)context->source_id;
+    location->span.source_id = context->source_id;
+    location->span.source_name = source->path != NULL
+        ? source->path
+        : source_name;
+    location->span.start_offset = candidate->span.begin;
+    location->span.end_offset = candidate->span.end;
+    location->span.start_line = start.line - 1u;
+    location->span.start_column = start.column - 1u;
+    location->span.end_line = end.line - 1u;
+    location->span.end_column = end.column - 1u;
+    return true;
+}
+
+static bool
+vitte_main_parser_duplicate_form_field_related_location(
+    const vitte_main_driver_context_t *context,
+    const vitte_parser_diagnostic_t *parser_diagnostic,
+    const char *source_name,
+    vitte_cli_diagnostic_location_t *location)
+{
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *candidate = NULL;
+    const vitte_source_entry_t *source;
+    vitte_source_location_t start;
+    vitte_source_location_t end;
+    size_t declaration_index;
+
+    if (context == NULL || parser_diagnostic == NULL ||
+        source_name == NULL || location == NULL ||
+        parser_diagnostic->error !=
+            VITTE_PARSER_ERROR_DUPLICATE_FORM_FIELD ||
+        !parser_diagnostic->span.valid) {
+        return false;
+    }
+
+    root = vitte_parser_get_node(
+        &context->parser,
+        vitte_parser_root(&context->parser));
+    source = vitte_source_get(&context->sources, context->source_id);
+    if (root == NULL || root->kind != VITTE_AST_NODE_TRANSLATION_UNIT ||
+        source == NULL) {
+        return false;
+    }
+
+    for (declaration_index = 0u;
+         declaration_index < root->child_count && candidate == NULL;
+         ++declaration_index) {
+        const vitte_ast_node_t *declaration = vitte_parser_get_node(
+            &context->parser, root->children[declaration_index]);
+        size_t field_index;
+
+        if (declaration == NULL ||
+            declaration->kind != VITTE_AST_NODE_FORM_DECL) {
+            continue;
+        }
+        for (field_index = 1u;
+             field_index < declaration->child_count;
+             ++field_index) {
+            const vitte_ast_node_t *field = vitte_parser_get_node(
+                &context->parser, declaration->children[field_index]);
+            const vitte_ast_node_t *field_name;
+            const vitte_token_t *field_token;
+            size_t previous_index;
+
+            if (field == NULL || field->kind != VITTE_AST_NODE_FIELD_DECL ||
+                field->child_count == 0u) {
+                continue;
+            }
+            field_name = vitte_parser_get_node(
+                &context->parser, field->children[0]);
+            if (field_name == NULL || !field_name->span.valid ||
+                field_name->span.begin != parser_diagnostic->span.begin ||
+                field_name->span.end != parser_diagnostic->span.end) {
+                continue;
+            }
+            field_token = field_name->token_index < context->parser.token_count
+                ? &context->parser.tokens[field_name->token_index]
+                : NULL;
+            if (field_token == NULL) {
+                return false;
+            }
+            for (previous_index = 1u;
+                 previous_index < field_index;
+                 ++previous_index) {
+                const vitte_ast_node_t *previous_field =
+                    vitte_parser_get_node(
+                        &context->parser,
+                        declaration->children[previous_index]);
+                const vitte_ast_node_t *previous_name;
+                const vitte_token_t *previous_token;
+
+                if (previous_field == NULL ||
+                    previous_field->kind != VITTE_AST_NODE_FIELD_DECL ||
+                    previous_field->child_count == 0u) {
+                    continue;
+                }
+                previous_name = vitte_parser_get_node(
+                    &context->parser, previous_field->children[0]);
+                previous_token = previous_name != NULL &&
+                    previous_name->token_index < context->parser.token_count
+                    ? &context->parser.tokens[previous_name->token_index]
+                    : NULL;
+                if (previous_token != NULL && previous_name->span.valid &&
+                    previous_token->length == field_token->length &&
+                    memcmp(previous_token->lexeme, field_token->lexeme,
+                           field_token->length) == 0) {
+                    candidate = previous_name;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+
+    if (candidate == NULL || !candidate->span.valid ||
+        candidate->span.begin > candidate->span.end ||
+        candidate->span.end > source->length ||
+        !vitte_source_location_from_offset(
+            &context->sources, context->source_id,
+            candidate->span.begin, &start) || !start.valid ||
+        !vitte_source_location_from_offset(
+            &context->sources, context->source_id,
+            candidate->span.end, &end) || !end.valid) {
+        return false;
+    }
+
+    memset(location, 0, sizeof(*location));
+    location->kind = VITTE_CLI_DIAGNOSTIC_LOCATION_RELATED;
+    location->label = "first form field declared here";
+    location->span.valid = true;
+    location->span.file_id = candidate->span.file_id;
+    location->span.source_id = context->source_id;
+    location->span.source_name = source->path != NULL
+        ? source->path
+        : source_name;
+    location->span.start_offset = candidate->span.begin;
+    location->span.end_offset = candidate->span.end;
+    location->span.start_line = start.line - 1u;
+    location->span.start_column = start.column - 1u;
+    location->span.end_line = end.line - 1u;
+    location->span.end_column = end.column - 1u;
+    return true;
+}
+
+static bool
+vitte_main_parser_duplicate_pick_variant_related_location(
+    const vitte_main_driver_context_t *context,
+    const vitte_parser_diagnostic_t *parser_diagnostic,
+    const char *source_name,
+    vitte_cli_diagnostic_location_t *location)
+{
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *candidate = NULL;
+    const vitte_source_entry_t *source;
+    vitte_source_location_t start;
+    vitte_source_location_t end;
+    size_t declaration_index;
+
+    if (context == NULL || parser_diagnostic == NULL || source_name == NULL ||
+        location == NULL || parser_diagnostic->error !=
+            VITTE_PARSER_ERROR_DUPLICATE_PICK_VARIANT ||
+        !parser_diagnostic->span.valid) {
+        return false;
+    }
+    root = vitte_parser_get_node(
+        &context->parser, vitte_parser_root(&context->parser));
+    source = vitte_source_get(&context->sources, context->source_id);
+    if (root == NULL || root->kind != VITTE_AST_NODE_TRANSLATION_UNIT ||
+        source == NULL) {
+        return false;
+    }
+
+    for (declaration_index = 0u;
+         declaration_index < root->child_count && candidate == NULL;
+         ++declaration_index) {
+        const vitte_ast_node_t *declaration = vitte_parser_get_node(
+            &context->parser, root->children[declaration_index]);
+        size_t variant_index;
+        if (declaration == NULL || declaration->kind != VITTE_AST_NODE_PICK_DECL) {
+            continue;
+        }
+        for (variant_index = 1u; variant_index < declaration->child_count;
+             ++variant_index) {
+            const vitte_ast_node_t *variant = vitte_parser_get_node(
+                &context->parser, declaration->children[variant_index]);
+            const vitte_ast_node_t *variant_name;
+            const vitte_token_t *variant_token;
+            size_t previous_index;
+            if (variant == NULL || variant->kind != VITTE_AST_NODE_VARIANT_DECL ||
+                variant->child_count == 0u) {
+                continue;
+            }
+            variant_name = vitte_parser_get_node(
+                &context->parser, variant->children[0]);
+            if (variant_name == NULL || !variant_name->span.valid ||
+                variant_name->span.begin != parser_diagnostic->span.begin ||
+                variant_name->span.end != parser_diagnostic->span.end) {
+                continue;
+            }
+            variant_token = variant_name->token_index < context->parser.token_count
+                ? &context->parser.tokens[variant_name->token_index] : NULL;
+            if (variant_token == NULL) {
+                return false;
+            }
+            for (previous_index = 1u; previous_index < variant_index;
+                 ++previous_index) {
+                const vitte_ast_node_t *previous = vitte_parser_get_node(
+                    &context->parser, declaration->children[previous_index]);
+                const vitte_ast_node_t *previous_name;
+                const vitte_token_t *previous_token;
+                if (previous == NULL || previous->kind != VITTE_AST_NODE_VARIANT_DECL ||
+                    previous->child_count == 0u) {
+                    continue;
+                }
+                previous_name = vitte_parser_get_node(
+                    &context->parser, previous->children[0]);
+                previous_token = previous_name != NULL &&
+                    previous_name->token_index < context->parser.token_count
+                    ? &context->parser.tokens[previous_name->token_index] : NULL;
+                if (previous_token != NULL && previous_name->span.valid &&
+                    previous_token->length == variant_token->length &&
+                    memcmp(previous_token->lexeme, variant_token->lexeme,
+                           variant_token->length) == 0) {
+                    candidate = previous_name;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+    if (candidate == NULL || !candidate->span.valid ||
+        candidate->span.begin > candidate->span.end ||
+        candidate->span.end > source->length ||
+        !vitte_source_location_from_offset(
+            &context->sources, context->source_id, candidate->span.begin, &start) ||
+        !start.valid ||
+        !vitte_source_location_from_offset(
+            &context->sources, context->source_id, candidate->span.end, &end) ||
+        !end.valid) {
+        return false;
+    }
+    memset(location, 0, sizeof(*location));
+    location->kind = VITTE_CLI_DIAGNOSTIC_LOCATION_RELATED;
+    location->label = "first variant declared here";
+    location->span.valid = true;
+    location->span.file_id = candidate->span.file_id;
+    location->span.source_id = context->source_id;
+    location->span.source_name = source->path != NULL ? source->path : source_name;
+    location->span.start_offset = candidate->span.begin;
+    location->span.end_offset = candidate->span.end;
+    location->span.start_line = start.line - 1u;
+    location->span.start_column = start.column - 1u;
+    location->span.end_line = end.line - 1u;
+    location->span.end_column = end.column - 1u;
     return true;
 }
 
@@ -2367,6 +3628,8 @@ vitte_main_render_parser_diagnostics(
     for (index = 0u; index < diagnostic_count; ++index) {
         const vitte_parser_diagnostic_t *parser_diagnostic;
         vitte_cli_diagnostic_t *diagnostic;
+        const char *parser_code;
+        vitte_cli_diagnostic_severity_t parser_severity;
         const char *details;
         const char *contextual_message;
         const char *contextual_help;
@@ -2383,13 +3646,24 @@ vitte_main_render_parser_diagnostics(
         }
 
         diagnostic = &diagnostics[index];
+        parser_code = vitte_main_parser_diagnostic_code(
+            parser_diagnostic->error);
+        if (parser_diagnostic->expected == VITTE_TOKEN_IDENTIFIER &&
+            vitte_token_kind_is_keyword(parser_diagnostic->found)) {
+            parser_code = "VITTE_PARSER_E_RESERVED_WORD_AS_NAME";
+        }
+        parser_severity =
+            strcmp(parser_code, "VITTE_INFRA_E_INTERNAL") == 0 ||
+            strcmp(parser_code, "VITTE_INFRA_E_INVARIANT") == 0 ||
+            strcmp(parser_code, "VITTE_INFRA_E_RESOURCE") == 0
+                ? VITTE_CLI_DIAGNOSTIC_FATAL
+                : vitte_main_parser_diagnostic_severity(
+                      parser_diagnostic->kind);
         if (!vitte_main_make_cli_diagnostic(
                 context,
                 diagnostic,
-                vitte_main_parser_diagnostic_severity(
-                    parser_diagnostic->kind),
-                vitte_main_parser_diagnostic_code(
-                    parser_diagnostic->error),
+                parser_severity,
+                parser_code,
                 NULL,
                 NULL,
                 &parser_diagnostic->span,
@@ -2409,7 +3683,9 @@ vitte_main_render_parser_diagnostics(
                 sizeof(diagnostic->details_storage),
                 "expected %s, found %s",
                 vitte_token_kind_name(parser_diagnostic->expected),
-                vitte_token_kind_name(parser_diagnostic->found));
+                parser_diagnostic->found == VITTE_TOKEN_EOF
+                    ? "end of file"
+                    : vitte_token_kind_name(parser_diagnostic->found));
         } else if (parser_diagnostic->expected != VITTE_TOKEN_INVALID) {
             details_length = snprintf(
                 diagnostic->details_storage,
@@ -2442,8 +3718,33 @@ vitte_main_render_parser_diagnostics(
                 parser_diagnostic->expected);
         }
         if (parser_diagnostic->found != VITTE_TOKEN_INVALID) {
-            diagnostic->found = vitte_token_kind_name(
-                parser_diagnostic->found);
+            diagnostic->found = parser_diagnostic->found == VITTE_TOKEN_EOF
+                ? "end of file"
+                : vitte_token_kind_name(parser_diagnostic->found);
+        }
+        if (strcmp(parser_code, "VITTE_PARSER_E_RESERVED_WORD_AS_NAME") == 0 &&
+            parser_diagnostic->span.valid &&
+            parser_diagnostic->span.begin <= parser_diagnostic->span.end &&
+            parser_diagnostic->span.end <= context->file.length &&
+            parser_diagnostic->span.end - parser_diagnostic->span.begin <=
+                (size_t)INT_MAX) {
+            details_length = snprintf(
+                diagnostic->details_storage,
+                sizeof(diagnostic->details_storage),
+                "reserved word `%.*s` cannot be used as a name",
+                (int)(parser_diagnostic->span.end -
+                      parser_diagnostic->span.begin),
+                (const char *)context->file.data +
+                    parser_diagnostic->span.begin);
+            if (details_length < 0 ||
+                (size_t)details_length >=
+                    sizeof(diagnostic->details_storage)) {
+                free(diagnostics);
+                free(suggestions);
+                free(related_locations);
+                return false;
+            }
+            diagnostic->details = diagnostic->details_storage;
         }
         if (vitte_main_parser_contextual_expectation(
                 context,
@@ -2472,6 +3773,27 @@ vitte_main_render_parser_diagnostics(
                 parser_diagnostic,
                 source_name,
                 &related_locations[index])) {
+            diagnostic->related = &related_locations[index];
+            diagnostic->related_count = 1u;
+        } else if (vitte_main_parser_module_header_related_location(
+                       context,
+                       parser_diagnostic,
+                       source_name,
+                       &related_locations[index])) {
+            diagnostic->related = &related_locations[index];
+            diagnostic->related_count = 1u;
+        } else if (vitte_main_parser_duplicate_form_field_related_location(
+                       context,
+                       parser_diagnostic,
+                       source_name,
+                       &related_locations[index])) {
+            diagnostic->related = &related_locations[index];
+            diagnostic->related_count = 1u;
+        } else if (vitte_main_parser_duplicate_pick_variant_related_location(
+                       context,
+                       parser_diagnostic,
+                       source_name,
+                       &related_locations[index])) {
             diagnostic->related = &related_locations[index];
             diagnostic->related_count = 1u;
         }
@@ -2648,11 +3970,26 @@ vitte_main_sema_diagnostic_code(
         case VITTE_SEMA_DIAGNOSTIC_UNRESOLVED_NAME:
             return "VITTE_RESOLVE_E_UNKNOWN_SYMBOL";
 
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME:
+            return "VITTE_RESOLVE_E_AMBIGUOUS_SYMBOL";
+
+        case VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT:
+            return "VITTE_IMPORT_E_DUPLICATE";
+
         case VITTE_SEMA_DIAGNOSTIC_PRIVATE_SYMBOL:
             return "VITTE_RESOLVE_E_PRIVATE";
 
         case VITTE_SEMA_DIAGNOSTIC_DUPLICATE_DECLARATION:
             return "VITTE_RESOLVE_E_REDECLARATION";
+
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_SCOPE:
+            return "VITTE_RESOLVE_E_INVALID_SCOPE";
+
+        case VITTE_SEMA_DIAGNOSTIC_DUPLICATE_BINDING:
+            return "VITTE_RESOLVE_E_DUPLICATE_BINDING";
+
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT:
+            return "VITTE_RESOLVE_E_INVALID_EXPORT";
 
         case VITTE_SEMA_DIAGNOSTIC_SHADOWED_DECLARATION:
             return "VITTE_WARNING_SHADOWING";
@@ -2666,11 +4003,33 @@ vitte_main_sema_diagnostic_code(
         case VITTE_SEMA_DIAGNOSTIC_INVALID_ARGUMENT_TYPE:
             return "VITTE_CALL_E_ARGUMENT_TYPE";
 
+        case VITTE_SEMA_DIAGNOSTIC_NO_MATCHING_PROCEDURE:
+            return "VITTE_CALL_E_NO_CANDIDATE";
+
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_CALL:
+            return "VITTE_CALL_E_AMBIGUOUS";
+
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_MODIFIER:
+            return "VITTE_CALL_E_MODIFIER";
+
+        case VITTE_SEMA_DIAGNOSTIC_ASYNC_CONTEXT:
+            return "VITTE_ASYNC_E_AWAIT_CONTEXT";
+
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_TASK_TYPE:
+            return "VITTE_ASYNC_E_TASK_TYPE";
+
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_PARAMETER:
+            return "VITTE_CALL_E_PARAMETER";
+
         case VITTE_SEMA_DIAGNOSTIC_UNKNOWN_TYPE:
             return "VITTE_TYPE_E_UNKNOWN_TYPE";
 
         case VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE:
             return "VITTE_TYPE_E_NOT_A_TYPE";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_CAST:
+            return "VITTE_TYPE_E_INVALID_CAST";
+        case VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE:
+            return "VITTE_TYPE_E_NOT_A_VALUE";
 
         case VITTE_SEMA_DIAGNOSTIC_INVALID_UNARY_OPERAND:
         case VITTE_SEMA_DIAGNOSTIC_INVALID_BINARY_OPERANDS:
@@ -2687,6 +4046,48 @@ vitte_main_sema_diagnostic_code(
 
         case VITTE_SEMA_DIAGNOSTIC_UNKNOWN_MEMBER:
             return "VITTE_TYPE_E_NO_MEMBER";
+
+        case VITTE_SEMA_DIAGNOSTIC_INCOMPLETE_TYPE:
+            return "VITTE_TYPE_E_INCOMPLETE";
+
+        case VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE:
+            return "VITTE_TYPE_E_RECURSIVE";
+
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_BOUND_UNSATISFIED:
+            return "VITTE_GENERIC_E_BOUND";
+
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_COUNT:
+            return "VITTE_GENERIC_E_ARGUMENT_COUNT";
+
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_KIND:
+            return "VITTE_GENERIC_E_ARGUMENT_KIND";
+
+        case VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT:
+            return "VITTE_GENERIC_E_INFERENCE_CONFLICT";
+
+        case VITTE_SEMA_DIAGNOSTIC_TRAIT_NOT_IMPLEMENTED:
+            return "VITTE_TRAIT_E_NOT_IMPLEMENTED";
+
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_IMPL:
+            return "VITTE_TRAIT_E_AMBIGUOUS_IMPL";
+
+        case VITTE_SEMA_DIAGNOSTIC_CONFLICTING_IMPL:
+            return "VITTE_TRAIT_E_CONFLICTING_IMPL";
+
+        case VITTE_SEMA_DIAGNOSTIC_MISSING_TRAIT_MEMBER:
+            return "VITTE_TRAIT_E_MISSING_MEMBER";
+
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_TRAIT_MEMBER:
+            return "VITTE_TRAIT_E_INVALID_MEMBER";
+
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_IMPL_TARGET:
+            return "VITTE_TRAIT_E_INVALID_IMPL_TARGET";
+
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE:
+            return "VITTE_TRAIT_E_INVALID_WHERE_PREDICATE";
+
+        case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_METHOD:
+            return "VITTE_TRAIT_E_AMBIGUOUS_METHOD";
 
         case VITTE_SEMA_DIAGNOSTIC_CONTRACT_REQUIRES:
             return "VITTE_CONTRACT_E_REQUIRES";
@@ -2710,6 +4111,12 @@ vitte_main_sema_diagnostic_code(
             return "VITTE_MEMORY_E_INVALID_ACCESS";
         case VITTE_SEMA_DIAGNOSTIC_CONTRACT_EFFECT:
             return "VITTE_CONTRACT_E_EFFECT";
+        case VITTE_SEMA_DIAGNOSTIC_CONTRACT_OLD_VALUE:
+            return "VITTE_CONTRACT_E_OLD_VALUE";
+        case VITTE_SEMA_DIAGNOSTIC_CONSTANT_NOT_CONSTANT:
+            return "VITTE_CONST_E_NOT_CONSTANT";
+        case VITTE_SEMA_DIAGNOSTIC_CONSTANT_REMAINDER_BY_ZERO:
+            return "VITTE_CONST_E_REMAINDER_BY_ZERO";
         case VITTE_SEMA_DIAGNOSTIC_MATCH_NON_EXHAUSTIVE:
             return "VITTE_PATTERN_E_NON_EXHAUSTIVE";
         case VITTE_SEMA_DIAGNOSTIC_MATCH_UNREACHABLE:
@@ -2718,8 +4125,20 @@ vitte_main_sema_diagnostic_code(
             return "VITTE_CONST_E_CYCLE";
         case VITTE_SEMA_DIAGNOSTIC_MATCH_TYPE:
             return "VITTE_PATTERN_E_TYPE";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_PATTERN_BINDINGS:
+            return "VITTE_PATTERN_E_BINDING";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_DEFER_CONTROL_FLOW:
+            return "VITTE_CONTROL_E_INVALID_DEFER";
+        case VITTE_SEMA_DIAGNOSTIC_OVERLAPPING_PATTERN:
+            return "VITTE_WARNING_OVERLAPPING_PATTERN";
         case VITTE_SEMA_DIAGNOSTIC_UNSAFE_REQUIRED:
             return "VITTE_UNSAFE_E_REQUIRED";
+        case VITTE_SEMA_DIAGNOSTIC_INVALID_ASM:
+            return "VITTE_UNSAFE_E_INVALID_ASM";
+        case VITTE_SEMA_DIAGNOSTIC_FFI_ABI:
+            return "VITTE_FFI_E_ABI";
+        case VITTE_SEMA_DIAGNOSTIC_FFI_TYPE:
+            return "VITTE_FFI_E_TYPE";
         case VITTE_SEMA_DIAGNOSTIC_REFERENCE_ESCAPE:
             return "VITTE_MEMORY_E_REFERENCE_ESCAPE";
         case VITTE_SEMA_DIAGNOSTIC_BORROW_CONFLICT:
@@ -2730,6 +4149,8 @@ vitte_main_sema_diagnostic_code(
             return "VITTE_MEMORY_E_MOVE_BORROWED";
         case VITTE_SEMA_DIAGNOSTIC_USE_AFTER_MOVE:
             return "VITTE_MEMORY_E_USE_AFTER_MOVE";
+        case VITTE_SEMA_DIAGNOSTIC_CANNOT_INFER:
+            return "VITTE_TYPE_E_CANNOT_INFER";
         case VITTE_SEMA_DIAGNOSTIC_CONDITION_NOT_BOOL:
             return "VITTE_TYPE_E_CONDITION_NOT_BOOL";
 
@@ -3154,6 +4575,22 @@ vitte_main_diagnostic_map_native_batch(
         diagnostic->start_column = span.start_column;
         diagnostic->end_line = span.end_line;
         diagnostic->end_column = span.end_column;
+        if (diagnostic->suggestions != NULL &&
+            diagnostic->suggestion_count != 0u) {
+            size_t suggestion_index;
+            vitte_cli_diagnostic_suggestion_t *mutable_suggestions =
+                (vitte_cli_diagnostic_suggestion_t *)diagnostic->suggestions;
+
+            for (suggestion_index = 0u;
+                 suggestion_index < diagnostic->suggestion_count;
+                 ++suggestion_index) {
+                if (mutable_suggestions[suggestion_index].has_span) {
+                    vitte_main_diagnostic_map_span(
+                        context,
+                        &mutable_suggestions[suggestion_index].span);
+                }
+            }
+        }
     }
 }
 #endif
@@ -3193,6 +4630,13 @@ vitte_main_sema_symbol_origin_location(
          sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_INVALID_ARGUMENT_TYPE);
     if (sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_PRIVATE_SYMBOL &&
         sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_DUPLICATE_DECLARATION &&
+        sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_DUPLICATE_BINDING &&
+        sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT &&
+        sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_SHADOWED_DECLARATION &&
+        sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME &&
+        sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT &&
+        sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE &&
+        sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE &&
         !type_origin) {
         return false;
     }
@@ -3204,6 +4648,18 @@ vitte_main_sema_symbol_origin_location(
     origin_symbol_id = type_origin
         ? sema_diagnostic->context_symbol_id
         : sema_diagnostic->symbol_id;
+    if (sema_diagnostic->code ==
+        VITTE_SEMA_DIAGNOSTIC_SHADOWED_DECLARATION) {
+        const vitte_symbol_t *shadowing_symbol = vitte_scope_get_symbol(
+            &context->sema.scopes,
+            sema_diagnostic->symbol_id);
+        if (shadowing_symbol == NULL ||
+            shadowing_symbol->shadowed_symbol ==
+                VITTE_SCOPE_INVALID_SYMBOL_ID) {
+            return false;
+        }
+        origin_symbol_id = shadowing_symbol->shadowed_symbol;
+    }
 
     symbol = vitte_scope_get_symbol(
         &context->sema.scopes,
@@ -3215,7 +4671,10 @@ vitte_main_sema_symbol_origin_location(
 
     declaration_span = symbol->span;
     declaration = (const vitte_ast_node_t *)symbol->payload;
-    if (declaration != NULL && declaration->span.valid &&
+    if (sema_diagnostic->code != VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT &&
+        !(sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT &&
+          symbol->kind == VITTE_SYMBOL_KIND_SPACE) &&
+        declaration != NULL && declaration->span.valid &&
         declaration->span.begin <= declaration->span.end) {
         declaration_span.file_id = declaration->span.file_id;
         declaration_span.begin = declaration->span.begin;
@@ -3275,11 +4734,32 @@ vitte_main_sema_symbol_origin_location(
             VITTE_SEMA_DIAGNOSTIC_PRIVATE_SYMBOL
         ? "private declaration is here"
         : sema_diagnostic->code ==
+              VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME
+            ? "other imported candidate is declared here"
+            : sema_diagnostic->code ==
+                  VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT
+                ? "earlier identical import is here"
+        : sema_diagnostic->code ==
               VITTE_SEMA_DIAGNOSTIC_DUPLICATE_DECLARATION
             ? "conflicting declaration is here"
+        : sema_diagnostic->code ==
+              VITTE_SEMA_DIAGNOSTIC_DUPLICATE_BINDING
+            ? "previous binding is here"
+        : sema_diagnostic->code ==
+              VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT
+            ? symbol->kind == VITTE_SYMBOL_KIND_SPACE
+                ? "imported module is bound here"
+                : "imported declaration originates here"
+        : sema_diagnostic->code ==
+              VITTE_SEMA_DIAGNOSTIC_SHADOWED_DECLARATION
+            ? "earlier shadowed declaration is here"
             : sema_diagnostic->type_context ==
                   VITTE_SEMA_TYPE_CONTEXT_ARGUMENT
                 ? "parameter declared here"
+                : sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE
+                    ? "value declaration is here"
+                    : sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE
+                        ? "type declaration is here"
                 : sema_diagnostic->type_context ==
                       VITTE_SEMA_TYPE_CONTEXT_ASSIGNMENT
                     ? "assignment target declared here"
@@ -3396,7 +4876,7 @@ vitte_main_sema_type_context(
                     buffer,
                     capacity,
                     "argument %zu / parameter `%.*s`",
-                    sema_diagnostic->context_index,
+                    sema_diagnostic->context_index + 1u,
                     (int)(name_length > 128u ? 128u : name_length),
                     name);
             } else if (sema_diagnostic->context_index != SIZE_MAX) {
@@ -3404,7 +4884,7 @@ vitte_main_sema_type_context(
                     buffer,
                     capacity,
                     "argument %zu / parameter",
-                    sema_diagnostic->context_index);
+                    sema_diagnostic->context_index + 1u);
             } else {
                 written = snprintf(buffer, capacity, "argument / parameter");
             }
@@ -3443,6 +4923,66 @@ vitte_main_sema_type_context(
 
         case VITTE_SEMA_TYPE_CONTEXT_EXPRESSION:
             written = snprintf(buffer, capacity, "expression");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_CAST:
+            written = snprintf(buffer, capacity,
+                "cast expression / source and target types");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_OPERANDS:
+            written = snprintf(buffer, capacity, "operator operands");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_CALL:
+            written = snprintf(buffer, capacity, "call target / callable type");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_INDEX:
+            written = snprintf(buffer, capacity,
+                "indexed value / index expression");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_MEMBER:
+            written = snprintf(buffer, capacity,
+                "member access / receiver type");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_TYPE:
+            written = snprintf(buffer, capacity,
+                sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_INCOMPLETE_TYPE ||
+                sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE
+                    ? "type use / originating type declaration"
+                    : "type expression / resolved name");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_VALUE:
+            written = snprintf(buffer, capacity,
+                "value expression / type name");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_INFERENCE:
+            written = snprintf(buffer, capacity,
+                "type inference / unresolved expression or binding");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_BOUND:
+            written = snprintf(buffer, capacity,
+                sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE
+                    ? "where predicate / generic declaration"
+                    : "concrete type / required trait bound");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_GENERIC_ARGUMENT:
+            written = snprintf(buffer, capacity,
+                sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT
+                    ? "conflicting arguments / inferred generic parameter"
+                    : "generic arguments / declaration parameters");
+            break;
+
+        case VITTE_SEMA_TYPE_CONTEXT_TRAIT_MEMBER:
+            written = snprintf(buffer, capacity,
+                "trait / implementation candidate");
             break;
 
         case VITTE_SEMA_TYPE_CONTEXT_NONE:
@@ -3498,11 +5038,62 @@ vitte_main_sema_type_cause(
         case VITTE_SEMA_TYPE_CONTEXT_RETURN:
             return "the returned value does not satisfy the declared return type";
         case VITTE_SEMA_TYPE_CONTEXT_ASSIGNMENT:
-            return "the assignment target is immutable or not assignable";
+            return sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_NOT_ASSIGNABLE
+                ? "the assignment target is immutable or not assignable"
+                : "the assigned value does not satisfy the target type";
         case VITTE_SEMA_TYPE_CONTEXT_CONDITION:
             return "the condition must be boolean";
         case VITTE_SEMA_TYPE_CONTEXT_EXPRESSION:
-            return "the expression operands have incompatible types";
+            return "the expression's actual type does not satisfy the expected type";
+        case VITTE_SEMA_TYPE_CONTEXT_CAST:
+            return "the source type cannot be converted to the requested target type";
+        case VITTE_SEMA_TYPE_CONTEXT_OPERANDS:
+            return "the operator does not support these operand types";
+        case VITTE_SEMA_TYPE_CONTEXT_CALL:
+            return "the call target does not have a callable type";
+        case VITTE_SEMA_TYPE_CONTEXT_INDEX:
+            return sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_INVALID_INDEX_TYPE
+                ? "the index must have an integer type"
+                : "the indexed value does not support indexing";
+        case VITTE_SEMA_TYPE_CONTEXT_MEMBER:
+            return "the receiver type does not define this member";
+        case VITTE_SEMA_TYPE_CONTEXT_TYPE:
+            if (sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_INCOMPLETE_TYPE) {
+                return "this operation requires a complete type definition";
+            }
+            if (sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE) {
+                return "the type alias expansion contains a recursive cycle";
+            }
+            return "the name resolves to a value, which cannot be used as a type";
+        case VITTE_SEMA_TYPE_CONTEXT_VALUE:
+            return "the name resolves to a type, which cannot be evaluated as a value";
+        case VITTE_SEMA_TYPE_CONTEXT_INFERENCE:
+            return "available information does not determine a unique type";
+        case VITTE_SEMA_TYPE_CONTEXT_BOUND:
+            return sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE
+                ? "the predicate must refer to a declared type parameter and a valid trait bound"
+                : "the concrete type does not implement the required trait bound";
+        case VITTE_SEMA_TYPE_CONTEXT_GENERIC_ARGUMENT:
+            return sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT
+                ? "two arguments require incompatible substitutions for one generic parameter"
+                : "generic arguments must match the declared parameter count, kinds and order";
+        case VITTE_SEMA_TYPE_CONTEXT_TRAIT_MEMBER:
+            switch (sema_diagnostic->code) {
+                case VITTE_SEMA_DIAGNOSTIC_MISSING_TRAIT_MEMBER:
+                    return "the trait declares a required member with no default implementation";
+                case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_IMPL:
+                    return "more than one implementation satisfies this trait relation";
+                case VITTE_SEMA_DIAGNOSTIC_CONFLICTING_IMPL:
+                    return "this implementation overlaps an existing implementation";
+                case VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_METHOD:
+                    return "more than one visible implementation supplies this method";
+                case VITTE_SEMA_DIAGNOSTIC_TRAIT_NOT_IMPLEMENTED:
+                    return "the concrete type has no implementation of the required trait";
+                case VITTE_SEMA_DIAGNOSTIC_INVALID_IMPL_TARGET:
+                    return "the impl header does not name a trait and target type in a supported form";
+                default:
+                    return "the implementation member does not satisfy the trait declaration";
+            }
         case VITTE_SEMA_TYPE_CONTEXT_NONE:
         case VITTE_SEMA_TYPE_CONTEXT_COUNT:
             switch (sema_diagnostic->code) {
@@ -3524,6 +5115,47 @@ vitte_main_sema_type_cause(
 }
 
 static bool
+vitte_main_sema_explicit_related_location(
+    const vitte_main_driver_context_t *context,
+    const vitte_sema_diagnostic_t *sema_diagnostic,
+    const char *source_name,
+    vitte_cli_diagnostic_location_t *location)
+{
+    const vitte_parser_span_t *related_span;
+
+    if (context == NULL || sema_diagnostic == NULL ||
+        source_name == NULL || location == NULL) {
+        return false;
+    }
+    related_span = &sema_diagnostic->related_span;
+    if (!related_span->valid ||
+        related_span->begin > related_span->end ||
+        related_span->end > context->file.length) {
+        return false;
+    }
+
+    memset(location, 0, sizeof(*location));
+    location->kind = VITTE_CLI_DIAGNOSTIC_LOCATION_DECLARATION;
+    location->span.valid = true;
+    location->span.file_id = related_span->file_id;
+    location->span.source_id = context->source_id;
+    location->span.source_name = source_name;
+    location->span.start_offset = related_span->begin;
+    location->span.end_offset = related_span->end;
+    location->span.start_line = related_span->line != 0u
+        ? related_span->line - 1u : 0u;
+    location->span.start_column = related_span->column != 0u
+        ? related_span->column - 1u : 0u;
+    location->span.end_line = location->span.start_line;
+    location->span.end_column = location->span.start_column;
+    location->label = sema_diagnostic->related_label[0] != '\0'
+        ? sema_diagnostic->related_label
+        : "related declaration is here";
+    vitte_main_diagnostic_map_span(context, &location->span);
+    return location->span.valid;
+}
+
+static bool
 vitte_main_render_sema_diagnostics(
     const vitte_main_driver_context_t *context,
     bool *rendered)
@@ -3532,6 +5164,7 @@ vitte_main_render_sema_diagnostics(
     char (*type_names)[2][VITTE_MAIN_SEMA_TYPE_NAME_CAPACITY];
     char (*type_contexts)[VITTE_CLI_DIAGNOSTIC_CONTEXT_CAPACITY];
     vitte_cli_diagnostic_location_t *related_locations;
+    vitte_cli_diagnostic_cause_t *causes;
     const vitte_source_entry_t *source;
     const char *source_name;
     size_t diagnostic_count;
@@ -3560,12 +5193,16 @@ vitte_main_render_sema_diagnostics(
     related_locations = (vitte_cli_diagnostic_location_t *)calloc(
         diagnostic_count,
         sizeof(*related_locations));
+    causes = (vitte_cli_diagnostic_cause_t *)calloc(
+        diagnostic_count,
+        sizeof(*causes));
     if (diagnostics == NULL || type_names == NULL ||
-        type_contexts == NULL || related_locations == NULL) {
+        type_contexts == NULL || related_locations == NULL || causes == NULL) {
         free(diagnostics);
         free(type_names);
         free(type_contexts);
         free(related_locations);
+        free(causes);
         return false;
     }
 
@@ -3591,6 +5228,7 @@ vitte_main_render_sema_diagnostics(
             free(type_names);
             free(type_contexts);
             free(related_locations);
+            free(causes);
             return false;
         }
 
@@ -3611,6 +5249,7 @@ vitte_main_render_sema_diagnostics(
             free(type_names);
             free(type_contexts);
             free(related_locations);
+            free(causes);
             return false;
         }
 
@@ -3648,6 +5287,18 @@ vitte_main_render_sema_diagnostics(
                 sema_diagnostic->context_symbol_id);
             if (context_symbol != NULL) {
                 diagnostic->symbol = context_symbol->name;
+            }
+        } else if ((sema_diagnostic->code ==
+                        VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME ||
+                    sema_diagnostic->code ==
+                        VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT) &&
+                   sema_diagnostic->symbol_id !=
+                        VITTE_SCOPE_INVALID_SYMBOL_ID) {
+            const vitte_symbol_t *imported_symbol = vitte_scope_get_symbol(
+                &context->sema.scopes,
+                sema_diagnostic->symbol_id);
+            if (imported_symbol != NULL) {
+                diagnostic->symbol = imported_symbol->name;
             }
         }
         if (sema_diagnostic->contract_span.valid &&
@@ -3706,8 +5357,26 @@ vitte_main_render_sema_diagnostics(
             diagnostic->message = "array index out of bounds";
         diagnostic->help = sema_diagnostic->help;
         details_length = 0;
-        if (expected_type != NULL &&
+        if (sema_diagnostic->code ==
+                VITTE_SEMA_DIAGNOSTIC_INVALID_UNARY_OPERAND &&
             found_type != NULL) {
+            details_length = snprintf(
+                diagnostic->details_storage,
+                sizeof(diagnostic->details_storage),
+                "operator does not support operand type %s",
+                found_type);
+        } else if (sema_diagnostic->code ==
+                       VITTE_SEMA_DIAGNOSTIC_INVALID_BINARY_OPERANDS &&
+                   expected_type != NULL &&
+                   found_type != NULL) {
+            details_length = snprintf(
+                diagnostic->details_storage,
+                sizeof(diagnostic->details_storage),
+                "operator does not support operand types %s and %s",
+                expected_type,
+                found_type);
+        } else if (expected_type != NULL &&
+                   found_type != NULL) {
             details_length = snprintf(
                 diagnostic->details_storage,
                 sizeof(diagnostic->details_storage),
@@ -3734,6 +5403,7 @@ vitte_main_render_sema_diagnostics(
             free(type_names);
             free(type_contexts);
             free(related_locations);
+            free(causes);
             return false;
         }
 
@@ -3741,7 +5411,14 @@ vitte_main_render_sema_diagnostics(
             diagnostic->details_storage[0] != '\0'
                 ? diagnostic->details_storage
                 : NULL;
-        if (vitte_main_sema_mutable_binding_location(
+        if (vitte_main_sema_explicit_related_location(
+                context,
+                sema_diagnostic,
+                source_name,
+                &related_locations[index])) {
+            diagnostic->related = &related_locations[index];
+            diagnostic->related_count = 1u;
+        } else if (vitte_main_sema_mutable_binding_location(
                 context,
                 sema_diagnostic,
                 source_name,
@@ -3766,6 +5443,57 @@ vitte_main_render_sema_diagnostics(
             related_locations[index].label = "contract declared here";
             diagnostic->related = &related_locations[index];
             diagnostic->related_count = 1u;
+        }
+        if (diagnostic->has_contract) {
+            causes[index].kind = VITTE_CLI_DIAGNOSTIC_CAUSE_CONTRACT;
+            causes[index].message = diagnostic->contract.reason != NULL
+                ? diagnostic->contract.reason
+                : "the contract condition is invalid or false";
+            causes[index].confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_CERTAIN;
+            if (diagnostic->contract.has_contract_span) {
+                causes[index].has_span = true;
+                causes[index].span = diagnostic->contract.contract_span;
+                vitte_main_diagnostic_map_span(context, &causes[index].span);
+            } else if (diagnostic->has_span) {
+                causes[index].has_span = true;
+                causes[index].span.valid = true;
+                causes[index].span.file_id = diagnostic->file_id;
+                causes[index].span.source_id = diagnostic->source_id;
+                causes[index].span.source_name = diagnostic->source_name;
+                causes[index].span.start_offset = diagnostic->start_offset;
+                causes[index].span.end_offset = diagnostic->end_offset;
+                causes[index].span.start_line = diagnostic->start_line;
+                causes[index].span.start_column = diagnostic->start_column;
+                causes[index].span.end_line = diagnostic->end_line;
+                causes[index].span.end_column = diagnostic->end_column;
+            }
+            diagnostic->causes = &causes[index];
+            diagnostic->cause_count = 1u;
+        } else if (sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_CONSTANT_NOT_CONSTANT ||
+                   sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_CONSTANT_OVERFLOW ||
+                   sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_CONSTANT_DIVIDE_BY_ZERO ||
+                   sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_CONSTANT_REMAINDER_BY_ZERO ||
+                   sema_diagnostic->code == VITTE_SEMA_DIAGNOSTIC_CONSTANT_CYCLE) {
+            causes[index].kind = VITTE_CLI_DIAGNOSTIC_CAUSE_CONSTANT_EVAL;
+            causes[index].message = sema_diagnostic->help[0] != '\0'
+                ? sema_diagnostic->help
+                : "the initializer cannot produce a compile-time value";
+            causes[index].confidence = VITTE_CLI_DIAGNOSTIC_CONFIDENCE_CERTAIN;
+            if (diagnostic->has_span) {
+                causes[index].has_span = true;
+                causes[index].span.valid = true;
+                causes[index].span.file_id = diagnostic->file_id;
+                causes[index].span.source_id = diagnostic->source_id;
+                causes[index].span.source_name = diagnostic->source_name;
+                causes[index].span.start_offset = diagnostic->start_offset;
+                causes[index].span.end_offset = diagnostic->end_offset;
+                causes[index].span.start_line = diagnostic->start_line;
+                causes[index].span.start_column = diagnostic->start_column;
+                causes[index].span.end_line = diagnostic->end_line;
+                causes[index].span.end_column = diagnostic->end_column;
+            }
+            diagnostic->causes = &causes[index];
+            diagnostic->cause_count = 1u;
         }
         if (diagnostic->related_count != 0u) {
             size_t related_index;
@@ -3794,7 +5522,53 @@ vitte_main_render_sema_diagnostics(
     free(type_names);
     free(type_contexts);
     free(related_locations);
+    free(causes);
     return *rendered;
+}
+
+static const char *
+vitte_main_sema_failure_code(vitte_sema_error_t error)
+{
+    switch (error) {
+        case VITTE_SEMA_ERROR_OUT_OF_MEMORY:
+        case VITTE_SEMA_ERROR_OVERFLOW:
+        case VITTE_SEMA_ERROR_TYPE_LIMIT:
+        case VITTE_SEMA_ERROR_DIAGNOSTIC_LIMIT:
+        case VITTE_SEMA_ERROR_RECURSION_LIMIT:
+            return "VITTE_INFRA_E_RESOURCE";
+        case VITTE_SEMA_ERROR_INVALID_AST:
+        case VITTE_SEMA_ERROR_INVALID_SCOPE:
+        case VITTE_SEMA_ERROR_INVALID_TYPE:
+        case VITTE_SEMA_ERROR_VALIDATION:
+        case VITTE_SEMA_ERROR_CORRUPTION:
+            return "VITTE_INFRA_E_INVARIANT";
+        case VITTE_SEMA_ERROR_NONE:
+        case VITTE_SEMA_ERROR_INVALID_ARGUMENT:
+        case VITTE_SEMA_ERROR_INVALID_CONTEXT:
+        case VITTE_SEMA_ERROR_INVALID_STATE:
+        case VITTE_SEMA_ERROR_INTERNAL:
+        case VITTE_SEMA_ERROR_COUNT:
+        default:
+            return "VITTE_INFRA_E_INTERNAL";
+    }
+}
+
+static const char *
+vitte_main_sema_failure_message(vitte_sema_error_t error, bool initialization)
+{
+    const char *code;
+
+    if (initialization && error == VITTE_SEMA_ERROR_NONE) {
+        return "semantic analysis could not acquire required resources";
+    }
+    code = vitte_main_sema_failure_code(error);
+    if (strcmp(code, "VITTE_INFRA_E_RESOURCE") == 0) {
+        return "compiler resource failure during semantic analysis";
+    }
+    if (strcmp(code, "VITTE_INFRA_E_INVARIANT") == 0) {
+        return "compiler invariant failed during semantic analysis";
+    }
+    return "internal compiler failure during semantic analysis";
 }
 
 bool
@@ -3825,7 +5599,15 @@ vitte_main_driver_analyze(
     vitte_main_verbose(context->options, "analyzing semantics");
 
     if (!vitte_sema_init(&context->sema, &context->parser)) {
-        vitte_main_error("failed to initialize semantic analysis");
+        (void)vitte_main_render_diagnostic(
+            context,
+            VITTE_CLI_DIAGNOSTIC_FATAL,
+            "VITTE_INFRA_E_RESOURCE",
+            "semantic analysis could not acquire required resources",
+            NULL,
+            NULL,
+            NULL,
+            "semantic analysis");
         return false;
     }
 
@@ -3843,9 +5625,12 @@ vitte_main_driver_analyze(
         if (!rendered &&
             !vitte_main_render_diagnostic(
                 context,
-                VITTE_CLI_DIAGNOSTIC_ERROR,
-                "VITTE_INFRA_E_PHASE",
-                "semantic analysis failed",
+                VITTE_CLI_DIAGNOSTIC_FATAL,
+                vitte_main_sema_failure_code(
+                    vitte_sema_last_error(&context->sema)),
+                vitte_main_sema_failure_message(
+                    vitte_sema_last_error(&context->sema),
+                    false),
                 vitte_sema_error_name(
                     vitte_sema_last_error(&context->sema)),
                 NULL,
@@ -3894,6 +5679,67 @@ vitte_main_driver_compile_ast(
         return false;
     }
 
+    /* The CLI currently records --target but the C17 driver only emits for
+     * the host toolchain default. Refuse to silently build for a different
+     * target, and state the available host values in a stable diagnostic. */
+    if (context->options->config_initialized) {
+        const vitte_config_resolved_t *resolved =
+            vitte_config_resolved(&context->options->config);
+        if (resolved != NULL && resolved->target != NULL &&
+            resolved->target[0] != '\0') {
+            char details[1024];
+            const char *architecture = "unknown";
+            const char *platform = "unknown";
+            const char *compiler = getenv("CC");
+            unsigned pointer_bits = (unsigned)(sizeof(void *) * 8u);
+
+#if defined(__x86_64__) || defined(_M_X64)
+            architecture = "x86_64";
+#elif defined(__aarch64__) || defined(_M_ARM64)
+            architecture = "aarch64";
+#elif defined(__i386__) || defined(_M_IX86)
+            architecture = "x86";
+#elif defined(__arm__) || defined(_M_ARM)
+            architecture = "arm";
+#elif defined(__riscv)
+            architecture = "riscv";
+#endif
+
+#if defined(_WIN32)
+            platform = "windows";
+#elif defined(__APPLE__)
+            platform = "darwin";
+#elif defined(__linux__)
+            platform = "linux";
+#elif defined(__FreeBSD__)
+            platform = "freebsd";
+#endif
+
+            if (compiler == NULL || compiler[0] == '\0') {
+                compiler = "cc (default from PATH)";
+            }
+            (void)snprintf(
+                details,
+                sizeof(details),
+                "requested target: `%s`; available built-in host properties: architecture `%s`, platform `%s`, pointer width %u bits; selected compiler: `%s`. The C17 driver does not forward `--target`, and it does not probe the compiler's exact target triple or ABI. Remove `--target` to use host defaults. Cross-target output requires a backend path that selects or forwards the requested triple; inspect the selected compiler's default target before configuring it. `CC` must be one executable path.",
+                resolved->target,
+                architecture,
+                platform,
+                pointer_bits,
+                compiler);
+            (void)vitte_main_render_diagnostic(
+                context,
+                VITTE_CLI_DIAGNOSTIC_ERROR,
+                "VITTE_TARGET_E_UNSUPPORTED",
+                "unsupported target",
+                details,
+                NULL,
+                NULL,
+                "target validation");
+            return false;
+        }
+    }
+
     {
         vitte_c17_compile_options_t compile_options;
         vitte_c17_compile_failure_t compile_failure;
@@ -3917,6 +5763,8 @@ vitte_main_driver_compile_ast(
                 const char *message;
                 const char *details;
                 const char *diagnostic_context;
+                char external_details[1024];
+                const char *compiler = getenv("CC");
 
                 host_status =
                     compiler_driver_pipeline_vitte_native_driver_run_host_toolchain(
@@ -3943,20 +5791,42 @@ vitte_main_driver_compile_ast(
                     return true;
                 }
 
+                if (compiler == NULL || compiler[0] == '\0') {
+                    compiler = "cc (default from PATH)";
+                }
+
                 if (failed_stage == 2u) {
                     code = "VITTE_BACKEND_E_EXTERNAL_COMPILER";
                     message = "generated C source compilation failed";
-                    details = "the external C compiler could not be started or rejected the generated source; see its diagnostics above";
+                    (void)snprintf(
+                        external_details,
+                        sizeof(external_details),
+                        "phase: C compilation; command: `%s -std=c17 [-g ...] -x c -c <temporary-source> -o <temporary-object>`. %s Its stdout/stderr was forwarded above. Configure `CC` as one executable path and check its C17 support, PATH and sysroot. If its output points into generated C, compare with `--emit-c` before treating this as a Vitte source error.",
+                        compiler,
+                        host_status == 6u
+                            ? "The configured compiler could not be started."
+                            : "The compiler returned a failure status.");
+                    details = external_details;
                     diagnostic_context = "C compilation";
                 } else if (failed_stage == 3u) {
                     code = "VITTE_BACKEND_E_LINK";
                     message = "generated C object could not be linked";
-                    details = "the external linker could not be started or create the requested executable; see its diagnostics above";
+                    (void)snprintf(
+                        external_details,
+                        sizeof(external_details),
+                        "phase: linking; command: `%s <temporary-object> -o <output>`. %s Its stdout/stderr was forwarded above. Check the selected compiler driver, linker, SDK/sysroot and required system libraries.",
+                        compiler,
+                        host_status == 6u
+                            ? "The configured linker driver could not be started."
+                            : "The linker driver returned a failure status.");
+                    details = external_details;
                     diagnostic_context = "linking";
                 } else if (failed_stage == 4u) {
                     code = "VITTE_BACKEND_E_EXECUTION";
                     message = "compiled program execution failed";
-                    details = "C compilation and linking succeeded, but the driver could not start the program or it returned a failure status";
+                    details = host_status == 6u
+                        ? "C compilation and linking succeeded, but the driver could not start the generated program"
+                        : "C compilation and linking succeeded, but the generated program returned a failure status";
                     diagnostic_context = "program execution";
                 } else if (host_status == 4u) {
                     code = "VITTE_BACKEND_E_UNSUPPORTED";
@@ -4038,9 +5908,9 @@ vitte_main_driver_compile_ast(
 
             switch (compile_result) {
                 case VITTE_C17_COMPILE_INVALID_ARGUMENT:
-                    code = "VITTE_INFRA_E_PHASE";
-                    message = "invalid C17 compilation request";
-                    details = "the backend received an invalid compilation configuration";
+                    code = "VITTE_BACKEND_E_CONFIG";
+                    message = "invalid C17 backend configuration";
+                    details = "the backend received an invalid or incompatible compilation configuration";
                     break;
                 case VITTE_C17_COMPILE_OUTPUT_FAILED:
                     code = "VITTE_BACKEND_E_OUTPUT";
@@ -4049,18 +5919,18 @@ vitte_main_driver_compile_ast(
                     break;
                 case VITTE_C17_COMPILE_EMIT_FAILED:
                     code = "VITTE_BACKEND_E_CODEGEN";
-                    message = "C17 source emission failed";
+                    message = "C17 code generation failed";
                     details = "the AST emitter could not produce a complete C17 translation unit";
                     break;
                 case VITTE_C17_COMPILE_C_COMPILATION_FAILED:
                     code = "VITTE_BACKEND_E_EXTERNAL_COMPILER";
                     message = "generated C source compilation failed";
-                    details = "the external C compiler rejected the generated source; see its diagnostics above";
+                    details = "phase: C compilation; the bootstrap backend invokes `cc -std=c17 -x c ...` from PATH. Its stdout/stderr was forwarded above. Check that `cc` is installed and supports C17; generated-C errors can indicate a backend defect, while missing headers or target configuration belong to the host toolchain.";
                     break;
                 case VITTE_C17_COMPILE_LINK_FAILED:
                     code = "VITTE_BACKEND_E_LINK";
                     message = "generated C object could not be linked";
-                    details = "the external linker could not create the requested executable; see its diagnostics above";
+                    details = "phase: linking; the bootstrap backend invokes `cc <object> -o <output>` from PATH. Its stdout/stderr was forwarded above. Check the host linker, SDK/sysroot and required system libraries.";
                     break;
                 case VITTE_C17_COMPILE_RUNTIME_FAILED:
                     code = "VITTE_BACKEND_E_EXECUTION";
@@ -4074,7 +5944,7 @@ vitte_main_driver_compile_ast(
                     break;
                 case VITTE_C17_COMPILE_UNSUPPORTED_FEATURE:
                     code = "VITTE_BACKEND_E_UNSUPPORTED";
-                    message = "the requested language construct is not supported by the C17 backend";
+                    message = "C17 backend does not support this source construct";
                     details = "the selected construct has no C17 lowering; no output was emitted";
                     break;
                 case VITTE_C17_COMPILE_SUCCESS:
@@ -4084,11 +5954,38 @@ vitte_main_driver_compile_ast(
                     details = "the backend returned an unclassified failure";
                     break;
             }
-            if (compile_result == VITTE_C17_COMPILE_EMIT_FAILED &&
-                compile_failure.message != NULL) {
-                message = compile_failure.message;
-                details = compile_failure.details;
-                diagnostic_span = &compile_failure.span;
+            if (compile_result == VITTE_C17_COMPILE_EMIT_FAILED) {
+                if (compile_failure.message != NULL) {
+                    if (strcmp(compile_failure.message,
+                               "macros must be expanded before C17 emission") == 0) {
+                        code = "VITTE_BACKEND_E_UNSUPPORTED";
+                        message = "macro declarations cannot be emitted by the C17 backend";
+                        details = "expand or remove the macro declaration before compiling with the C17 backend";
+                    } else if (strstr(compile_failure.message, "unsupported") != NULL ||
+                        strstr(compile_failure.message, "not supported") != NULL ||
+                        strstr(compile_failure.message, "cannot be emitted") != NULL ||
+                        strstr(compile_failure.message, "must be expanded") != NULL ||
+                        strstr(compile_failure.message, "must be monomorphized") != NULL ||
+                        strstr(compile_failure.message, "not implemented") != NULL ||
+                        strstr(compile_failure.message, "cannot be lowered") != NULL) {
+                        code = "VITTE_BACKEND_E_UNSUPPORTED";
+                        message = "C17 backend does not support this Vitte construct";
+                        details = compile_failure.details != NULL
+                            ? compile_failure.details
+                            : compile_failure.message;
+                    } else {
+                        message = "C17 code generation failed for this Vitte construct";
+                        details = compile_failure.details != NULL
+                            ? compile_failure.details
+                            : compile_failure.message;
+                    }
+                } else if (compile_failure.span.valid) {
+                    message = "C17 code generation failed for this Vitte construct";
+                    details = "the backend failed while lowering the underlined source construct";
+                }
+                if (compile_failure.span.valid) {
+                    diagnostic_span = &compile_failure.span;
+                }
             }
 
             if (!vitte_main_render_diagnostic(
@@ -4158,6 +6055,135 @@ vitte_main_emit_native_ir(
 }
 #endif
 
+static const char *
+vitte_main_hir_diagnostic_code(
+    vitte_hir_error_t error,
+    bool validation)
+{
+    if (error == VITTE_HIR_ERROR_UNSUPPORTED) {
+        return "VITTE_HIR_E_UNSUPPORTED";
+    }
+    if (error == VITTE_HIR_ERROR_OUT_OF_MEMORY ||
+        error == VITTE_HIR_ERROR_OVERFLOW ||
+        error == VITTE_HIR_ERROR_TOO_MANY_NODES ||
+        error == VITTE_HIR_ERROR_TOO_MANY_SYMBOLS ||
+        error == VITTE_HIR_ERROR_TOO_MANY_TYPES ||
+        error == VITTE_HIR_ERROR_STRING_LIMIT ||
+        error == VITTE_HIR_ERROR_RECURSION_LIMIT) {
+        return "VITTE_INFRA_E_RESOURCE";
+    }
+    if (error == VITTE_HIR_ERROR_INTERNAL ||
+        error == VITTE_HIR_ERROR_INVALID_CONTEXT ||
+        error == VITTE_HIR_ERROR_INVALID_STATE ||
+        error == VITTE_HIR_ERROR_INVALID_ARGUMENT) {
+        return "VITTE_INFRA_E_INTERNAL";
+    }
+    if (validation || error == VITTE_HIR_ERROR_VALIDATION ||
+        error == VITTE_HIR_ERROR_CORRUPTION) {
+        return "VITTE_HIR_E_INVALID";
+    }
+    return "VITTE_HIR_E_LOWERING";
+}
+
+static const char *
+vitte_main_hir_diagnostic_message(
+    vitte_hir_error_t error,
+    bool validation)
+{
+    const char *code = vitte_main_hir_diagnostic_code(error, validation);
+
+    if (strcmp(code, "VITTE_HIR_E_UNSUPPORTED") == 0) {
+        return "source construct is not supported by HIR lowering";
+    }
+    if (strcmp(code, "VITTE_INFRA_E_RESOURCE") == 0) {
+        return "compiler resource failure during HIR lowering";
+    }
+    if (strcmp(code, "VITTE_INFRA_E_INTERNAL") == 0) {
+        return "internal compiler failure during HIR lowering";
+    }
+    if (strcmp(code, "VITTE_HIR_E_INVALID") == 0) {
+        return "compiler produced invalid HIR";
+    }
+    return "HIR lowering failed";
+}
+
+static vitte_cli_diagnostic_severity_t
+vitte_main_hir_diagnostic_severity(
+    vitte_hir_error_t error,
+    bool validation)
+{
+    const char *code = vitte_main_hir_diagnostic_code(error, validation);
+    return strcmp(code, "VITTE_HIR_E_UNSUPPORTED") == 0 ||
+           strcmp(code, "VITTE_HIR_E_LOWERING") == 0
+        ? VITTE_CLI_DIAGNOSTIC_ERROR
+        : VITTE_CLI_DIAGNOSTIC_FATAL;
+}
+
+static const char *
+vitte_main_ir_diagnostic_code(
+    vitte_ir_error_t error,
+    bool verification)
+{
+    if (error == VITTE_IR_ERROR_UNSUPPORTED) {
+        return "VITTE_IR_E_UNSUPPORTED";
+    }
+    if (error == VITTE_IR_ERROR_OUT_OF_MEMORY ||
+        error == VITTE_IR_ERROR_OVERFLOW ||
+        error == VITTE_IR_ERROR_LIMIT) {
+        return "VITTE_INFRA_E_RESOURCE";
+    }
+    if (error == VITTE_IR_ERROR_INTERNAL ||
+        error == VITTE_IR_ERROR_INVALID_CONTEXT ||
+        error == VITTE_IR_ERROR_INVALID_STATE ||
+        error == VITTE_IR_ERROR_INVALID_ARGUMENT) {
+        return "VITTE_INFRA_E_INTERNAL";
+    }
+    if (verification || error == VITTE_IR_ERROR_VALIDATION ||
+        error == VITTE_IR_ERROR_CORRUPTION ||
+        error == VITTE_IR_ERROR_INVALID_CFG ||
+        error == VITTE_IR_ERROR_INVALID_PHI ||
+        error == VITTE_IR_ERROR_INVALID_INSTRUCTION ||
+        error == VITTE_IR_ERROR_MISSING_TERMINATOR ||
+        error == VITTE_IR_ERROR_TERMINATED_BLOCK) {
+        return "VITTE_IR_E_VERIFY";
+    }
+    return "VITTE_IR_E_LOWERING";
+}
+
+static const char *
+vitte_main_ir_diagnostic_message(
+    vitte_ir_error_t error,
+    bool verification)
+{
+    const char *code = vitte_main_ir_diagnostic_code(error, verification);
+
+    if (strcmp(code, "VITTE_IR_E_UNSUPPORTED") == 0) {
+        return "source construct is not supported by IR lowering";
+    }
+    if (strcmp(code, "VITTE_INFRA_E_RESOURCE") == 0) {
+        return "compiler resource failure during IR lowering";
+    }
+    if (strcmp(code, "VITTE_INFRA_E_INTERNAL") == 0) {
+        return "internal compiler failure during IR lowering";
+    }
+    if (strcmp(code, "VITTE_IR_E_VERIFY") == 0) {
+        return "IR verification failed";
+    }
+    return "IR lowering failed";
+}
+
+static vitte_cli_diagnostic_severity_t
+vitte_main_ir_diagnostic_severity(
+    vitte_ir_error_t error,
+    bool verification)
+{
+    const char *code = vitte_main_ir_diagnostic_code(error, verification);
+    return strcmp(code, "VITTE_IR_E_UNSUPPORTED") == 0 ||
+           strcmp(code, "VITTE_IR_E_LOWERING") == 0
+        ? VITTE_CLI_DIAGNOSTIC_ERROR
+        : VITTE_CLI_DIAGNOSTIC_FATAL;
+}
+
 bool
 vitte_main_driver_lower_hir(
     vitte_driver_t *driver,
@@ -4177,23 +6203,45 @@ vitte_main_driver_lower_hir(
     }
     if (!context->parser_initialized) return false;
     if (!vitte_hir_init(&context->hir)) {
-        vitte_main_error("failed to initialize HIR");
+        const vitte_hir_error_t error = context->hir.last_error;
+        (void)vitte_main_render_diagnostic(
+            context,
+            vitte_main_hir_diagnostic_severity(error, false),
+            vitte_main_hir_diagnostic_code(error, false),
+            vitte_main_hir_diagnostic_message(error, false),
+            vitte_hir_error_name(error),
+            NULL,
+            NULL,
+            "HIR lowering");
         return false;
     }
     context->hir_initialized = true;
     if (!vitte_hir_lower_ast(&context->hir, &context->parser)) {
         (void)vitte_main_render_diagnostic(
             context,
-            VITTE_CLI_DIAGNOSTIC_ERROR,
-            "VITTE_HIR_E_LOWERING",
-            "HIR lowering failed",
+            vitte_main_hir_diagnostic_severity(context->hir.last_error, false),
+            vitte_main_hir_diagnostic_code(context->hir.last_error, false),
+            vitte_main_hir_diagnostic_message(context->hir.last_error, false),
             vitte_hir_error_name(context->hir.last_error),
             NULL,
             NULL,
             "HIR lowering");
         return false;
     }
-    return context->hir.state == VITTE_HIR_STATE_VALIDATED;
+    if (context->hir.state != VITTE_HIR_STATE_VALIDATED) {
+        const vitte_hir_error_t error = context->hir.last_error;
+        (void)vitte_main_render_diagnostic(
+            context,
+            vitte_main_hir_diagnostic_severity(error, true),
+            vitte_main_hir_diagnostic_code(error, true),
+            vitte_main_hir_diagnostic_message(error, true),
+            vitte_hir_error_name(error),
+            NULL,
+            NULL,
+            "HIR validation");
+        return false;
+    }
+    return true;
 }
 
 bool
@@ -4220,23 +6268,45 @@ vitte_main_driver_lower_ir(
 #endif
     if (!context->hir_initialized) return false;
     if (!vitte_ir_init(&context->ir)) {
-        vitte_main_error("failed to initialize IR");
+        const vitte_ir_error_t error = context->ir.last_error;
+        (void)vitte_main_render_diagnostic(
+            context,
+            vitte_main_ir_diagnostic_severity(error, false),
+            vitte_main_ir_diagnostic_code(error, false),
+            vitte_main_ir_diagnostic_message(error, false),
+            vitte_ir_error_name(error),
+            NULL,
+            NULL,
+            "IR lowering");
         return false;
     }
     context->ir_initialized = true;
     if (!vitte_ir_lower_hir(&context->ir, &context->hir)) {
         (void)vitte_main_render_diagnostic(
             context,
-            VITTE_CLI_DIAGNOSTIC_ERROR,
-            "VITTE_IR_E_LOWERING",
-            "IR lowering failed",
+            vitte_main_ir_diagnostic_severity(context->ir.last_error, false),
+            vitte_main_ir_diagnostic_code(context->ir.last_error, false),
+            vitte_main_ir_diagnostic_message(context->ir.last_error, false),
             vitte_ir_error_name(context->ir.last_error),
             NULL,
             NULL,
             "IR lowering");
         return false;
     }
-    return context->ir.state == VITTE_IR_STATE_SEALED;
+    if (context->ir.state != VITTE_IR_STATE_SEALED) {
+        const vitte_ir_error_t error = context->ir.last_error;
+        (void)vitte_main_render_diagnostic(
+            context,
+            vitte_main_ir_diagnostic_severity(error, true),
+            vitte_main_ir_diagnostic_code(error, true),
+            vitte_main_ir_diagnostic_message(error, true),
+            vitte_ir_error_name(error),
+            NULL,
+            NULL,
+            "IR verification");
+        return false;
+    }
+    return true;
 }
 
 bool
@@ -4304,12 +6374,12 @@ vitte_main_driver_codegen_ir(
             case VITTE_C17_IR_COMPILE_C_COMPILATION_FAILED:
                 code = "VITTE_BACKEND_E_EXTERNAL_COMPILER";
                 message = "generated C source compilation failed";
-                details = "the external C compiler rejected the generated source; see its diagnostics above";
+                details = "phase: C compilation; the bootstrap backend invokes `cc -std=c17 -x c ...` from PATH. Its stdout/stderr was forwarded above. Check that `cc` is installed and supports C17; generated-C errors can indicate a backend defect, while missing headers or target configuration belong to the host toolchain.";
                 break;
             case VITTE_C17_IR_COMPILE_LINK_FAILED:
                 code = "VITTE_BACKEND_E_LINK";
                 message = "generated C object could not be linked";
-                details = "the external linker could not create the requested executable; see its diagnostics above";
+                details = "phase: linking; the bootstrap backend invokes `cc <object> -o <output>` from PATH. Its stdout/stderr was forwarded above. Check the host linker, SDK/sysroot and required system libraries.";
                 break;
             case VITTE_C17_IR_COMPILE_RUNTIME_FAILED:
                 code = "VITTE_BACKEND_E_EXECUTION";

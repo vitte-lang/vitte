@@ -87,7 +87,7 @@ vitte_platform_free_wide_arguments(
     free(arguments);
 }
 
-static bool
+static int
 vitte_platform_run_windows(
     const char *const arguments[],
     bool inherit_environment)
@@ -101,26 +101,26 @@ vitte_platform_run_windows(
     while (arguments[count] != NULL) {
         if (count == SIZE_MAX - 1u) {
             errno = ERANGE;
-            return false;
+            return -1;
         }
         ++count;
     }
     if (count > SIZE_MAX / sizeof(*wide_arguments) - 1u) {
         errno = EOVERFLOW;
-        return false;
+        return -1;
     }
     wide_arguments = (wchar_t **)calloc(
         count + 1u,
         sizeof(*wide_arguments));
     if (wide_arguments == NULL) {
         errno = ENOMEM;
-        return false;
+        return -1;
     }
     for (index = 0u; index < count; ++index) {
         wide_arguments[index] = vitte_platform_utf8_to_wide(arguments[index]);
         if (wide_arguments[index] == NULL) {
             vitte_platform_free_wide_arguments(wide_arguments, count);
-            return false;
+            return -1;
         }
     }
     if (inherit_environment) {
@@ -137,7 +137,10 @@ vitte_platform_run_windows(
             (const wchar_t *const *)empty_environment);
     }
     vitte_platform_free_wide_arguments(wide_arguments, count);
-    return result == 0;
+    if (result == -1) {
+        return -1;
+    }
+    return result == 0 ? 0 : 1;
 }
 #endif
 
@@ -230,8 +233,16 @@ vitte_platform_run(
     const char *const arguments[],
     bool inherit_environment)
 {
+    return vitte_platform_run_status(arguments, inherit_environment) == 0;
+}
+
+int
+vitte_platform_run_status(
+    const char *const arguments[],
+    bool inherit_environment)
+{
     if (arguments == NULL || arguments[0] == NULL) {
-        return false;
+        return -1;
     }
 #if defined(_WIN32)
     return vitte_platform_run_windows(arguments, inherit_environment);
@@ -254,13 +265,15 @@ vitte_platform_run(
             (char *const *)arguments,
             environment);
         if (result != 0) {
-            return false;
+            return -1;
         }
         do {
             waited = waitpid(process, &status, 0);
         } while (waited < 0 && errno == EINTR);
-        return waited == process && WIFEXITED(status) &&
-               WEXITSTATUS(status) == 0;
+        if (waited != process) {
+            return -1;
+        }
+        return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : 1;
     }
 #endif
 }

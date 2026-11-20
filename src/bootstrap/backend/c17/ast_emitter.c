@@ -861,6 +861,26 @@ vitte_c17_ast_set_unsupported_failure(
     emitter->failure->span = node->span;
 }
 
+static void
+vitte_c17_ast_mark_unsupported_node(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *node,
+    const char *message,
+    const char *details)
+{
+    if (emitter == NULL || emitter->failed) {
+        return;
+    }
+    if (emitter->failure != NULL) {
+        emitter->failure->message = message;
+        emitter->failure->details = details;
+        if (node != NULL && node->span.valid) {
+            emitter->failure->span = node->span;
+        }
+    }
+    emitter->failed = true;
+}
+
 static bool
 vitte_c17_ast_node_has_thread_local_attribute(
     const vitte_c17_ast_emitter_t *emitter,
@@ -1385,6 +1405,17 @@ static void
 vitte_c17_ast_emit_expression(
     vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *node);
+
+static void
+vitte_c17_ast_record_source_context(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *node)
+{
+    if (emitter != NULL && emitter->failure != NULL && node != NULL &&
+        !emitter->failed && node->span.valid) {
+        emitter->failure->span = node->span;
+    }
+}
 
 static bool
 vitte_c17_ast_expression_is_character(
@@ -2686,6 +2717,8 @@ vitte_c17_ast_emit_type(
     const vitte_ast_node_t *node)
 {
     const vitte_ast_node_t *name;
+
+    vitte_c17_ast_record_source_context(emitter, node);
 
     if (node == NULL) {
         emitter->failed = true;
@@ -4558,7 +4591,12 @@ vitte_c17_ast_emit_operator(
         case VITTE_TOKEN_KW_OR: vitte_c17_ast_write(emitter, "||"); break;
         case VITTE_TOKEN_PIPE_PIPE: vitte_c17_ast_write(emitter, "||"); break;
         case VITTE_TOKEN_KW_NOT: vitte_c17_ast_write(emitter, "!"); break;
-        default: emitter->failed = true; break;
+        default:
+            vitte_c17_ast_mark_unsupported_node(
+                emitter, NULL,
+                "operator is unsupported by the C17 backend",
+                "rewrite this operation using an operator supported by the C17 backend");
+            break;
     }
 }
 
@@ -7991,6 +8029,8 @@ vitte_c17_ast_emit_expression(
     const vitte_ast_node_t *right;
     size_t index;
 
+    vitte_c17_ast_record_source_context(emitter, node);
+
     if (node == NULL || emitter->failed) {
         emitter->failed = true;
         return;
@@ -9912,7 +9952,10 @@ vitte_c17_ast_emit_expression(
             return;
 
         default:
-            emitter->failed = true;
+            vitte_c17_ast_mark_unsupported_node(
+                emitter, node,
+                "expression is unsupported by the C17 backend",
+                "rewrite this expression using a construct supported by the C17 backend");
             return;
     }
 }
@@ -11565,6 +11608,8 @@ vitte_c17_ast_emit_statement(
     const vitte_ast_node_t *child;
     size_t index;
 
+    vitte_c17_ast_record_source_context(emitter, node);
+
     if (node == NULL || emitter->failed) {
         emitter->failed = true;
         return;
@@ -12525,7 +12570,10 @@ vitte_c17_ast_emit_statement(
             return;
 
         default:
-            emitter->failed = true;
+            vitte_c17_ast_mark_unsupported_node(
+                emitter, node,
+                "statement is unsupported by the C17 backend",
+                "rewrite this statement using a construct supported by the C17 backend");
             return;
     }
 }

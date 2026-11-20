@@ -189,7 +189,7 @@ vitte_native_host_process_run(
 {
     const char **terminated_arguments;
     size_t index;
-    bool succeeded;
+    int process_status;
 
     if (program == NULL || (arguments == NULL && argument_count != 0u) ||
         argument_count > SIZE_MAX / sizeof(*terminated_arguments) - 2u) {
@@ -198,18 +198,21 @@ vitte_native_host_process_run(
     terminated_arguments = (const char **)malloc(
         (argument_count + 2u) * sizeof(*terminated_arguments));
     if (terminated_arguments == NULL) {
-        return -1;
+        return -2;
     }
     terminated_arguments[0] = (const char *)program;
     for (index = 0u; index < argument_count; ++index) {
         terminated_arguments[index + 1u] = (const char *)arguments[index];
     }
     terminated_arguments[argument_count + 1u] = NULL;
-    succeeded = vitte_platform_run(
+    process_status = vitte_platform_run_status(
         (const char *const *)terminated_arguments,
         true);
     free(terminated_arguments);
-    return succeeded ? 1 : 0;
+    if (process_status == 0) {
+        return 1;
+    }
+    return process_status < 0 ? -1 : 0;
 }
 
 #endif

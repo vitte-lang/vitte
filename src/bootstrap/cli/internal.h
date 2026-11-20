@@ -259,6 +259,19 @@ void vitte_main_report_process_error_span(
     const char *module_name,
     const char *symbol_name,
     const char *procedure_name);
+void vitte_main_report_process_error_span_related(
+    const char *code,
+    const char *message,
+    const char *details,
+    const char *source_name,
+    const vitte_import_span_t *span,
+    const char *diagnostic_context,
+    const char *module_name,
+    const char *symbol_name,
+    const char *procedure_name,
+    const char *primary_label,
+    const vitte_cli_diagnostic_location_t *related,
+    size_t related_count);
 void vitte_main_warning(const vitte_main_options_t *options,
                         const char *message);
 void vitte_main_verbose(const vitte_main_options_t *options,

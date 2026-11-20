@@ -29,6 +29,13 @@ vitte_platform_run(
     const char *const arguments[],
     bool inherit_environment);
 
+/* Return 0 on success, 1 when the child returns unsuccessfully, and -1 when
+ * the process could not be started or waited for. */
+int
+vitte_platform_run_status(
+    const char *const arguments[],
+    bool inherit_environment);
+
 #ifdef __cplusplus
 }
 #endif

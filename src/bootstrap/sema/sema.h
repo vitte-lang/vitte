@@ -45,7 +45,7 @@ extern "C" {
 /* ========================================================================= */
 
 #define VITTE_SEMA_API_VERSION_MAJOR 2u
-#define VITTE_SEMA_API_VERSION_MINOR 0u
+#define VITTE_SEMA_API_VERSION_MINOR 5u
 #define VITTE_SEMA_API_VERSION_PATCH 0u
 
 #define VITTE_SEMA_API_VERSION \
@@ -418,6 +418,17 @@ typedef enum vitte_sema_type_context_kind {
     VITTE_SEMA_TYPE_CONTEXT_RETURN,
     VITTE_SEMA_TYPE_CONTEXT_ASSIGNMENT,
     VITTE_SEMA_TYPE_CONTEXT_CONDITION,
+    VITTE_SEMA_TYPE_CONTEXT_CAST,
+    VITTE_SEMA_TYPE_CONTEXT_OPERANDS,
+    VITTE_SEMA_TYPE_CONTEXT_CALL,
+    VITTE_SEMA_TYPE_CONTEXT_INDEX,
+    VITTE_SEMA_TYPE_CONTEXT_MEMBER,
+    VITTE_SEMA_TYPE_CONTEXT_TYPE,
+    VITTE_SEMA_TYPE_CONTEXT_VALUE,
+    VITTE_SEMA_TYPE_CONTEXT_INFERENCE,
+    VITTE_SEMA_TYPE_CONTEXT_BOUND,
+    VITTE_SEMA_TYPE_CONTEXT_GENERIC_ARGUMENT,
+    VITTE_SEMA_TYPE_CONTEXT_TRAIT_MEMBER,
 
     VITTE_SEMA_TYPE_CONTEXT_COUNT
 } vitte_sema_type_context_kind_t;
@@ -511,6 +522,51 @@ typedef enum vitte_sema_diagnostic_code {
     VITTE_SEMA_DIAGNOSTIC_BORROWED_MUTATION,
     VITTE_SEMA_DIAGNOSTIC_MOVE_BORROWED,
     VITTE_SEMA_DIAGNOSTIC_USE_AFTER_MOVE,
+    VITTE_SEMA_DIAGNOSTIC_CANNOT_INFER,
+
+    /* Appended to preserve the existing bootstrap diagnostic ordinals. */
+    VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_NAME,
+    VITTE_SEMA_DIAGNOSTIC_DUPLICATE_IMPORT,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_SCOPE,
+    VITTE_SEMA_DIAGNOSTIC_DUPLICATE_BINDING,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_EXPORT,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_CAST,
+    VITTE_SEMA_DIAGNOSTIC_NOT_A_VALUE,
+    VITTE_SEMA_DIAGNOSTIC_INCOMPLETE_TYPE,
+    VITTE_SEMA_DIAGNOSTIC_RECURSIVE_TYPE,
+    VITTE_SEMA_DIAGNOSTIC_GENERIC_BOUND_UNSATISFIED,
+    VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_COUNT,
+    VITTE_SEMA_DIAGNOSTIC_GENERIC_ARGUMENT_KIND,
+    VITTE_SEMA_DIAGNOSTIC_GENERIC_INFERENCE_CONFLICT,
+    VITTE_SEMA_DIAGNOSTIC_TRAIT_NOT_IMPLEMENTED,
+    VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_IMPL,
+    VITTE_SEMA_DIAGNOSTIC_CONFLICTING_IMPL,
+    VITTE_SEMA_DIAGNOSTIC_MISSING_TRAIT_MEMBER,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_TRAIT_MEMBER,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_IMPL_TARGET,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_WHERE_PREDICATE,
+    VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_METHOD,
+    VITTE_SEMA_DIAGNOSTIC_NO_MATCHING_PROCEDURE,
+    VITTE_SEMA_DIAGNOSTIC_AMBIGUOUS_CALL,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_MODIFIER,
+    VITTE_SEMA_DIAGNOSTIC_ASYNC_CONTEXT,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_TASK_TYPE,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_PROCEDURE_PARAMETER,
+
+    /* Appended to keep the public semantic diagnostic ordinals stable. */
+    VITTE_SEMA_DIAGNOSTIC_INVALID_PATTERN_BINDINGS,
+    VITTE_SEMA_DIAGNOSTIC_INVALID_DEFER_CONTROL_FLOW,
+    VITTE_SEMA_DIAGNOSTIC_OVERLAPPING_PATTERN,
+
+    /* Appended to preserve existing public semantic diagnostic ordinals. */
+    VITTE_SEMA_DIAGNOSTIC_CONTRACT_OLD_VALUE,
+    VITTE_SEMA_DIAGNOSTIC_CONSTANT_NOT_CONSTANT,
+    VITTE_SEMA_DIAGNOSTIC_CONSTANT_REMAINDER_BY_ZERO,
+
+    /* Appended to preserve existing semantic diagnostic ordinals. */
+    VITTE_SEMA_DIAGNOSTIC_INVALID_ASM,
+    VITTE_SEMA_DIAGNOSTIC_FFI_ABI,
+    VITTE_SEMA_DIAGNOSTIC_FFI_TYPE,
 
     VITTE_SEMA_DIAGNOSTIC_CODE_COUNT
 } vitte_sema_diagnostic_code_t;
@@ -545,6 +601,10 @@ typedef struct vitte_sema_diagnostic {
     uint32_t contract_flags;
     vitte_parser_span_t contract_span;
     vitte_symbol_id_t contract_symbol_id;
+
+    /* Source evidence that explains a type or trait diagnostic. */
+    vitte_parser_span_t related_span;
+    char related_label[128];
 } vitte_sema_diagnostic_t;
 
 /* ========================================================================= */
@@ -723,6 +783,17 @@ typedef struct vitte_sema {
 
     /* True while the current procedure/block permits unsafe operations. */
     bool current_unsafe;
+
+    /* Appended to preserve API v2 public field offsets. */
+    bool current_async;
+    bool current_comptime;
+
+    /* Appended in API 2.4: deferred action whose body is being checked. */
+    vitte_ast_node_id_t current_defer_node_id;
+
+    /* Appended in API 2.5: loops created inside a deferred action may use
+     * their own break/continue without escaping the deferred action. */
+    size_t current_defer_loop_depth;
 } vitte_sema_t;
 
 /* ========================================================================= */

@@ -172,6 +172,7 @@ static int
 check_precedence(void)
 {
     static const char source[] =
+        "space tests::precedence;\n"
         "proc precedence() {\n"
         "  left + right * third << high == equal and truth or alternative;\n"
         "}\n";
@@ -238,6 +239,7 @@ static int
 check_division_is_not_a_path_separator(void)
 {
     static const char source[] =
+        "space tests::arithmetic;\n"
         "proc arithmetic() {\n"
         "  left / right;\n"
         "  left * right;\n"
@@ -333,6 +335,7 @@ static int
 check_slice_and_cast_syntax(void)
 {
     static const char source[] =
+        "space tests::slice_cast;\n"
         "form Buffer { values: [i64] }\n"
         "proc convert(value: f64) -> i64 {\n"
         "  return value as i64;\n"
@@ -393,6 +396,7 @@ static int
 check_keyword_named_procedure(void)
 {
     static const char source[] =
+        "space tests::keyword_names;\n"
         "proc null() -> int { return 0; }\n"
         "proc declared() -> int;\n"
         "proc use_null() -> int { return null(); }\n"
@@ -524,11 +528,14 @@ check_invalid_syntax(void)
 static int
 check_parser_limits_and_reset(void)
 {
-    static const char first_source[] = "proc first() {}";
-    static const char second_source[] = "proc second() { return 1; }";
-    static const char node_limit_source[] = "proc limited() {}";
+    static const char first_source[] =
+        "space tests::first; proc first() {}";
+    static const char second_source[] =
+        "space tests::second; proc second() { return 1; }";
+    static const char node_limit_source[] =
+        "space tests::limited; proc limited() {}";
     static const char recursion_limit_source[] =
-        "proc nested() { return (((1))); }";
+        "space tests::recursion; proc nested() { return (((1))); }";
     static const char diagnostic_limit_source[] =
         "proc broken() { let first = ; let second = ; }";
     vitte_lexer_t first_lexer;
@@ -651,21 +658,351 @@ check_parser_diagnostic_details(void)
     static const diagnostic_case_t cases[] = {
         {
             "proc broken() { let value = ; }",
-            VITTE_PARSER_ERROR_EXPECTED_EXPRESSION,
+            VITTE_PARSER_ERROR_INVALID_LET_STATEMENT,
             VITTE_TOKEN_INVALID,
             VITTE_TOKEN_SEMICOLON
         },
         {
             "proc broken(value: ) {}",
-            VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS,
             VITTE_TOKEN_IDENTIFIER,
             VITTE_TOKEN_RIGHT_PAREN
         },
         {
             "form Broken { field int }",
-            VITTE_PARSER_ERROR_EXPECTED_TOKEN,
+            VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION,
             VITTE_TOKEN_COLON,
             VITTE_TOKEN_IDENTIFIER
+        },
+        {
+            "type Bad = proc(int bool);",
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_TYPE,
+            VITTE_TOKEN_COMMA,
+            VITTE_TOKEN_IDENTIFIER
+        },
+        {
+            "type Bad = &;",
+            VITTE_PARSER_ERROR_INVALID_REFERENCE_TYPE,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "type Bad = *;",
+            VITTE_PARSER_ERROR_INVALID_POINTER_TYPE,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "type Bad = [int; ];",
+            VITTE_PARSER_ERROR_INVALID_ARRAY_TYPE,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_RIGHT_BRACKET
+        },
+        {
+            "type Bad = [];",
+            VITTE_PARSER_ERROR_INVALID_SLICE_TYPE,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_RIGHT_BRACKET
+        },
+        {
+            "type Bad = ?;",
+            VITTE_PARSER_ERROR_INVALID_OPTIONAL_TYPE,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "type Bad = Item::;",
+            VITTE_PARSER_ERROR_INVALID_TYPE_PATH,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "type Bad = Item: Other;",
+            VITTE_PARSER_ERROR_INVALID_TYPE_PATH,
+            VITTE_TOKEN_COLON_COLON,
+            VITTE_TOKEN_COLON
+        },
+        {
+            "type Bad = Map<int bool>;",
+            VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS,
+            VITTE_TOKEN_COMMA,
+            VITTE_TOKEN_IDENTIFIER
+        },
+        {
+            "type Bad = Map[int bool];",
+            VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS,
+            VITTE_TOKEN_COMMA,
+            VITTE_TOKEN_IDENTIFIER
+        },
+        {
+            "proc bad() { let = 1; }",
+            VITTE_PARSER_ERROR_INVALID_LET_STATEMENT,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_EQUAL
+        },
+        {
+            "proc bad() { let value: ; }",
+            VITTE_PARSER_ERROR_INVALID_LET_STATEMENT,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = ; }",
+            VITTE_PARSER_ERROR_INVALID_LET_STATEMENT,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { set value; }",
+            VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_OPERATOR,
+            VITTE_TOKEN_EQUAL,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { set value == 1; }",
+            VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_OPERATOR,
+            VITTE_TOKEN_EQUAL,
+            VITTE_TOKEN_EQUAL_EQUAL
+        },
+        {
+            "proc bad() { set value = ; }",
+            VITTE_PARSER_ERROR_INVALID_SET_STATEMENT,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { return 1 2; }",
+            VITTE_PARSER_ERROR_INVALID_RETURN_STATEMENT,
+            VITTE_TOKEN_SEMICOLON,
+            VITTE_TOKEN_INTEGER_LITERAL
+        },
+        {
+            "proc bad() { break value; }",
+            VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT,
+            VITTE_TOKEN_SEMICOLON,
+            VITTE_TOKEN_IDENTIFIER
+        },
+        {
+            "proc bad() { let value = 1 }",
+            VITTE_PARSER_ERROR_INVALID_LET_STATEMENT,
+            VITTE_TOKEN_SEMICOLON,
+            VITTE_TOKEN_RIGHT_BRACE
+        },
+        {
+            "proc bad() { set value = 1 }",
+            VITTE_PARSER_ERROR_INVALID_SET_STATEMENT,
+            VITTE_TOKEN_SEMICOLON,
+            VITTE_TOKEN_RIGHT_BRACE
+        },
+        {
+            "proc bad() { break }",
+            VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT,
+            VITTE_TOKEN_SEMICOLON,
+            VITTE_TOKEN_RIGHT_BRACE
+        },
+        {
+            "return 1;",
+            VITTE_PARSER_ERROR_INVALID_RETURN_STATEMENT,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_KW_RETURN
+        },
+        {
+            "break;",
+            VITTE_PARSER_ERROR_INVALID_JUMP_STATEMENT,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_KW_BREAK
+        },
+        {
+            "proc bad() { defer; }",
+            VITTE_PARSER_ERROR_INVALID_DEFER_STATEMENT,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { assert true; }",
+            VITTE_PARSER_ERROR_INVALID_ASSERT_STATEMENT,
+            VITTE_TOKEN_LEFT_PAREN,
+            VITTE_TOKEN_KW_TRUE
+        },
+        {
+            "proc bad() { unsafe value; }",
+            VITTE_PARSER_ERROR_INVALID_UNSAFE_STATEMENT,
+            VITTE_TOKEN_LEFT_BRACE,
+            VITTE_TOKEN_IDENTIFIER
+        },
+        {
+            "proc bad() { asm(,); }",
+            VITTE_PARSER_ERROR_INVALID_ASM_STATEMENT,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_COMMA
+        },
+        {
+            "proc bad() { if; }",
+            VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { else {} }",
+            VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT,
+            VITTE_TOKEN_KW_IF,
+            VITTE_TOKEN_KW_ELSE
+        },
+        {
+            "proc bad() { for item values {} }",
+            VITTE_PARSER_ERROR_INVALID_CONTROL_FLOW_STATEMENT,
+            VITTE_TOKEN_KW_IN,
+            VITTE_TOKEN_IDENTIFIER
+        },
+        {
+            "proc bad() { match; }",
+            VITTE_PARSER_ERROR_INVALID_MATCH_STATEMENT,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { match true { true false => 0, } }",
+            VITTE_PARSER_ERROR_INVALID_MATCH_ARM,
+            VITTE_TOKEN_FAT_ARROW,
+            VITTE_TOKEN_KW_FALSE
+        },
+        {
+            "proc bad() { match true { (true,, false) => 1, } }",
+            VITTE_PARSER_ERROR_INVALID_PATTERN,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_COMMA
+        },
+        {
+            "proc bad() { match true { Point { .., x: } => 1, } }",
+            VITTE_PARSER_ERROR_INVALID_PATTERN,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_RIGHT_BRACE
+        },
+        {
+            "proc bad() { match value { item..4 => 0, } }",
+            VITTE_PARSER_ERROR_INVALID_RANGE_PATTERN,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_IDENTIFIER
+        },
+        {
+            "proc bad() { let value = target = ; }",
+            VITTE_PARSER_ERROR_INVALID_ASSIGNMENT_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = target ?? ; }",
+            VITTE_PARSER_ERROR_INVALID_COALESCING_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = target and ; }",
+            VITTE_PARSER_ERROR_INVALID_LOGICAL_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = target | ; }",
+            VITTE_PARSER_ERROR_INVALID_BITWISE_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = target == ; }",
+            VITTE_PARSER_ERROR_INVALID_COMPARISON_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = target << ; }",
+            VITTE_PARSER_ERROR_INVALID_SHIFT_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = target + ; }",
+            VITTE_PARSER_ERROR_INVALID_ARITHMETIC_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = target .. ; }",
+            VITTE_PARSER_ERROR_INVALID_RANGE_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = -; }",
+            VITTE_PARSER_ERROR_INVALID_UNARY_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = as int; }",
+            VITTE_PARSER_ERROR_INVALID_CAST_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_KW_AS
+        },
+        {
+            "proc bad() { let value = left + right * / divisor; }",
+            VITTE_PARSER_ERROR_INVALID_ARITHMETIC_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SLASH
+        },
+        {
+            "proc bad() { let value = invoke(1; }",
+            VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION,
+            VITTE_TOKEN_RIGHT_PAREN,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = items[]; }",
+            VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_RIGHT_BRACKET
+        },
+        {
+            "proc bad() { let value = item.; }",
+            VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = ?item; }",
+            VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_QUESTION
+        },
+        {
+            "proc bad() { let value = Point { x: }; }",
+            VITTE_PARSER_ERROR_INVALID_POSTFIX_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_RIGHT_BRACE
+        },
+        {
+            "proc bad() { let value = if ready { 1 }; }",
+            VITTE_PARSER_ERROR_INVALID_IF_EXPRESSION,
+            VITTE_TOKEN_KW_ELSE,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = if ready + ; { 1 } else { 0 }; }",
+            VITTE_PARSER_ERROR_INVALID_ARITHMETIC_EXPRESSION,
+            VITTE_TOKEN_INVALID,
+            VITTE_TOKEN_SEMICOLON
+        },
+        {
+            "proc bad() { let value = { 1 2 }; }",
+            VITTE_PARSER_ERROR_INVALID_BLOCK_EXPRESSION,
+            VITTE_TOKEN_SEMICOLON,
+            VITTE_TOKEN_INTEGER_LITERAL
+        },
+        {
+            "type Bad = Map<>;",
+            VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS,
+            VITTE_TOKEN_IDENTIFIER,
+            VITTE_TOKEN_GREATER
         }
     };
     size_t case_index;
@@ -1029,10 +1366,419 @@ check_import_list_recovery(void)
 }
 
 static int
+expect_parser_diagnostic_at(
+    const char *source,
+    vitte_parser_error_t expected_error,
+    const char *marked_text,
+    size_t occurrence)
+{
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    const char *marked;
+    size_t index;
+    size_t begin;
+    int found = 0;
+    int ok;
+
+    if (source == NULL || marked_text == NULL || marked_text[0] == '\0' ||
+        !parse_source(source, &lexer, &parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] diagnostic case setup failed\n");
+        return 0;
+    }
+    marked = source;
+    for (index = 0u; index <= occurrence; ++index) {
+        marked = strstr(marked, marked_text);
+        if (marked == NULL) {
+            break;
+        }
+        if (index != occurrence) {
+            marked += strlen(marked_text);
+        }
+    }
+    begin = marked != NULL ? (size_t)(marked - source) : SIZE_MAX;
+    ok = !vitte_parser_run(&parser);
+    for (index = 0u; index < vitte_parser_diagnostic_count(&parser); ++index) {
+        const vitte_parser_diagnostic_t *diagnostic =
+            vitte_parser_diagnostic_at(&parser, index);
+        if (diagnostic != NULL &&
+            diagnostic->kind == VITTE_PARSER_DIAGNOSTIC_ERROR &&
+            diagnostic->error == expected_error) {
+            found = 1;
+            if (marked == NULL || !diagnostic->span.valid ||
+                diagnostic->span.begin != begin ||
+                diagnostic->span.end != begin + strlen(marked_text)) {
+                (void)fprintf(
+                    stderr,
+                    "[GRAMMAR] %s reported wrong span for `%s` "
+                    "(expected %zu..%zu, actual %zu..%zu)\n",
+                    vitte_parser_error_name(expected_error), source,
+                    begin, begin + strlen(marked_text),
+                    diagnostic->span.begin, diagnostic->span.end);
+                ok = 0;
+            }
+            break;
+        }
+    }
+    if (!found) {
+        (void)fprintf(
+            stderr,
+            "[GRAMMAR] expected diagnostic %s was not emitted\n",
+            vitte_parser_error_name(expected_error));
+        ok = 0;
+    }
+    destroy_frontend(&lexer, &parser);
+    return ok;
+}
+
+static int
+expect_parser_diagnostic_at_eof(
+    const char *source,
+    vitte_parser_error_t expected_error)
+{
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    size_t source_length;
+    size_t index;
+    int found = 0;
+    int ok;
+
+    if (source == NULL || !parse_source(source, &lexer, &parser)) {
+        return 0;
+    }
+    source_length = strlen(source);
+    ok = !vitte_parser_run(&parser);
+    for (index = 0u; index < vitte_parser_diagnostic_count(&parser); ++index) {
+        const vitte_parser_diagnostic_t *diagnostic =
+            vitte_parser_diagnostic_at(&parser, index);
+        if (diagnostic != NULL && diagnostic->error == expected_error) {
+            found = diagnostic->span.valid &&
+                diagnostic->span.begin == source_length &&
+                diagnostic->span.end == source_length;
+            break;
+        }
+    }
+    if (!found) {
+        (void)fprintf(stderr,
+                      "[GRAMMAR] %s did not underline EOF for `%s`\n",
+                      vitte_parser_error_name(expected_error), source);
+    }
+    destroy_frontend(&lexer, &parser);
+    return ok && found;
+}
+
+static int
+check_module_import_export_diagnostics(void)
+{
+    static const char missing_module_path[] = "space ;\n";
+    static const char missing_module_header[] = "use core;\n";
+    static const char missing_export_header[] = "export item;\n";
+    static const char malformed_module_path[] = "space core::;\n";
+    static const char duplicate_module_header[] =
+        "space first;\nspace second;\n";
+    static const char misplaced_module_header[] =
+        "proc before() {}\nspace late;\n";
+    static const char malformed_use[] = "use ;\n";
+    static const char invalid_use_alias[] = "use core as ;\n";
+    static const char malformed_import_group[] =
+        "use core::{first second};\n";
+    static const char invalid_nested_glob[] =
+        "use core::{outer::{*}};\n";
+    static const char invalid_top_level_glob[] =
+        "use core::* as alias;\n";
+    static const char malformed_export[] = "export ;\n";
+    static const char empty_export_group[] = "export {};\n";
+    static const char invalid_export_alias[] = "export item as ;\n";
+    static const char trailing_use_tokens[] = "use core extra;\n";
+    static const char trailing_export_tokens[] = "export item extra;\n";
+    static const char valid_nested_groups[] =
+        "space imports;\n"
+        "use core::{fmt::{Display, Debug}, ops::{Add}};\n"
+        "use core::*;\n";
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    const vitte_ast_node_t *root;
+    const vitte_ast_node_t *nested_use;
+    const vitte_ast_node_t *glob_use;
+    int ok = 1;
+
+    if (!expect_parser_diagnostic_at_eof(
+            missing_module_header,
+            VITTE_PARSER_ERROR_MISSING_MODULE_HEADER) ||
+        !expect_parser_diagnostic_at_eof(
+            missing_export_header,
+            VITTE_PARSER_ERROR_MISSING_MODULE_HEADER) ||
+        !expect_parser_diagnostic_at(
+            missing_module_path,
+            VITTE_PARSER_ERROR_INVALID_MODULE_PATH,
+            ";", 0u) ||
+        !expect_parser_diagnostic_at(
+            malformed_module_path,
+            VITTE_PARSER_ERROR_INVALID_MODULE_PATH,
+            "::", 0u) ||
+        !expect_parser_diagnostic_at(
+            duplicate_module_header,
+            VITTE_PARSER_ERROR_DUPLICATE_MODULE_HEADER,
+            "space", 1u) ||
+        !expect_parser_diagnostic_at(
+            misplaced_module_header,
+            VITTE_PARSER_ERROR_MISPLACED_MODULE_HEADER,
+            "space", 0u) ||
+        !expect_parser_diagnostic_at(
+            malformed_use,
+            VITTE_PARSER_ERROR_INVALID_USE_DECLARATION,
+            ";", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_use_alias,
+            VITTE_PARSER_ERROR_INVALID_USE_ALIAS,
+            ";", 0u) ||
+        !expect_parser_diagnostic_at(
+            malformed_import_group,
+            VITTE_PARSER_ERROR_INVALID_IMPORT_GROUP,
+            "second", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_nested_glob,
+            VITTE_PARSER_ERROR_INVALID_GLOB_IMPORT,
+            "*", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_top_level_glob,
+            VITTE_PARSER_ERROR_INVALID_GLOB_IMPORT,
+            "as", 0u) ||
+        !expect_parser_diagnostic_at(
+            malformed_export,
+            VITTE_PARSER_ERROR_INVALID_EXPORT_CLAUSE,
+            ";", 0u) ||
+        !expect_parser_diagnostic_at(
+            empty_export_group,
+            VITTE_PARSER_ERROR_EMPTY_EXPORT_GROUP,
+            "}", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_export_alias,
+            VITTE_PARSER_ERROR_INVALID_EXPORT_ALIAS,
+            ";", 0u) ||
+        !expect_parser_diagnostic_at(
+            trailing_use_tokens,
+            VITTE_PARSER_ERROR_TRAILING_TOKENS,
+            "extra", 0u) ||
+        !expect_parser_diagnostic_at(
+            trailing_export_tokens,
+            VITTE_PARSER_ERROR_TRAILING_TOKENS,
+            "extra", 0u)) {
+        return 0;
+    }
+
+    if (!parse_source(valid_nested_groups, &lexer, &parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] nested import setup failed\n");
+        return 0;
+    }
+    ok = vitte_parser_run(&parser);
+    root = vitte_parser_get_node(&parser, vitte_parser_root(&parser));
+    nested_use = root != NULL && root->child_count > 1u
+        ? vitte_parser_get_node(&parser, root->children[1]) : NULL;
+    glob_use = root != NULL && root->child_count > 2u
+        ? vitte_parser_get_node(&parser, root->children[2]) : NULL;
+    if (!ok || root == NULL || root->child_count != 3u ||
+        nested_use == NULL || nested_use->child_count != 4u ||
+        glob_use == NULL ||
+        (glob_use->flags & VITTE_AST_FLAG_GLOB_IMPORT) == 0u ||
+        !vitte_parser_validate(&parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] nested imports did not form valid AST paths\n");
+        ok = 0;
+    }
+    destroy_frontend(&lexer, &parser);
+    return ok;
+}
+
+static int
+check_value_type_opaque_form_diagnostics(void)
+{
+    static const char missing_value_name[] = "const = 1;";
+    static const char missing_value_equal[] = "const LIMIT 10;";
+    static const char missing_value_expression[] = "const LIMIT = ;";
+    static const char missing_value_semicolon[] = "static mut COUNT = 1";
+    static const char missing_type_alias[] = "type Alias = ;";
+    static const char invalid_type_bound[] = "type Item: Trait + = int;";
+    static const char missing_opaque_alias[] = "opaque type Handle = ;";
+    static const char invalid_opaque_bound[] = "opaque type Handle: Trait;";
+    static const char missing_form_name[] = "form { value: int }";
+    static const char malformed_form_field[] = "form Point { value int }";
+    static const char duplicate_form_field[] =
+        "form Point { value: int, value: bool }";
+    static const char missing_form_separator[] =
+        "form Point { x: int y: int }";
+    static const char missing_form_closer[] = "form Point { x: int";
+    static const char valid_declarations[] =
+        "const LIMIT: int = 10; static mut COUNT: int = 0; "
+        "type Alias = int; type Bound: Trait + Debug; "
+        "opaque type Handle; opaque type Raw = int; "
+        "form Point { x: int, y: int; }";
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    int ok;
+
+    if (!expect_parser_diagnostic_at(
+            missing_value_name,
+            VITTE_PARSER_ERROR_INVALID_VALUE_DECLARATION,
+            "=", 0u) ||
+        !expect_parser_diagnostic_at(
+            missing_value_equal,
+            VITTE_PARSER_ERROR_MISSING_VALUE_INITIALIZER,
+            "10", 0u) ||
+        !expect_parser_diagnostic_at(
+            missing_value_expression,
+            VITTE_PARSER_ERROR_MISSING_VALUE_INITIALIZER,
+            ";", 0u) ||
+        !expect_parser_diagnostic_at_eof(
+            missing_value_semicolon,
+            VITTE_PARSER_ERROR_INVALID_VALUE_DECLARATION) ||
+        !expect_parser_diagnostic_at(
+            missing_type_alias,
+            VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION,
+            ";", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_type_bound,
+            VITTE_PARSER_ERROR_INVALID_TYPE_DECLARATION,
+            "=", 0u) ||
+        !expect_parser_diagnostic_at(
+            missing_opaque_alias,
+            VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION,
+            ";", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_opaque_bound,
+            VITTE_PARSER_ERROR_INVALID_OPAQUE_DECLARATION,
+            ":", 0u) ||
+        !expect_parser_diagnostic_at(
+            missing_form_name,
+            VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION,
+            "{", 0u) ||
+        !expect_parser_diagnostic_at(
+            malformed_form_field,
+            VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION,
+            "int", 1u) ||
+        !expect_parser_diagnostic_at(
+            duplicate_form_field,
+            VITTE_PARSER_ERROR_DUPLICATE_FORM_FIELD,
+            "value", 1u) ||
+        !expect_parser_diagnostic_at(
+            missing_form_separator,
+            VITTE_PARSER_ERROR_INVALID_FORM_FIELD_SEPARATOR,
+            "y", 0u) ||
+        !expect_parser_diagnostic_at_eof(
+            missing_form_closer,
+            VITTE_PARSER_ERROR_INVALID_FORM_DECLARATION)) {
+        return 0;
+    }
+
+    if (!parse_source(valid_declarations, &lexer, &parser)) {
+        (void)fprintf(stderr, "[GRAMMAR] declaration setup failed\n");
+        return 0;
+    }
+    ok = vitte_parser_run(&parser) && vitte_parser_validate(&parser);
+    if (!ok) {
+        (void)fprintf(stderr, "[GRAMMAR] valid declarations were rejected\n");
+    }
+    destroy_frontend(&lexer, &parser);
+    return ok;
+}
+
+static int
+check_pick_trait_impl_procedure_diagnostics(void)
+{
+    static const char malformed_pick[] = "pick { A }";
+    static const char duplicate_pick_variant[] = "pick Choice { Some, Some }";
+    static const char invalid_pick_payload[] = "pick Choice { Some(,) }";
+    static const char malformed_trait[] = "trait Display";
+    static const char malformed_impl[] = "impl Point";
+    static const char missing_impl_target[] = "impl Display for {}";
+    static const char invalid_impl_for_clause[] =
+        "impl Display for Point extra {}";
+    static const char malformed_procedure[] = "proc () {}";
+    static const char malformed_procedure_parameters[] = "proc f(x int) {}";
+    static const char missing_procedure_parameter_closer[] = "proc f(x: int {}";
+    static const char invalid_procedure_return[] = "proc f() -> {}";
+    static const char duplicate_procedure_modifier[] =
+        "async async proc f() {}";
+    static const char misplaced_procedure_modifier[] = "async form Point {}";
+    static const char invalid_procedure_body[] = "proc f() return 1;";
+    static const char invalid_external_procedure_body[] =
+        "extern proc f() {}";
+    static const char missing_external_procedure_semicolon[] =
+        "extern proc f()";
+    static const char valid_declarations[] =
+        "pick Option<T> { None, Some(T), Empty() } "
+        "trait Marker { proc marker(); } "
+        "impl Marker for Point { proc marker() {} } "
+        "async proc run(value: int) -> int { return value; } "
+        "extern proc c_call(value: int);";
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    int valid;
+
+    if (!expect_parser_diagnostic_at(
+            malformed_pick, VITTE_PARSER_ERROR_INVALID_PICK_DECLARATION,
+            "{", 0u) ||
+        !expect_parser_diagnostic_at(
+            duplicate_pick_variant, VITTE_PARSER_ERROR_DUPLICATE_PICK_VARIANT,
+            "Some", 1u) ||
+        !expect_parser_diagnostic_at(
+            invalid_pick_payload,
+            VITTE_PARSER_ERROR_INVALID_PICK_VARIANT_PAYLOAD, ",", 0u) ||
+        !expect_parser_diagnostic_at_eof(
+            malformed_trait, VITTE_PARSER_ERROR_INVALID_TRAIT_DECLARATION) ||
+        !expect_parser_diagnostic_at_eof(
+            malformed_impl, VITTE_PARSER_ERROR_INVALID_IMPL_DECLARATION) ||
+        !expect_parser_diagnostic_at(
+            missing_impl_target, VITTE_PARSER_ERROR_MISSING_IMPL_TARGET_TYPE,
+            "{", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_impl_for_clause,
+            VITTE_PARSER_ERROR_INVALID_IMPL_FOR_CLAUSE, "extra", 0u) ||
+        !expect_parser_diagnostic_at(
+            malformed_procedure,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_DECLARATION, "(", 0u) ||
+        !expect_parser_diagnostic_at(
+            malformed_procedure_parameters,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS, "int", 0u) ||
+        !expect_parser_diagnostic_at(
+            missing_procedure_parameter_closer,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_PARAMETERS, "{", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_procedure_return,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_RETURN_TYPE, "{", 0u) ||
+        !expect_parser_diagnostic_at(
+            duplicate_procedure_modifier,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_MODIFIER, "async", 1u) ||
+        !expect_parser_diagnostic_at(
+            misplaced_procedure_modifier,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_MODIFIER, "async", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_procedure_body,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM, "return", 0u) ||
+        !expect_parser_diagnostic_at(
+            invalid_external_procedure_body,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM, "{", 0u) ||
+        !expect_parser_diagnostic_at_eof(
+            missing_external_procedure_semicolon,
+            VITTE_PARSER_ERROR_INVALID_PROCEDURE_BODY_FORM)) {
+        return 0;
+    }
+    if (!parse_source(valid_declarations, &lexer, &parser)) {
+        return 0;
+    }
+    valid = vitte_parser_run(&parser) && vitte_parser_validate(&parser);
+    if (!valid) {
+        (void)fprintf(stderr,
+                      "[GRAMMAR] valid pick/trait/impl/procedure syntax failed\n");
+    }
+    destroy_frontend(&lexer, &parser);
+    return valid;
+}
+
+static int
 check_attributes_and_patterns(void)
 {
     static const char source[] =
         "#![module(test)]\n"
+        "space tests::attributes;\n"
         "#[repr(C)] form Pair<T> where T: Trait { left: T, right: T }\n"
         "impl<T> Pair<T> where T: Trait {\n"
         "  proc get(value: T) -> T { return value; }\n"
@@ -1065,7 +1811,7 @@ check_attributes_and_patterns(void)
     unpack = find_named_child(&parser, root, VITTE_AST_NODE_PROC_DECL, "unpack");
     pattern = find_kind(&parser, unpack != NULL ? unpack->id : VITTE_AST_INVALID_ID,
                         VITTE_AST_NODE_PATTERN);
-    if (!ok || root == NULL || root->child_count != 3u || pair == NULL ||
+    if (!ok || root == NULL || root->child_count != 4u || pair == NULL ||
         implementation == NULL ||
         unpack == NULL || pattern == NULL ||
         (pair->flags & VITTE_AST_FLAG_HAS_ATTRIBUTES) == 0u ||
@@ -1083,6 +1829,7 @@ static int
 check_advanced_grammar_surface(void)
 {
     static const char source[] =
+        "space tests::advanced_grammar;\n"
         "#[repr(C)]\n"
         "trait Printable<T: Display + Debug> where T: Display + Debug {\n"
         "  type Item: Display;\n"
@@ -1130,7 +1877,7 @@ check_advanced_grammar_surface(void)
     where_node = find_kind(&parser, procedure != NULL ? procedure->id
                                                        : VITTE_AST_INVALID_ID,
                            VITTE_AST_NODE_WHERE_CLAUSE);
-    if (!ok || root == NULL || root->child_count != 3u ||
+    if (!ok || root == NULL || root->child_count != 4u ||
         trait_node == NULL || trait_node->child_count < 4u ||
         impl_node == NULL || impl_node->child_count < 3u ||
         procedure == NULL || generic == NULL || where_node == NULL ||
@@ -1329,6 +2076,15 @@ main(int argc, char **argv)
         ok = 0;
     }
     if (!check_import_list_recovery()) {
+        ok = 0;
+    }
+    if (!check_module_import_export_diagnostics()) {
+        ok = 0;
+    }
+    if (!check_value_type_opaque_form_diagnostics()) {
+        ok = 0;
+    }
+    if (!check_pick_trait_impl_procedure_diagnostics()) {
         ok = 0;
     }
     if (!check_attributes_and_patterns()) {

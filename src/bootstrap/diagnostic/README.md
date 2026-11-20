@@ -19,7 +19,8 @@ Invariants:
   code's origin; an explicit origin is preserved.
 - Causes form an ordered chain and may point at source spans. Notes and help
   are distinct annotations. Suggestions include a replacement range, text,
-  and `machine-applicable`, `maybe-applicable`, or `manual` applicability.
+  and `machine-applicable`, `maybe-incorrect`, `has-placeholders`, or `manual`
+  applicability.
 - Counts remain coherent with stored diagnostics.
 - `warnings_as_errors` stores warnings as errors.
 - When capacity or max diagnostics is reached, new diagnostics are suppressed and reported through `last_error`.

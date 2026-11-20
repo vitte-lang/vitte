@@ -114,10 +114,10 @@ test('real compiler diagnostic envelopes identify the correct Unicode source spa
   const file = path.join(root, 'main.vit');
   const text = '// français 😀\nspace editor;\nproc main() -> int { return missing_value; }\n';
   fs.writeFileSync(file, text);
-  const run = spawnSync(nativeCompiler, ['check', '--diagnostic=json', '--no-color', file], { cwd: root, encoding: 'utf8', timeout: 10000 });
+  const run = spawnSync(nativeCompiler, ['check', '--diagnostic=lsp', '--no-color', file], { cwd: root, encoding: 'utf8', timeout: 10000 });
   assert.equal(run.status, 1, run.stdout + run.stderr);
-  const payload = JSON.parse(run.stdout);
-  assert.equal(payload.schema, 'vitte-diagnostics');
+  const payload = JSON.parse(run.stdout || run.stderr);
+  assert.ok(Array.isArray(payload), JSON.stringify(payload));
   const diagnostics = normalizeCompilerDiagnostics(payload, text, file, root);
   const unknown = diagnostics.find(diagnostic => diagnostic.code === 'E0401');
   assert.ok(unknown, JSON.stringify(payload));
