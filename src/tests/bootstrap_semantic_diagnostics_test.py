@@ -8,6 +8,9 @@ import tempfile
 BINARY = Path(sys.argv[1]).resolve()
 
 INVALID = (
+    ("dotted_pick_value", "pick Color { Red, Blue } proc f() -> Color { return Color.Red; }"),
+    ("dotted_pick_payload", "pick Maybe { None, Some(i64) } proc f() -> Maybe { return Maybe.Some(7); }"),
+    ("dotted_pick_exhaustive", "pick Color { Red, Blue } proc f(c: Color) -> int { match c { case Color.Red => return 0; case Color.Blue => return 1; } }"),
     ("integer_match_duplicate", "proc f(x: int) -> int { match x { 1 => 1, 0x1 => 2, _ => 0, } }", ("E1602",)),
     ("string_match_duplicate", 'proc f(x: string) -> int { match x { "same" => 1, "same" => 2, _ => 0, } }', ("E1602",)),
     ("match_false_guard", "proc f(x: int) -> int { match x { 1 if 2 < 1 => 1, _ => 0, } }", ("E1602",)),
@@ -116,7 +119,7 @@ RUNTIME = (
     ("multiple_clauses", "proc f(x: int) -> int requires x > 0; requires x < 10; ensures result > 0; ensures result < 10; { return x; } proc main() -> int { let mut x = 12; return f(x); }", "E0701", ""),
     ("reference_parameter", "proc f(x: &int) -> int requires x > 0; ensures result > 0; { return x; } proc main() -> int { let x = 1; return f(&x) - 1; }", None, ""),
     ("implicit_match_return", "static mut BAD: int = -1; proc f(x: bool) -> int ensures result > 0; { match x { true => 1, false => BAD, } } proc main() -> int { let mut x = false; return f(x); }", "E0702", ""),
-    ("async_contract", "async proc f(x: int) -> int requires x > 0; ensures result > 0; { return x; } proc main() -> int { let mut x = -1; let task = f(x); return await task; }", "E0701", ""),
+    ("async_contract", "async proc f(x: int) -> int requires x > 0; ensures result > 0; { return x; } async proc main() -> int { let mut x = -1; let task = f(x); return await task; }", "E0701", ""),
     ("generic_contract", "proc f<T>(x: T, valid: bool) -> T requires valid; ensures valid; { return x; } proc main() -> int { let mut valid = false; return f(1, valid); }", "E0701", ""),
 )
 

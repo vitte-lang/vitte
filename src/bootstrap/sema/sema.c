@@ -8249,6 +8249,34 @@ vitte_sema_resolve_pick_variant_path(
         const vitte_ast_node_t *pick;
         size_t child_index;
 
+        /* Dotted variants use an expression-shaped qualifier. Resolve its
+         * full visible path before considering an ordinary value receiver. */
+        if (type_node != NULL &&
+            (type_node->kind == VITTE_AST_NODE_IDENTIFIER ||
+             type_node->kind == VITTE_AST_NODE_PATH)) {
+            size_t count = type_node->kind == VITTE_AST_NODE_PATH
+                ? type_node->child_count : 1u;
+            vitte_ast_node_t qualified = *path;
+            vitte_ast_node_id_t *segments;
+            bool resolved;
+            if (count == 0u || count >= SIZE_MAX / sizeof(*segments))
+                return false;
+            segments = malloc((count + 1u) * sizeof(*segments));
+            if (segments == NULL) return false;
+            if (type_node->kind == VITTE_AST_NODE_PATH)
+                memcpy(segments, type_node->children, count * sizeof(*segments));
+            else
+                segments[0] = type_node->id;
+            segments[count] = path->children[path->child_count - 1u];
+            qualified.kind = VITTE_AST_NODE_PATH;
+            qualified.children = segments;
+            qualified.child_count = count + 1u;
+            resolved = vitte_sema_resolve_pick_variant_path(
+                context, &qualified, scope_id, resolution);
+            free(segments);
+            return resolved;
+        }
+
         if (type_node == NULL ||
             type_node->kind != VITTE_AST_NODE_TYPE_EXPR ||
             variant_token == NULL || variant_token->lexeme == NULL) {
@@ -15065,6 +15093,21 @@ vitte_sema_analyze_member(
         return context != NULL
             ? context->type_error
             : VITTE_SEMA_INVALID_TYPE_ID;
+    }
+
+    {
+        vitte_sema_pick_variant_resolution_t resolution;
+        if (vitte_sema_resolve_pick_variant_path(
+                context, node, scope_id, &resolution)) {
+            info = vitte_sema_node_info_mut_private(context, node->id);
+            if (info != NULL) {
+                info->type_id = resolution.pick_type_id;
+                info->symbol_id = resolution.pick_symbol_id;
+                info->scope_id = scope_id;
+                info->flags |= VITTE_SEMA_NODE_FLAG_RESOLVED;
+            }
+            return resolution.pick_type_id;
+        }
     }
 
     {
