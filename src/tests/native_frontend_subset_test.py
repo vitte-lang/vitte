@@ -11,6 +11,26 @@ from pathlib import Path
 
 
 VALID_CASES = {
+    "qualified module header with exported runtime declarations": """\
+/// Runtime module parser regression fixture.
+space vitte::runtime;
+export const RUNTIME_API_MAJOR: i32 = 1;
+export proc runtime_ready() -> bool { return true; }
+proc main() -> i64 { if runtime_ready() { return 0; } return 1; }
+""",
+    "while branches with continue and break": """\
+proc main() -> i64 {
+    let mut index: i64 = 0;
+    let mut total: i64 = 0;
+    while index < 6 {
+        set index += 1;
+        if index == 3 { continue; }
+        if index == 6 { break; }
+        set total += index;
+    }
+    return total - 12;
+}
+""",
     "generic procedure scalar specialization": """\
 proc identity<T>(value: T) -> T { return value; }
 proc first<T, U>(left: T, right: U) -> T { return left; }
@@ -243,7 +263,7 @@ proc main() -> i64 {
     return 0;
 }
 """,
-    "dotted pick variants through native sema": """\
+    "qualified pick constructors and match patterns": """\
 pick State { Idle, Ready }
 pick Maybe { None, Some(i64) }
 
@@ -319,7 +339,7 @@ INVALID_CASES = {
     ),
     "set requires an assignment expression": (
         "proc main() -> i64 { let mut value: i64 = 1; set value; return value; }\n",
-        "VITTE_PARSER_E_UNEXPECTED_TOKEN",
+        "VITTE_PARSER_E_INVALID_ASSIGNMENT_OPERATOR",
     ),
     "fixed array initializer length must match": (
         "proc main() -> i64 { let values: [2]i64 = [1, 2, 3]; return values[0]; }\n",
@@ -703,6 +723,16 @@ def main() -> int:
             if name in c17_fallback_cases:
                 assert_ast_fallback_path(binary, source_path, name, "accept")
             if name == "scalar operators and compound assignment":
+                executed = invoke(binary, "run", source_path)
+                if executed.returncode != 0:
+                    raise AssertionError(
+                        f"{name}: run returned {executed.returncode}; "
+                        f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
+                    )
+            if name in {
+                "qualified module header with exported runtime declarations",
+                "while branches with continue and break",
+            }:
                 executed = invoke(binary, "run", source_path)
                 if executed.returncode != 0:
                     raise AssertionError(

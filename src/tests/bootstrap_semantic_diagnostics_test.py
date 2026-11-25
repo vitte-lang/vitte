@@ -8,6 +8,7 @@ import tempfile
 BINARY = Path(sys.argv[1]).resolve()
 
 INVALID = (
+    ("await_outside_async_main", "async proc f(x: int) -> int requires x > 0; ensures result > 0; { return x; } proc main() -> int { let mut x = -1; let task = f(x); return await task; }", ("E1701",)),
     ("integer_match_duplicate", "proc f(x: int) -> int { match x { 1 => 1, 0x1 => 2, _ => 0, } }", ("E1602",)),
     ("string_match_duplicate", 'proc f(x: string) -> int { match x { "same" => 1, "same" => 2, _ => 0, } }', ("E1602",)),
     ("match_false_guard", "proc f(x: int) -> int { match x { 1 if 2 < 1 => 1, _ => 0, } }", ("E1602",)),
@@ -116,7 +117,6 @@ RUNTIME = (
     ("multiple_clauses", "proc f(x: int) -> int requires x > 0; requires x < 10; ensures result > 0; ensures result < 10; { return x; } proc main() -> int { let mut x = 12; return f(x); }", "E0701", ""),
     ("reference_parameter", "proc f(x: &int) -> int requires x > 0; ensures result > 0; { return x; } proc main() -> int { let x = 1; return f(&x) - 1; }", None, ""),
     ("implicit_match_return", "static mut BAD: int = -1; proc f(x: bool) -> int ensures result > 0; { match x { true => 1, false => BAD, } } proc main() -> int { let mut x = false; return f(x); }", "E0702", ""),
-    ("async_contract", "async proc f(x: int) -> int requires x > 0; ensures result > 0; { return x; } proc main() -> int { let mut x = -1; let task = f(x); return await task; }", "E0701", ""),
     ("generic_contract", "proc f<T>(x: T, valid: bool) -> T requires valid; ensures valid; { return x; } proc main() -> int { let mut valid = false; return f(1, valid); }", "E0701", ""),
 )
 

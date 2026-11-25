@@ -8403,6 +8403,41 @@ typedef struct vitte_sema_pick_variant_resolution {
     vitte_sema_type_id_t pick_type_id;
 } vitte_sema_pick_variant_resolution_t;
 
+static vitte_scope_id_t
+vitte_sema_pick_scope_for_declaration(
+    const vitte_sema_t *context,
+    const vitte_ast_node_t *pick)
+{
+    const vitte_sema_node_info_t *info;
+    const vitte_scope_entry_t *scope;
+    size_t index;
+
+    if (context == NULL || pick == NULL ||
+        pick->kind != VITTE_AST_NODE_PICK_DECL) {
+        return VITTE_SCOPE_INVALID_SCOPE_ID;
+    }
+    info = vitte_sema_get_node_info(context, pick->id);
+    scope = info != NULL
+        ? vitte_scope_get_scope(&context->scopes, info->scope_id)
+        : NULL;
+    if (scope != NULL && scope->kind == VITTE_SCOPE_KIND_PICK &&
+        scope->payload == (const void *)pick) {
+        return scope->id;
+    }
+
+    /* Preserve recovery for partially analyzed declarations. Normally the
+     * node info already points directly to this scope; the scan is only a
+     * fallback when semantic traversal has not assigned it yet. */
+    for (index = 0u; index < context->scopes.scope_count; ++index) {
+        const vitte_scope_entry_t *candidate = &context->scopes.scopes[index];
+        if (candidate->kind == VITTE_SCOPE_KIND_PICK &&
+            candidate->payload == (const void *)pick) {
+            return candidate->id;
+        }
+    }
+    return VITTE_SCOPE_INVALID_SCOPE_ID;
+}
+
 static bool
 vitte_sema_resolve_pick_variant_path(
     vitte_sema_t *context,
@@ -8535,18 +8570,8 @@ vitte_sema_resolve_pick_variant_path(
         resolution->pick_declaration = pick;
         resolution->pick_symbol_id = pick_symbol_id;
         resolution->pick_type_id = pick_type_id;
-        resolution->pick_scope_id = VITTE_SCOPE_INVALID_SCOPE_ID;
-        for (child_index = 0u;
-             child_index < context->scopes.scope_count;
-             ++child_index) {
-            const vitte_scope_entry_t *candidate =
-                &context->scopes.scopes[child_index];
-            if (candidate->kind == VITTE_SCOPE_KIND_PICK &&
-                candidate->payload == (void *)pick) {
-                resolution->pick_scope_id = candidate->id;
-                break;
-            }
-        }
+        resolution->pick_scope_id =
+            vitte_sema_pick_scope_for_declaration(context, pick);
         return resolution->pick_scope_id != VITTE_SCOPE_INVALID_SCOPE_ID;
     }
 
@@ -8627,18 +8652,8 @@ vitte_sema_resolve_pick_variant_path(
             resolution->pick_symbol_id = symbol_id;
             resolution->pick_type_id = vitte_sema_type_for_symbol(
                 context, symbol_id);
-            resolution->pick_scope_id = VITTE_SCOPE_INVALID_SCOPE_ID;
-            for (child_index = 0u;
-                 child_index < context->scopes.scope_count;
-                 ++child_index) {
-                const vitte_scope_entry_t *candidate =
-                    &context->scopes.scopes[child_index];
-                if (candidate->kind == VITTE_SCOPE_KIND_PICK &&
-                    candidate->payload == (void *)pick) {
-                    resolution->pick_scope_id = candidate->id;
-                    break;
-                }
-            }
+            resolution->pick_scope_id =
+                vitte_sema_pick_scope_for_declaration(context, pick);
             return resolution->pick_scope_id !=
                 VITTE_SCOPE_INVALID_SCOPE_ID;
         }

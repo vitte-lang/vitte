@@ -57,6 +57,32 @@ jobs:
       - name: Check documentation examples against this compiler version
         run: ruby scripts/check-doc-examples.rb
 
+      - name: Capture native crash and C17 runtime backtraces
+        if: failure()
+        shell: bash
+        run: |
+          source_file="$RUNNER_TEMP/vitte-formes-choix.c"
+          executable="$RUNNER_TEMP/vitte-formes-choix"
+          gdb --batch \
+            -ex run \
+            -ex 'thread apply all bt' \
+            --args build/bin/vitte compile examples/tutorials/formes-choix.vit \
+              --emit-c --quiet --no-color -o "$source_file" || true
+          if [ -s "$source_file" ]; then
+            gcc -std=c17 -g -O0 -fsanitize=address,undefined \
+              "$source_file" -o "$executable" || true
+            if [ -x "$executable" ]; then
+              gdb --batch \
+                -ex run \
+                -ex 'thread apply all bt' \
+                --args "$executable" || true
+            fi
+          fi
+
+      - name: Run focused native frontend regressions after documentation failure
+        if: failure()
+        run: python3 src/tests/native_frontend_subset_test.py build/bin/vitte
+
       - name: Run compiler test suite
         run: |
           ulimit -s unlimited

@@ -27,17 +27,17 @@ Source → Lexer → Parser / AST → Analyse sémantique → HIR → IR → C17
 | **Frontend en Vitte** | Le langage participe à la construction de son propre compilateur. |
 | **Sortie C17** | Le pipeline s’appuie sur les outils C de votre environnement. |
 | **Bootstrap progressif** | Plusieurs générations du frontend sont reconstruites et comparées. |
-| **Validation multiplateforme** | Les tests couvrent le compilateur, le runtime, les paquets et la portabilité. |
+| **Validation multiplateforme** | La CI couvre trois cibles natives candidates et des expériences de portabilité; plusieurs gates sont encore rouges. |
 
 ## Démarrage rapide
 
-**Prérequis :** GCC ou Clang compatible C17, Steel et Python 3 pour les vérifications.
+**Prérequis :** GNU Make et GCC ou Clang compatible C17. Python 3 est requis pour les vérifications. Steel est facultatif et fournit des alias vers les cibles Make.
 
 Depuis la racine du dépôt :
 
 ```sh
-# Construire Vitte
-steel run --file steelconf
+# Construire le frontend natif et son seed C17
+make -j2
 
 # Vérifier la version
 vitte --version
@@ -46,10 +46,10 @@ vitte --version
 vitte run examples/hello.vit
 ```
 
-> **Steelconf est le point d’entrée recommandé** pour les nouvelles intégrations. Le Makefile reste disponible pendant la migration.
+Le Makefile définit les sources, options C, dépendances et sorties. `steelconf` délègue les mêmes cibles à Make; il ne maintient pas une seconde recette de compilation.
 
 <details>
-<summary><strong>Vous préférez Make ?</strong></summary>
+<summary><strong>Choisir les options de build</strong></summary>
 
 ```sh
 # Construire le frontend natif
@@ -69,14 +69,18 @@ Sous Windows avec MSYS, le seed est produit sous le nom `vitte-bootstrap.exe`.
 
 ## Les commandes à retenir
 
-| Action | Commande |
-| :--- | :--- |
-| Construire | `steel run --file steelconf` |
-| Construire avec 4 jobs | `steel run --file steelconf --jobs 4` |
-| Vérifier | `steel run --file steelconf --bake check` |
-| Tester | `steel run --file steelconf --bake test` |
-| Nettoyer | `steel clean --file steelconf` |
-| Installer | `steel install --file steelconf` |
+| Action | Make | Alias Steel facultatif |
+| :--- | :--- | :--- |
+| Construire | `make -j2` | `steel run --file steelconf` |
+| Construire le seed C17 | `make bootstrap` | `steel run --file steelconf --bake bootstrap` |
+| Vérifier les sources C | `make check` | `steel run --file steelconf --bake check` |
+| Vérifier le seed | `make bootstrap-check` | `steel run --file steelconf --bake bootstrap_check` |
+| Suite complète | `make test` | `steel run --file steelconf --bake test` |
+| Bootstrap stages 0→3 | `make MODE=release bootstrap-selfhost` | `steel run --file steelconf --bake bootstrap_selfhost` |
+| Nettoyer | `make clean` | — |
+| Installer | `make install` | — |
+
+Les noms de bakes Steel qui correspondent à des cibles Make avec tirets utilisent des soulignés (`bootstrap_check`, `bootstrap_selfhost`). Steelconf reprend les variables d’environnement telles que `CC` et `PREFIX`; le nombre de jobs se règle avec `make -jN`.
 
 ## Installer Vitte
 
@@ -155,9 +159,11 @@ Les validations couvrent :
 - **La portabilité POSIX** : FreeBSD, OpenBSD, NetBSD, Solaris, OmniOS et OpenIndiana.
 - **Les architectures ciblées** : x86 32 bits, ARM, MIPS, PowerPC et RISC-V.
 
-Selon la cible, les vérifications portent sur l’exécution, la compilation d’objets ou le lien. Elles ne représentent pas toutes le même niveau de support.
+Ces jobs expérimentaux ne sont pas des plateformes officiellement supportées. Les seules cibles natives envisagées pour 0.1.1 sont Linux x86_64, macOS arm64 et Windows x86_64/MSYS2 UCRT64; les trois gates ont encore des échecs et la publication est différée. Les versions exactes des toolchains C ne sont pas épinglées. La matrice de support distingue les cas vérifiés du reste du langage.
 
 [Consulter la matrice de support →](https://github.com/vitte-lang/vitte/blob/main/docs/reference/support.html)
+
+[Consulter l’audit 0.1.1, les reproductions et les reports →](https://github.com/vitte-lang/vitte/blob/main/src/docs/compiler_0.1.1_audit.md)
 
 ## Explorer Vitte
 
@@ -165,6 +171,7 @@ Selon la cible, les vérifications portent sur l’exécution, la compilation d�
 | :--- | :--- |
 | Parcourir la documentation | [Documentation](https://github.com/vitte-lang/vitte/tree/main/docs) |
 | Connaître les limites actuelles | [Couverture du langage](https://github.com/vitte-lang/vitte/blob/main/src/docs/language_coverage.md) |
+| Suivre la stabilisation 0.1.1 | [Audit, CI et décisions de release](https://github.com/vitte-lang/vitte/blob/main/src/docs/compiler_0.1.1_audit.md) |
 | Comprendre le build | [Configuration Steelconf](https://github.com/vitte-lang/vitte/blob/main/steelconf) |
 | Suivre les validations | [GitHub Actions](https://github.com/vitte-lang/vitte/actions) |
 | Signaler un problème | [Issues](https://github.com/vitte-lang/vitte/issues) |

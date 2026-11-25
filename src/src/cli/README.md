@@ -24,6 +24,8 @@ compiler driver
 
 The compiler driver then dispatches work to the appropriate Vitte subsystem.
 
+> **Vitte 0.1.1 behavior:** this document describes the C CLI parser contract and intended driver behavior. The native process dispatcher does not implement `vitte test` or `vitte fmt`; invoking either returns “command is not available in the native driver” (exit code 2). Sections 10 and 11 are parser examples, not supported 0.1.1 workflows. Track implementation and documentation parity in [issue #45](https://github.com/vitte-lang/vitte/issues/45). See the [0.1.1 support audit](../../docs/compiler_0.1.1_audit.md).
+
 ---
 
 ## 1. Architecture
@@ -415,7 +417,7 @@ The exact compilation depth remains a driver/compiler policy.
 
 ---
 
-## 10. `test`
+## 10. `test` (parser contract; unavailable in 0.1.1)
 
 Example:
 
@@ -441,7 +443,7 @@ Test discovery and execution belong to the test subsystem and driver.
 
 ---
 
-## 11. `fmt`
+## 11. `fmt` (parser contract; unavailable in 0.1.1)
 
 Format a project:
 

@@ -205,7 +205,9 @@ def test_missing_import_span(root: Path) -> None:
     position = missing["position"]
     assert position["source"] == str(main), missing
     assert position["start_line"] == 1, missing
-    assert position["start_column"] == 0, missing
+    # Point at the unresolved path in `use path;`, not the `use` keyword.
+    assert position["start_column"] == 4, missing
+    assert position["end_column"] == 22, missing
     assert "missing::not_found" in missing["details"], missing
     assert missing["context"]["module"] == "missing::not_found", missing
 
@@ -235,10 +237,13 @@ def test_symlink_path_is_cached_once(root: Path) -> None:
 
     document = run(link / "symlinked" / "main.vit")
     assert isinstance(document, dict)
-    mismatch = diagnostic(document, "E0501")
     diagnostics = document["diagnostics"]
     assert isinstance(diagnostics, list)
-    assert len(diagnostics) == 1, document
+    mismatches = [item for item in diagnostics if item.get("code") == "E0501"]
+    duplicate_imports = [item for item in diagnostics if item.get("code") == "E0304"]
+    assert len(mismatches) == 1, document
+    assert len(duplicate_imports) == 1, document
+    mismatch = mismatches[0]
     assert mismatch["details"] == "expected i64, found string"
 
 
@@ -554,8 +559,12 @@ def test_imported_generic_form_runtime_and_argument_validation(root: Path) -> No
     document = run(main)
     assert isinstance(document, dict)
     unknown = diagnostic(document, "E0510")
-    assert unknown["labels"][0]["span"]["source"] == str(main), unknown
-    assert "Missing" in unknown["annotations"][0]["message"], unknown
+    position = unknown["position"]
+    assert position["source"] == str(main), unknown
+    source = main.read_text(encoding="utf-8")
+    start = position["start_byte"]
+    end = position["end_byte"]
+    assert source.encode("utf-8")[start:end].decode("utf-8") == "Missing", unknown
 
 
 with TemporaryDirectory(prefix="vitte-bootstrap-regressions-") as directory:

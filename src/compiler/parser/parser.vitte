@@ -3583,7 +3583,7 @@ proc parser_parse_jump_statement_inner(
     if start_token == null {
         return PARSER_INVALID_NODE_ID;
     }
-    if parser_check(parser, TokenKind.Semicolon) { parser_advance(parser); }
+    parser_advance(parser);
     let statement = parser_add_node(
         parser,
         kind,
@@ -8123,8 +8123,7 @@ proc parser_parse_translation_unit(parser: *mut Parser) -> ASTNodeId {
         let declaration = parser_parse_declaration(parser);
         if declaration != PARSER_INVALID_NODE_ID {
             let parsed = vitte_parser_get_node(parser, declaration);
-            if parsed != null and (*parsed).kind == ASTNodeKind.SpaceDecl and
-               (*parsed).child_count == 1 {
+            if parsed != null and (*parsed).kind == ASTNodeKind.SpaceDecl {
                 if module_header_seen {
                     parser_error_at_position(
                         parser,

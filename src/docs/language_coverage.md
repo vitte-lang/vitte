@@ -1,143 +1,28 @@
-# Vitte Language Coverage
+# Vitte 0.1.1 : périmètre vérifié
 
-This document fixes the current Vitte language perimeter for the C17 compiler
-against the grammar under `src/vitte/grammar`.
+La grammaire canonique est [`grammar/vitte.ebnf`](../../grammar/vitte.ebnf). La matrice de référence, qui sépare parsing, analyse, génération C17 et exécution pour les deux chemins du compilateur, se trouve dans [État du support](../../docs/reference/support.html). Le triage des bugs, plateformes et commandes de la version 0.1.1 est dans [l’audit de publication](compiler_0.1.1_audit.md).
 
-## Real Vitte Perimeter
+Ce document remplace l’ancienne matrice, qui pointait vers `src/vitte/grammar` et décrivait un compilateur sans HIR, IR ni backend C17. Ces affirmations ne correspondent plus au dépôt.
 
-Primary grammar entry points and reference families:
+## Syntaxe et comportement
 
-- `src/vitte/grammar/ebnf/grammar.ebnf`
-- `src/vitte/grammar/ebnf/modules.ebnf`
-- `src/vitte/grammar/ebnf/imports.ebnf`
-- `src/vitte/grammar/ebnf/parameters.ebnf`
-- `src/vitte/grammar/ebnf/expressions.ebnf`
-- `src/vitte/grammar/reference/*`
-- `src/vitte/grammar/specification/*`
+La grammaire décrit les formes reconnues, pas une garantie de compilation. Pour une construction donnée, la matrice indique quel frontend et quelles phases ont une preuve de test. Le mot « disponible » désigne seulement les cas exécutés par les fixtures cités ; il ne transforme pas toute la grammaire en promesse de compatibilité.
 
-The real language surface described there includes:
+Les cas disponibles couvrent notamment les procédures, constantes et statiques, alias, formes et choix, imports, génériques et implémentations testés, tableaux, opérateurs, contrôle de flux, `match`, contrats, `defer`, `assert` et génération C17. Les tâches `async`/`await` n’offrent qu’une exécution différée puis synchrone au premier `await`; les macros et déplacements partiels restent expérimentaux. Consultez la ligne exacte de chaque construction avant de l’utiliser.
 
-- module headers: `space path`
-- imports: path, alias, group, glob
-- exports
-- procedures with modifiers, generics, parameters, return types, where clauses
-- forms, picks, traits, impls, aliases, constants, statics, macros, externs
-- blocks and structured statements
-- patterns
-- literals
-- qualified paths
-- unary, multiplicative, additive, shift, bitwise, comparison, equality, logical, assignment expressions
-- attributes, visibility, generics, where clauses
+Pour les choix (`pick`), les constructeurs de valeurs peuvent s’écrire `State.Ready`, tandis qu’un motif de branche `match` s’écrit `State::Ready`. Le test [native_frontend_subset_test.py](../tests/native_frontend_subset_test.py) couvre les deux formes. La grammaire exige les parenthèses dans `assert(condition);`; `assert condition;` n’est pas une syntaxe Vitte prise en charge.
 
-## Vitte Frontend Contract
+## Limites à conserver dans la documentation
 
-Current compiler frontend invariants:
+- Une forme présente dans l’EBNF peut manquer dans un frontend, une phase ou un backend. Ne déduisez pas le support d’un parsing réussi.
+- Les tâches async s’exécutent de façon différée puis synchrone au premier `await`. Vitte 0.1.1 ne fournit pas d’ordonnanceur général, de `spawn`/`yield` ni de concurrence.
+- `unsafe` ne vérifie pas la sûreté mémoire ; les durées de vie et l’exclusivité des références ne sont pas prouvées complètement.
+- Certaines formes avancées restent expérimentales, notamment les macros et les déplacements partiels ou indirects. La matrice précise chaque sous-cas.
+- La commande CLI `vitte test` et le formateur `vitte fmt` sont reconnus par le parseur, mais ne sont pas exécutés par le dispatcher natif de 0.1.1. Voir le suivi [#45](https://github.com/vitte-lang/vitte/issues/45).
+- Le paquet `json` 0.1.1 s’installe, mais son code contient des assertions sans parenthèses et échoue donc à l’analyse du compilateur. Ce paquet n’est pas une preuve de compatibilité langage ; voir [#46](https://github.com/vitte-lang/vitte/issues/46).
 
-- parser owns no syntax tree storage outside the AST arena
-- module header and imports stay in the AST module root
-- procedure parameters are explicit AST nodes
-- type names and qualified identifiers are preserved as source text
-- errors flow through `compiler/src/api/error.h` and `compiler/src/diagnostic`
+## Plateformes et commandes
 
-## Vitte Alignment Profile
+Les seules cibles de paquets 0.1.1 déclarées par la CI sont Linux x86_64, macOS arm64 et Windows x86_64/MSYS2 UCRT64. La publication reste bloquée tant que leurs gates de build, de self-host et d’installation ne sont pas toutes vertes. Les builds d’architectures 32 bits, embarquées, BSD, Solaris et illumos sont des expériences de portabilité, pas des plateformes officiellement supportées.
 
-The compiler compiler follows a deliberately small `src`-aligned profile for
-the useful syntax and module contracts needed to rebuild the compiler.
-
-The locked pipeline for this profile is:
-
-```text
-AST -> HIR -> IR -> C17
-```
-
-Alignment means:
-
-- syntax forms are sourced from `src/vitte/grammar/ebnf`
-- module headers, grouped imports, aliases, globs, explicit exports, and
-  `export *` use the same source shapes as the `src` grammar
-- re-exports are explicitly unsupported by the compiler compiler until their
-  IR/backend contract is implemented end to end
-- import/export failures use stable structured diagnostic codes rather than
-  generic parser or backend failures
-- C17 code generation consumes validated compiler IR only
-
-Run `make -C compiler alignment` before changing any compiler parser,
-driver, IR, C17 backend, or import/export fixture that participates in this
-profile.
-
-## Coverage Matrix
-
-Legend:
-
-- `yes`: implemented
-- `partial`: subset only
-- `no`: absent
-
-| Feature | Parser | Sema | HIR | IR | C17 |
-| --- | --- | --- | --- | --- | --- |
-| Module header `space path` | yes | partial | no | no | no |
-| Simple import `use path` | yes | partial | no | no | no |
-| Import alias `use path as name` | yes | partial | no | no | no |
-| Import group / glob | yes | partial | no | no | no |
-| Top-level `proc` | yes | yes | yes | yes | yes |
-| Procedure parameters | yes | yes | yes | yes | yes |
-| Procedure return type | yes | yes | yes | yes | yes |
-| Procedure modifiers / generics / where | no | no | no | no | no |
-| Top-level `const` | yes | yes | yes | yes | yes |
-| `let` statements, including `let mut` | yes | yes | yes | yes | yes |
-| `if` / `else` | yes | yes | yes | yes | yes |
-| Block statements | yes | yes | yes | yes | yes |
-| `give` return statements | yes | yes | yes | yes | yes |
-| Expression statements | yes | yes | yes | yes | yes |
-| Integer literals | yes | yes | yes | yes | yes |
-| String literals | yes | yes | yes | yes | yes |
-| Qualified identifiers `a::b` | yes | partial | no | partial | partial |
-| Qualified type names `a::b` | yes | partial | partial | partial | partial |
-| Calls | yes | yes | yes | yes | yes |
-| Unary `+ - ! not` | yes | partial | partial | partial | partial |
-| `* / %` | yes | yes | yes | yes | yes |
-| `+ -` | yes | yes | yes | yes | yes |
-| `<< >>` | yes | partial | no | no | no |
-| `& ^ \|` | yes | partial | no | no | no |
-| `< <= > >=` | yes | yes | yes | yes | yes |
-| `== !=` | yes | yes | yes | yes | yes |
-| `and or && \|\|` | yes | yes | yes | yes | yes |
-| Assignment expressions | no | no | no | no | no |
-| Patterns | no | no | no | no | no |
-| Attributes / visibility | no | no | no | no | no |
-| Forms / picks / traits / impls | no | no | no | no | no |
-
-## Immediate Gaps
-
-The highest-value remaining gaps for real-language coverage are:
-
-1. procedure modifiers, generics, and where clauses
-2. richer type semantics for qualified names
-3. semantic resolution for imports and qualified names
-4. non-procedure declarations from the real grammar
-5. loops and richer control-flow statement forms
-
-## Large-Source Stress Gate
-
-Run `make test-scale` from the repository root to exercise the current compiler
-on generated Vitte sources kept outside the repository. The gate checks that:
-
-- a source containing 48 MiB of comments is read, lexed, and parsed
-- a file with 10,000 procedures plus an exported `main` completes semantic
-  analysis via `compile --stop-after-sema`
-
-The compiler CLI currently reports that IR lowering and the C17 backend are
-unavailable, so this gate verifies frontend and semantic robustness rather
-than native executable generation.
-
-## Notes
-
-- `partial` in semantic stages means the syntax is accepted, but compiler type
-  resolution still understands mainly builtin names.
-- import groups and globs are desugared by the parser into flat dotted import
-  declarations such as `math.ops.mul`.
-- the driver now resolves declared imports through `vitte_module_t` and the
-  import resolver before semantic analysis.
-- qualified builtin and same-module names currently fall back to their last
-  segment during compiler semantic/IR resolution, for example `core::int` and
-  `io::len`.
+Le seed C se construit avec `make bootstrap`; `make bootstrap-check` vérifie le seed et ses diagnostics; `make` construit le binaire principal; `make MODE=release bootstrap-selfhost` vérifie les stages 0 à 3. Le contrat complet et l’état de chaque gate figurent dans [l’audit 0.1.1](compiler_0.1.1_audit.md). Les toolchains C doivent accepter C17. Les workflows utilisent GCC sur Linux, le `cc`/Clang fourni avec Xcode sur macOS et MinGW-w64 GCC dans MSYS2 UCRT64 sur Windows ; leurs versions ne sont pas épinglées.

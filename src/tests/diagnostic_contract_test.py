@@ -963,7 +963,9 @@ def check_case(directory: Path, case):
         source = "space diagnostic_contract_case\n" + source
         source_prefix_length = len("space diagnostic_contract_case\n")
     path = directory / f"{name}.vit"
-    path.write_text(source, encoding="utf-8")
+    # Keep the bytes used by the span assertions identical on every host.
+    # Path.write_text(..., newline=None) translates LF to CRLF on Windows.
+    path.write_bytes(source.encode("utf-8"))
     result = invoke(path, command, "json")
     expects_error = any(code.startswith("E") for code in expected_codes)
     expected_status = 1 if expects_error else 0
