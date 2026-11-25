@@ -129,9 +129,9 @@ pub proc reset_config_default() -> ResetConfig {
 
 pub proc reset_config_validate(config: &ResetConfig) -> bool {
     match config.mode {
-        case ResetMode.Retain => return true;
-        case ResetMode.Trim => return true;
-        case ResetMode.Release => return true;
+        case ResetMode::Retain => return true;
+        case ResetMode::Trim => return true;
+        case ResetMode::Release => return true;
     }
 }
 
@@ -327,39 +327,39 @@ proc reset_expected_next_generation(
 
 pub proc reset_mode_name(mode: ResetMode) -> str {
     match mode {
-        case ResetMode.Retain => return "retain";
-        case ResetMode.Trim => return "trim";
-        case ResetMode.Release => return "release";
+        case ResetMode::Retain => return "retain";
+        case ResetMode::Trim => return "trim";
+        case ResetMode::Release => return "release";
     }
 }
 
 pub proc reset_state_name(state: ResetState) -> str {
     match state {
-        case ResetState.Uninitialized => return "uninitialized";
-        case ResetState.Ready => return "ready";
-        case ResetState.Running => return "running";
-        case ResetState.Completed => return "completed";
-        case ResetState.Failed => return "failed";
-        case ResetState.Destroyed => return "destroyed";
+        case ResetState::Uninitialized => return "uninitialized";
+        case ResetState::Ready => return "ready";
+        case ResetState::Running => return "running";
+        case ResetState::Completed => return "completed";
+        case ResetState::Failed => return "failed";
+        case ResetState::Destroyed => return "destroyed";
     }
 }
 
 pub proc reset_error_name(error: ResetError) -> str {
     match error {
-        case ResetError.None => return "none";
-        case ResetError.InvalidReset => return "invalid-reset";
-        case ResetError.InvalidArgument => return "invalid-argument";
-        case ResetError.InvalidState => return "invalid-state";
-        case ResetError.InvalidArena => return "invalid-arena";
-        case ResetError.InvalidPool => return "invalid-pool";
-        case ResetError.TooManyPools => return "too-many-pools";
-        case ResetError.DuplicatePool => return "duplicate-pool";
-        case ResetError.ArenaResetFailed => return "arena-reset-failed";
-        case ResetError.PoolResetFailed => return "pool-reset-failed";
-        case ResetError.ValidationFailed => return "validation-failed";
-        case ResetError.CallbackFailed => return "callback-failed";
-        case ResetError.Overflow => return "overflow";
-        case ResetError.Corruption => return "corruption";
+        case ResetError::None => return "none";
+        case ResetError::InvalidReset => return "invalid-reset";
+        case ResetError::InvalidArgument => return "invalid-argument";
+        case ResetError::InvalidState => return "invalid-state";
+        case ResetError::InvalidArena => return "invalid-arena";
+        case ResetError::InvalidPool => return "invalid-pool";
+        case ResetError::TooManyPools => return "too-many-pools";
+        case ResetError::DuplicatePool => return "duplicate-pool";
+        case ResetError::ArenaResetFailed => return "arena-reset-failed";
+        case ResetError::PoolResetFailed => return "pool-reset-failed";
+        case ResetError::ValidationFailed => return "validation-failed";
+        case ResetError::CallbackFailed => return "callback-failed";
+        case ResetError::Overflow => return "overflow";
+        case ResetError::Corruption => return "corruption";
     }
 }
 
@@ -377,12 +377,12 @@ proc reset_state_operable(reset: &Reset) -> bool {
     }
 
     match reset.state {
-        case ResetState.Ready => return true;
-        case ResetState.Completed => return true;
-        case ResetState.Failed => return true;
-        case ResetState.Running => return false;
-        case ResetState.Uninitialized => return false;
-        case ResetState.Destroyed => return false;
+        case ResetState::Ready => return true;
+        case ResetState::Completed => return true;
+        case ResetState::Failed => return true;
+        case ResetState::Running => return false;
+        case ResetState::Uninitialized => return false;
+        case ResetState::Destroyed => return false;
     }
 }
 
@@ -1100,11 +1100,11 @@ proc reset_execute_arena(reset: &mut Reset) -> bool {
         reset_expected_next_generation(generation_before);
 
     match reset.config.mode {
-        case ResetMode.Retain => {
+        case ResetMode::Retain => {
             arena_context_reset(&mut *arena);
         }
 
-        case ResetMode.Trim => {
+        case ResetMode::Trim => {
             arena_context_reset(&mut *arena);
 
             if not arena_context_is_valid(&*arena)  or 
@@ -1121,7 +1121,7 @@ proc reset_execute_arena(reset: &mut Reset) -> bool {
             arena_context_trim(&mut *arena);
         }
 
-        case ResetMode.Release => {
+        case ResetMode::Release => {
             arena_context_reset_and_trim(&mut *arena);
         }
     }
@@ -1177,11 +1177,11 @@ proc reset_execute_one_pool(
         reset_expected_next_generation(generation_before);
 
     match reset.config.mode {
-        case ResetMode.Retain => {
+        case ResetMode::Retain => {
             pool_reset(&mut *pool);
         }
 
-        case ResetMode.Trim => {
+        case ResetMode::Trim => {
             pool_reset(&mut *pool);
 
             if not pool_is_valid(&*pool)  or 
@@ -1197,7 +1197,7 @@ proc reset_execute_one_pool(
             pool_trim(&mut *pool);
         }
 
-        case ResetMode.Release => {
+        case ResetMode::Release => {
             pool_reset_and_trim(&mut *pool);
         }
     }
@@ -1640,16 +1640,16 @@ pub proc reset_validate(reset: &Reset) -> bool {
     }
 
     match reset.state {
-        case ResetState.Ready => {}
-        case ResetState.Running => {}
-        case ResetState.Completed => {}
-        case ResetState.Failed => {}
+        case ResetState::Ready => {}
+        case ResetState::Running => {}
+        case ResetState::Completed => {}
+        case ResetState::Failed => {}
 
-        case ResetState.Uninitialized => {
+        case ResetState::Uninitialized => {
             return false;
         }
 
-        case ResetState.Destroyed => {
+        case ResetState::Destroyed => {
             return false;
         }
     }

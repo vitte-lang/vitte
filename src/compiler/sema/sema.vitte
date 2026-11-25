@@ -52,6 +52,8 @@ use compiler::parser::parser::{
     PARSER_AST_FLAG_PATTERN_OR,
     PARSER_AST_FLAG_PATTERN_RANGE,
     PARSER_AST_FLAG_PATTERN_STRUCT,
+    PARSER_AST_FLAG_PATTERN_TUPLE,
+    PARSER_AST_FLAG_PATTERN_ARRAY,
     PARSER_AST_FLAG_CONST_GENERIC,
     PARSER_AST_FLAG_PARAMETER_OWNED,
     PARSER_AST_FLAG_PARAMETER_BORROW,
@@ -683,6 +685,18 @@ proc sema_token_name_node(parser: *const Parser, node: *const ASTNode) -> *const
     if token != null { return token; }
     if (*node).child_count != 0 { return sema_token(parser, sema_child(parser, node, 0)); }
     return null;
+}
+proc sema_parser_span_from_token(token: *const ParserToken) -> ParserSpan {
+    if token == null { return ParserSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, valid: false }; }
+    let token_span = (*token).span;
+    return ParserSpan {
+        file_id: token_span.file_id,
+        begin: token_span.begin,
+        end: token_span.end,
+        line: (*token).line,
+        column: (*token).column,
+        valid: token_span.valid
+    };
 }
 
 proc sema_integer_digit(byte: u8) -> u32 {
@@ -2751,7 +2765,9 @@ proc sema_generic_type_application_check_constraints(
                    context,
                    &mut inference,
                    (*generic_info).type_id,
-                   actual_arguments[argument_index]
+                   actual_arguments[argument_index],
+                   diagnostic_node,
+                   false
                ) {
                 return false;
             }
@@ -2915,22 +2931,22 @@ proc sema_add_diagnostic(context: *mut Sema, kind: SemaDiagnosticKind, code: Sem
     fill(diag as *mut u8, 0, sizeof(SemaDiagnostic));
     set (*diag).kind = kind; set (*diag).code = code; set (*diag).expected_type = expected; set (*diag).found_type = found; set (*diag).context_index = SEMA_SIZE_MAX;
     match code {
-        case SemaDiagnosticCode.TypeMismatch => set (*diag).type_context = SemaTypeContextKind.Expression,
-        case SemaDiagnosticCode.InvalidUnaryOperand | SemaDiagnosticCode.InvalidBinaryOperands => set (*diag).type_context = SemaTypeContextKind.Operands,
-        case SemaDiagnosticCode.InvalidCast => set (*diag).type_context = SemaTypeContextKind.Cast,
-        case SemaDiagnosticCode.NotAType => set (*diag).type_context = SemaTypeContextKind.Type,
-        case SemaDiagnosticCode.NotAValue => set (*diag).type_context = SemaTypeContextKind.Value,
-        case SemaDiagnosticCode.CannotInfer => set (*diag).type_context = SemaTypeContextKind.Inference,
-        case SemaDiagnosticCode.GenericBoundUnsatisfied => set (*diag).type_context = SemaTypeContextKind.Bound,
-        case SemaDiagnosticCode.GenericArgumentCount | SemaDiagnosticCode.GenericArgumentKind | SemaDiagnosticCode.GenericInferenceConflict => set (*diag).type_context = SemaTypeContextKind.GenericArgument,
-        case SemaDiagnosticCode.InvalidWherePredicate => set (*diag).type_context = SemaTypeContextKind.Bound,
-        case SemaDiagnosticCode.MissingTraitMember | SemaDiagnosticCode.InvalidTraitMember | SemaDiagnosticCode.InvalidImplTarget | SemaDiagnosticCode.AmbiguousMethod | SemaDiagnosticCode.TraitNotImplemented | SemaDiagnosticCode.AmbiguousImpl | SemaDiagnosticCode.ConflictingImpl => set (*diag).type_context = SemaTypeContextKind.TraitMember,
-        case SemaDiagnosticCode.IncompleteType | SemaDiagnosticCode.RecursiveType => set (*diag).type_context = SemaTypeContextKind.Type,
-        case SemaDiagnosticCode.NotAssignable => set (*diag).type_context = SemaTypeContextKind.Assignment,
-        case SemaDiagnosticCode.NotCallable => set (*diag).type_context = SemaTypeContextKind.Call,
-        case SemaDiagnosticCode.NotIndexable | SemaDiagnosticCode.InvalidIndexType => set (*diag).type_context = SemaTypeContextKind.Index,
-        case SemaDiagnosticCode.UnknownMember => set (*diag).type_context = SemaTypeContextKind.Member,
-        case SemaDiagnosticCode.ConditionNotBool => set (*diag).type_context = SemaTypeContextKind.Condition,
+        case SemaDiagnosticCode::TypeMismatch => set (*diag).type_context = SemaTypeContextKind.Expression,
+        case SemaDiagnosticCode::InvalidUnaryOperand | SemaDiagnosticCode::InvalidBinaryOperands => set (*diag).type_context = SemaTypeContextKind.Operands,
+        case SemaDiagnosticCode::InvalidCast => set (*diag).type_context = SemaTypeContextKind.Cast,
+        case SemaDiagnosticCode::NotAType => set (*diag).type_context = SemaTypeContextKind.Type,
+        case SemaDiagnosticCode::NotAValue => set (*diag).type_context = SemaTypeContextKind.Value,
+        case SemaDiagnosticCode::CannotInfer => set (*diag).type_context = SemaTypeContextKind.Inference,
+        case SemaDiagnosticCode::GenericBoundUnsatisfied => set (*diag).type_context = SemaTypeContextKind.Bound,
+        case SemaDiagnosticCode::GenericArgumentCount | SemaDiagnosticCode::GenericArgumentKind | SemaDiagnosticCode::GenericInferenceConflict => set (*diag).type_context = SemaTypeContextKind.GenericArgument,
+        case SemaDiagnosticCode::InvalidWherePredicate => set (*diag).type_context = SemaTypeContextKind.Bound,
+        case SemaDiagnosticCode::MissingTraitMember | SemaDiagnosticCode::InvalidTraitMember | SemaDiagnosticCode::InvalidImplTarget | SemaDiagnosticCode::AmbiguousMethod | SemaDiagnosticCode::TraitNotImplemented | SemaDiagnosticCode::AmbiguousImpl | SemaDiagnosticCode::ConflictingImpl => set (*diag).type_context = SemaTypeContextKind.TraitMember,
+        case SemaDiagnosticCode::IncompleteType | SemaDiagnosticCode::RecursiveType => set (*diag).type_context = SemaTypeContextKind.Type,
+        case SemaDiagnosticCode::NotAssignable => set (*diag).type_context = SemaTypeContextKind.Assignment,
+        case SemaDiagnosticCode::NotCallable => set (*diag).type_context = SemaTypeContextKind.Call,
+        case SemaDiagnosticCode::NotIndexable | SemaDiagnosticCode::InvalidIndexType => set (*diag).type_context = SemaTypeContextKind.Index,
+        case SemaDiagnosticCode::UnknownMember => set (*diag).type_context = SemaTypeContextKind.Member,
+        case SemaDiagnosticCode::ConditionNotBool => set (*diag).type_context = SemaTypeContextKind.Condition,
         else => {}
     }
     if node != null { set (*diag).span = (*node).span; set (*diag).node_id = (*node).id; }
@@ -3008,11 +3024,10 @@ proc sema_set_nearest_control_context_related(
         );
         if scope == null { break; }
         if (*scope).kind == ScopeKind.Proc or (*scope).kind == ScopeKind.Test {
-            let wanted_kind = if (*scope).kind == ScopeKind.Proc {
-                ASTNodeKind.ProcDecl
-            } else {
-                ASTNodeKind.TestDecl
-            };
+            let mut wanted_kind: ASTNodeKind = ASTNodeKind.TestDecl;
+            if (*scope).kind == ScopeKind.Proc {
+                set wanted_kind = ASTNodeKind.ProcDecl;
+            }
             let mut index: usize = 0;
             while index < (*context).parser.node_count {
                 let candidate = &(*context).parser.nodes[index];
@@ -3640,7 +3655,7 @@ proc sema_set_return_diagnostic_context(context: *mut Sema) {
         );
         if return_type_token != null {
             set declared_return_type = string.from_bytes(
-                (*return_type_token).lexeme.as_ptr() as *const u8,
+                (*return_type_token).lexeme as *const u8,
                 (*return_type_token).length
             );
             sema_set_last_related_location(
@@ -4227,7 +4242,7 @@ proc sema_type_from_node_depth(context: *mut Sema, node_id: ASTNodeId, scope_id:
                 SemaDiagnosticCode.NotAType,
                 if type_name_node == null { node } else { type_name_node },
                 0,
-                if value_type == (*context).type_error { 0 } else { value_type }
+                if value_type == (*context).type_error { 0 as SemaTypeId } else { value_type }
             );
             return sema_type_resolution_result(
                 context,
@@ -4493,7 +4508,7 @@ proc sema_type_from_node_depth(context: *mut Sema, node_id: ASTNodeId, scope_id:
                 SemaDiagnosticCode.NotAType,
                 if type_name_node == null { node } else { type_name_node },
                 0,
-                if value_type == (*context).type_error { 0 } else { value_type }
+                if value_type == (*context).type_error { 0 as SemaTypeId } else { value_type }
             );
             return (*context).type_error;
         }
@@ -5117,8 +5132,8 @@ proc sema_match_patterns_same_literal(
     }
     if (*left_value_node).kind != ASTNodeKind.StringLiteral and
        (*left_value_node).kind != ASTNodeKind.CharacterLiteral { return false; }
-    let left_token = vitte_parser_node_token(parser, (*left_value_node).id);
-    let right_token = vitte_parser_node_token(parser, (*right_value_node).id);
+    let left_token = vitte_parser_node_token(parser, left_value_node);
+    let right_token = vitte_parser_node_token(parser, right_value_node);
     return left_token != null and right_token != null and
         (*left_token).length == (*right_token).length and
         string.from_bytes((*left_token).lexeme as *const u8, (*left_token).length) ==
@@ -5240,18 +5255,23 @@ proc sema_check_match_unreachable_arms(
     subject_type: SemaTypeId
 ) {
     if context == null or node == null { return; }
-    let subject_record = if subject_type == 0 or
-        subject_type > (*context).type_count as SemaTypeId { null } else {
-        &(*context).types[(subject_type - 1) as usize]
-    };
-    let subject_symbol = if subject_record == null or
-        (*subject_record).kind != SemaTypeKind.Named { null } else {
-        vitte_scope_get_symbol(sema_scope_ptr(context), (*subject_record).symbol_id)
-    };
-    let pick_declaration = if subject_symbol == null or
-        (*subject_symbol).kind != SymbolKind.Pick { null } else {
-        (*subject_symbol).payload as *const ASTNode
-    };
+    let mut subject_record: *const SemaType = null;
+    if subject_type != 0 and
+       subject_type <= (*context).type_count as SemaTypeId {
+        set subject_record = &(*context).types[(subject_type - 1) as usize];
+    }
+    let mut subject_symbol: *const Symbol = null;
+    if subject_record != null and
+       (*subject_record).kind == SemaTypeKind.Named {
+        set subject_symbol = vitte_scope_get_symbol(
+            sema_scope_ptr(context), (*subject_record).symbol_id
+        );
+    }
+    let mut pick_declaration: *const ASTNode = null;
+    if subject_symbol != null and
+       (*subject_symbol).kind == SymbolKind.Pick {
+        set pick_declaration = (*subject_symbol).payload as *const ASTNode;
+    }
     if sema_match_has_invalid_pattern_diagnostic(context, node) { return; }
     let mut validation_index: usize = 1;
     while validation_index < (*node).child_count {
@@ -5526,17 +5546,23 @@ proc sema_check_match_exhaustive(
 ) {
     if context == null or node == null or subject_type == (*context).type_error { return; }
     if sema_match_has_invalid_pattern_diagnostic(context, node) { return; }
-    let subject_record = if subject_type == 0 or subject_type > (*context).type_count as SemaTypeId { null } else {
-        &(*context).types[(subject_type - 1) as usize]
-    };
-    let subject_symbol = if subject_record == null or
-        (*subject_record).kind != SemaTypeKind.Named { null } else {
-        vitte_scope_get_symbol(sema_scope_ptr(context), (*subject_record).symbol_id)
-    };
-    let pick_declaration = if subject_symbol == null or
-        (*subject_symbol).kind != SymbolKind.Pick { null } else {
-        (*subject_symbol).payload as *const ASTNode
-    };
+    let mut subject_record: *const SemaType = null;
+    if subject_type != 0 and
+       subject_type <= (*context).type_count as SemaTypeId {
+        set subject_record = &(*context).types[(subject_type - 1) as usize];
+    }
+    let mut subject_symbol: *const Symbol = null;
+    if subject_record != null and
+       (*subject_record).kind == SemaTypeKind.Named {
+        set subject_symbol = vitte_scope_get_symbol(
+            sema_scope_ptr(context), (*subject_record).symbol_id
+        );
+    }
+    let mut pick_declaration: *const ASTNode = null;
+    if subject_symbol != null and
+       (*subject_symbol).kind == SymbolKind.Pick {
+        set pick_declaration = (*subject_symbol).payload as *const ASTNode;
+    }
     let mut covers_true = false;
     let mut covers_false = false;
     let mut has_wildcard = false;
@@ -5649,9 +5675,14 @@ proc sema_check_match_exhaustive(
         }
         return;
     }
-    let missing_pattern = if subject_type == (*context).type_bool {
-        if covers_true { "false" } else { "true" }
-    } else { "_" };
+    let mut missing_pattern: string = "_";
+    if subject_type == (*context).type_bool {
+        if covers_true {
+            set missing_pattern = "false";
+        } else {
+            set missing_pattern = "true";
+        }
+    }
     if sema_add_diagnostic(
         context,
         SemaDiagnosticKind.Error,
@@ -6200,11 +6231,6 @@ proc sema_prepare_space(context: *mut Sema, node: *const ASTNode, parent_scope: 
             set (*symbol_record).payload = space_scope as usize as *mut u8;
         }
 
-        let segment_node = sema_child(
-            (*context).parser,
-            path,
-            segment_index
-        );
         let segment_info: *mut SemaNodeInfo = if segment_node == null {
             null
         } else {
@@ -6248,6 +6274,7 @@ proc sema_diagnostic_help_append_module_path(
     scope_id: ScopeId
 ) {
     let mut chain: [ScopeId] = [];
+    let mut chain_length: usize = 0;
     let mut current_scope = scope_id;
     while current_scope != 0 {
         let scope = vitte_scope_get_scope(
@@ -6255,9 +6282,10 @@ proc sema_diagnostic_help_append_module_path(
             current_scope
         );
         if scope == null or not chain.push(current_scope) { return; }
+        set chain_length += 1;
         set current_scope = (*scope).parent_id;
     }
-    let mut chain_index = chain.len();
+    let mut chain_index = chain_length;
     while chain_index != 0 {
         set chain_index -= 1;
         let scope = vitte_scope_get_scope(
@@ -6396,7 +6424,7 @@ proc sema_report_import_ambiguity(
         0,
         0
     ) { return false; }
-    let diag_entry = &((*context).diagnostics[(*context).diagnostic_count - 1]) as *mut SemaDiagnostic;
+    let diag_entry = &mut (*context).diagnostics[(*context).diagnostic_count - 1];
     let current_info = sema_node_info_mut(context, (*current_declaration).id);
     let existing_info = sema_node_info_mut(context, (*existing_declaration).id);
     set (*diag_entry).symbol_id = existing_origin_id;
@@ -6654,7 +6682,7 @@ proc sema_register_imported_item(
                 0,
                 0
             ) {
-                let diag_entry = &((*context).diagnostics[(*context).diagnostic_count - 1]) as *mut SemaDiagnostic;
+                let diag_entry = &mut (*context).diagnostics[(*context).diagnostic_count - 1];
                 set (*diag_entry).symbol_id = existing_id;
                 let mut offset: usize = 0;
                 sema_diagnostic_help_append_text(
@@ -6692,7 +6720,7 @@ proc sema_register_imported_item(
                 0,
                 0
             ) {
-                let diag_entry = &((*context).diagnostics[(*context).diagnostic_count - 1]) as *mut SemaDiagnostic;
+                let diag_entry = &mut (*context).diagnostics[(*context).diagnostic_count - 1];
                 set (*diag_entry).symbol_id = existing_id;
                 if alias_node != null {
                     let alias_name = sema_token_name_node(
@@ -6861,7 +6889,7 @@ proc sema_register_module_use(
                         0,
                         0
                     ) {
-                        let diag_entry = &((*context).diagnostics[(*context).diagnostic_count - 1]) as *mut SemaDiagnostic;
+                        let diag_entry = &mut (*context).diagnostics[(*context).diagnostic_count - 1];
                         set (*diag_entry).symbol_id = existing_id;
                         let mut offset: usize = 0;
                         sema_diagnostic_help_append_text(
@@ -6898,7 +6926,7 @@ proc sema_register_module_use(
                         0,
                         0
                     ) {
-                        let diag_entry = &((*context).diagnostics[(*context).diagnostic_count - 1]) as *mut SemaDiagnostic;
+                        let diag_entry = &mut (*context).diagnostics[(*context).diagnostic_count - 1];
                         set (*diag_entry).symbol_id = existing_id;
                         let mut offset: usize = 0;
                         sema_diagnostic_help_append_text(
@@ -7014,7 +7042,7 @@ proc sema_register_module_use(
                     0,
                     0
                 ) {
-                    let diag_entry = &((*context).diagnostics[(*context).diagnostic_count - 1]) as *mut SemaDiagnostic;
+                    let diag_entry = &mut (*context).diagnostics[(*context).diagnostic_count - 1];
                     set (*diag_entry).symbol_id = existing_id;
                     let mut offset: usize = 0;
                     sema_diagnostic_help_append_text(
@@ -7042,7 +7070,7 @@ proc sema_register_module_use(
                 0,
                 0
             ) {
-                let diag_entry = &((*context).diagnostics[(*context).diagnostic_count - 1]) as *mut SemaDiagnostic;
+                let diag_entry = &mut (*context).diagnostics[(*context).diagnostic_count - 1];
                 set (*diag_entry).symbol_id = existing_id;
                 if alias_node != node {
                     let alias_token = sema_token_name_node(
@@ -7455,11 +7483,10 @@ proc sema_bind_pattern(
         return false;
     }
     if ((*node).node_flags & PARSER_AST_FLAG_PATTERN_ARRAY) != 0 {
-        let array_type = if type_id == 0 or type_id > (*context).type_count as SemaTypeId {
-            null
-        } else {
-            &(*context).types[(type_id - 1) as usize]
-        };
+        let mut array_type: *const SemaType = null;
+        if type_id != 0 and type_id <= (*context).type_count as SemaTypeId {
+            set array_type = &(*context).types[(type_id - 1) as usize];
+        }
         if array_type == null or
            ((*array_type).kind != SemaTypeKind.Array and
             (*array_type).kind != SemaTypeKind.Slice) or
@@ -9411,17 +9438,19 @@ proc sema_constant_unsupported_diagnostic(
                0,
                0
            ) {
-            let reason = if symbol != null and (*symbol).kind == SymbolKind.Static {
-                "static value"
+            let mut reason: string = "mutable value";
+            if symbol != null and (*symbol).kind == SymbolKind.Static {
+                set reason = "static value";
             } elif symbol != null and (*symbol).kind == SymbolKind.Parameter {
-                "procedure parameter"
+                set reason = "procedure parameter";
             } elif symbol != null and (*symbol).kind == SymbolKind.Local {
-                "local value"
-            } else {
-                "mutable value"
-            };
+                set reason = "local value";
+            }
             let token = sema_token_name_node((*context).parser, dependency);
-            let name = if token == null { "this value" } else { "`" + (*token).lexeme + "`" };
+            let mut name: string = "this value";
+            if token != null {
+                set name = "`" + (*token).lexeme + "`";
+            }
             sema_set_last_diagnostic_help(
                 context,
                 "This initializer reads a " + reason + " " + name + ", whose value is available only at runtime. Use a compile-time constant here or move the initialization to runtime code."
@@ -9443,15 +9472,14 @@ proc sema_constant_unsupported_diagnostic(
     if info != null and (*info).type_id == (*context).type_error {
         return false;
     }
-    let operation = if (*unsupported).kind == ASTNodeKind.CallExpr {
-        "procedure call"
+    let mut operation: string = "try propagation";
+    if (*unsupported).kind == ASTNodeKind.CallExpr {
+        set operation = "procedure call";
     } elif (*unsupported).kind == ASTNodeKind.AssignExpr {
-        "assignment"
+        set operation = "assignment";
     } elif (*unsupported).kind == ASTNodeKind.AwaitExpr {
-        "await"
-    } else {
-        "try propagation"
-    };
+        set operation = "await";
+    }
     if sema_add_diagnostic(
         context,
         SemaDiagnosticKind.Error,
@@ -9473,8 +9501,8 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
     set (*context).stats.expressions_checked = sema_sat_add((*context).stats.expressions_checked, 1);
     let mut result: SemaTypeId = (*context).type_error;
     match (*node).kind {
-        case ASTNodeKind.IntegerLiteral => set result = (*context).type_i64,
-        case ASTNodeKind.FloatLiteral => {
+        case ASTNodeKind::IntegerLiteral => set result = (*context).type_i64,
+        case ASTNodeKind::FloatLiteral => {
             let mut value: f64 = 0.0;
             if sema_float_literal_value((*context).parser, node, &mut value) {
                 set result = (*context).type_f64;
@@ -9489,11 +9517,11 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 );
             }
         },
-        case ASTNodeKind.StringLiteral => set result = (*context).type_string,
-        case ASTNodeKind.CharacterLiteral => set result = (*context).type_char,
-        case ASTNodeKind.BoolLiteral => set result = (*context).type_bool,
-        case ASTNodeKind.NullLiteral => set result = (*context).type_null,
-        case ASTNodeKind.Identifier | ASTNodeKind.Path => {
+        case ASTNodeKind::StringLiteral => set result = (*context).type_string,
+        case ASTNodeKind::CharacterLiteral => set result = (*context).type_char,
+        case ASTNodeKind::BoolLiteral => set result = (*context).type_bool,
+        case ASTNodeKind::NullLiteral => set result = (*context).type_null,
+        case ASTNodeKind::Identifier | ASTNodeKind::Path => {
             let contract_name = sema_token_name_node((*context).parser, node);
             let contract_simple_name = (*node).kind == ASTNodeKind.Identifier or
                 ((*node).kind == ASTNodeKind.Path and (*node).child_count == 1);
@@ -9689,7 +9717,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                                 SemaDiagnosticCode.NotAValue,
                                 if last_segment == null { node } else { last_segment },
                                 0,
-                                if found_type == (*context).type_error { 0 } else { found_type }
+                                if found_type == (*context).type_error { 0 as SemaTypeId } else { found_type }
                             ) {
                                 let diagnostic_item = &mut (*context).diagnostics[
                                     (*context).diagnostic_count - 1
@@ -9732,9 +9760,9 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 }
             }
         },
-        case ASTNodeKind.TypeExpr => set result = sema_type_from_node(context, (*node).id, scope_id),
-        case ASTNodeKind.PointerType | ASTNodeKind.ReferenceType | ASTNodeKind.ArrayType | ASTNodeKind.OptionalType => set result = sema_type_from_node(context, (*node).id, scope_id),
-        case ASTNodeKind.GroupExpr => {
+        case ASTNodeKind::TypeExpr => set result = sema_type_from_node(context, (*node).id, scope_id),
+        case ASTNodeKind::PointerType | ASTNodeKind::ReferenceType | ASTNodeKind::ArrayType | ASTNodeKind::OptionalType => set result = sema_type_from_node(context, (*node).id, scope_id),
+        case ASTNodeKind::GroupExpr => {
             let child = sema_child((*context).parser, node, 0);
             if child != null {
                 set result = sema_analyze_expression(context, child, scope_id);
@@ -9748,8 +9776,8 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 }
             }
         },
-        case ASTNodeKind.BlockExpr => if (*node).child_count != 0 { set result = sema_analyze_expression(context, sema_child((*context).parser, node, 0), scope_id); },
-        case ASTNodeKind.UnaryExpr => {
+        case ASTNodeKind::BlockExpr => if (*node).child_count != 0 { set result = sema_analyze_expression(context, sema_child((*context).parser, node, 0), scope_id); },
+        case ASTNodeKind::UnaryExpr => {
             let operand_node = sema_child((*context).parser, node, 0);
             let diagnostic_node = if operand_node == null { node } else { operand_node };
             let operator_token = sema_token((*context).parser, node);
@@ -9774,7 +9802,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 } else {
                     if sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidUnaryOperand, node, 0, operand) {
                         let diagnostic_item = &mut (*context).diagnostics[(*context).diagnostic_count - 1];
-                        if operator_token != null { set (*diagnostic_item).span = (*operator_token).span; }
+                        if operator_token != null { set (*diagnostic_item).span = sema_parser_span_from_token(operator_token); }
                         sema_set_last_diagnostic_help(
                             context,
                             if operand_info == null or ((*operand_info).node_flags & SEMA_NODE_FLAG_ADDRESSABLE) == 0 {
@@ -9796,7 +9824,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 } else {
                     if sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidUnaryOperand, node, 0, operand) {
                         let diagnostic_item = &mut (*context).diagnostics[(*context).diagnostic_count - 1];
-                        if operator_token != null { set (*diagnostic_item).span = (*operator_token).span; }
+                        if operator_token != null { set (*diagnostic_item).span = sema_parser_span_from_token(operator_token); }
                         sema_set_last_diagnostic_help(context, "`*` requires a pointer or reference operand; this expression has a non-pointer type.");
                     }
                 }
@@ -9808,7 +9836,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidUnaryOperand, diagnostic_node, 0, operand);
             }
         },
-        case ASTNodeKind.BinaryExpr | ASTNodeKind.AssignExpr => {
+        case ASTNodeKind::BinaryExpr | ASTNodeKind::AssignExpr => {
             let left_node = sema_child((*context).parser, node, 0);
             let right_node = sema_child((*context).parser, node, 1);
             let mut left = sema_analyze_expression(context, left_node, scope_id);
@@ -9957,7 +9985,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidBinaryOperands, node, left, right);
             }
         },
-        case ASTNodeKind.CastExpr => if (*node).child_count > 1 {
+        case ASTNodeKind::CastExpr => if (*node).child_count > 1 {
             let source_node = sema_child((*context).parser, node, 0);
             let mut source_type = sema_analyze_expression(context, source_node, scope_id);
             let target_type = sema_type_from_node(context, (*node).children[1], scope_id);
@@ -10009,7 +10037,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 }
             }
         },
-        case ASTNodeKind.CallExpr => {
+        case ASTNodeKind::CallExpr => {
             let callee_node = sema_child((*context).parser, node, 0);
             let callee_token = sema_token_name_node((*context).parser, callee_node);
             if callee_token != null and
@@ -10365,7 +10393,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 }
             }
         },
-        case ASTNodeKind.ArrayExpr => {
+        case ASTNodeKind::ArrayExpr => {
             let mut element_type: SemaTypeId = 0;
             let mut index: usize = 0;
             while index < (*node).child_count {
@@ -10440,7 +10468,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 );
             }
         },
-        case ASTNodeKind.IndexExpr => {
+        case ASTNodeKind::IndexExpr => {
             let object_node = sema_child((*context).parser, node, 0);
             let index_node = sema_child((*context).parser, node, 1);
             let object_type = sema_analyze_expression(context, object_node, scope_id);
@@ -10471,7 +10499,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 }
             }
         },
-        case ASTNodeKind.MemberExpr => {
+        case ASTNodeKind::MemberExpr => {
             let mut is_pick_path = false;
             let pick_type = sema_pick_variant_type(context, node, scope_id, &mut is_pick_path);
             if is_pick_path {
@@ -10634,11 +10662,11 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 }
             }
         },
-        case ASTNodeKind.FieldInit => {
+        case ASTNodeKind::FieldInit => {
             let value = sema_child((*context).parser, node, 1);
             if value != null { set result = sema_analyze_expression(context, value, scope_id); }
         },
-        case ASTNodeKind.FormExpr => {
+        case ASTNodeKind::FormExpr => {
             let type_node = sema_child((*context).parser, node, 0);
             set result = sema_analyze_expression(context, type_node, scope_id);
             let mut form_declaration = sema_form_declaration_for_type(context, result);
@@ -10694,7 +10722,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 sema_validate_generic_form_fields(context, node, form_declaration);
             }
         },
-        case ASTNodeKind.IfExpr => {
+        case ASTNodeKind::IfExpr => {
             let condition_node = sema_child((*context).parser, node, 0);
             let condition_type = sema_analyze_expression(context, condition_node, scope_id);
             let value_condition_type = sema_value_type(context as *const Sema, condition_type);
@@ -10734,7 +10762,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 else { let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.TypeMismatch, else_node, then_type, else_type); }
             } else { set result = (*context).type_void; }
         },
-        case ASTNodeKind.AwaitExpr => {
+        case ASTNodeKind::AwaitExpr => {
             if (*node).child_count == 1 {
                 let awaited_node = sema_child((*context).parser, node, 0);
                 let task_type = sema_analyze_expression(context, awaited_node, scope_id);
@@ -10774,7 +10802,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
                 );
             }
         },
-        case ASTNodeKind.TryExpr => {
+        case ASTNodeKind::TryExpr => {
             let inner = sema_analyze_expression(context, sema_child((*context).parser, node, 0), scope_id);
             let inner_type: *const SemaType = if inner != 0 and inner <= (*context).type_count as SemaTypeId { &(*context).types[(inner - 1) as usize] } else { null };
             if (*context).current_defer_node_id != 0 {
@@ -10787,7 +10815,7 @@ proc sema_analyze_expression(context: *mut Sema, node: *const ASTNode, scope_id:
             } elif inner_type != null and (*inner_type).kind == SemaTypeKind.Optional { set result = (*inner_type).element_type; }
             else if inner != (*context).type_error { let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.InvalidType, node, 0, inner); }
         },
-        case ASTNodeKind.SizeofExpr | ASTNodeKind.AlignofExpr => {
+        case ASTNodeKind::SizeofExpr | ASTNodeKind::AlignofExpr => {
             if (*node).child_count != 0 {
                 let operand_node = sema_child((*context).parser, node, 0);
                 let queried_type = sema_analyze_expression(
@@ -10906,12 +10934,12 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
     if info != null and (*info).scope_id == 0 { set (*info).scope_id = scope_id; }
     let mut result: SemaTypeId = (*context).type_void;
     match (*node).kind {
-        case ASTNodeKind.TranslationUnit => {
+        case ASTNodeKind::TranslationUnit => {
             if not sema_predeclare(context, node, scope_id) { set (*context).last_error = SemaError.Validation; }
             let mut index: usize = 0;
             while index < (*node).child_count { let child = sema_child((*context).parser, node, index); if child != null { let _ = sema_analyze_node(context, (*child).id, scope_id); } set index += 1; }
         },
-        case ASTNodeKind.SpaceDecl => {
+        case ASTNodeKind::SpaceDecl => {
             let space_scope = if info == null { 0 as ScopeId } else { (*info).scope_id };
             let body = sema_child((*context).parser, node, 1);
             if space_scope == 0 {
@@ -10926,7 +10954,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
             }
             set result = (*context).type_void;
         },
-        case ASTNodeKind.TypeDecl => {
+        case ASTNodeKind::TypeDecl => {
             /* Alias targets are resolved lazily at each use site. This keeps
              * generic alias parameters local to their declaration instead
              * of treating names such as `T` as module-level expressions. */
@@ -10966,7 +10994,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 }
             }
         },
-        case ASTNodeKind.FormDecl => {
+        case ASTNodeKind::FormDecl => {
             if sema_form_generic_parameter_count(context, node) == 0 and
                not sema_generic_declaration_has_where_clause(
                    context,
@@ -11040,7 +11068,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 }
             }
         },
-        case ASTNodeKind.TraitDecl => {
+        case ASTNodeKind::TraitDecl => {
             let trait_scope = vitte_scope_create(
                 sema_scope_ptr(context),
                 scope_id,
@@ -11104,7 +11132,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 }
             }
         },
-        case ASTNodeKind.OpaqueDecl => {
+        case ASTNodeKind::OpaqueDecl => {
             let opaque_scope = vitte_scope_create(
                 sema_scope_ptr(context), scope_id, ScopeKind.Form,
                 ScopeSpan { file_id: (*node).span.file_id, begin: (*node).span.begin, end: (*node).span.end, line: (*node).span.line, column: (*node).span.column, valid: (*node).span.valid },
@@ -11121,7 +11149,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 );
             }
         },
-        case ASTNodeKind.PickDecl => {
+        case ASTNodeKind::PickDecl => {
             // Variant names are declarations owned by the pick and are not
             // ordinary expressions. Only payload types need semantic visits.
             let pick_scope = vitte_scope_create(
@@ -11178,7 +11206,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 set index += 1;
             }
         },
-        case ASTNodeKind.ImplDecl => {
+        case ASTNodeKind::ImplDecl => {
             let implementation_scope = sema_implementation_scope(
                 context,
                 node,
@@ -11320,7 +11348,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 set result = (*context).type_void;
             }
         },
-        case ASTNodeKind.ProcDecl | ASTNodeKind.ExternProcDecl => {
+        case ASTNodeKind::ProcDecl | ASTNodeKind::ExternProcDecl => {
             let procedure_scope = vitte_scope_create(sema_scope_ptr(context), scope_id, ScopeKind.Proc, ScopeSpan { file_id: (*node).span.file_id, begin: (*node).span.begin, end: (*node).span.end, line: (*node).span.line, column: (*node).span.column, valid: (*node).span.valid }, null);
             if procedure_scope == 0 { set (*context).last_error = SemaError.InvalidScope; }
             else {
@@ -11682,11 +11710,12 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                         );
                         if clause_type != (*context).type_error and
                            clause_type != (*context).type_bool {
-                            let diagnostic_code = if (*context).current_contract_requires {
-                                SemaDiagnosticCode.InvalidRequiresClause
-                            } else {
-                                SemaDiagnosticCode.InvalidEnsuresClause
-                            };
+                            let mut diagnostic_code: SemaDiagnosticCode =
+                                SemaDiagnosticCode.InvalidEnsuresClause;
+                            if (*context).current_contract_requires {
+                                set diagnostic_code =
+                                    SemaDiagnosticCode.InvalidRequiresClause;
+                            }
                             if sema_add_diagnostic(
                                 context,
                                 SemaDiagnosticKind.Error,
@@ -11695,14 +11724,17 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                                 (*context).type_bool,
                                 clause_type
                             ) {
-                                sema_set_last_diagnostic_help(
-                                    context,
-                                    if (*context).current_contract_requires {
+                                if (*context).current_contract_requires {
+                                    sema_set_last_diagnostic_help(
+                                        context,
                                         "The requires expression must be valid and have type `bool`. Compare values or combine boolean conditions."
-                                    } else {
+                                    );
+                                } else {
+                                    sema_set_last_diagnostic_help(
+                                        context,
                                         "The ensures expression must be valid and have type `bool`. Compare the result or combine boolean conditions."
-                                    }
-                                );
+                                    );
+                                }
                             }
                         }
                         set (*context).current_contract_requires = previous_requires;
@@ -11777,7 +11809,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 set (*context).current_unsafe = previous_unsafe;
             }
         },
-        case ASTNodeKind.LetStmt | ASTNodeKind.ConstDecl | ASTNodeKind.StaticDecl => {
+        case ASTNodeKind::LetStmt | ASTNodeKind::ConstDecl | ASTNodeKind::StaticDecl => {
             let name_node = sema_child((*context).parser, node, 0);
             let mut inferred: SemaTypeId = (*context).type_error;
             let mut initializer: *const ASTNode = null;
@@ -11848,7 +11880,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                             inferred,
                             0
                         )) {
-                        0
+                        0 as SemaTypeId
                     } else {
                         inferred
                     }
@@ -11866,11 +11898,12 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                             limit
                         );
                     } else {
-                        let help = if unresolved_array {
-                            "Add an explicit element type after the binding, such as `let values: [ElementType] = [];`."
-                        } else {
-                            "Add an explicit type annotation at the binding so this expression has a concrete type."
-                        };
+                        let mut help: string =
+                            "Add an explicit type annotation at the binding so this expression has a concrete type.";
+                        if unresolved_array {
+                            set help =
+                                "Add an explicit element type after the binding, such as `let values: [ElementType] = [];`.";
+                        }
                         let bytes: [u8] = help.bytes();
                         let limit: usize = if bytes.len() < 511 { bytes.len() } else { 511 as usize };
                         copy(
@@ -11947,7 +11980,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
             }
             set result = inferred;
         },
-        case ASTNodeKind.UnsafeBlock => {
+        case ASTNodeKind::UnsafeBlock => {
             let previous_unsafe = (*context).current_unsafe;
             set (*context).current_unsafe = true;
             let mut index: usize = 0;
@@ -11958,7 +11991,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
             }
             set (*context).current_unsafe = previous_unsafe;
         },
-        case ASTNodeKind.AsmStmt => {
+        case ASTNodeKind::AsmStmt => {
             let first_child = sema_child((*context).parser, node, 0);
             let template_form = first_child != null and (*first_child).kind == ASTNodeKind.StringLiteral;
             let asm_token = sema_token((*context).parser, node);
@@ -11974,7 +12007,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 let diagnostic_item = &mut (*context).diagnostics[
                     (*context).diagnostic_count - 1
                 ];
-                if asm_token != null { set (*diagnostic_item).span = (*asm_token).span; }
+                if asm_token != null { set (*diagnostic_item).span = sema_parser_span_from_token(asm_token); }
                 sema_set_last_diagnostic_help(
                     context,
                     "Inline assembly is an unsafe operation. Wrap this `asm` statement in `unsafe { ... }` after checking the target instruction and its memory effects."
@@ -12036,7 +12069,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 }
             }
         },
-        case ASTNodeKind.Block => {
+        case ASTNodeKind::Block => {
             let block_scope = vitte_scope_create(sema_scope_ptr(context), scope_id, ScopeKind.Block, ScopeSpan { file_id: (*node).span.file_id, begin: (*node).span.begin, end: (*node).span.end, line: (*node).span.line, column: (*node).span.column, valid: (*node).span.valid }, null);
             let active_scope: ScopeId = if block_scope == 0 { scope_id } else { block_scope };
             let inherited_unreachable = sema_node_is_unreachable(
@@ -12073,7 +12106,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 set index += 1;
             }
         },
-        case ASTNodeKind.AssertStmt => {
+        case ASTNodeKind::AssertStmt => {
             let condition_node = sema_child((*context).parser, node, 0);
             let condition = sema_analyze_expression(context, condition_node, scope_id);
             let value_condition_type = sema_value_type(context as *const Sema, condition);
@@ -12081,7 +12114,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 let _ = sema_add_diagnostic(context, SemaDiagnosticKind.Error, SemaDiagnosticCode.ConditionNotBool, condition_node, (*context).type_bool, value_condition_type);
             }
         },
-        case ASTNodeKind.IfStmt => {
+        case ASTNodeKind::IfStmt => {
             let condition_node = sema_child((*context).parser, node, 0);
             let condition = sema_analyze_expression(context, condition_node, scope_id);
             let value_condition_type = sema_value_type(context as *const Sema, condition);
@@ -12133,7 +12166,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 set index += 1;
             }
         },
-        case ASTNodeKind.WhileStmt => {
+        case ASTNodeKind::WhileStmt => {
             let condition_node = sema_child((*context).parser, node, 0);
             let condition = sema_analyze_expression(context, condition_node, scope_id);
             let value_condition_type = sema_value_type(context as *const Sema, condition);
@@ -12162,13 +12195,13 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
             if body != null { let _ = sema_analyze_node(context, (*body).id, scope_id); }
             set (*context).loop_depth -= 1;
         },
-        case ASTNodeKind.LoopStmt => {
+        case ASTNodeKind::LoopStmt => {
             set (*context).loop_depth += 1;
             let body = sema_child((*context).parser, node, 0);
             if body != null { let _ = sema_analyze_node(context, (*body).id, scope_id); }
             set (*context).loop_depth -= 1;
         },
-        case ASTNodeKind.ForStmt => {
+        case ASTNodeKind::ForStmt => {
             let binding = sema_child((*context).parser, node, 0);
             let iterable_node = sema_child((*context).parser, node, 1);
             let iterable_type = sema_analyze_expression(context, iterable_node, scope_id);
@@ -12210,7 +12243,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
             if body != null { let _ = sema_analyze_node(context, (*body).id, active_scope); }
             set (*context).loop_depth -= 1;
         },
-        case ASTNodeKind.BreakStmt => {
+        case ASTNodeKind::BreakStmt => {
             if (*context).current_defer_node_id != 0 and
                (*context).loop_depth <= (*context).current_defer_loop_depth {
                 let _ = sema_defer_control_error(
@@ -12232,7 +12265,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 );
             }
         },
-        case ASTNodeKind.ContinueStmt => {
+        case ASTNodeKind::ContinueStmt => {
             if (*context).current_defer_node_id != 0 and
                (*context).loop_depth <= (*context).current_defer_loop_depth {
                 let _ = sema_defer_control_error(
@@ -12254,7 +12287,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 );
             }
         },
-        case ASTNodeKind.MatchStmt => {
+        case ASTNodeKind::MatchStmt => {
             let subject_node = sema_child((*context).parser, node, 0);
             let subject_type = sema_analyze_expression(context, subject_node, scope_id);
             let mut arm_index: usize = 1;
@@ -12303,7 +12336,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
             sema_check_match_unreachable_arms(context, node, scope_id, subject_type);
             sema_check_match_exhaustive(context, node, scope_id, subject_type);
         },
-        case ASTNodeKind.DeferStmt => {
+        case ASTNodeKind::DeferStmt => {
             if (*context).current_defer_node_id != 0 {
                 let _ = sema_defer_control_error(
                     context,
@@ -12325,7 +12358,7 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 set (*context).current_defer_loop_depth = previous_defer_loop_depth;
             }
         },
-        case ASTNodeKind.ReturnStmt => {
+        case ASTNodeKind::ReturnStmt => {
             let return_value = sema_child((*context).parser, node, 0);
             if return_value != null { set result = sema_analyze_expression(context, return_value, scope_id); }
             else { set result = (*context).type_void; }
@@ -12357,8 +12390,8 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
                 sema_set_return_diagnostic_context(context);
             }
         },
-        case ASTNodeKind.ExprStmt => if (*node).child_count != 0 { set result = sema_analyze_expression(context, sema_child((*context).parser, node, 0), scope_id); },
-        case ASTNodeKind.UseDecl => {
+        case ASTNodeKind::ExprStmt => if (*node).child_count != 0 { set result = sema_analyze_expression(context, sema_child((*context).parser, node, 0), scope_id); },
+        case ASTNodeKind::UseDecl => {
             if ((*node).node_flags & PARSER_AST_FLAG_PUBLIC) != 0 {
                 let scope = vitte_scope_get_scope(
                     sema_scope_ptr(context) as *const Scope,
@@ -12392,13 +12425,13 @@ proc sema_analyze_node(context: *mut Sema, node_id: ASTNodeId, scope_id: ScopeId
 }
 
 export proc vitte_sema_error_name(error: SemaError) -> string {
-    match error { case SemaError.None => return "none"; case SemaError.InvalidArgument => return "invalid_argument"; case SemaError.InvalidContext => return "invalid_context"; case SemaError.InvalidState => return "invalid_state"; case SemaError.InvalidAst => return "invalid_ast"; case SemaError.InvalidScope => return "invalid_scope"; case SemaError.InvalidType => return "invalid_type"; case SemaError.TypeLimit => return "type_limit"; case SemaError.DiagnosticLimit => return "diagnostic_limit"; case SemaError.RecursionLimit => return "recursion_limit"; case SemaError.Overflow => return "overflow"; case SemaError.OutOfMemory => return "out_of_memory"; case SemaError.Validation => return "validation"; case SemaError.Corruption => return "corruption"; case SemaError.Internal => return "internal"; case SemaError.Count => return "count"; }
+    match error { case SemaError::None => return "none"; case SemaError::InvalidArgument => return "invalid_argument"; case SemaError::InvalidContext => return "invalid_context"; case SemaError::InvalidState => return "invalid_state"; case SemaError::InvalidAst => return "invalid_ast"; case SemaError::InvalidScope => return "invalid_scope"; case SemaError::InvalidType => return "invalid_type"; case SemaError::TypeLimit => return "type_limit"; case SemaError::DiagnosticLimit => return "diagnostic_limit"; case SemaError::RecursionLimit => return "recursion_limit"; case SemaError::Overflow => return "overflow"; case SemaError::OutOfMemory => return "out_of_memory"; case SemaError::Validation => return "validation"; case SemaError::Corruption => return "corruption"; case SemaError::Internal => return "internal"; case SemaError::Count => return "count"; }
 }
-export proc vitte_sema_state_name(state: SemaState) -> string { match state { case SemaState.Invalid => return "invalid"; case SemaState.Ready => return "ready"; case SemaState.Analyzing => return "analyzing"; case SemaState.Done => return "done"; case SemaState.Failed => return "failed"; case SemaState.Destroyed => return "destroyed"; case SemaState.Count => return "count"; } }
-export proc vitte_sema_type_kind_name(kind: SemaTypeKind) -> string { match kind { case SemaTypeKind.Invalid => return "invalid"; case SemaTypeKind.Error => return "error"; case SemaTypeKind.Void => return "void"; case SemaTypeKind.Bool => return "bool"; case SemaTypeKind.I64 => return "i64"; case SemaTypeKind.U64 => return "u64"; case SemaTypeKind.U8 => return "u8"; case SemaTypeKind.F32 => return "f32"; case SemaTypeKind.F64 => return "f64"; case SemaTypeKind.Char => return "char"; case SemaTypeKind.String => return "string"; case SemaTypeKind.Null => return "null"; case SemaTypeKind.Pointer => return "pointer"; case SemaTypeKind.Reference => return "reference"; case SemaTypeKind.Optional => return "optional"; case SemaTypeKind.Array => return "array"; case SemaTypeKind.Slice => return "slice"; case SemaTypeKind.Range => return "range"; case SemaTypeKind.Function => return "function"; case SemaTypeKind.Named => return "named"; case SemaTypeKind.Dyn => return "dyn"; case SemaTypeKind.GenericParameter => return "generic_parameter"; case SemaTypeKind.Task => return "task"; case SemaTypeKind.Never => return "never"; case SemaTypeKind.Count => return "count"; } }
-export proc vitte_sema_type_conversion_kind_name(kind: SemaTypeConversionKind) -> string { match kind { case SemaTypeConversionKind.Incompatible => return "incompatible"; case SemaTypeConversionKind.Exact => return "exact"; case SemaTypeConversionKind.Safe => return "safe"; case SemaTypeConversionKind.Lossy => return "lossy"; case SemaTypeConversionKind.Count => return "count"; } }
-export proc vitte_sema_diagnostic_kind_name(kind: SemaDiagnosticKind) -> string { match kind { case SemaDiagnosticKind.Note => return "note"; case SemaDiagnosticKind.Help => return "help"; case SemaDiagnosticKind.Warning => return "warning"; case SemaDiagnosticKind.Error => return "error"; case SemaDiagnosticKind.KindCount => return "count"; } }
-export proc vitte_sema_diagnostic_code_name(code: SemaDiagnosticCode) -> string { match code { case SemaDiagnosticCode.None => return "none"; case SemaDiagnosticCode.UnresolvedName => return "unresolved_name"; case SemaDiagnosticCode.PrivateSymbol => return "private_symbol"; case SemaDiagnosticCode.DuplicateDeclaration => return "duplicate_declaration"; case SemaDiagnosticCode.ShadowedDeclaration => return "shadowed_declaration"; case SemaDiagnosticCode.UnknownType => return "unknown_type"; case SemaDiagnosticCode.NotAType => return "not_a_type"; case SemaDiagnosticCode.InvalidCast => return "invalid_cast"; case SemaDiagnosticCode.NotAValue => return "not_a_value"; case SemaDiagnosticCode.TypeMismatch => return "type_mismatch"; case SemaDiagnosticCode.InvalidUnaryOperand => return "invalid_unary_operand"; case SemaDiagnosticCode.InvalidBinaryOperands => return "invalid_binary_operands"; case SemaDiagnosticCode.NotAssignable => return "not_assignable"; case SemaDiagnosticCode.NotCallable => return "not_callable"; case SemaDiagnosticCode.InvalidArgumentCount => return "invalid_argument_count"; case SemaDiagnosticCode.InvalidArgumentType => return "invalid_argument_type"; case SemaDiagnosticCode.NotIndexable => return "not_indexable"; case SemaDiagnosticCode.InvalidIndexType => return "invalid_index_type"; case SemaDiagnosticCode.UnknownMember => return "unknown_member"; case SemaDiagnosticCode.ConditionNotBool => return "condition_not_bool"; case SemaDiagnosticCode.ReturnOutsideProc => return "return_outside_proc"; case SemaDiagnosticCode.ReturnTypeMismatch => return "return_type_mismatch"; case SemaDiagnosticCode.BreakOutsideLoop => return "break_outside_loop"; case SemaDiagnosticCode.ContinueOutsideLoop => return "continue_outside_loop"; case SemaDiagnosticCode.UnreachableCode => return "unreachable_code"; case SemaDiagnosticCode.RecursionLimit => return "recursion_limit"; case SemaDiagnosticCode.InvalidType => return "invalid_type"; case SemaDiagnosticCode.InvalidPatternBindings => return "invalid_pattern_bindings"; case SemaDiagnosticCode.ReferenceEscape => return "reference_escape"; case SemaDiagnosticCode.BorrowConflict => return "borrow_conflict"; case SemaDiagnosticCode.BorrowedMutation => return "borrowed_mutation"; case SemaDiagnosticCode.MoveBorrowed => return "move_borrowed"; case SemaDiagnosticCode.UseAfterMove => return "use_after_move"; case SemaDiagnosticCode.CannotInfer => return "cannot_infer"; case SemaDiagnosticCode.AmbiguousName => return "ambiguous_name"; case SemaDiagnosticCode.DuplicateImport => return "duplicate_import"; case SemaDiagnosticCode.InvalidScope => return "invalid_scope"; case SemaDiagnosticCode.DuplicateBinding => return "duplicate_binding"; case SemaDiagnosticCode.InvalidExport => return "invalid_export"; case SemaDiagnosticCode.IncompleteType => return "incomplete_type"; case SemaDiagnosticCode.RecursiveType => return "recursive_type"; case SemaDiagnosticCode.GenericBoundUnsatisfied => return "generic_bound_unsatisfied"; case SemaDiagnosticCode.GenericArgumentCount => return "generic_argument_count"; case SemaDiagnosticCode.GenericArgumentKind => return "generic_argument_kind"; case SemaDiagnosticCode.GenericInferenceConflict => return "generic_inference_conflict"; case SemaDiagnosticCode.TraitNotImplemented => return "trait_not_implemented"; case SemaDiagnosticCode.AmbiguousImpl => return "ambiguous_impl"; case SemaDiagnosticCode.ConflictingImpl => return "conflicting_impl"; case SemaDiagnosticCode.MissingTraitMember => return "missing_trait_member"; case SemaDiagnosticCode.InvalidTraitMember => return "invalid_trait_member"; case SemaDiagnosticCode.InvalidImplTarget => return "invalid_impl_target"; case SemaDiagnosticCode.InvalidWherePredicate => return "invalid_where_predicate"; case SemaDiagnosticCode.AmbiguousMethod => return "ambiguous_method"; case SemaDiagnosticCode.InvalidProcedureParameter => return "invalid_procedure_parameter"; case SemaDiagnosticCode.MissingReturn => return "missing_return"; case SemaDiagnosticCode.MatchNonExhaustive => return "match_non_exhaustive"; case SemaDiagnosticCode.MatchUnreachable => return "match_unreachable"; case SemaDiagnosticCode.MatchType => return "match_type"; case SemaDiagnosticCode.InvalidDeferredControlFlow => return "invalid_defer_control_flow"; case SemaDiagnosticCode.OverlappingPattern => return "overlapping_pattern"; case SemaDiagnosticCode.InvalidRequiresClause => return "invalid_requires_clause"; case SemaDiagnosticCode.InvalidEnsuresClause => return "invalid_ensures_clause"; case SemaDiagnosticCode.OldValueUnavailable => return "old_value_unavailable"; case SemaDiagnosticCode.ResultUnavailable => return "result_unavailable"; case SemaDiagnosticCode.ConstantNotConstant => return "constant_not_constant"; case SemaDiagnosticCode.ConstantOverflow => return "constant_overflow"; case SemaDiagnosticCode.ConstantDivideByZero => return "constant_divide_by_zero"; case SemaDiagnosticCode.ConstantRemainderByZero => return "constant_remainder_by_zero"; case SemaDiagnosticCode.UnsafeRequired => return "unsafe_required"; case SemaDiagnosticCode.InvalidAsm => return "invalid_asm"; case SemaDiagnosticCode.FfiAbi => return "ffi_abi"; case SemaDiagnosticCode.FfiType => return "ffi_type"; case SemaDiagnosticCode.CodeCount => return "count"; } }
+export proc vitte_sema_state_name(state: SemaState) -> string { match state { case SemaState::Invalid => return "invalid"; case SemaState::Ready => return "ready"; case SemaState::Analyzing => return "analyzing"; case SemaState::Done => return "done"; case SemaState::Failed => return "failed"; case SemaState::Destroyed => return "destroyed"; case SemaState::Count => return "count"; } }
+export proc vitte_sema_type_kind_name(kind: SemaTypeKind) -> string { match kind { case SemaTypeKind::Invalid => return "invalid"; case SemaTypeKind::Error => return "error"; case SemaTypeKind::Void => return "void"; case SemaTypeKind::Bool => return "bool"; case SemaTypeKind::I64 => return "i64"; case SemaTypeKind::U64 => return "u64"; case SemaTypeKind::U8 => return "u8"; case SemaTypeKind::F32 => return "f32"; case SemaTypeKind::F64 => return "f64"; case SemaTypeKind::Char => return "char"; case SemaTypeKind::String => return "string"; case SemaTypeKind::Null => return "null"; case SemaTypeKind::Pointer => return "pointer"; case SemaTypeKind::Reference => return "reference"; case SemaTypeKind::Optional => return "optional"; case SemaTypeKind::Array => return "array"; case SemaTypeKind::Slice => return "slice"; case SemaTypeKind::Range => return "range"; case SemaTypeKind::Function => return "function"; case SemaTypeKind::Named => return "named"; case SemaTypeKind::Dyn => return "dyn"; case SemaTypeKind::GenericParameter => return "generic_parameter"; case SemaTypeKind::Task => return "task"; case SemaTypeKind::Never => return "never"; case SemaTypeKind::Count => return "count"; } }
+export proc vitte_sema_type_conversion_kind_name(kind: SemaTypeConversionKind) -> string { match kind { case SemaTypeConversionKind::Incompatible => return "incompatible"; case SemaTypeConversionKind::Exact => return "exact"; case SemaTypeConversionKind::Safe => return "safe"; case SemaTypeConversionKind::Lossy => return "lossy"; case SemaTypeConversionKind::Count => return "count"; } }
+export proc vitte_sema_diagnostic_kind_name(kind: SemaDiagnosticKind) -> string { match kind { case SemaDiagnosticKind::Note => return "note"; case SemaDiagnosticKind::Help => return "help"; case SemaDiagnosticKind::Warning => return "warning"; case SemaDiagnosticKind::Error => return "error"; case SemaDiagnosticKind::KindCount => return "count"; } }
+export proc vitte_sema_diagnostic_code_name(code: SemaDiagnosticCode) -> string { match code { case SemaDiagnosticCode::None => return "none"; case SemaDiagnosticCode::UnresolvedName => return "unresolved_name"; case SemaDiagnosticCode::PrivateSymbol => return "private_symbol"; case SemaDiagnosticCode::DuplicateDeclaration => return "duplicate_declaration"; case SemaDiagnosticCode::ShadowedDeclaration => return "shadowed_declaration"; case SemaDiagnosticCode::UnknownType => return "unknown_type"; case SemaDiagnosticCode::NotAType => return "not_a_type"; case SemaDiagnosticCode::InvalidCast => return "invalid_cast"; case SemaDiagnosticCode::NotAValue => return "not_a_value"; case SemaDiagnosticCode::TypeMismatch => return "type_mismatch"; case SemaDiagnosticCode::InvalidUnaryOperand => return "invalid_unary_operand"; case SemaDiagnosticCode::InvalidBinaryOperands => return "invalid_binary_operands"; case SemaDiagnosticCode::NotAssignable => return "not_assignable"; case SemaDiagnosticCode::NotCallable => return "not_callable"; case SemaDiagnosticCode::InvalidArgumentCount => return "invalid_argument_count"; case SemaDiagnosticCode::InvalidArgumentType => return "invalid_argument_type"; case SemaDiagnosticCode::NotIndexable => return "not_indexable"; case SemaDiagnosticCode::InvalidIndexType => return "invalid_index_type"; case SemaDiagnosticCode::UnknownMember => return "unknown_member"; case SemaDiagnosticCode::ConditionNotBool => return "condition_not_bool"; case SemaDiagnosticCode::ReturnOutsideProc => return "return_outside_proc"; case SemaDiagnosticCode::ReturnTypeMismatch => return "return_type_mismatch"; case SemaDiagnosticCode::BreakOutsideLoop => return "break_outside_loop"; case SemaDiagnosticCode::ContinueOutsideLoop => return "continue_outside_loop"; case SemaDiagnosticCode::UnreachableCode => return "unreachable_code"; case SemaDiagnosticCode::RecursionLimit => return "recursion_limit"; case SemaDiagnosticCode::InvalidType => return "invalid_type"; case SemaDiagnosticCode::InvalidPatternBindings => return "invalid_pattern_bindings"; case SemaDiagnosticCode::ReferenceEscape => return "reference_escape"; case SemaDiagnosticCode::BorrowConflict => return "borrow_conflict"; case SemaDiagnosticCode::BorrowedMutation => return "borrowed_mutation"; case SemaDiagnosticCode::MoveBorrowed => return "move_borrowed"; case SemaDiagnosticCode::UseAfterMove => return "use_after_move"; case SemaDiagnosticCode::CannotInfer => return "cannot_infer"; case SemaDiagnosticCode::AmbiguousName => return "ambiguous_name"; case SemaDiagnosticCode::DuplicateImport => return "duplicate_import"; case SemaDiagnosticCode::InvalidScope => return "invalid_scope"; case SemaDiagnosticCode::DuplicateBinding => return "duplicate_binding"; case SemaDiagnosticCode::InvalidExport => return "invalid_export"; case SemaDiagnosticCode::IncompleteType => return "incomplete_type"; case SemaDiagnosticCode::RecursiveType => return "recursive_type"; case SemaDiagnosticCode::GenericBoundUnsatisfied => return "generic_bound_unsatisfied"; case SemaDiagnosticCode::GenericArgumentCount => return "generic_argument_count"; case SemaDiagnosticCode::GenericArgumentKind => return "generic_argument_kind"; case SemaDiagnosticCode::GenericInferenceConflict => return "generic_inference_conflict"; case SemaDiagnosticCode::TraitNotImplemented => return "trait_not_implemented"; case SemaDiagnosticCode::AmbiguousImpl => return "ambiguous_impl"; case SemaDiagnosticCode::ConflictingImpl => return "conflicting_impl"; case SemaDiagnosticCode::MissingTraitMember => return "missing_trait_member"; case SemaDiagnosticCode::InvalidTraitMember => return "invalid_trait_member"; case SemaDiagnosticCode::InvalidImplTarget => return "invalid_impl_target"; case SemaDiagnosticCode::InvalidWherePredicate => return "invalid_where_predicate"; case SemaDiagnosticCode::AmbiguousMethod => return "ambiguous_method"; case SemaDiagnosticCode::InvalidProcedureParameter => return "invalid_procedure_parameter"; case SemaDiagnosticCode::MissingReturn => return "missing_return"; case SemaDiagnosticCode::MatchNonExhaustive => return "match_non_exhaustive"; case SemaDiagnosticCode::MatchUnreachable => return "match_unreachable"; case SemaDiagnosticCode::MatchType => return "match_type"; case SemaDiagnosticCode::InvalidDeferredControlFlow => return "invalid_defer_control_flow"; case SemaDiagnosticCode::OverlappingPattern => return "overlapping_pattern"; case SemaDiagnosticCode::InvalidRequiresClause => return "invalid_requires_clause"; case SemaDiagnosticCode::InvalidEnsuresClause => return "invalid_ensures_clause"; case SemaDiagnosticCode::OldValueUnavailable => return "old_value_unavailable"; case SemaDiagnosticCode::ResultUnavailable => return "result_unavailable"; case SemaDiagnosticCode::ConstantNotConstant => return "constant_not_constant"; case SemaDiagnosticCode::ConstantOverflow => return "constant_overflow"; case SemaDiagnosticCode::ConstantDivideByZero => return "constant_divide_by_zero"; case SemaDiagnosticCode::ConstantRemainderByZero => return "constant_remainder_by_zero"; case SemaDiagnosticCode::UnsafeRequired => return "unsafe_required"; case SemaDiagnosticCode::InvalidAsm => return "invalid_asm"; case SemaDiagnosticCode::FfiAbi => return "ffi_abi"; case SemaDiagnosticCode::FfiType => return "ffi_type"; case SemaDiagnosticCode::CodeCount => return "count"; } }
 
 proc sema_reference_type(state: &SemaReferenceState, node: *const ASTNode) -> *const SemaType {
     if node == null { return null; }

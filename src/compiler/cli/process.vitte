@@ -50,7 +50,7 @@ extern proc vitte_native_stderr_is_terminal() -> bool;
 extern proc vitte_api_compile_path(source_path: string, output_path: string, diagnostic_format: u32, diagnostic_color: bool) -> i32;
 extern proc vitte_api_emit_ir_path(source_path: string, diagnostic_format: u32, diagnostic_color: bool) -> i32;
 extern proc vitte_api_check_path(path: string, diagnostic_format: u32, diagnostic_color: bool) -> i32;
-extern proc vitte_api_build_path(source_path: string, output_path: ?string, run_program: bool, diagnostic_format: u32, diagnostic_color: bool, run_argc: i32, run_argv: *mut *mut u8) -> i32;
+extern proc vitte_api_build_path(source_path: string, output_path: string, run_program: bool, diagnostic_format: u32, diagnostic_color: bool, run_argc: i32, run_argv: *mut *mut u8) -> i32;
 extern proc vitte_api_lex_path(path: string) -> i32;
 extern proc vitte_api_parse_path(path: string) -> i32;
 
@@ -238,10 +238,6 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         let diagnostic_color = cli_entry_diagnostic_color(&cli);
         let output_path: string = if selected_output == null { "" } else { selected_output? };
         let seen_options = vitte_cli_seen_options(&cli);
-        let mut output_pointer: ?string = null;
-        if selected_output != null {
-            set output_pointer = selected_output;
-        }
         let status = if (seen_options & VITTE_CLI_SEEN_STOP_AFTER_SEMA) != 0 {
             vitte_api_check_path(input?, diagnostic_format, diagnostic_color)
         } else if (seen_options & VITTE_CLI_SEEN_EMIT_IR) != 0 {
@@ -251,7 +247,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         } else {
             vitte_api_build_path(
                 input?,
-                output_pointer,
+                output_path,
                 false,
                 diagnostic_format,
                 diagnostic_color,
@@ -405,10 +401,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
             vitte_cli_destroy(&mut cli);
             return cli_entry_unavailable("vitte run: selecting an output path is not supported");
         }
-        let mut output_pointer: ?string = null;
-        if selected_output != null {
-            set output_pointer = selected_output;
-        }
+        let output_path: string = if selected_output == null { "" } else { selected_output? };
 
         let mut run_arguments: [*mut u8] = [];
         let run_argument_count = vitte_cli_forward_arg_count(&cli);
@@ -427,7 +420,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         };
         let status = vitte_api_build_path(
             input?,
-            output_pointer,
+            output_path,
             command == CliCommand.Run,
             vitte_cli_selected_diagnostic_format(&cli) as u32,
             cli_entry_diagnostic_color(&cli),

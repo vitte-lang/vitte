@@ -2,7 +2,7 @@
 /// The C boundary is limited to OS temporary-path creation and process launch.
 space compiler::driver::host_tools;
 
-use vitte::core::memory::{allocate, deallocate};
+use vitte::core::memory::{allocate, deallocate, cstring_length};
 
 export pick DriverHostToolStage {
     None,
@@ -36,7 +36,13 @@ extern proc vitte_native_host_process_run(
     arguments: *const *const u8,
     argument_count: usize
 ) -> i32;
-extern proc vitte_native_environment_value(name: string) -> ?str;
+extern proc vitte_native_environment_value_raw(name: string) -> *const u8;
+
+proc host_tools_environment_value(name: string) -> ?str {
+    let value = vitte_native_environment_value_raw(name);
+    if value == null { return null; }
+    return string.from_bytes(value as *mut u8, cstring_length(value));
+}
 
 extern proc vitte_native_fs_file_open(path: *const u8, mode: *const u8) -> *mut u8;
 extern proc vitte_native_fs_file_write(data: *const u8, length: usize, file: *mut u8) -> usize;
@@ -141,11 +147,11 @@ proc host_tools_run_toolchain(
     let mut object_created = false;
     let mut executable_created = false;
     let mut compiler_program: string = if emit_llvm_ir { "clang" } else { "cc" };
-    let mut configured_compiler: ?string = vitte_native_environment_value("CC");
+    let mut configured_compiler: ?string = host_tools_environment_value("CC");
     if emit_llvm_ir {
-        set configured_compiler = vitte_native_environment_value("VITTE_LLVM_CC");
+        set configured_compiler = host_tools_environment_value("VITTE_LLVM_CC");
         if configured_compiler == null or configured_compiler? == "" {
-            set configured_compiler = vitte_native_environment_value("CLANG");
+            set configured_compiler = host_tools_environment_value("CLANG");
         }
     }
     if configured_compiler != null {
@@ -154,7 +160,7 @@ proc host_tools_run_toolchain(
             set compiler_program = selected_compiler;
         }
     }
-    let llvm_target: ?string = if emit_llvm_ir { vitte_native_environment_value("VITTE_LLVM_TARGET") } else { null };
+    let llvm_target: ?string = if emit_llvm_ir { host_tools_environment_value("VITTE_LLVM_TARGET") } else { null };
     let mut llvm_target_argument: ?string = null;
     if llvm_target != null and llvm_target? != "" {
         set llvm_target_argument = "--target=" + llvm_target?;

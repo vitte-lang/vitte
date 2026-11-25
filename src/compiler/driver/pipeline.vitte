@@ -155,6 +155,7 @@ use compiler::sema::sema::{
 use compiler::scope::scope::{
     Scope,
     Symbol,
+    SymbolKind,
     vitte_scope_get_symbol
 };
 
@@ -257,212 +258,212 @@ export form NativePipelineResult {
 
 proc native_pipeline_parser_severity(kind: ParserDiagnosticKind) -> CliDiagnosticSeverity {
     match kind {
-        case ParserDiagnosticKind.Note => return CliDiagnosticSeverity.Note;
-        case ParserDiagnosticKind.Help => return CliDiagnosticSeverity.Help;
-        case ParserDiagnosticKind.Warning => return CliDiagnosticSeverity.Warning;
-        case ParserDiagnosticKind.Error => return CliDiagnosticSeverity.Error;
+        case ParserDiagnosticKind::Note => return CliDiagnosticSeverity.Note;
+        case ParserDiagnosticKind::Help => return CliDiagnosticSeverity.Help;
+        case ParserDiagnosticKind::Warning => return CliDiagnosticSeverity.Warning;
+        case ParserDiagnosticKind::Error => return CliDiagnosticSeverity.Error;
         else => return CliDiagnosticSeverity.Error;
     }
 }
 
 proc native_pipeline_sema_severity(kind: SemaDiagnosticKind) -> CliDiagnosticSeverity {
     match kind {
-        case SemaDiagnosticKind.Note => return CliDiagnosticSeverity.Note;
-        case SemaDiagnosticKind.Help => return CliDiagnosticSeverity.Help;
-        case SemaDiagnosticKind.Warning => return CliDiagnosticSeverity.Warning;
-        case SemaDiagnosticKind.Error => return CliDiagnosticSeverity.Error;
+        case SemaDiagnosticKind::Note => return CliDiagnosticSeverity.Note;
+        case SemaDiagnosticKind::Help => return CliDiagnosticSeverity.Help;
+        case SemaDiagnosticKind::Warning => return CliDiagnosticSeverity.Warning;
+        case SemaDiagnosticKind::Error => return CliDiagnosticSeverity.Error;
         else => return CliDiagnosticSeverity.Error;
     }
 }
 
 proc native_pipeline_parser_code(error: ParserError) -> string {
     match error {
-        case ParserError.ExpectedToken => return "VITTE_PARSER_E_EXPECTED_TOKEN";
-        case ParserError.ExpectedIdentifier => return "VITTE_PARSER_E_EXPECTED_TOKEN";
-        case ParserError.ExpectedExpression => return "VITTE_PARSER_E_EXPECTED_EXPRESSION";
-        case ParserError.ExpectedType => return "VITTE_PARSER_E_EXPECTED_TYPE";
-        case ParserError.ExpectedDeclaration => return "VITTE_PARSER_E_EXPECTED_DECLARATION";
-        case ParserError.UnexpectedToken => return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
-        case ParserError.ExpectedStatement => return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
-        case ParserError.Unsupported => return "VITTE_PARSER_E_UNSUPPORTED_SYNTAX";
-        case ParserError.InvalidModulePath => return "VITTE_PARSER_E_INVALID_MODULE_PATH";
-        case ParserError.DuplicateModuleHeader => return "VITTE_PARSER_E_DUPLICATE_MODULE_HEADER";
-        case ParserError.MisplacedModuleHeader => return "VITTE_PARSER_E_MISPLACED_MODULE_HEADER";
-        case ParserError.InvalidUseDeclaration => return "VITTE_PARSER_E_INVALID_USE_DECLARATION";
-        case ParserError.InvalidUseAlias => return "VITTE_PARSER_E_INVALID_USE_ALIAS";
-        case ParserError.InvalidImportGroup => return "VITTE_PARSER_E_INVALID_IMPORT_GROUP";
-        case ParserError.InvalidGlobImport => return "VITTE_PARSER_E_INVALID_GLOB_IMPORT";
-        case ParserError.InvalidExportClause => return "VITTE_PARSER_E_INVALID_EXPORT_CLAUSE";
-        case ParserError.EmptyExportGroup => return "VITTE_PARSER_E_EMPTY_EXPORT_GROUP";
-        case ParserError.InvalidExportAlias => return "VITTE_PARSER_E_INVALID_EXPORT_ALIAS";
-        case ParserError.TrailingTokens => return "VITTE_PARSER_E_TRAILING_TOKENS";
-        case ParserError.MissingModuleHeader => return "VITTE_PARSER_E_MISSING_MODULE_HEADER";
-        case ParserError.InvalidValueDeclaration => return "VITTE_PARSER_E_INVALID_VALUE_DECLARATION";
-        case ParserError.MissingValueInitializer => return "VITTE_PARSER_E_MISSING_VALUE_INITIALIZER";
-        case ParserError.InvalidTypeDeclaration => return "VITTE_PARSER_E_INVALID_TYPE_DECLARATION";
-        case ParserError.InvalidOpaqueDeclaration => return "VITTE_PARSER_E_INVALID_OPAQUE_DECLARATION";
-        case ParserError.InvalidFormDeclaration => return "VITTE_PARSER_E_INVALID_FORM_DECLARATION";
-        case ParserError.DuplicateFormField => return "VITTE_PARSER_E_DUPLICATE_FORM_FIELD";
-        case ParserError.InvalidFormFieldSeparator => return "VITTE_PARSER_E_INVALID_FORM_FIELD_SEPARATOR";
-        case ParserError.InvalidPickDeclaration => return "VITTE_PARSER_E_INVALID_PICK_DECLARATION";
-        case ParserError.DuplicatePickVariant => return "VITTE_PARSER_E_DUPLICATE_PICK_VARIANT";
-        case ParserError.InvalidPickVariantPayload => return "VITTE_PARSER_E_INVALID_PICK_VARIANT_PAYLOAD";
-        case ParserError.InvalidTraitDeclaration => return "VITTE_PARSER_E_INVALID_TRAIT_DECLARATION";
-        case ParserError.InvalidImplDeclaration => return "VITTE_PARSER_E_INVALID_IMPL_DECLARATION";
-        case ParserError.MissingImplTargetType => return "VITTE_PARSER_E_MISSING_IMPL_TARGET_TYPE";
-        case ParserError.InvalidImplForClause => return "VITTE_PARSER_E_INVALID_IMPL_FOR_CLAUSE";
-        case ParserError.InvalidProcedureDeclaration => return "VITTE_PARSER_E_INVALID_PROCEDURE_DECLARATION";
-        case ParserError.InvalidProcedureParameters => return "VITTE_PARSER_E_INVALID_PROCEDURE_PARAMETERS";
-        case ParserError.InvalidProcedureReturnType => return "VITTE_PARSER_E_INVALID_PROCEDURE_RETURN_TYPE";
-        case ParserError.InvalidProcedureModifier => return "VITTE_PARSER_E_INVALID_PROCEDURE_MODIFIER";
-        case ParserError.InvalidProcedureBodyForm => return "VITTE_PARSER_E_INVALID_PROCEDURE_BODY_FORM";
-        case ParserError.InvalidExternalProcedure => return "VITTE_PARSER_E_INVALID_EXTERNAL_PROCEDURE";
-        case ParserError.InvalidIntrinsicDeclaration => return "VITTE_PARSER_E_INVALID_INTRINSIC_DECLARATION";
-        case ParserError.InvalidAbiStringLiteral => return "VITTE_PARSER_E_INVALID_ABI_STRING_LITERAL";
-        case ParserError.InvalidGenericParameterList => return "VITTE_PARSER_E_INVALID_GENERIC_PARAMETER_LIST";
-        case ParserError.InvalidConstGenericParameter => return "VITTE_PARSER_E_INVALID_CONST_GENERIC_PARAMETER";
-        case ParserError.InvalidGenericBound => return "VITTE_PARSER_E_INVALID_GENERIC_BOUND";
-        case ParserError.InvalidWhereClause => return "VITTE_PARSER_E_INVALID_WHERE_CLAUSE";
-        case ParserError.InvalidRequiresClause => return "VITTE_PARSER_E_INVALID_REQUIRES_CLAUSE";
-        case ParserError.InvalidEnsuresClause => return "VITTE_PARSER_E_INVALID_ENSURES_CLAUSE";
-        case ParserError.InvalidMacroDeclaration => return "VITTE_PARSER_E_INVALID_MACRO_DECLARATION";
-        case ParserError.InvalidMacroParameters => return "VITTE_PARSER_E_INVALID_MACRO_PARAMETERS";
-        case ParserError.InvalidTestDeclaration => return "VITTE_PARSER_E_INVALID_TEST_DECLARATION";
-        case ParserError.InvalidDeclarationModifierOrder => return "VITTE_PARSER_E_INVALID_DECLARATION_MODIFIER_ORDER";
-        case ParserError.InvalidAttribute => return "VITTE_PARSER_E_INVALID_ATTRIBUTE";
-        case ParserError.InvalidAttributeName => return "VITTE_PARSER_E_INVALID_ATTRIBUTE_NAME";
-        case ParserError.InvalidAttributeArguments => return "VITTE_PARSER_E_INVALID_ATTRIBUTE_ARGUMENTS";
-        case ParserError.MissingAttributeValue => return "VITTE_PARSER_E_MISSING_ATTRIBUTE_VALUE";
-        case ParserError.InvalidAttributeLiteral => return "VITTE_PARSER_E_INVALID_ATTRIBUTE_LITERAL";
-        case ParserError.UnexpectedDeclaration => return "VITTE_PARSER_E_UNEXPECTED_DECLARATION";
-        case ParserError.UnexpectedStatement => return "VITTE_PARSER_E_UNEXPECTED_STATEMENT";
-        case ParserError.UnexpectedExpression => return "VITTE_PARSER_E_UNEXPECTED_EXPRESSION";
-        case ParserError.InvalidProcedureType => return "VITTE_PARSER_E_INVALID_PROCEDURE_TYPE";
-        case ParserError.InvalidReferenceType => return "VITTE_PARSER_E_INVALID_REFERENCE_TYPE";
-        case ParserError.InvalidPointerType => return "VITTE_PARSER_E_INVALID_POINTER_TYPE";
-        case ParserError.InvalidArrayType => return "VITTE_PARSER_E_INVALID_ARRAY_TYPE";
-        case ParserError.InvalidSliceType => return "VITTE_PARSER_E_INVALID_SLICE_TYPE";
-        case ParserError.InvalidOptionalType => return "VITTE_PARSER_E_INVALID_OPTIONAL_TYPE";
-        case ParserError.InvalidTypePath => return "VITTE_PARSER_E_INVALID_TYPE_PATH";
-        case ParserError.InvalidGenericArguments => return "VITTE_PARSER_E_INVALID_GENERIC_ARGUMENTS";
-        case ParserError.InvalidLetStatement => return "VITTE_PARSER_E_INVALID_LET_STATEMENT";
-        case ParserError.InvalidSetStatement => return "VITTE_PARSER_E_INVALID_SET_STATEMENT";
-        case ParserError.InvalidAssignmentOperator => return "VITTE_PARSER_E_INVALID_ASSIGNMENT_OPERATOR";
-        case ParserError.InvalidReturnStatement => return "VITTE_PARSER_E_INVALID_RETURN_STATEMENT";
-        case ParserError.InvalidJumpStatement => return "VITTE_PARSER_E_INVALID_JUMP_STATEMENT";
-        case ParserError.InvalidDeferStatement => return "VITTE_PARSER_E_INVALID_DEFER_STATEMENT";
-        case ParserError.InvalidAssertStatement => return "VITTE_PARSER_E_INVALID_ASSERT_STATEMENT";
-        case ParserError.InvalidUnsafeStatement => return "VITTE_PARSER_E_INVALID_UNSAFE_STATEMENT";
-        case ParserError.InvalidAsmStatement => return "VITTE_PARSER_E_INVALID_ASM_STATEMENT";
-        case ParserError.InvalidControlFlowStatement => return "VITTE_PARSER_E_INVALID_CONTROL_FLOW_STATEMENT";
-        case ParserError.InvalidMatchStatement => return "VITTE_PARSER_E_INVALID_MATCH_STATEMENT";
-        case ParserError.InvalidMatchArm => return "VITTE_PARSER_E_INVALID_MATCH_ARM";
-        case ParserError.InvalidPattern => return "VITTE_PARSER_E_INVALID_PATTERN";
-        case ParserError.InvalidRangePattern => return "VITTE_PARSER_E_INVALID_RANGE_PATTERN";
-        case ParserError.InvalidAssignmentExpression => return "VITTE_PARSER_E_INVALID_ASSIGNMENT_EXPRESSION";
-        case ParserError.InvalidCoalescingExpression => return "VITTE_PARSER_E_INVALID_COALESCING_EXPRESSION";
-        case ParserError.InvalidLogicalExpression => return "VITTE_PARSER_E_INVALID_LOGICAL_EXPRESSION";
-        case ParserError.InvalidBitwiseExpression => return "VITTE_PARSER_E_INVALID_BITWISE_EXPRESSION";
-        case ParserError.InvalidComparisonExpression => return "VITTE_PARSER_E_INVALID_COMPARISON_EXPRESSION";
-        case ParserError.InvalidShiftExpression => return "VITTE_PARSER_E_INVALID_SHIFT_EXPRESSION";
-        case ParserError.InvalidArithmeticExpression => return "VITTE_PARSER_E_INVALID_ARITHMETIC_EXPRESSION";
-        case ParserError.InvalidRangeExpression => return "VITTE_PARSER_E_INVALID_RANGE_EXPRESSION";
-        case ParserError.InvalidUnaryExpression => return "VITTE_PARSER_E_INVALID_UNARY_EXPRESSION";
-        case ParserError.InvalidCastExpression => return "VITTE_PARSER_E_INVALID_CAST_EXPRESSION";
-        case ParserError.InvalidPostfixExpression => return "VITTE_PARSER_E_INVALID_POSTFIX_EXPRESSION";
-        case ParserError.InvalidIfExpression => return "VITTE_PARSER_E_INVALID_IF_EXPRESSION";
-        case ParserError.InvalidBlockExpression => return "VITTE_PARSER_E_INVALID_BLOCK_EXPRESSION";
-        case ParserError.InvalidArrayExpression => return "VITTE_PARSER_E_INVALID_ARRAY_EXPRESSION";
-        case ParserError.InvalidSizeofExpression => return "VITTE_PARSER_E_INVALID_SIZEOF_EXPRESSION";
-        case ParserError.InvalidAlignofExpression => return "VITTE_PARSER_E_INVALID_ALIGNOF_EXPRESSION";
-        case ParserError.InvalidNullConstruction => return "VITTE_PARSER_E_INVALID_NULL_CONSTRUCTION";
-        case ParserError.InvalidExpressionList => return "VITTE_PARSER_E_INVALID_EXPRESSION_LIST";
-        case ParserError.OutOfMemory => return "VITTE_INFRA_E_RESOURCE";
-        case ParserError.Overflow => return "VITTE_INFRA_E_RESOURCE";
-        case ParserError.NodeLimit => return "VITTE_INFRA_E_RESOURCE";
-        case ParserError.DiagnosticLimit => return "VITTE_INFRA_E_RESOURCE";
-        case ParserError.RecursionLimit => return "VITTE_INFRA_E_RESOURCE";
-        case ParserError.InvalidToken => return "VITTE_INFRA_E_INVARIANT";
-        case ParserError.InvalidNode => return "VITTE_INFRA_E_INVARIANT";
-        case ParserError.Validation => return "VITTE_INFRA_E_INVARIANT";
-        case ParserError.Corruption => return "VITTE_INFRA_E_INVARIANT";
+        case ParserError::ExpectedToken => return "VITTE_PARSER_E_EXPECTED_TOKEN";
+        case ParserError::ExpectedIdentifier => return "VITTE_PARSER_E_EXPECTED_TOKEN";
+        case ParserError::ExpectedExpression => return "VITTE_PARSER_E_EXPECTED_EXPRESSION";
+        case ParserError::ExpectedType => return "VITTE_PARSER_E_EXPECTED_TYPE";
+        case ParserError::ExpectedDeclaration => return "VITTE_PARSER_E_EXPECTED_DECLARATION";
+        case ParserError::UnexpectedToken => return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
+        case ParserError::ExpectedStatement => return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
+        case ParserError::Unsupported => return "VITTE_PARSER_E_UNSUPPORTED_SYNTAX";
+        case ParserError::InvalidModulePath => return "VITTE_PARSER_E_INVALID_MODULE_PATH";
+        case ParserError::DuplicateModuleHeader => return "VITTE_PARSER_E_DUPLICATE_MODULE_HEADER";
+        case ParserError::MisplacedModuleHeader => return "VITTE_PARSER_E_MISPLACED_MODULE_HEADER";
+        case ParserError::InvalidUseDeclaration => return "VITTE_PARSER_E_INVALID_USE_DECLARATION";
+        case ParserError::InvalidUseAlias => return "VITTE_PARSER_E_INVALID_USE_ALIAS";
+        case ParserError::InvalidImportGroup => return "VITTE_PARSER_E_INVALID_IMPORT_GROUP";
+        case ParserError::InvalidGlobImport => return "VITTE_PARSER_E_INVALID_GLOB_IMPORT";
+        case ParserError::InvalidExportClause => return "VITTE_PARSER_E_INVALID_EXPORT_CLAUSE";
+        case ParserError::EmptyExportGroup => return "VITTE_PARSER_E_EMPTY_EXPORT_GROUP";
+        case ParserError::InvalidExportAlias => return "VITTE_PARSER_E_INVALID_EXPORT_ALIAS";
+        case ParserError::TrailingTokens => return "VITTE_PARSER_E_TRAILING_TOKENS";
+        case ParserError::MissingModuleHeader => return "VITTE_PARSER_E_MISSING_MODULE_HEADER";
+        case ParserError::InvalidValueDeclaration => return "VITTE_PARSER_E_INVALID_VALUE_DECLARATION";
+        case ParserError::MissingValueInitializer => return "VITTE_PARSER_E_MISSING_VALUE_INITIALIZER";
+        case ParserError::InvalidTypeDeclaration => return "VITTE_PARSER_E_INVALID_TYPE_DECLARATION";
+        case ParserError::InvalidOpaqueDeclaration => return "VITTE_PARSER_E_INVALID_OPAQUE_DECLARATION";
+        case ParserError::InvalidFormDeclaration => return "VITTE_PARSER_E_INVALID_FORM_DECLARATION";
+        case ParserError::DuplicateFormField => return "VITTE_PARSER_E_DUPLICATE_FORM_FIELD";
+        case ParserError::InvalidFormFieldSeparator => return "VITTE_PARSER_E_INVALID_FORM_FIELD_SEPARATOR";
+        case ParserError::InvalidPickDeclaration => return "VITTE_PARSER_E_INVALID_PICK_DECLARATION";
+        case ParserError::DuplicatePickVariant => return "VITTE_PARSER_E_DUPLICATE_PICK_VARIANT";
+        case ParserError::InvalidPickVariantPayload => return "VITTE_PARSER_E_INVALID_PICK_VARIANT_PAYLOAD";
+        case ParserError::InvalidTraitDeclaration => return "VITTE_PARSER_E_INVALID_TRAIT_DECLARATION";
+        case ParserError::InvalidImplDeclaration => return "VITTE_PARSER_E_INVALID_IMPL_DECLARATION";
+        case ParserError::MissingImplTargetType => return "VITTE_PARSER_E_MISSING_IMPL_TARGET_TYPE";
+        case ParserError::InvalidImplForClause => return "VITTE_PARSER_E_INVALID_IMPL_FOR_CLAUSE";
+        case ParserError::InvalidProcedureDeclaration => return "VITTE_PARSER_E_INVALID_PROCEDURE_DECLARATION";
+        case ParserError::InvalidProcedureParameters => return "VITTE_PARSER_E_INVALID_PROCEDURE_PARAMETERS";
+        case ParserError::InvalidProcedureReturnType => return "VITTE_PARSER_E_INVALID_PROCEDURE_RETURN_TYPE";
+        case ParserError::InvalidProcedureModifier => return "VITTE_PARSER_E_INVALID_PROCEDURE_MODIFIER";
+        case ParserError::InvalidProcedureBodyForm => return "VITTE_PARSER_E_INVALID_PROCEDURE_BODY_FORM";
+        case ParserError::InvalidExternalProcedure => return "VITTE_PARSER_E_INVALID_EXTERNAL_PROCEDURE";
+        case ParserError::InvalidIntrinsicDeclaration => return "VITTE_PARSER_E_INVALID_INTRINSIC_DECLARATION";
+        case ParserError::InvalidAbiStringLiteral => return "VITTE_PARSER_E_INVALID_ABI_STRING_LITERAL";
+        case ParserError::InvalidGenericParameterList => return "VITTE_PARSER_E_INVALID_GENERIC_PARAMETER_LIST";
+        case ParserError::InvalidConstGenericParameter => return "VITTE_PARSER_E_INVALID_CONST_GENERIC_PARAMETER";
+        case ParserError::InvalidGenericBound => return "VITTE_PARSER_E_INVALID_GENERIC_BOUND";
+        case ParserError::InvalidWhereClause => return "VITTE_PARSER_E_INVALID_WHERE_CLAUSE";
+        case ParserError::InvalidRequiresClause => return "VITTE_PARSER_E_INVALID_REQUIRES_CLAUSE";
+        case ParserError::InvalidEnsuresClause => return "VITTE_PARSER_E_INVALID_ENSURES_CLAUSE";
+        case ParserError::InvalidMacroDeclaration => return "VITTE_PARSER_E_INVALID_MACRO_DECLARATION";
+        case ParserError::InvalidMacroParameters => return "VITTE_PARSER_E_INVALID_MACRO_PARAMETERS";
+        case ParserError::InvalidTestDeclaration => return "VITTE_PARSER_E_INVALID_TEST_DECLARATION";
+        case ParserError::InvalidDeclarationModifierOrder => return "VITTE_PARSER_E_INVALID_DECLARATION_MODIFIER_ORDER";
+        case ParserError::InvalidAttribute => return "VITTE_PARSER_E_INVALID_ATTRIBUTE";
+        case ParserError::InvalidAttributeName => return "VITTE_PARSER_E_INVALID_ATTRIBUTE_NAME";
+        case ParserError::InvalidAttributeArguments => return "VITTE_PARSER_E_INVALID_ATTRIBUTE_ARGUMENTS";
+        case ParserError::MissingAttributeValue => return "VITTE_PARSER_E_MISSING_ATTRIBUTE_VALUE";
+        case ParserError::InvalidAttributeLiteral => return "VITTE_PARSER_E_INVALID_ATTRIBUTE_LITERAL";
+        case ParserError::UnexpectedDeclaration => return "VITTE_PARSER_E_UNEXPECTED_DECLARATION";
+        case ParserError::UnexpectedStatement => return "VITTE_PARSER_E_UNEXPECTED_STATEMENT";
+        case ParserError::UnexpectedExpression => return "VITTE_PARSER_E_UNEXPECTED_EXPRESSION";
+        case ParserError::InvalidProcedureType => return "VITTE_PARSER_E_INVALID_PROCEDURE_TYPE";
+        case ParserError::InvalidReferenceType => return "VITTE_PARSER_E_INVALID_REFERENCE_TYPE";
+        case ParserError::InvalidPointerType => return "VITTE_PARSER_E_INVALID_POINTER_TYPE";
+        case ParserError::InvalidArrayType => return "VITTE_PARSER_E_INVALID_ARRAY_TYPE";
+        case ParserError::InvalidSliceType => return "VITTE_PARSER_E_INVALID_SLICE_TYPE";
+        case ParserError::InvalidOptionalType => return "VITTE_PARSER_E_INVALID_OPTIONAL_TYPE";
+        case ParserError::InvalidTypePath => return "VITTE_PARSER_E_INVALID_TYPE_PATH";
+        case ParserError::InvalidGenericArguments => return "VITTE_PARSER_E_INVALID_GENERIC_ARGUMENTS";
+        case ParserError::InvalidLetStatement => return "VITTE_PARSER_E_INVALID_LET_STATEMENT";
+        case ParserError::InvalidSetStatement => return "VITTE_PARSER_E_INVALID_SET_STATEMENT";
+        case ParserError::InvalidAssignmentOperator => return "VITTE_PARSER_E_INVALID_ASSIGNMENT_OPERATOR";
+        case ParserError::InvalidReturnStatement => return "VITTE_PARSER_E_INVALID_RETURN_STATEMENT";
+        case ParserError::InvalidJumpStatement => return "VITTE_PARSER_E_INVALID_JUMP_STATEMENT";
+        case ParserError::InvalidDeferStatement => return "VITTE_PARSER_E_INVALID_DEFER_STATEMENT";
+        case ParserError::InvalidAssertStatement => return "VITTE_PARSER_E_INVALID_ASSERT_STATEMENT";
+        case ParserError::InvalidUnsafeStatement => return "VITTE_PARSER_E_INVALID_UNSAFE_STATEMENT";
+        case ParserError::InvalidAsmStatement => return "VITTE_PARSER_E_INVALID_ASM_STATEMENT";
+        case ParserError::InvalidControlFlowStatement => return "VITTE_PARSER_E_INVALID_CONTROL_FLOW_STATEMENT";
+        case ParserError::InvalidMatchStatement => return "VITTE_PARSER_E_INVALID_MATCH_STATEMENT";
+        case ParserError::InvalidMatchArm => return "VITTE_PARSER_E_INVALID_MATCH_ARM";
+        case ParserError::InvalidPattern => return "VITTE_PARSER_E_INVALID_PATTERN";
+        case ParserError::InvalidRangePattern => return "VITTE_PARSER_E_INVALID_RANGE_PATTERN";
+        case ParserError::InvalidAssignmentExpression => return "VITTE_PARSER_E_INVALID_ASSIGNMENT_EXPRESSION";
+        case ParserError::InvalidCoalescingExpression => return "VITTE_PARSER_E_INVALID_COALESCING_EXPRESSION";
+        case ParserError::InvalidLogicalExpression => return "VITTE_PARSER_E_INVALID_LOGICAL_EXPRESSION";
+        case ParserError::InvalidBitwiseExpression => return "VITTE_PARSER_E_INVALID_BITWISE_EXPRESSION";
+        case ParserError::InvalidComparisonExpression => return "VITTE_PARSER_E_INVALID_COMPARISON_EXPRESSION";
+        case ParserError::InvalidShiftExpression => return "VITTE_PARSER_E_INVALID_SHIFT_EXPRESSION";
+        case ParserError::InvalidArithmeticExpression => return "VITTE_PARSER_E_INVALID_ARITHMETIC_EXPRESSION";
+        case ParserError::InvalidRangeExpression => return "VITTE_PARSER_E_INVALID_RANGE_EXPRESSION";
+        case ParserError::InvalidUnaryExpression => return "VITTE_PARSER_E_INVALID_UNARY_EXPRESSION";
+        case ParserError::InvalidCastExpression => return "VITTE_PARSER_E_INVALID_CAST_EXPRESSION";
+        case ParserError::InvalidPostfixExpression => return "VITTE_PARSER_E_INVALID_POSTFIX_EXPRESSION";
+        case ParserError::InvalidIfExpression => return "VITTE_PARSER_E_INVALID_IF_EXPRESSION";
+        case ParserError::InvalidBlockExpression => return "VITTE_PARSER_E_INVALID_BLOCK_EXPRESSION";
+        case ParserError::InvalidArrayExpression => return "VITTE_PARSER_E_INVALID_ARRAY_EXPRESSION";
+        case ParserError::InvalidSizeofExpression => return "VITTE_PARSER_E_INVALID_SIZEOF_EXPRESSION";
+        case ParserError::InvalidAlignofExpression => return "VITTE_PARSER_E_INVALID_ALIGNOF_EXPRESSION";
+        case ParserError::InvalidNullConstruction => return "VITTE_PARSER_E_INVALID_NULL_CONSTRUCTION";
+        case ParserError::InvalidExpressionList => return "VITTE_PARSER_E_INVALID_EXPRESSION_LIST";
+        case ParserError::OutOfMemory => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError::Overflow => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError::NodeLimit => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError::DiagnosticLimit => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError::RecursionLimit => return "VITTE_INFRA_E_RESOURCE";
+        case ParserError::InvalidToken => return "VITTE_INFRA_E_INVARIANT";
+        case ParserError::InvalidNode => return "VITTE_INFRA_E_INVARIANT";
+        case ParserError::Validation => return "VITTE_INFRA_E_INVARIANT";
+        case ParserError::Corruption => return "VITTE_INFRA_E_INVARIANT";
         else => return "VITTE_INFRA_E_INTERNAL";
     }
 }
 
 proc native_pipeline_sema_code(code: SemaDiagnosticCode) -> string {
     match code {
-        case SemaDiagnosticCode.UnresolvedName => return "VITTE_RESOLVE_E_UNKNOWN_SYMBOL";
-        case SemaDiagnosticCode.AmbiguousName => return "VITTE_RESOLVE_E_AMBIGUOUS_SYMBOL";
-        case SemaDiagnosticCode.DuplicateImport => return "VITTE_IMPORT_E_DUPLICATE";
-        case SemaDiagnosticCode.PrivateSymbol => return "VITTE_RESOLVE_E_PRIVATE";
-        case SemaDiagnosticCode.DuplicateDeclaration => return "VITTE_RESOLVE_E_REDECLARATION";
-        case SemaDiagnosticCode.InvalidScope => return "VITTE_RESOLVE_E_INVALID_SCOPE";
-        case SemaDiagnosticCode.DuplicateBinding => return "VITTE_RESOLVE_E_DUPLICATE_BINDING";
-        case SemaDiagnosticCode.InvalidExport => return "VITTE_RESOLVE_E_INVALID_EXPORT";
-        case SemaDiagnosticCode.ShadowedDeclaration => return "VITTE_WARNING_SHADOWING";
-        case SemaDiagnosticCode.NotCallable => return "VITTE_TYPE_E_NOT_CALLABLE";
-        case SemaDiagnosticCode.InvalidArgumentCount => return "VITTE_CALL_E_ARITY";
-        case SemaDiagnosticCode.InvalidArgumentType => return "VITTE_CALL_E_ARGUMENT_TYPE";
-        case SemaDiagnosticCode.UnknownType => return "VITTE_TYPE_E_UNKNOWN_TYPE";
-        case SemaDiagnosticCode.NotAType => return "VITTE_TYPE_E_NOT_A_TYPE";
-        case SemaDiagnosticCode.InvalidCast => return "VITTE_TYPE_E_INVALID_CAST";
-        case SemaDiagnosticCode.NotAValue => return "VITTE_TYPE_E_NOT_A_VALUE";
-        case SemaDiagnosticCode.IncompleteType => return "VITTE_TYPE_E_INCOMPLETE";
-        case SemaDiagnosticCode.RecursiveType => return "VITTE_TYPE_E_RECURSIVE";
-        case SemaDiagnosticCode.GenericBoundUnsatisfied => return "VITTE_GENERIC_E_BOUND";
-        case SemaDiagnosticCode.GenericArgumentCount => return "VITTE_GENERIC_E_ARGUMENT_COUNT";
-        case SemaDiagnosticCode.GenericArgumentKind => return "VITTE_GENERIC_E_ARGUMENT_KIND";
-        case SemaDiagnosticCode.GenericInferenceConflict => return "VITTE_GENERIC_E_INFERENCE_CONFLICT";
-        case SemaDiagnosticCode.TraitNotImplemented => return "VITTE_TRAIT_E_NOT_IMPLEMENTED";
-        case SemaDiagnosticCode.AmbiguousImpl => return "VITTE_TRAIT_E_AMBIGUOUS_IMPL";
-        case SemaDiagnosticCode.ConflictingImpl => return "VITTE_TRAIT_E_CONFLICTING_IMPL";
-        case SemaDiagnosticCode.MissingTraitMember => return "VITTE_TRAIT_E_MISSING_MEMBER";
-        case SemaDiagnosticCode.InvalidTraitMember => return "VITTE_TRAIT_E_INVALID_MEMBER";
-        case SemaDiagnosticCode.InvalidImplTarget => return "VITTE_TRAIT_E_INVALID_IMPL_TARGET";
-        case SemaDiagnosticCode.InvalidWherePredicate => return "VITTE_TRAIT_E_INVALID_WHERE_PREDICATE";
-        case SemaDiagnosticCode.AmbiguousMethod => return "VITTE_TRAIT_E_AMBIGUOUS_METHOD";
-        case SemaDiagnosticCode.InvalidRequiresClause => return "VITTE_CONTRACT_E_REQUIRES";
-        case SemaDiagnosticCode.InvalidEnsuresClause => return "VITTE_CONTRACT_E_ENSURES";
-        case SemaDiagnosticCode.OldValueUnavailable => return "VITTE_CONTRACT_E_OLD_VALUE";
-        case SemaDiagnosticCode.ResultUnavailable => return "VITTE_CONTRACT_E_RESULT";
-        case SemaDiagnosticCode.ConstantNotConstant => return "VITTE_CONST_E_NOT_CONSTANT";
-        case SemaDiagnosticCode.ConstantOverflow => return "VITTE_CONST_E_OVERFLOW";
-        case SemaDiagnosticCode.ConstantDivideByZero => return "VITTE_CONST_E_DIVIDE_BY_ZERO";
-        case SemaDiagnosticCode.ConstantRemainderByZero => return "VITTE_CONST_E_REMAINDER_BY_ZERO";
-        case SemaDiagnosticCode.InvalidUnaryOperand => return "VITTE_TYPE_E_INVALID_OPERAND";
-        case SemaDiagnosticCode.InvalidBinaryOperands => return "VITTE_TYPE_E_INVALID_OPERAND";
-        case SemaDiagnosticCode.NotAssignable => return "VITTE_TYPE_E_NOT_ASSIGNABLE";
-        case SemaDiagnosticCode.NotIndexable => return "VITTE_TYPE_E_NOT_INDEXABLE";
-        case SemaDiagnosticCode.InvalidIndexType => return "VITTE_TYPE_E_INVALID_INDEX";
-        case SemaDiagnosticCode.UnknownMember => return "VITTE_TYPE_E_NO_MEMBER";
-        case SemaDiagnosticCode.ConditionNotBool => return "VITTE_TYPE_E_CONDITION_NOT_BOOL";
-        case SemaDiagnosticCode.ReturnTypeMismatch => return "VITTE_CALL_E_RETURN_TYPE";
-        case SemaDiagnosticCode.InvalidProcedureParameter => return "VITTE_CALL_E_PARAMETER";
-        case SemaDiagnosticCode.ReturnOutsideProc => return "VITTE_CALL_E_RETURN_OUTSIDE_PROC";
-        case SemaDiagnosticCode.BreakOutsideLoop => return "VITTE_CONTROL_E_INVALID_BREAK";
-        case SemaDiagnosticCode.ContinueOutsideLoop => return "VITTE_CONTROL_E_INVALID_CONTINUE";
-        case SemaDiagnosticCode.UnreachableCode => return "VITTE_WARNING_UNREACHABLE_CODE";
-        case SemaDiagnosticCode.MissingReturn => return "VITTE_CONTROL_E_MISSING_RETURN";
-        case SemaDiagnosticCode.MatchNonExhaustive => return "VITTE_PATTERN_E_NON_EXHAUSTIVE";
-        case SemaDiagnosticCode.MatchUnreachable => return "VITTE_PATTERN_E_UNREACHABLE";
-        case SemaDiagnosticCode.MatchType => return "VITTE_PATTERN_E_TYPE";
-        case SemaDiagnosticCode.InvalidDeferredControlFlow => return "VITTE_CONTROL_E_INVALID_DEFER";
-        case SemaDiagnosticCode.OverlappingPattern => return "VITTE_WARNING_OVERLAPPING_PATTERN";
-        case SemaDiagnosticCode.RecursionLimit => return "VITTE_INFRA_E_LIMIT";
-        case SemaDiagnosticCode.TypeMismatch => return "VITTE_TYPE_E_MISMATCH";
-        case SemaDiagnosticCode.InvalidType => return "VITTE_TYPE_E_MISMATCH";
-        case SemaDiagnosticCode.InvalidPatternBindings => return "VITTE_PATTERN_E_BINDING";
-        case SemaDiagnosticCode.ReferenceEscape => return "VITTE_MEMORY_E_REFERENCE_ESCAPE";
-        case SemaDiagnosticCode.BorrowConflict => return "VITTE_MEMORY_E_BORROW_CONFLICT";
-        case SemaDiagnosticCode.BorrowedMutation => return "VITTE_MEMORY_E_BORROWED_MUTATION";
-        case SemaDiagnosticCode.MoveBorrowed => return "VITTE_MEMORY_E_MOVE_BORROWED";
-        case SemaDiagnosticCode.UseAfterMove => return "VITTE_MEMORY_E_USE_AFTER_MOVE";
-        case SemaDiagnosticCode.CannotInfer => return "VITTE_TYPE_E_CANNOT_INFER";
-        case SemaDiagnosticCode.UnsafeRequired => return "VITTE_UNSAFE_E_REQUIRED";
-        case SemaDiagnosticCode.InvalidAsm => return "VITTE_UNSAFE_E_INVALID_ASM";
-        case SemaDiagnosticCode.FfiAbi => return "VITTE_FFI_E_ABI";
-        case SemaDiagnosticCode.FfiType => return "VITTE_FFI_E_TYPE";
+        case SemaDiagnosticCode::UnresolvedName => return "VITTE_RESOLVE_E_UNKNOWN_SYMBOL";
+        case SemaDiagnosticCode::AmbiguousName => return "VITTE_RESOLVE_E_AMBIGUOUS_SYMBOL";
+        case SemaDiagnosticCode::DuplicateImport => return "VITTE_IMPORT_E_DUPLICATE";
+        case SemaDiagnosticCode::PrivateSymbol => return "VITTE_RESOLVE_E_PRIVATE";
+        case SemaDiagnosticCode::DuplicateDeclaration => return "VITTE_RESOLVE_E_REDECLARATION";
+        case SemaDiagnosticCode::InvalidScope => return "VITTE_RESOLVE_E_INVALID_SCOPE";
+        case SemaDiagnosticCode::DuplicateBinding => return "VITTE_RESOLVE_E_DUPLICATE_BINDING";
+        case SemaDiagnosticCode::InvalidExport => return "VITTE_RESOLVE_E_INVALID_EXPORT";
+        case SemaDiagnosticCode::ShadowedDeclaration => return "VITTE_WARNING_SHADOWING";
+        case SemaDiagnosticCode::NotCallable => return "VITTE_TYPE_E_NOT_CALLABLE";
+        case SemaDiagnosticCode::InvalidArgumentCount => return "VITTE_CALL_E_ARITY";
+        case SemaDiagnosticCode::InvalidArgumentType => return "VITTE_CALL_E_ARGUMENT_TYPE";
+        case SemaDiagnosticCode::UnknownType => return "VITTE_TYPE_E_UNKNOWN_TYPE";
+        case SemaDiagnosticCode::NotAType => return "VITTE_TYPE_E_NOT_A_TYPE";
+        case SemaDiagnosticCode::InvalidCast => return "VITTE_TYPE_E_INVALID_CAST";
+        case SemaDiagnosticCode::NotAValue => return "VITTE_TYPE_E_NOT_A_VALUE";
+        case SemaDiagnosticCode::IncompleteType => return "VITTE_TYPE_E_INCOMPLETE";
+        case SemaDiagnosticCode::RecursiveType => return "VITTE_TYPE_E_RECURSIVE";
+        case SemaDiagnosticCode::GenericBoundUnsatisfied => return "VITTE_GENERIC_E_BOUND";
+        case SemaDiagnosticCode::GenericArgumentCount => return "VITTE_GENERIC_E_ARGUMENT_COUNT";
+        case SemaDiagnosticCode::GenericArgumentKind => return "VITTE_GENERIC_E_ARGUMENT_KIND";
+        case SemaDiagnosticCode::GenericInferenceConflict => return "VITTE_GENERIC_E_INFERENCE_CONFLICT";
+        case SemaDiagnosticCode::TraitNotImplemented => return "VITTE_TRAIT_E_NOT_IMPLEMENTED";
+        case SemaDiagnosticCode::AmbiguousImpl => return "VITTE_TRAIT_E_AMBIGUOUS_IMPL";
+        case SemaDiagnosticCode::ConflictingImpl => return "VITTE_TRAIT_E_CONFLICTING_IMPL";
+        case SemaDiagnosticCode::MissingTraitMember => return "VITTE_TRAIT_E_MISSING_MEMBER";
+        case SemaDiagnosticCode::InvalidTraitMember => return "VITTE_TRAIT_E_INVALID_MEMBER";
+        case SemaDiagnosticCode::InvalidImplTarget => return "VITTE_TRAIT_E_INVALID_IMPL_TARGET";
+        case SemaDiagnosticCode::InvalidWherePredicate => return "VITTE_TRAIT_E_INVALID_WHERE_PREDICATE";
+        case SemaDiagnosticCode::AmbiguousMethod => return "VITTE_TRAIT_E_AMBIGUOUS_METHOD";
+        case SemaDiagnosticCode::InvalidRequiresClause => return "VITTE_CONTRACT_E_REQUIRES";
+        case SemaDiagnosticCode::InvalidEnsuresClause => return "VITTE_CONTRACT_E_ENSURES";
+        case SemaDiagnosticCode::OldValueUnavailable => return "VITTE_CONTRACT_E_OLD_VALUE";
+        case SemaDiagnosticCode::ResultUnavailable => return "VITTE_CONTRACT_E_RESULT";
+        case SemaDiagnosticCode::ConstantNotConstant => return "VITTE_CONST_E_NOT_CONSTANT";
+        case SemaDiagnosticCode::ConstantOverflow => return "VITTE_CONST_E_OVERFLOW";
+        case SemaDiagnosticCode::ConstantDivideByZero => return "VITTE_CONST_E_DIVIDE_BY_ZERO";
+        case SemaDiagnosticCode::ConstantRemainderByZero => return "VITTE_CONST_E_REMAINDER_BY_ZERO";
+        case SemaDiagnosticCode::InvalidUnaryOperand => return "VITTE_TYPE_E_INVALID_OPERAND";
+        case SemaDiagnosticCode::InvalidBinaryOperands => return "VITTE_TYPE_E_INVALID_OPERAND";
+        case SemaDiagnosticCode::NotAssignable => return "VITTE_TYPE_E_NOT_ASSIGNABLE";
+        case SemaDiagnosticCode::NotIndexable => return "VITTE_TYPE_E_NOT_INDEXABLE";
+        case SemaDiagnosticCode::InvalidIndexType => return "VITTE_TYPE_E_INVALID_INDEX";
+        case SemaDiagnosticCode::UnknownMember => return "VITTE_TYPE_E_NO_MEMBER";
+        case SemaDiagnosticCode::ConditionNotBool => return "VITTE_TYPE_E_CONDITION_NOT_BOOL";
+        case SemaDiagnosticCode::ReturnTypeMismatch => return "VITTE_CALL_E_RETURN_TYPE";
+        case SemaDiagnosticCode::InvalidProcedureParameter => return "VITTE_CALL_E_PARAMETER";
+        case SemaDiagnosticCode::ReturnOutsideProc => return "VITTE_CALL_E_RETURN_OUTSIDE_PROC";
+        case SemaDiagnosticCode::BreakOutsideLoop => return "VITTE_CONTROL_E_INVALID_BREAK";
+        case SemaDiagnosticCode::ContinueOutsideLoop => return "VITTE_CONTROL_E_INVALID_CONTINUE";
+        case SemaDiagnosticCode::UnreachableCode => return "VITTE_WARNING_UNREACHABLE_CODE";
+        case SemaDiagnosticCode::MissingReturn => return "VITTE_CONTROL_E_MISSING_RETURN";
+        case SemaDiagnosticCode::MatchNonExhaustive => return "VITTE_PATTERN_E_NON_EXHAUSTIVE";
+        case SemaDiagnosticCode::MatchUnreachable => return "VITTE_PATTERN_E_UNREACHABLE";
+        case SemaDiagnosticCode::MatchType => return "VITTE_PATTERN_E_TYPE";
+        case SemaDiagnosticCode::InvalidDeferredControlFlow => return "VITTE_CONTROL_E_INVALID_DEFER";
+        case SemaDiagnosticCode::OverlappingPattern => return "VITTE_WARNING_OVERLAPPING_PATTERN";
+        case SemaDiagnosticCode::RecursionLimit => return "VITTE_INFRA_E_LIMIT";
+        case SemaDiagnosticCode::TypeMismatch => return "VITTE_TYPE_E_MISMATCH";
+        case SemaDiagnosticCode::InvalidType => return "VITTE_TYPE_E_MISMATCH";
+        case SemaDiagnosticCode::InvalidPatternBindings => return "VITTE_PATTERN_E_BINDING";
+        case SemaDiagnosticCode::ReferenceEscape => return "VITTE_MEMORY_E_REFERENCE_ESCAPE";
+        case SemaDiagnosticCode::BorrowConflict => return "VITTE_MEMORY_E_BORROW_CONFLICT";
+        case SemaDiagnosticCode::BorrowedMutation => return "VITTE_MEMORY_E_BORROWED_MUTATION";
+        case SemaDiagnosticCode::MoveBorrowed => return "VITTE_MEMORY_E_MOVE_BORROWED";
+        case SemaDiagnosticCode::UseAfterMove => return "VITTE_MEMORY_E_USE_AFTER_MOVE";
+        case SemaDiagnosticCode::CannotInfer => return "VITTE_TYPE_E_CANNOT_INFER";
+        case SemaDiagnosticCode::UnsafeRequired => return "VITTE_UNSAFE_E_REQUIRED";
+        case SemaDiagnosticCode::InvalidAsm => return "VITTE_UNSAFE_E_INVALID_ASM";
+        case SemaDiagnosticCode::FfiAbi => return "VITTE_FFI_E_ABI";
+        case SemaDiagnosticCode::FfiType => return "VITTE_FFI_E_TYPE";
         else => return "VITTE_INFRA_E_FALLBACK";
     }
 }
@@ -601,30 +602,30 @@ proc native_pipeline_sema_failure(error: SemaError, initialization: bool) -> Nat
 
 proc native_pipeline_ir_error_description(error: IRError) -> string {
     match error {
-        case IRError.InvalidArgument => return "an IR operation received invalid arguments";
-        case IRError.InvalidContext => return "the IR context is invalid or has been destroyed";
-        case IRError.InvalidState => return "the IR context is in a state that does not allow this operation";
-        case IRError.InvalidString => return "an IR string reference is invalid";
-        case IRError.InvalidType => return "an IR type is invalid or unsupported by this operation";
-        case IRError.InvalidValue => return "an IR value is missing or invalid";
-        case IRError.InvalidInstruction => return "an instruction violates its opcode or operand contract";
-        case IRError.InvalidBlock => return "a control-flow block is invalid";
-        case IRError.InvalidFunction => return "a function signature, parameter, or body is invalid";
-        case IRError.TypeMismatch => return "IR operand, result, or function types do not agree";
-        case IRError.Duplicate => return "an IR entity or control-flow edge is duplicated";
-        case IRError.TerminatedBlock => return "an instruction was added after the block terminator";
-        case IRError.MissingTerminator => return "a completed basic block has no valid terminator";
-        case IRError.InvalidCfg => return "control-flow targets and predecessor/successor edges do not agree";
-        case IRError.InvalidPhi => return "a phi node does not match its block predecessors";
-        case IRError.Limit => return "the configured IR resource limit was reached";
-        case IRError.Overflow => return "an IR size or identifier calculation overflowed";
-        case IRError.OutOfMemory => return "memory could not be allocated for IR construction";
-        case IRError.Validation => return "the IR validator rejected the generated representation";
-        case IRError.Corruption => return "an IR storage or ownership invariant is inconsistent";
-        case IRError.Unsupported => return "this source construct has no implementation in native IR lowering";
-        case IRError.Internal => return "an internal IR operation failed";
-        case IRError.None => return "no IR error was recorded";
-        case IRError.Count => return "the IR error value is outside the supported range";
+        case IRError::InvalidArgument => return "an IR operation received invalid arguments";
+        case IRError::InvalidContext => return "the IR context is invalid or has been destroyed";
+        case IRError::InvalidState => return "the IR context is in a state that does not allow this operation";
+        case IRError::InvalidString => return "an IR string reference is invalid";
+        case IRError::InvalidType => return "an IR type is invalid or unsupported by this operation";
+        case IRError::InvalidValue => return "an IR value is missing or invalid";
+        case IRError::InvalidInstruction => return "an instruction violates its opcode or operand contract";
+        case IRError::InvalidBlock => return "a control-flow block is invalid";
+        case IRError::InvalidFunction => return "a function signature, parameter, or body is invalid";
+        case IRError::TypeMismatch => return "IR operand, result, or function types do not agree";
+        case IRError::Duplicate => return "an IR entity or control-flow edge is duplicated";
+        case IRError::TerminatedBlock => return "an instruction was added after the block terminator";
+        case IRError::MissingTerminator => return "a completed basic block has no valid terminator";
+        case IRError::InvalidCfg => return "control-flow targets and predecessor/successor edges do not agree";
+        case IRError::InvalidPhi => return "a phi node does not match its block predecessors";
+        case IRError::Limit => return "the configured IR resource limit was reached";
+        case IRError::Overflow => return "an IR size or identifier calculation overflowed";
+        case IRError::OutOfMemory => return "memory could not be allocated for IR construction";
+        case IRError::Validation => return "the IR validator rejected the generated representation";
+        case IRError::Corruption => return "an IR storage or ownership invariant is inconsistent";
+        case IRError::Unsupported => return "this source construct has no implementation in native IR lowering";
+        case IRError::Internal => return "an internal IR operation failed";
+        case IRError::None => return "no IR error was recorded";
+        case IRError::Count => return "the IR error value is outside the supported range";
     }
     return "an unknown IR failure occurred";
 }
@@ -822,106 +823,106 @@ proc native_pipeline_export_cli_diagnostic(
 
 proc native_pipeline_parser_message(error: ParserError) -> string {
     match error {
-        case ParserError.ExpectedToken => return "expected token";
-        case ParserError.ExpectedIdentifier => return "expected identifier";
-        case ParserError.ExpectedExpression => return "expected expression";
-        case ParserError.ExpectedType => return "expected type";
-        case ParserError.ExpectedDeclaration => return "expected declaration";
-        case ParserError.ExpectedStatement => return "expected statement";
-        case ParserError.UnexpectedToken => return "unexpected token";
-        case ParserError.Unsupported => return "unsupported syntax in declaration position";
-        case ParserError.InvalidModulePath => return "malformed module path";
-        case ParserError.DuplicateModuleHeader => return "duplicate module header";
-        case ParserError.MisplacedModuleHeader => return "module header must precede declarations";
-        case ParserError.InvalidUseDeclaration => return "malformed use declaration";
-        case ParserError.InvalidUseAlias => return "invalid import alias";
-        case ParserError.InvalidImportGroup => return "malformed import group";
-        case ParserError.InvalidGlobImport => return "invalid glob import";
-        case ParserError.InvalidExportClause => return "malformed export clause";
-        case ParserError.EmptyExportGroup => return "empty export group";
-        case ParserError.InvalidExportAlias => return "invalid export alias";
-        case ParserError.TrailingTokens => return "unexpected trailing tokens";
-        case ParserError.MissingModuleHeader => return "missing module header";
-        case ParserError.InvalidValueDeclaration => return "malformed const or static declaration";
-        case ParserError.MissingValueInitializer => return "missing const or static initializer";
-        case ParserError.InvalidTypeDeclaration => return "malformed type declaration";
-        case ParserError.InvalidOpaqueDeclaration => return "malformed opaque declaration";
-        case ParserError.InvalidFormDeclaration => return "malformed form declaration";
-        case ParserError.DuplicateFormField => return "duplicate form field";
-        case ParserError.InvalidFormFieldSeparator => return "missing form field separator";
-        case ParserError.InvalidPickDeclaration => return "malformed pick declaration";
-        case ParserError.DuplicatePickVariant => return "duplicate pick variant";
-        case ParserError.InvalidPickVariantPayload => return "invalid pick variant payload";
-        case ParserError.InvalidTraitDeclaration => return "malformed trait declaration";
-        case ParserError.InvalidImplDeclaration => return "malformed implementation declaration";
-        case ParserError.MissingImplTargetType => return "missing implementation target type";
-        case ParserError.InvalidImplForClause => return "invalid implementation `for` clause";
-        case ParserError.InvalidProcedureDeclaration => return "malformed procedure declaration";
-        case ParserError.InvalidProcedureParameters => return "malformed procedure parameter list";
-        case ParserError.InvalidProcedureReturnType => return "invalid procedure return type";
-        case ParserError.InvalidProcedureModifier => return "invalid procedure modifier";
-        case ParserError.InvalidProcedureBodyForm => return "invalid procedure body form";
-        case ParserError.InvalidExternalProcedure => return "malformed external procedure declaration";
-        case ParserError.InvalidIntrinsicDeclaration => return "malformed intrinsic declaration";
-        case ParserError.InvalidAbiStringLiteral => return "invalid ABI string literal";
-        case ParserError.InvalidGenericParameterList => return "malformed generic parameter list";
-        case ParserError.InvalidConstGenericParameter => return "malformed const generic parameter";
-        case ParserError.InvalidGenericBound => return "malformed generic bound";
-        case ParserError.InvalidWhereClause => return "malformed where clause";
-        case ParserError.InvalidRequiresClause => return "malformed requires clause";
-        case ParserError.InvalidEnsuresClause => return "malformed ensures clause";
-        case ParserError.InvalidMacroDeclaration => return "malformed macro declaration";
-        case ParserError.InvalidMacroParameters => return "malformed macro parameter list";
-        case ParserError.InvalidTestDeclaration => return "malformed test declaration";
-        case ParserError.InvalidDeclarationModifierOrder => return "invalid declaration modifier order or combination";
-        case ParserError.InvalidAttribute => return "malformed attribute";
-        case ParserError.InvalidAttributeName => return "missing or invalid attribute name";
-        case ParserError.InvalidAttributeArguments => return "malformed attribute arguments";
-        case ParserError.MissingAttributeValue => return "missing attribute value";
-        case ParserError.InvalidAttributeLiteral => return "invalid attribute literal";
-        case ParserError.UnexpectedDeclaration => return "unexpected declaration";
-        case ParserError.UnexpectedStatement => return "unexpected statement";
-        case ParserError.UnexpectedExpression => return "unexpected expression";
-        case ParserError.InvalidProcedureType => return "malformed procedure type";
-        case ParserError.InvalidReferenceType => return "malformed reference type";
-        case ParserError.InvalidPointerType => return "malformed pointer type";
-        case ParserError.InvalidArrayType => return "malformed array type";
-        case ParserError.InvalidSliceType => return "malformed slice type";
-        case ParserError.InvalidOptionalType => return "malformed optional type";
-        case ParserError.InvalidTypePath => return "malformed type path";
-        case ParserError.InvalidGenericArguments => return "malformed generic arguments";
-        case ParserError.InvalidLetStatement => return "malformed let binding statement";
-        case ParserError.InvalidSetStatement => return "malformed set statement";
-        case ParserError.InvalidAssignmentOperator => return "invalid assignment operator";
-        case ParserError.InvalidReturnStatement => return "malformed return statement";
-        case ParserError.InvalidJumpStatement => return "malformed jump statement";
-        case ParserError.InvalidDeferStatement => return "malformed defer statement";
-        case ParserError.InvalidAssertStatement => return "malformed assert statement";
-        case ParserError.InvalidUnsafeStatement => return "malformed unsafe statement";
-        case ParserError.InvalidAsmStatement => return "malformed assembly statement";
-        case ParserError.InvalidControlFlowStatement => return "malformed control-flow statement";
-        case ParserError.InvalidMatchStatement => return "malformed match statement";
-        case ParserError.InvalidMatchArm => return "malformed match arm";
-        case ParserError.InvalidPattern => return "malformed pattern";
-        case ParserError.InvalidRangePattern => return "malformed range pattern";
-        case ParserError.InvalidAssignmentExpression => return "malformed assignment expression";
-        case ParserError.InvalidCoalescingExpression => return "malformed coalescing expression";
-        case ParserError.InvalidLogicalExpression => return "malformed logical expression";
-        case ParserError.InvalidBitwiseExpression => return "malformed bitwise expression";
-        case ParserError.InvalidComparisonExpression => return "malformed comparison expression";
-        case ParserError.InvalidShiftExpression => return "malformed shift expression";
-        case ParserError.InvalidArithmeticExpression => return "malformed arithmetic expression";
-        case ParserError.InvalidRangeExpression => return "malformed range expression";
-        case ParserError.InvalidUnaryExpression => return "malformed unary expression";
-        case ParserError.InvalidCastExpression => return "malformed cast expression";
-        case ParserError.InvalidPostfixExpression => return "malformed postfix expression";
-        case ParserError.InvalidIfExpression => return "malformed if expression";
-        case ParserError.InvalidBlockExpression => return "malformed block expression";
-        case ParserError.InvalidArrayExpression => return "malformed array expression";
-        case ParserError.InvalidSizeofExpression => return "malformed sizeof expression";
-        case ParserError.InvalidAlignofExpression => return "malformed alignof expression";
-        case ParserError.InvalidNullConstruction => return "malformed null construction";
-        case ParserError.InvalidExpressionList => return "malformed expression list";
+        case ParserError::ExpectedToken => return "expected token";
+        case ParserError::ExpectedIdentifier => return "expected identifier";
+        case ParserError::ExpectedExpression => return "expected expression";
+        case ParserError::ExpectedType => return "expected type";
+        case ParserError::ExpectedDeclaration => return "expected declaration";
+        case ParserError::ExpectedStatement => return "expected statement";
+        case ParserError::UnexpectedToken => return "unexpected token";
+        case ParserError::Unsupported => return "unsupported syntax in declaration position";
+        case ParserError::InvalidModulePath => return "malformed module path";
+        case ParserError::DuplicateModuleHeader => return "duplicate module header";
+        case ParserError::MisplacedModuleHeader => return "module header must precede declarations";
+        case ParserError::InvalidUseDeclaration => return "malformed use declaration";
+        case ParserError::InvalidUseAlias => return "invalid import alias";
+        case ParserError::InvalidImportGroup => return "malformed import group";
+        case ParserError::InvalidGlobImport => return "invalid glob import";
+        case ParserError::InvalidExportClause => return "malformed export clause";
+        case ParserError::EmptyExportGroup => return "empty export group";
+        case ParserError::InvalidExportAlias => return "invalid export alias";
+        case ParserError::TrailingTokens => return "unexpected trailing tokens";
+        case ParserError::MissingModuleHeader => return "missing module header";
+        case ParserError::InvalidValueDeclaration => return "malformed const or static declaration";
+        case ParserError::MissingValueInitializer => return "missing const or static initializer";
+        case ParserError::InvalidTypeDeclaration => return "malformed type declaration";
+        case ParserError::InvalidOpaqueDeclaration => return "malformed opaque declaration";
+        case ParserError::InvalidFormDeclaration => return "malformed form declaration";
+        case ParserError::DuplicateFormField => return "duplicate form field";
+        case ParserError::InvalidFormFieldSeparator => return "missing form field separator";
+        case ParserError::InvalidPickDeclaration => return "malformed pick declaration";
+        case ParserError::DuplicatePickVariant => return "duplicate pick variant";
+        case ParserError::InvalidPickVariantPayload => return "invalid pick variant payload";
+        case ParserError::InvalidTraitDeclaration => return "malformed trait declaration";
+        case ParserError::InvalidImplDeclaration => return "malformed implementation declaration";
+        case ParserError::MissingImplTargetType => return "missing implementation target type";
+        case ParserError::InvalidImplForClause => return "invalid implementation `for` clause";
+        case ParserError::InvalidProcedureDeclaration => return "malformed procedure declaration";
+        case ParserError::InvalidProcedureParameters => return "malformed procedure parameter list";
+        case ParserError::InvalidProcedureReturnType => return "invalid procedure return type";
+        case ParserError::InvalidProcedureModifier => return "invalid procedure modifier";
+        case ParserError::InvalidProcedureBodyForm => return "invalid procedure body form";
+        case ParserError::InvalidExternalProcedure => return "malformed external procedure declaration";
+        case ParserError::InvalidIntrinsicDeclaration => return "malformed intrinsic declaration";
+        case ParserError::InvalidAbiStringLiteral => return "invalid ABI string literal";
+        case ParserError::InvalidGenericParameterList => return "malformed generic parameter list";
+        case ParserError::InvalidConstGenericParameter => return "malformed const generic parameter";
+        case ParserError::InvalidGenericBound => return "malformed generic bound";
+        case ParserError::InvalidWhereClause => return "malformed where clause";
+        case ParserError::InvalidRequiresClause => return "malformed requires clause";
+        case ParserError::InvalidEnsuresClause => return "malformed ensures clause";
+        case ParserError::InvalidMacroDeclaration => return "malformed macro declaration";
+        case ParserError::InvalidMacroParameters => return "malformed macro parameter list";
+        case ParserError::InvalidTestDeclaration => return "malformed test declaration";
+        case ParserError::InvalidDeclarationModifierOrder => return "invalid declaration modifier order or combination";
+        case ParserError::InvalidAttribute => return "malformed attribute";
+        case ParserError::InvalidAttributeName => return "missing or invalid attribute name";
+        case ParserError::InvalidAttributeArguments => return "malformed attribute arguments";
+        case ParserError::MissingAttributeValue => return "missing attribute value";
+        case ParserError::InvalidAttributeLiteral => return "invalid attribute literal";
+        case ParserError::UnexpectedDeclaration => return "unexpected declaration";
+        case ParserError::UnexpectedStatement => return "unexpected statement";
+        case ParserError::UnexpectedExpression => return "unexpected expression";
+        case ParserError::InvalidProcedureType => return "malformed procedure type";
+        case ParserError::InvalidReferenceType => return "malformed reference type";
+        case ParserError::InvalidPointerType => return "malformed pointer type";
+        case ParserError::InvalidArrayType => return "malformed array type";
+        case ParserError::InvalidSliceType => return "malformed slice type";
+        case ParserError::InvalidOptionalType => return "malformed optional type";
+        case ParserError::InvalidTypePath => return "malformed type path";
+        case ParserError::InvalidGenericArguments => return "malformed generic arguments";
+        case ParserError::InvalidLetStatement => return "malformed let binding statement";
+        case ParserError::InvalidSetStatement => return "malformed set statement";
+        case ParserError::InvalidAssignmentOperator => return "invalid assignment operator";
+        case ParserError::InvalidReturnStatement => return "malformed return statement";
+        case ParserError::InvalidJumpStatement => return "malformed jump statement";
+        case ParserError::InvalidDeferStatement => return "malformed defer statement";
+        case ParserError::InvalidAssertStatement => return "malformed assert statement";
+        case ParserError::InvalidUnsafeStatement => return "malformed unsafe statement";
+        case ParserError::InvalidAsmStatement => return "malformed assembly statement";
+        case ParserError::InvalidControlFlowStatement => return "malformed control-flow statement";
+        case ParserError::InvalidMatchStatement => return "malformed match statement";
+        case ParserError::InvalidMatchArm => return "malformed match arm";
+        case ParserError::InvalidPattern => return "malformed pattern";
+        case ParserError::InvalidRangePattern => return "malformed range pattern";
+        case ParserError::InvalidAssignmentExpression => return "malformed assignment expression";
+        case ParserError::InvalidCoalescingExpression => return "malformed coalescing expression";
+        case ParserError::InvalidLogicalExpression => return "malformed logical expression";
+        case ParserError::InvalidBitwiseExpression => return "malformed bitwise expression";
+        case ParserError::InvalidComparisonExpression => return "malformed comparison expression";
+        case ParserError::InvalidShiftExpression => return "malformed shift expression";
+        case ParserError::InvalidArithmeticExpression => return "malformed arithmetic expression";
+        case ParserError::InvalidRangeExpression => return "malformed range expression";
+        case ParserError::InvalidUnaryExpression => return "malformed unary expression";
+        case ParserError::InvalidCastExpression => return "malformed cast expression";
+        case ParserError::InvalidPostfixExpression => return "malformed postfix expression";
+        case ParserError::InvalidIfExpression => return "malformed if expression";
+        case ParserError::InvalidBlockExpression => return "malformed block expression";
+        case ParserError::InvalidArrayExpression => return "malformed array expression";
+        case ParserError::InvalidSizeofExpression => return "malformed sizeof expression";
+        case ParserError::InvalidAlignofExpression => return "malformed alignof expression";
+        case ParserError::InvalidNullConstruction => return "malformed null construction";
+        case ParserError::InvalidExpressionList => return "malformed expression list";
         else => return "parser error";
     }
 }
@@ -978,10 +979,10 @@ proc native_pipeline_parser_delimiter_related(
         expected == TokenKind.Greater;
     if expected_is_closer {
         match expected {
-            case TokenKind.RightParen => set opener_kind = TokenKind.LeftParen,
-            case TokenKind.RightBracket => set opener_kind = TokenKind.LeftBracket,
-            case TokenKind.RightBrace => set opener_kind = TokenKind.LeftBrace,
-            case TokenKind.Greater => set opener_kind = TokenKind.Less,
+            case TokenKind::RightParen => set opener_kind = TokenKind.LeftParen,
+            case TokenKind::RightBracket => set opener_kind = TokenKind.LeftBracket,
+            case TokenKind::RightBrace => set opener_kind = TokenKind.LeftBrace,
+            case TokenKind::Greater => set opener_kind = TokenKind.Less,
             else => return false
         }
         let mut nesting: usize = 0;
@@ -1015,8 +1016,8 @@ proc native_pipeline_parser_delimiter_related(
             set scan_index -= 1;
             let token = &(*parser).tokens[scan_index];
             match (*token).kind {
-                case TokenKind.RightParen => set paren_nesting += 1,
-                case TokenKind.LeftParen => {
+                case TokenKind::RightParen => set paren_nesting += 1,
+                case TokenKind::LeftParen => {
                     if paren_nesting != 0 {
                         set paren_nesting -= 1;
                     } else {
@@ -1025,8 +1026,8 @@ proc native_pipeline_parser_delimiter_related(
                         break;
                     }
                 },
-                case TokenKind.RightBracket => set bracket_nesting += 1,
-                case TokenKind.LeftBracket => {
+                case TokenKind::RightBracket => set bracket_nesting += 1,
+                case TokenKind::LeftBracket => {
                     if bracket_nesting != 0 {
                         set bracket_nesting -= 1;
                     } else {
@@ -1035,8 +1036,8 @@ proc native_pipeline_parser_delimiter_related(
                         break;
                     }
                 },
-                case TokenKind.RightBrace => set brace_nesting += 1,
-                case TokenKind.LeftBrace => {
+                case TokenKind::RightBrace => set brace_nesting += 1,
+                case TokenKind::LeftBrace => {
                     if brace_nesting != 0 {
                         set brace_nesting -= 1;
                     } else {
@@ -1138,9 +1139,10 @@ proc native_pipeline_parser_duplicate_form_field_related(
                     if field_name != null and (*field_name).span.valid and
                        (*field_name).span.begin == (*parser_diagnostic).span.begin and
                        (*field_name).span.end == (*parser_diagnostic).span.end {
-                        let field_token = if (*field_name).token_index < (*parser).token_count {
-                            &(*parser).tokens[(*field_name).token_index]
-                        } else { null };
+                        let mut field_token: *const ParserToken = null;
+                        if (*field_name).token_index < (*parser).token_count {
+                            set field_token = &(*parser).tokens[(*field_name).token_index];
+                        }
                         if field_token == null {
                             return false;
                         }
@@ -1242,9 +1244,10 @@ proc native_pipeline_parser_duplicate_pick_variant_related(
                     if variant_name != null and (*variant_name).span.valid and
                        (*variant_name).span.begin == (*parser_diagnostic).span.begin and
                        (*variant_name).span.end == (*parser_diagnostic).span.end {
-                        let variant_token = if (*variant_name).token_index < (*parser).token_count {
-                            &(*parser).tokens[(*variant_name).token_index]
-                        } else { null };
+                        let mut variant_token: *const ParserToken = null;
+                        if (*variant_name).token_index < (*parser).token_count {
+                            set variant_token = &(*parser).tokens[(*variant_name).token_index];
+                        }
                         if variant_token == null {
                             return false;
                         }
@@ -1371,7 +1374,7 @@ proc native_pipeline_parser_advice(
         return;
     }
     match (*parser_diagnostic).error {
-        case ParserError.InvalidModulePath => {
+        case ParserError::InvalidModulePath => {
             set *message = "malformed module path";
             let token_index = native_pipeline_parser_token_index(parser, parser_diagnostic);
             if token_index != usize.MAX and token_index + 1 < (*parser).token_count and
@@ -1384,457 +1387,457 @@ proc native_pipeline_parser_advice(
             set *help = "Write each path segment as an identifier separated by `::` or `/`; remove leading, repeated or trailing separators.";
             return;
         },
-        case ParserError.InvalidProcedureType => {
+        case ParserError::InvalidProcedureType => {
             set *message = "malformed procedure type";
             set *help = "Write `proc(Type, Type)`, optionally followed by `-> ReturnType`; separate parameters with commas and close the list with `)`.";
             return;
         },
-        case ParserError.InvalidReferenceType => {
+        case ParserError::InvalidReferenceType => {
             set *message = "malformed reference type";
             set *help = "Write `&Type`, `&mut Type`, `ref Type` or `ref mut Type`, with a complete type after the reference marker.";
             return;
         },
-        case ParserError.InvalidPointerType => {
+        case ParserError::InvalidPointerType => {
             set *message = "malformed pointer type";
             set *help = "Write `*Type`, `*mut Type`, `*const Type`, `*volatile Type` or `*const volatile Type`; provide one complete pointee type.";
             return;
         },
-        case ParserError.InvalidArrayType => {
+        case ParserError::InvalidArrayType => {
             set *message = "malformed array type";
             set *help = "Write `[Type; length]` or `[length] Type`, with a valid length expression, closing `]` and element type.";
             return;
         },
-        case ParserError.InvalidSliceType => {
+        case ParserError::InvalidSliceType => {
             set *message = "malformed slice type";
             set *help = "Write a slice as `[ElementType]` and include a complete element type before the closing `]`.";
             return;
         },
-        case ParserError.InvalidOptionalType => {
+        case ParserError::InvalidOptionalType => {
             set *message = "malformed optional type";
             set *help = "Write `?Type` and put a complete type after `?`.";
             return;
         },
-        case ParserError.InvalidTypePath => {
+        case ParserError::InvalidTypePath => {
             set *message = "malformed type path";
             set *help = "Use nonempty path segments separated by `::` or `/`; use `::` instead of `:`, add a segment after every separator and remove repeated separators.";
             return;
         },
-        case ParserError.InvalidGenericArguments => {
+        case ParserError::InvalidGenericArguments => {
             set *message = "malformed generic arguments";
             set *help = "Use comma-separated types in `<Type, Type>` or `[Type, Type]`; close the list with the matching `>` or `]`.";
             return;
         },
-        case ParserError.InvalidLetStatement => {
+        case ParserError::InvalidLetStatement => {
             set *message = "malformed let binding statement";
             set *help = "Write `let [mut] pattern [: Type] [= expression];`. Add a type annotation when there is no initializer and the binding type cannot be inferred.";
             return;
         },
-        case ParserError.InvalidSetStatement => {
+        case ParserError::InvalidSetStatement => {
             set *message = "malformed set statement";
             set *help = "Write `set target assignment_operator expression;` and provide a complete target, value and terminating semicolon.";
             return;
         },
-        case ParserError.InvalidAssignmentOperator => {
+        case ParserError::InvalidAssignmentOperator => {
             set *message = "invalid assignment operator";
             set *help = "Use one of `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` or `>>=` after the assignment target.";
             return;
         },
-        case ParserError.InvalidReturnStatement => {
+        case ParserError::InvalidReturnStatement => {
             set *message = "malformed return statement";
             set *help = "Write `return;` or `return expression;`. The final return in a block may omit `;` before `}` or end of file; procedure placement and return type are checked semantically.";
             return;
         },
-        case ParserError.InvalidJumpStatement => {
+        case ParserError::InvalidJumpStatement => {
             set *message = "malformed jump statement";
             set *help = "Write `break;` or `continue;` with a semicolon. A jump must appear inside a loop within a procedure.";
             return;
         },
-        case ParserError.InvalidDeferStatement => {
+        case ParserError::InvalidDeferStatement => {
             set *message = "malformed defer statement";
             set *help = "Write `defer { ... }` or `defer expression;`; the expression form requires its terminating semicolon.";
             return;
         },
-        case ParserError.InvalidAssertStatement => {
+        case ParserError::InvalidAssertStatement => {
             set *message = "malformed assert statement";
             set *help = "Write `assert(condition);` with a complete expression between matching parentheses and a final semicolon.";
             return;
         },
-        case ParserError.InvalidUnsafeStatement => {
+        case ParserError::InvalidUnsafeStatement => {
             set *message = "malformed unsafe statement";
             set *help = "Write `unsafe { ... }` and close the block with `}`.";
             return;
         },
-        case ParserError.InvalidAsmStatement => {
+        case ParserError::InvalidAsmStatement => {
             set *message = "malformed assembly statement";
             set *help = "Write `asm(operand, ...);` or `asm(\"template\");`; close the operand list and terminate the statement with `;`.";
             return;
         },
-        case ParserError.InvalidControlFlowStatement => {
+        case ParserError::InvalidControlFlowStatement => {
             set *message = "malformed control-flow statement";
             set *help = "Use `if condition { ... } [elif condition { ... }]* [else { ... }]`, `while condition { ... }`, `loop { ... }`, or `for pattern in values { ... }`; put `else` after an if/elif chain and use it only before a block or chained conditional.";
             return;
         },
-        case ParserError.InvalidMatchStatement => {
+        case ParserError::InvalidMatchStatement => {
             set *message = "malformed match statement";
             set *help = "Write `match value { pattern => body, ... }`; provide a subject and braces, and use complete comma-separated arms when the arm list is nonempty.";
             return;
         },
-        case ParserError.InvalidMatchArm => {
+        case ParserError::InvalidMatchArm => {
             set *message = "malformed match arm";
             set *help = "Write `[case] pattern [if guard] => body`, separate adjacent arms with commas, and use a complete expression, statement or block as the body.";
             return;
         },
-        case ParserError.InvalidPattern => {
+        case ParserError::InvalidPattern => {
             set *message = "malformed pattern";
             set *help = "Use a path or binding, literal, `Path::Variant`, `Variant(pattern, ...)`, `Path { field: pattern, .. }`, `(pattern, ...)`, or `[pattern, ...]`; separate pattern items with commas.";
             return;
         },
-        case ParserError.InvalidRangePattern => {
+        case ParserError::InvalidRangePattern => {
             set *message = "malformed range pattern";
             set *help = "Write `lower..upper` or `lower..=upper`; both endpoints must be integer, float or character literals of the same kind.";
             return;
         },
-        case ParserError.InvalidAssignmentExpression => {
+        case ParserError::InvalidAssignmentExpression => {
             set *message = "malformed assignment expression";
             set *help = "Write `target = value` or use a supported compound assignment operator; provide both a complete target and right-hand expression.";
             return;
         },
-        case ParserError.InvalidCoalescingExpression => {
+        case ParserError::InvalidCoalescingExpression => {
             set *message = "malformed coalescing expression";
             set *help = "Write `value ?? fallback` and provide a complete expression on both sides of `??`.";
             return;
         },
-        case ParserError.InvalidLogicalExpression => {
+        case ParserError::InvalidLogicalExpression => {
             set *message = "malformed logical expression";
             set *help = "Write both operands around `and`, `or`, `&&` or `||`; parenthesize nested conditions when needed.";
             return;
         },
-        case ParserError.InvalidBitwiseExpression => {
+        case ParserError::InvalidBitwiseExpression => {
             set *message = "malformed bitwise expression";
             set *help = "Write both operands around `&`, `|` or `^`; use a complete expression on each side.";
             return;
         },
-        case ParserError.InvalidComparisonExpression => {
+        case ParserError::InvalidComparisonExpression => {
             set *message = "malformed comparison expression";
             set *help = "Write a complete left and right expression around `==`, `!=`, `<`, `<=`, `>` or `>=`.";
             return;
         },
-        case ParserError.InvalidShiftExpression => {
+        case ParserError::InvalidShiftExpression => {
             set *message = "malformed shift expression";
             set *help = "Write a value and shift count around `<<` or `>>`.";
             return;
         },
-        case ParserError.InvalidArithmeticExpression => {
+        case ParserError::InvalidArithmeticExpression => {
             set *message = "malformed arithmetic expression";
             set *help = "Write complete operands around `+`, `-`, `*`, `/` or `%`; add parentheses to make grouping clear.";
             return;
         },
-        case ParserError.InvalidRangeExpression => {
+        case ParserError::InvalidRangeExpression => {
             set *message = "malformed range expression";
             set *help = "Write `start..end` for an exclusive range or `start..=end` for an inclusive range, with a complete expression at each endpoint.";
             return;
         },
-        case ParserError.InvalidUnaryExpression => {
+        case ParserError::InvalidUnaryExpression => {
             set *message = "malformed unary expression";
             set *help = "Put one complete operand after the unary operator, for example `-value`, `not ready`, `&value` or `*pointer`.";
             return;
         },
-        case ParserError.InvalidCastExpression => {
+        case ParserError::InvalidCastExpression => {
             set *message = "malformed cast expression";
             set *help = "Write `value as Type` and provide a complete type after `as`.";
             return;
         },
-        case ParserError.InvalidPostfixExpression => {
+        case ParserError::InvalidPostfixExpression => {
             set *message = "malformed postfix expression";
             set *help = "Complete the suffix: use `callee(arguments)`, `value[index]`, `value.field`, `value?`, or `Type { field: value }`; generic form and variant suffixes need nonempty, well-formed type arguments.";
             return;
         },
-        case ParserError.InvalidIfExpression => {
+        case ParserError::InvalidIfExpression => {
             set *message = "malformed if expression";
             set *help = "Write `if condition { value } else { fallback }`; an if expression needs an else branch, and `elif` may continue the chain.";
             return;
         },
-        case ParserError.InvalidBlockExpression => {
+        case ParserError::InvalidBlockExpression => {
             set *message = "malformed block expression";
             set *help = "Close the block with `}`; place complete statements before the optional final expression.";
             return;
         },
-        case ParserError.InvalidArrayExpression => {
+        case ParserError::InvalidArrayExpression => {
             set *message = "malformed array expression";
             set *help = "Write `[]` or `[expression, ...]`; separate elements with commas and close the array with `]`.";
             return;
         },
-        case ParserError.InvalidSizeofExpression => {
+        case ParserError::InvalidSizeofExpression => {
             set *message = "malformed sizeof expression";
             set *help = "Write `sizeof(Type)` or `sizeof(expression)` with a complete operand and matching parentheses.";
             return;
         },
-        case ParserError.InvalidAlignofExpression => {
+        case ParserError::InvalidAlignofExpression => {
             set *message = "malformed alignof expression";
             set *help = "Write `alignof(Type)` with a complete type and matching parentheses.";
             return;
         },
-        case ParserError.InvalidNullConstruction => {
+        case ParserError::InvalidNullConstruction => {
             set *message = "malformed null construction";
             set *help = "Write `null()` or `null(expression, ...)` and close the argument list with `)`.";
             return;
         },
-        case ParserError.InvalidExpressionList => {
+        case ParserError::InvalidExpressionList => {
             set *message = "malformed expression list";
             set *help = "Provide complete expressions separated by commas. A trailing comma is allowed, but empty items are invalid; a missing-comma insertion is suggested only when the next token clearly starts another item.";
             return;
         },
-        case ParserError.DuplicateModuleHeader => {
+        case ParserError::DuplicateModuleHeader => {
             set *message = "duplicate module header";
             set *help = "Keep one top-level `space path` header in this file and remove the duplicate declaration.";
             return;
         },
-        case ParserError.MisplacedModuleHeader => {
+        case ParserError::MisplacedModuleHeader => {
             set *message = "misplaced module header";
             set *help = "Move `space path;` before the first import or other top-level declaration.";
             return;
         },
-        case ParserError.InvalidUseDeclaration => {
+        case ParserError::InvalidUseDeclaration => {
             set *message = "malformed use declaration";
             set *help = "Use `use path;`, `use path as alias;`, `use path::*;` or `use path::{item, nested::{item}};`, then end it with `;`.";
             return;
         },
-        case ParserError.InvalidUseAlias => {
+        case ParserError::InvalidUseAlias => {
             set *message = "invalid import alias";
             set *help = "Add an identifier after `as`, for example `use math::vector as vectors;`.";
             return;
         },
-        case ParserError.InvalidImportGroup => {
+        case ParserError::InvalidImportGroup => {
             set *message = "malformed import group";
             set *help = "Add comma-separated import paths, close every brace, and place nested groups after a path.";
             return;
         },
-        case ParserError.InvalidGlobImport => {
+        case ParserError::InvalidGlobImport => {
             set *message = "invalid glob import";
             set *help = "Place `::*` at the end of the import, for example `use math::*;`; remove aliases or following path segments.";
             return;
         },
-        case ParserError.InvalidExportClause => {
+        case ParserError::InvalidExportClause => {
             set *message = "malformed export clause";
             set *help = "Use `export path [as alias];`, `export {path, other};` or `export *;`.";
             return;
         },
-        case ParserError.EmptyExportGroup => {
+        case ParserError::EmptyExportGroup => {
             set *message = "empty export group";
             set *help = "Add at least one path inside the braces, for example `export {math::add};`.";
             return;
         },
-        case ParserError.InvalidExportAlias => {
+        case ParserError::InvalidExportAlias => {
             set *message = "invalid export alias";
             set *help = "Add an identifier after `as`, for example `export math::add as add;`.";
             return;
         },
-        case ParserError.TrailingTokens => {
+        case ParserError::TrailingTokens => {
             set *message = "unexpected trailing tokens";
             set *help = "Remove the extra token before the required semicolon or finish the clause in the form shown by the diagnostic.";
             return;
         },
-        case ParserError.MissingModuleHeader => {
+        case ParserError::MissingModuleHeader => {
             set *message = "missing module header";
             set *help = "Add one top-level `space path;` declaration before the first module import or export clause.";
             return;
         },
-        case ParserError.InvalidValueDeclaration => {
+        case ParserError::InvalidValueDeclaration => {
             set *message = "malformed const or static declaration";
             set *help = "Give the declaration a name, put an optional type after `:`, add `= expression`, and finish with `;`.";
             return;
         },
-        case ParserError.MissingValueInitializer => {
+        case ParserError::MissingValueInitializer => {
             set *message = "missing const or static initializer";
             set *help = "Add `= expression` after the name and optional type, for example `const LIMIT: int = 10;`.";
             return;
         },
-        case ParserError.InvalidTypeDeclaration => {
+        case ParserError::InvalidTypeDeclaration => {
             set *message = "malformed type declaration";
             set *help = "Complete the type name, each bound or aliased type, and the final `;`.";
             return;
         },
-        case ParserError.InvalidOpaqueDeclaration => {
+        case ParserError::InvalidOpaqueDeclaration => {
             set *message = "malformed opaque declaration";
             set *help = "Give the opaque type a name, use `= Type` for an optional alias, and omit bounds.";
             return;
         },
-        case ParserError.InvalidFormDeclaration => {
+        case ParserError::InvalidFormDeclaration => {
             set *message = "malformed form declaration";
             set *help = "Write a named form with `{}` and fields in the form `name: Type`.";
             return;
         },
-        case ParserError.DuplicateFormField => {
+        case ParserError::DuplicateFormField => {
             set *message = "duplicate form field";
             set *help = "Rename this field; every field in one form must have a unique name.";
             return;
         },
-        case ParserError.InvalidFormFieldSeparator => {
+        case ParserError::InvalidFormFieldSeparator => {
             set *message = "missing form field separator";
             set *help = "Separate adjacent fields with `,` or `;`, for example `form Point { x: int, y: int }`.";
             return;
         },
-        case ParserError.InvalidPickDeclaration => {
+        case ParserError::InvalidPickDeclaration => {
             set *message = "malformed pick declaration";
             set *help = "Write a named pick with braces and comma-separated variants, for example `pick Option { None, Some(int) }`.";
             return;
         },
-        case ParserError.DuplicatePickVariant => {
+        case ParserError::DuplicatePickVariant => {
             set *message = "duplicate pick variant";
             set *help = "Rename this variant; each variant name must be unique within its pick.";
             return;
         },
-        case ParserError.InvalidPickVariantPayload => {
+        case ParserError::InvalidPickVariantPayload => {
             set *message = "invalid pick variant payload";
             set *help = "Put valid comma-separated types inside the variant parentheses, for example `Some(int, string)`; `()` is also valid.";
             return;
         },
-        case ParserError.InvalidTraitDeclaration => {
+        case ParserError::InvalidTraitDeclaration => {
             set *message = "malformed trait declaration";
             set *help = "Write `trait Name { ... }`, with optional generic parameters and a `where` clause before the block.";
             return;
         },
-        case ParserError.InvalidImplDeclaration => {
+        case ParserError::InvalidImplDeclaration => {
             set *message = "malformed implementation declaration";
             set *help = "Write an inherent implementation as `impl Type { ... }` or a trait implementation as `impl Trait for Type { ... }`.";
             return;
         },
-        case ParserError.MissingImplTargetType => {
+        case ParserError::MissingImplTargetType => {
             set *message = "missing implementation target type";
             set *help = "Add the type after `for`, for example `impl Display for Point { ... }`.";
             return;
         },
-        case ParserError.InvalidImplForClause => {
+        case ParserError::InvalidImplForClause => {
             set *message = "invalid implementation `for` clause";
             set *help = "Use one trait type, `for`, one target type, then an optional `where` clause and the implementation block.";
             return;
         },
-        case ParserError.InvalidProcedureDeclaration => {
+        case ParserError::InvalidProcedureDeclaration => {
             set *message = "malformed procedure declaration";
             set *help = "Write `proc name(parameters)`, then an optional `-> Type`, optional constraints, and a body or `;`.";
             return;
         },
-        case ParserError.InvalidProcedureParameters => {
+        case ParserError::InvalidProcedureParameters => {
             set *message = "malformed procedure parameter list";
             set *help = "Enclose parameters in `(...)`; each parameter needs a pattern, `:`, a type, commas between entries, and a closing `)`.";
             return;
         },
-        case ParserError.InvalidProcedureReturnType => {
+        case ParserError::InvalidProcedureReturnType => {
             set *message = "invalid procedure return type";
             set *help = "Put a valid type after `->`, for example `proc size() -> int;`.";
             return;
         },
-        case ParserError.InvalidProcedureModifier => {
+        case ParserError::InvalidProcedureModifier => {
             set *message = "invalid procedure modifier";
             set *help = "Use `async`, `unsafe` or `comptime` at most once and only before a procedure declaration.";
             return;
         },
-        case ParserError.InvalidProcedureBodyForm => {
+        case ParserError::InvalidProcedureBodyForm => {
             set *message = "invalid procedure body form";
             set *help = "A normal procedure needs a block or `;`; an `extern` or `intrinsic` procedure must end with `;` and has no body.";
             return;
         },
-        case ParserError.InvalidExternalProcedure => {
+        case ParserError::InvalidExternalProcedure => {
             set *message = "malformed external procedure declaration";
             set *help = "Write `extern [\"ABI\"] proc name(parameters) [-> Type] [where ...] [requires ...;] [ensures ...;];`.";
             return;
         },
-        case ParserError.InvalidIntrinsicDeclaration => {
+        case ParserError::InvalidIntrinsicDeclaration => {
             set *message = "malformed intrinsic declaration";
             set *help = "Write `intrinsic name(parameters) [-> Type] [where ...] [requires ...;] [ensures ...;];` without an ABI literal or body.";
             return;
         },
-        case ParserError.InvalidAbiStringLiteral => {
+        case ParserError::InvalidAbiStringLiteral => {
             set *message = "invalid ABI string literal";
             set *help = "Use a nonempty quoted ABI name after `extern`, for example `extern \"C\" proc write();`.";
             return;
         },
-        case ParserError.InvalidGenericParameterList => {
+        case ParserError::InvalidGenericParameterList => {
             set *message = "malformed generic parameter list";
             set *help = "Write `<T, U>` with comma-separated parameters and a closing `>`; a trailing comma is allowed.";
             return;
         },
-        case ParserError.InvalidConstGenericParameter => {
+        case ParserError::InvalidConstGenericParameter => {
             set *message = "malformed const generic parameter";
             set *help = "Write a const parameter as `const NAME`, optionally followed by a type bound, for example `const N: usize`.";
             return;
         },
-        case ParserError.InvalidGenericBound => {
+        case ParserError::InvalidGenericBound => {
             set *message = "malformed generic bound";
             set *help = "Add a valid type after `:` or `+`, for example `T: Display + Debug`.";
             return;
         },
-        case ParserError.InvalidWhereClause => {
+        case ParserError::InvalidWhereClause => {
             set *message = "malformed where clause";
             set *help = "Write one or more comma-separated predicates after `where`, such as `where T: Display, N > 0`.";
             return;
         },
-        case ParserError.InvalidRequiresClause => {
+        case ParserError::InvalidRequiresClause => {
             set *message = "malformed requires clause";
             set *help = "Add a boolean expression and its semicolon, for example `requires count > 0;`.";
             return;
         },
-        case ParserError.InvalidEnsuresClause => {
+        case ParserError::InvalidEnsuresClause => {
             set *message = "malformed ensures clause";
             set *help = "Add a boolean expression and its semicolon, for example `ensures result >= 0;`.";
             return;
         },
-        case ParserError.InvalidMacroDeclaration => {
+        case ParserError::InvalidMacroDeclaration => {
             set *message = "malformed macro declaration";
             set *help = "Write `macro name` with an optional parameter list and a body, for example `macro log(value: string) { ... }`.";
             return;
         },
-        case ParserError.InvalidMacroParameters => {
+        case ParserError::InvalidMacroParameters => {
             set *message = "malformed macro parameter list";
             set *help = "Use `(...)` with comma-separated `pattern: Type` parameters and a closing `)`.";
             return;
         },
-        case ParserError.InvalidTestDeclaration => {
+        case ParserError::InvalidTestDeclaration => {
             set *message = "malformed test declaration";
             set *help = "Write `test { ... }`, `test test_name { ... }`, or `test \"description\" { ... }`.";
             return;
         },
-        case ParserError.InvalidDeclarationModifierOrder => {
+        case ParserError::InvalidDeclarationModifierOrder => {
             set *message = "invalid declaration modifier order or combination";
             set *help = "Use at most one visibility modifier (`pub` or prefix `export`) before procedure modifiers; write export clauses without declaration modifiers.";
             return;
         },
-        case ParserError.InvalidAttribute => {
+        case ParserError::InvalidAttribute => {
             set *message = "malformed attribute";
             set *help = "Write an attribute as `#[name]` or `#![name]`; include the opening `[` and closing `]` and close any argument parentheses.";
             return;
         },
-        case ParserError.InvalidAttributeName => {
+        case ParserError::InvalidAttributeName => {
             set *message = "missing or invalid attribute name";
             set *help = "Provide an identifier or keyword after `#[` or `#![` and after each `::` in a qualified attribute name.";
             return;
         },
-        case ParserError.InvalidAttributeArguments => {
+        case ParserError::InvalidAttributeArguments => {
             set *message = "malformed attribute arguments";
             set *help = "Use comma-separated names or literals in parentheses; write named arguments as `name = literal`.";
             return;
         },
-        case ParserError.MissingAttributeValue => {
+        case ParserError::MissingAttributeValue => {
             set *message = "missing attribute value";
             set *help = "Add a literal after `=`, for example `#[cfg(enabled = true)]`.";
             return;
         },
-        case ParserError.InvalidAttributeLiteral => {
+        case ParserError::InvalidAttributeLiteral => {
             set *message = "invalid attribute literal";
             set *help = "Use an integer, float, string, character, boolean, or `null` literal as the attribute value.";
             return;
         },
-        case ParserError.UnexpectedDeclaration => {
+        case ParserError::UnexpectedDeclaration => {
             set *message = "unexpected declaration";
             set *help = "Move this declaration to a declaration position, such as the top level or a trait/implementation declaration block.";
             return;
         },
-        case ParserError.UnexpectedStatement => {
+        case ParserError::UnexpectedStatement => {
             set *message = "unexpected statement";
             set *help = "Move this statement into a block that accepts statements, such as a procedure body.";
             return;
         },
-        case ParserError.UnexpectedExpression => {
+        case ParserError::UnexpectedExpression => {
             set *message = "unexpected expression";
             set *help = "Move this expression into a statement or expression context; declarations require a declaration position.";
             return;
@@ -1874,25 +1877,25 @@ proc native_pipeline_parser_advice(
     }
 
     match (*parser_diagnostic).expected {
-        case TokenKind.RightParen => {
+        case TokenKind::RightParen => {
             set *help = "Close the parenthesized expression or argument list with `)` before continuing.";
         },
-        case TokenKind.RightBracket => {
+        case TokenKind::RightBracket => {
             set *help = "Close the indexed expression or array type with `]` before continuing.";
         },
-        case TokenKind.RightBrace => {
+        case TokenKind::RightBrace => {
             set *help = "Close the block or aggregate body with `}` before continuing.";
         },
-        case TokenKind.Semicolon => {
+        case TokenKind::Semicolon => {
             set *help = "End this statement with `;` before starting the next one.";
         },
-        case TokenKind.Comma => {
+        case TokenKind::Comma => {
             set *help = "Separate adjacent parameters, arguments, fields, or items with `,`.";
         },
-        case TokenKind.Identifier => {
+        case TokenKind::Identifier => {
             set *help = "Provide a valid identifier at this position.";
         },
-        case TokenKind.LeftBrace => {
+        case TokenKind::LeftBrace => {
             set *help = "Start the required block with `{` and close it with `}`.";
         },
         else => {}
@@ -1901,76 +1904,76 @@ proc native_pipeline_parser_advice(
 
 proc native_pipeline_sema_message(code: SemaDiagnosticCode) -> string {
     match code {
-        case SemaDiagnosticCode.UnresolvedName => return "unknown symbol";
-        case SemaDiagnosticCode.AmbiguousName => return "ambiguous symbol";
-        case SemaDiagnosticCode.DuplicateImport => return "duplicate import";
-        case SemaDiagnosticCode.PrivateSymbol => return "symbol is not visible";
-        case SemaDiagnosticCode.DuplicateDeclaration => return "duplicate declaration";
-        case SemaDiagnosticCode.InvalidScope => return "invalid scope";
-        case SemaDiagnosticCode.DuplicateBinding => return "duplicate binding";
-        case SemaDiagnosticCode.InvalidExport => return "invalid export target";
-        case SemaDiagnosticCode.ShadowedDeclaration => return "declaration shadows an existing name";
-        case SemaDiagnosticCode.NotCallable => return "this value is not callable";
-        case SemaDiagnosticCode.InvalidArgumentCount => return "invalid number of arguments";
-        case SemaDiagnosticCode.InvalidArgumentType => return "invalid argument type";
-        case SemaDiagnosticCode.UnknownType => return "unknown type";
-        case SemaDiagnosticCode.NotAType => return "name is not a type";
-        case SemaDiagnosticCode.InvalidCast => return "invalid cast";
-        case SemaDiagnosticCode.NotAValue => return "type name used as a value";
-        case SemaDiagnosticCode.IncompleteType => return "incomplete type";
-        case SemaDiagnosticCode.RecursiveType => return "invalid recursive type";
-        case SemaDiagnosticCode.GenericBoundUnsatisfied => return "generic bound not satisfied";
-        case SemaDiagnosticCode.GenericArgumentCount => return "incorrect generic argument count";
-        case SemaDiagnosticCode.GenericArgumentKind => return "incorrect generic argument kind or order";
-        case SemaDiagnosticCode.GenericInferenceConflict => return "conflicting generic inference";
-        case SemaDiagnosticCode.TraitNotImplemented => return "trait not implemented";
-        case SemaDiagnosticCode.AmbiguousImpl => return "ambiguous trait implementation";
-        case SemaDiagnosticCode.ConflictingImpl => return "conflicting trait implementation";
-        case SemaDiagnosticCode.MissingTraitMember => return "missing trait member";
-        case SemaDiagnosticCode.InvalidTraitMember => return "invalid trait member";
-        case SemaDiagnosticCode.InvalidImplTarget => return "invalid implementation target";
-        case SemaDiagnosticCode.InvalidWherePredicate => return "invalid where predicate";
-        case SemaDiagnosticCode.AmbiguousMethod => return "ambiguous method";
-        case SemaDiagnosticCode.InvalidUnaryOperand => return "invalid unary operand";
-        case SemaDiagnosticCode.InvalidBinaryOperands => return "invalid binary operands";
-        case SemaDiagnosticCode.NotAssignable => return "this expression is not assignable";
-        case SemaDiagnosticCode.NotIndexable => return "this value cannot be indexed";
-        case SemaDiagnosticCode.InvalidIndexType => return "invalid index type";
-        case SemaDiagnosticCode.UnknownMember => return "unknown member";
-        case SemaDiagnosticCode.ConditionNotBool => return "condition must be a boolean";
-        case SemaDiagnosticCode.ReturnTypeMismatch => return "returned value has an incompatible type";
-        case SemaDiagnosticCode.ReturnOutsideProc => return "return used outside a procedure";
-        case SemaDiagnosticCode.BreakOutsideLoop => return "break used outside a loop";
-        case SemaDiagnosticCode.ContinueOutsideLoop => return "continue used outside a loop";
-        case SemaDiagnosticCode.UnreachableCode => return "unreachable code";
-        case SemaDiagnosticCode.MissingReturn => return "procedure may fall through without returning a value";
-        case SemaDiagnosticCode.MatchNonExhaustive => return "match does not cover every possible value";
-        case SemaDiagnosticCode.MatchUnreachable => return "match arm is unreachable";
-        case SemaDiagnosticCode.MatchType => return "pattern does not match the subject type or shape";
-        case SemaDiagnosticCode.InvalidDeferredControlFlow => return "deferred work cannot exit its enclosing control flow";
-        case SemaDiagnosticCode.OverlappingPattern => return "match arm overlaps an earlier pattern";
-        case SemaDiagnosticCode.InvalidRequiresClause => return "requires clause must evaluate to bool";
-        case SemaDiagnosticCode.InvalidEnsuresClause => return "ensures clause must evaluate to bool";
-        case SemaDiagnosticCode.OldValueUnavailable => return "old value is unavailable in this contract";
-        case SemaDiagnosticCode.ResultUnavailable => return "result is unavailable in this contract";
-        case SemaDiagnosticCode.ConstantNotConstant => return "expression is not constant";
-        case SemaDiagnosticCode.ConstantOverflow => return "constant arithmetic overflows its supported range";
-        case SemaDiagnosticCode.ConstantDivideByZero => return "division by zero during constant evaluation";
-        case SemaDiagnosticCode.ConstantRemainderByZero => return "remainder by zero during constant evaluation";
-        case SemaDiagnosticCode.RecursionLimit => return "semantic analysis recursion limit reached";
-        case SemaDiagnosticCode.TypeMismatch => return "type mismatch";
-        case SemaDiagnosticCode.InvalidType => return "invalid type";
-        case SemaDiagnosticCode.InvalidPatternBindings => return "alternative patterns introduce incompatible bindings";
-        case SemaDiagnosticCode.ReferenceEscape => return "reference lifetime cannot be verified";
-        case SemaDiagnosticCode.BorrowConflict => return "conflicting reference borrow";
-        case SemaDiagnosticCode.BorrowedMutation => return "access conflicts with a live reference";
-        case SemaDiagnosticCode.MoveBorrowed => return "cannot move a borrowed or unsupported value";
-        case SemaDiagnosticCode.UseAfterMove => return "use of moved value";
-        case SemaDiagnosticCode.CannotInfer => return "type cannot be inferred";
-        case SemaDiagnosticCode.UnsafeRequired => return "unsafe context required";
-        case SemaDiagnosticCode.InvalidAsm => return "invalid assembly block";
-        case SemaDiagnosticCode.FfiAbi => return "unsupported foreign ABI or calling convention";
-        case SemaDiagnosticCode.FfiType => return "type is unsupported in this foreign signature";
+        case SemaDiagnosticCode::UnresolvedName => return "unknown symbol";
+        case SemaDiagnosticCode::AmbiguousName => return "ambiguous symbol";
+        case SemaDiagnosticCode::DuplicateImport => return "duplicate import";
+        case SemaDiagnosticCode::PrivateSymbol => return "symbol is not visible";
+        case SemaDiagnosticCode::DuplicateDeclaration => return "duplicate declaration";
+        case SemaDiagnosticCode::InvalidScope => return "invalid scope";
+        case SemaDiagnosticCode::DuplicateBinding => return "duplicate binding";
+        case SemaDiagnosticCode::InvalidExport => return "invalid export target";
+        case SemaDiagnosticCode::ShadowedDeclaration => return "declaration shadows an existing name";
+        case SemaDiagnosticCode::NotCallable => return "this value is not callable";
+        case SemaDiagnosticCode::InvalidArgumentCount => return "invalid number of arguments";
+        case SemaDiagnosticCode::InvalidArgumentType => return "invalid argument type";
+        case SemaDiagnosticCode::UnknownType => return "unknown type";
+        case SemaDiagnosticCode::NotAType => return "name is not a type";
+        case SemaDiagnosticCode::InvalidCast => return "invalid cast";
+        case SemaDiagnosticCode::NotAValue => return "type name used as a value";
+        case SemaDiagnosticCode::IncompleteType => return "incomplete type";
+        case SemaDiagnosticCode::RecursiveType => return "invalid recursive type";
+        case SemaDiagnosticCode::GenericBoundUnsatisfied => return "generic bound not satisfied";
+        case SemaDiagnosticCode::GenericArgumentCount => return "incorrect generic argument count";
+        case SemaDiagnosticCode::GenericArgumentKind => return "incorrect generic argument kind or order";
+        case SemaDiagnosticCode::GenericInferenceConflict => return "conflicting generic inference";
+        case SemaDiagnosticCode::TraitNotImplemented => return "trait not implemented";
+        case SemaDiagnosticCode::AmbiguousImpl => return "ambiguous trait implementation";
+        case SemaDiagnosticCode::ConflictingImpl => return "conflicting trait implementation";
+        case SemaDiagnosticCode::MissingTraitMember => return "missing trait member";
+        case SemaDiagnosticCode::InvalidTraitMember => return "invalid trait member";
+        case SemaDiagnosticCode::InvalidImplTarget => return "invalid implementation target";
+        case SemaDiagnosticCode::InvalidWherePredicate => return "invalid where predicate";
+        case SemaDiagnosticCode::AmbiguousMethod => return "ambiguous method";
+        case SemaDiagnosticCode::InvalidUnaryOperand => return "invalid unary operand";
+        case SemaDiagnosticCode::InvalidBinaryOperands => return "invalid binary operands";
+        case SemaDiagnosticCode::NotAssignable => return "this expression is not assignable";
+        case SemaDiagnosticCode::NotIndexable => return "this value cannot be indexed";
+        case SemaDiagnosticCode::InvalidIndexType => return "invalid index type";
+        case SemaDiagnosticCode::UnknownMember => return "unknown member";
+        case SemaDiagnosticCode::ConditionNotBool => return "condition must be a boolean";
+        case SemaDiagnosticCode::ReturnTypeMismatch => return "returned value has an incompatible type";
+        case SemaDiagnosticCode::ReturnOutsideProc => return "return used outside a procedure";
+        case SemaDiagnosticCode::BreakOutsideLoop => return "break used outside a loop";
+        case SemaDiagnosticCode::ContinueOutsideLoop => return "continue used outside a loop";
+        case SemaDiagnosticCode::UnreachableCode => return "unreachable code";
+        case SemaDiagnosticCode::MissingReturn => return "procedure may fall through without returning a value";
+        case SemaDiagnosticCode::MatchNonExhaustive => return "match does not cover every possible value";
+        case SemaDiagnosticCode::MatchUnreachable => return "match arm is unreachable";
+        case SemaDiagnosticCode::MatchType => return "pattern does not match the subject type or shape";
+        case SemaDiagnosticCode::InvalidDeferredControlFlow => return "deferred work cannot exit its enclosing control flow";
+        case SemaDiagnosticCode::OverlappingPattern => return "match arm overlaps an earlier pattern";
+        case SemaDiagnosticCode::InvalidRequiresClause => return "requires clause must evaluate to bool";
+        case SemaDiagnosticCode::InvalidEnsuresClause => return "ensures clause must evaluate to bool";
+        case SemaDiagnosticCode::OldValueUnavailable => return "old value is unavailable in this contract";
+        case SemaDiagnosticCode::ResultUnavailable => return "result is unavailable in this contract";
+        case SemaDiagnosticCode::ConstantNotConstant => return "expression is not constant";
+        case SemaDiagnosticCode::ConstantOverflow => return "constant arithmetic overflows its supported range";
+        case SemaDiagnosticCode::ConstantDivideByZero => return "division by zero during constant evaluation";
+        case SemaDiagnosticCode::ConstantRemainderByZero => return "remainder by zero during constant evaluation";
+        case SemaDiagnosticCode::RecursionLimit => return "semantic analysis recursion limit reached";
+        case SemaDiagnosticCode::TypeMismatch => return "type mismatch";
+        case SemaDiagnosticCode::InvalidType => return "invalid type";
+        case SemaDiagnosticCode::InvalidPatternBindings => return "alternative patterns introduce incompatible bindings";
+        case SemaDiagnosticCode::ReferenceEscape => return "reference lifetime cannot be verified";
+        case SemaDiagnosticCode::BorrowConflict => return "conflicting reference borrow";
+        case SemaDiagnosticCode::BorrowedMutation => return "access conflicts with a live reference";
+        case SemaDiagnosticCode::MoveBorrowed => return "cannot move a borrowed or unsupported value";
+        case SemaDiagnosticCode::UseAfterMove => return "use of moved value";
+        case SemaDiagnosticCode::CannotInfer => return "type cannot be inferred";
+        case SemaDiagnosticCode::UnsafeRequired => return "unsafe context required";
+        case SemaDiagnosticCode::InvalidAsm => return "invalid assembly block";
+        case SemaDiagnosticCode::FfiAbi => return "unsupported foreign ABI or calling convention";
+        case SemaDiagnosticCode::FfiType => return "type is unsupported in this foreign signature";
         else => return "semantic analysis error";
     }
 }
@@ -2680,44 +2683,44 @@ proc native_pipeline_export_diagnostics(
                             set related_end_line = related_end.line - 1;
                             set related_end_column = related_end.column - 1;
                             match (*source_diagnostic).code {
-                                case SemaDiagnosticCode.DuplicateDeclaration => {
+                                case SemaDiagnosticCode::DuplicateDeclaration => {
                                     set related_label = native_pipeline_c_string("previous declaration is here");
                                 },
-                                case SemaDiagnosticCode.DuplicateBinding => {
+                                case SemaDiagnosticCode::DuplicateBinding => {
                                     set related_label = native_pipeline_c_string("previous binding is here");
                                 },
-                                case SemaDiagnosticCode.InvalidExport => {
+                                case SemaDiagnosticCode::InvalidExport => {
                                     if (*declaration_symbol).kind == SymbolKind.Space {
                                         set related_label = native_pipeline_c_string("imported module is bound here");
                                     } else {
                                         set related_label = native_pipeline_c_string("imported declaration originates here");
                                     }
                                 },
-                                case SemaDiagnosticCode.AmbiguousName => {
+                                case SemaDiagnosticCode::AmbiguousName => {
                                     set related_label = native_pipeline_c_string("other imported candidate is declared here");
                                 },
-                                case SemaDiagnosticCode.DuplicateImport => {
+                                case SemaDiagnosticCode::DuplicateImport => {
                                     set related_label = native_pipeline_c_string("earlier identical import is here");
                                 },
-                                case SemaDiagnosticCode.ShadowedDeclaration => {
+                                case SemaDiagnosticCode::ShadowedDeclaration => {
                                     set related_label = native_pipeline_c_string("earlier shadowed declaration is here");
                                 },
-                                case SemaDiagnosticCode.BorrowConflict => {
+                                case SemaDiagnosticCode::BorrowConflict => {
                                     set related_label = native_pipeline_c_string("conflicting borrow belongs to this value");
                                 },
-                                case SemaDiagnosticCode.BorrowedMutation => {
+                                case SemaDiagnosticCode::BorrowedMutation => {
                                     set related_label = native_pipeline_c_string("active borrow belongs to this value");
                                 },
-                                case SemaDiagnosticCode.MoveBorrowed => {
+                                case SemaDiagnosticCode::MoveBorrowed => {
                                     set related_label = native_pipeline_c_string("borrowed value is declared here");
                                 },
-                                case SemaDiagnosticCode.UseAfterMove => {
+                                case SemaDiagnosticCode::UseAfterMove => {
                                     set related_label = native_pipeline_c_string("moved value is declared here");
                                 },
-                                case SemaDiagnosticCode.CannotInfer => {
+                                case SemaDiagnosticCode::CannotInfer => {
                                     set related_label = native_pipeline_c_string("generic procedure declared here");
                                 },
-                                case SemaDiagnosticCode.ReferenceEscape => {
+                                case SemaDiagnosticCode::ReferenceEscape => {
                                     set related_label = native_pipeline_c_string("referenced value is declared here");
                                 },
                                 else => {
@@ -3250,28 +3253,30 @@ proc native_pipeline_lexer_diagnostic_details(
 
 proc native_pipeline_lexer_code(error: LexerError) -> string {
     match error {
-        case LexerError.InvalidUtf8 => return "VITTE_LEXER_E_INVALID_UNICODE";
-        case LexerError.InvalidIdentifier => return "VITTE_LEXER_E_INVALID_IDENTIFIER";
-        case LexerError.InvalidNumber => return "VITTE_LEXER_E_INVALID_NUMBER";
-        case LexerError.InvalidInteger => return "VITTE_LEXER_E_INVALID_INTEGER";
-        case LexerError.InvalidFloat => return "VITTE_LEXER_E_INVALID_FLOAT";
-        case LexerError.InvalidCharacterLiteral => return "VITTE_LEXER_E_INVALID_CHARACTER_LITERAL";
-        case LexerError.InvalidNumericSeparator => return "VITTE_LEXER_E_INVALID_NUMERIC_SEPARATOR";
-        case LexerError.InvalidNumericBase => return "VITTE_LEXER_E_INVALID_NUMERIC_BASE";
-        case LexerError.InvalidNumericSuffix => return "VITTE_LEXER_E_INVALID_NUMERIC_SUFFIX";
-        case LexerError.InvalidExponent => return "VITTE_LEXER_E_INVALID_EXPONENT";
-        case LexerError.InvalidOperator => return "VITTE_LEXER_E_INVALID_OPERATOR";
-        case LexerError.InvalidEscape => return "VITTE_LEXER_E_INVALID_ESCAPE";
-        case LexerError.UnterminatedString => return "VITTE_LEXER_E_UNTERMINATED_STRING";
-        case LexerError.UnterminatedComment => return "VITTE_LEXER_E_UNTERMINATED_COMMENT";
-        case LexerError.InvalidCharacter => return "VITTE_LEXER_E_INVALID_CHARACTER";
-        case LexerError.InvalidToken => return "VITTE_LEXER_E_INVALID_CHARACTER";
-        case LexerError.CommentDepth => return "VITTE_INFRA_E_LIMIT";
-        case LexerError.TokenLimit => return "VITTE_INFRA_E_LIMIT";
-        case LexerError.SourceTooLarge => return "VITTE_INFRA_E_LIMIT";
-        case LexerError.NumberOverflow => return "VITTE_LEXER_E_NUMBER_OVERFLOW";
-        case LexerError.Overflow => return "VITTE_INFRA_E_LIMIT";
-        case LexerError.OutOfMemory => return "VITTE_INFRA_E_RESOURCE";
+        case LexerError::None | LexerError::Internal | LexerError::Count => return "VITTE_INFRA_E_INTERNAL";
+        case LexerError::InvalidArgument | LexerError::InvalidContext | LexerError::InvalidState | LexerError::Validation => return "VITTE_INFRA_E_INVARIANT";
+        case LexerError::InvalidUtf8 => return "VITTE_LEXER_E_INVALID_UNICODE";
+        case LexerError::InvalidIdentifier => return "VITTE_LEXER_E_INVALID_IDENTIFIER";
+        case LexerError::InvalidNumber => return "VITTE_LEXER_E_INVALID_NUMBER";
+        case LexerError::InvalidInteger => return "VITTE_LEXER_E_INVALID_INTEGER";
+        case LexerError::InvalidFloat => return "VITTE_LEXER_E_INVALID_FLOAT";
+        case LexerError::InvalidCharacterLiteral => return "VITTE_LEXER_E_INVALID_CHARACTER_LITERAL";
+        case LexerError::InvalidNumericSeparator => return "VITTE_LEXER_E_INVALID_NUMERIC_SEPARATOR";
+        case LexerError::InvalidNumericBase => return "VITTE_LEXER_E_INVALID_NUMERIC_BASE";
+        case LexerError::InvalidNumericSuffix => return "VITTE_LEXER_E_INVALID_NUMERIC_SUFFIX";
+        case LexerError::InvalidExponent => return "VITTE_LEXER_E_INVALID_EXPONENT";
+        case LexerError::InvalidOperator => return "VITTE_LEXER_E_INVALID_OPERATOR";
+        case LexerError::InvalidEscape => return "VITTE_LEXER_E_INVALID_ESCAPE";
+        case LexerError::UnterminatedString => return "VITTE_LEXER_E_UNTERMINATED_STRING";
+        case LexerError::UnterminatedComment => return "VITTE_LEXER_E_UNTERMINATED_COMMENT";
+        case LexerError::InvalidCharacter => return "VITTE_LEXER_E_INVALID_CHARACTER";
+        case LexerError::InvalidToken => return "VITTE_LEXER_E_INVALID_CHARACTER";
+        case LexerError::CommentDepth => return "VITTE_INFRA_E_LIMIT";
+        case LexerError::TokenLimit => return "VITTE_INFRA_E_LIMIT";
+        case LexerError::SourceTooLarge => return "VITTE_INFRA_E_LIMIT";
+        case LexerError::NumberOverflow => return "VITTE_LEXER_E_NUMBER_OVERFLOW";
+        case LexerError::Overflow => return "VITTE_INFRA_E_LIMIT";
+        case LexerError::OutOfMemory => return "VITTE_INFRA_E_RESOURCE";
     }
 }
 
@@ -3496,11 +3501,22 @@ export proc native_pipeline_emit_c17_unit(
     let mut emitted_success = false;
     let mut emitted_source: string = "";
     let mut emitted_error: string = "";
+    let mut emitted_has_span = false;
+    let mut emitted_span: ParserSpan = ParserSpan {
+        file_id: 0,
+        begin: 0,
+        end: 0,
+        line: 0,
+        column: 0,
+        valid: false
+    };
     if (*input).ast_fallback {
         let emitted: C17AstEmitResult = c17_emit_ast(&*((*input).parser));
         set emitted_success = emitted.success;
         set emitted_source = emitted.source;
         set emitted_error = emitted.error;
+        set emitted_has_span = emitted.has_span;
+        set emitted_span = emitted.span;
     } else {
         let emitted = c17_emit_ir(&*((*input).ir));
         set emitted_success = emitted.success;
@@ -3516,8 +3532,8 @@ export proc native_pipeline_emit_c17_unit(
             diagnostic_code: native_pipeline_c_string(native_pipeline_codegen_code(emitted_error)),
             diagnostic_origin: native_pipeline_codegen_origin(emitted_error),
             codegen_error: native_pipeline_codegen_error(emitted_error),
-            has_source_span: (*input).ast_fallback and emitted.has_span,
-            source_span: emitted.span
+            has_source_span: (*input).ast_fallback and emitted_has_span,
+            source_span: emitted_span
         };
         return false;
     }

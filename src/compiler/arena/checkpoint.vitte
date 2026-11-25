@@ -253,11 +253,11 @@ proc checkpoint_state_valid(
     state: CheckpointState,
 ) -> bool {
     match state {
-        case CheckpointState.Empty => return true;
-        case CheckpointState.Active => return true;
-        case CheckpointState.Committed => return true;
-        case CheckpointState.RolledBack => return true;
-        case CheckpointState.Invalidated => return true;
+        case CheckpointState::Empty => return true;
+        case CheckpointState::Active => return true;
+        case CheckpointState::Committed => return true;
+        case CheckpointState::RolledBack => return true;
+        case CheckpointState::Invalidated => return true;
     }
 }
 
@@ -265,17 +265,17 @@ proc checkpoint_error_valid(
     error: CheckpointError,
 ) -> bool {
     match error {
-        case CheckpointError.None => return true;
-        case CheckpointError.InvalidArgument => return true;
-        case CheckpointError.InvalidArena => return true;
-        case CheckpointError.InvalidCheckpoint => return true;
-        case CheckpointError.InvalidState => return true;
-        case CheckpointError.Stale => return true;
-        case CheckpointError.ForeignArena => return true;
-        case CheckpointError.GenerationMismatch => return true;
-        case CheckpointError.DepthExceeded => return true;
-        case CheckpointError.RollbackFailed => return true;
-        case CheckpointError.Corruption => return true;
+        case CheckpointError::None => return true;
+        case CheckpointError::InvalidArgument => return true;
+        case CheckpointError::InvalidArena => return true;
+        case CheckpointError::InvalidCheckpoint => return true;
+        case CheckpointError::InvalidState => return true;
+        case CheckpointError::Stale => return true;
+        case CheckpointError::ForeignArena => return true;
+        case CheckpointError::GenerationMismatch => return true;
+        case CheckpointError::DepthExceeded => return true;
+        case CheckpointError::RollbackFailed => return true;
+        case CheckpointError::Corruption => return true;
     }
 }
 
@@ -435,11 +435,11 @@ pub proc checkpoint_state_name(
     state: CheckpointState,
 ) -> str {
     match state {
-        case CheckpointState.Empty => return "empty";
-        case CheckpointState.Active => return "active";
-        case CheckpointState.Committed => return "committed";
-        case CheckpointState.RolledBack => return "rolled-back";
-        case CheckpointState.Invalidated => return "invalidated";
+        case CheckpointState::Empty => return "empty";
+        case CheckpointState::Active => return "active";
+        case CheckpointState::Committed => return "committed";
+        case CheckpointState::RolledBack => return "rolled-back";
+        case CheckpointState::Invalidated => return "invalidated";
     }
 }
 
@@ -451,17 +451,17 @@ pub proc checkpoint_error_name(
     error: CheckpointError,
 ) -> str {
     match error {
-        case CheckpointError.None => return "none";
-        case CheckpointError.InvalidArgument => return "invalid-argument";
-        case CheckpointError.InvalidArena => return "invalid-arena";
-        case CheckpointError.InvalidCheckpoint => return "invalid-checkpoint";
-        case CheckpointError.InvalidState => return "invalid-state";
-        case CheckpointError.Stale => return "stale";
-        case CheckpointError.ForeignArena => return "foreign-arena";
-        case CheckpointError.GenerationMismatch => return "generation-mismatch";
-        case CheckpointError.DepthExceeded => return "depth-exceeded";
-        case CheckpointError.RollbackFailed => return "rollback-failed";
-        case CheckpointError.Corruption => return "corruption";
+        case CheckpointError::None => return "none";
+        case CheckpointError::InvalidArgument => return "invalid-argument";
+        case CheckpointError::InvalidArena => return "invalid-arena";
+        case CheckpointError::InvalidCheckpoint => return "invalid-checkpoint";
+        case CheckpointError::InvalidState => return "invalid-state";
+        case CheckpointError::Stale => return "stale";
+        case CheckpointError::ForeignArena => return "foreign-arena";
+        case CheckpointError::GenerationMismatch => return "generation-mismatch";
+        case CheckpointError::DepthExceeded => return "depth-exceeded";
+        case CheckpointError::RollbackFailed => return "rollback-failed";
+        case CheckpointError::Corruption => return "corruption";
     }
 }
 
@@ -773,7 +773,7 @@ pub proc checkpoint_validate(
     }
 
     match checkpoint.state {
-        case CheckpointState.Empty => {
+        case CheckpointState::Empty => {
             return checkpoint.arena == null  and 
                    checkpoint.parent == null  and 
                    checkpoint.generation == 0  and 
@@ -785,7 +785,7 @@ pub proc checkpoint_validate(
                    checkpoint.reserved_bytes == 0;
         }
 
-        case CheckpointState.Committed => {
+        case CheckpointState::Committed => {
             if checkpoint.sequence == 0  and 
                checkpoint.arena != null {
                 return false;
@@ -794,7 +794,7 @@ pub proc checkpoint_validate(
             return checkpoint.depth <= CHECKPOINT_MAX_DEPTH;
         }
 
-        case CheckpointState.RolledBack => {
+        case CheckpointState::RolledBack => {
             if checkpoint.sequence == 0  and 
                checkpoint.arena != null {
                 return false;
@@ -803,7 +803,7 @@ pub proc checkpoint_validate(
             return checkpoint.depth <= CHECKPOINT_MAX_DEPTH;
         }
 
-        case CheckpointState.Invalidated => {
+        case CheckpointState::Invalidated => {
             if checkpoint.sequence == 0  and 
                checkpoint.arena != null {
                 return false;
@@ -812,7 +812,7 @@ pub proc checkpoint_validate(
             return checkpoint.depth <= CHECKPOINT_MAX_DEPTH;
         }
 
-        case CheckpointState.Active => {}
+        case CheckpointState::Active => {}
     }
 
     if not checkpoint_active_snapshot_valid(checkpoint) {

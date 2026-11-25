@@ -59,30 +59,30 @@ proc backend_min(a: usize, b: usize) -> usize { if a < b { return a; } return b;
 
 pub proc backend_error_name(error: BackendError) -> str {
     match error {
-        case BackendError.None => "none", case BackendError.InvalidBackend => "invalid-backend",
-        case BackendError.InvalidArgument => "invalid-argument", case BackendError.InvalidState => "invalid-state",
-        case BackendError.InvalidConfig => "invalid-config", case BackendError.InvalidTarget => "invalid-target",
-        case BackendError.Output => "output", case BackendError.OutputLimit => "output-limit",
-        case BackendError.Overflow => "overflow", case BackendError.OutOfMemory => "out-of-memory",
-        case BackendError.Unsupported => "unsupported", case BackendError.Cancelled => "cancelled",
-        case BackendError.TooManyErrors => "too-many-errors", case BackendError.Internal => "internal",
-        case BackendError.Count => "count",
+        case BackendError::None => "none", case BackendError::InvalidBackend => "invalid-backend",
+        case BackendError::InvalidArgument => "invalid-argument", case BackendError::InvalidState => "invalid-state",
+        case BackendError::InvalidConfig => "invalid-config", case BackendError::InvalidTarget => "invalid-target",
+        case BackendError::Output => "output", case BackendError::OutputLimit => "output-limit",
+        case BackendError::Overflow => "overflow", case BackendError::OutOfMemory => "out-of-memory",
+        case BackendError::Unsupported => "unsupported", case BackendError::Cancelled => "cancelled",
+        case BackendError::TooManyErrors => "too-many-errors", case BackendError::Internal => "internal",
+        case BackendError::Count => "count",
     }
 }
 
 pub proc backend_state_name(state: BackendState) -> str {
-    match state { case BackendState.Uninitialized => "uninitialized", case BackendState.Ready => "ready", case BackendState.Generating => "generating", case BackendState.Finished => "finished", case BackendState.Failed => "failed", case BackendState.Cancelled => "cancelled", case BackendState.Destroyed => "destroyed", case BackendState.Count => "count" }
+    match state { case BackendState::Uninitialized => "uninitialized", case BackendState::Ready => "ready", case BackendState::Generating => "generating", case BackendState::Finished => "finished", case BackendState::Failed => "failed", case BackendState::Cancelled => "cancelled", case BackendState::Destroyed => "destroyed", case BackendState::Count => "count" }
 }
 
 pub proc section_name(section: Section) -> str {
     match section {
-        case Section.None => "none", case Section.Banner => "banner", case Section.FeatureMacros => "feature-macros",
-        case Section.Includes => "includes", case Section.ForwardDeclarations => "forward-declarations",
-        case Section.TypeDeclarations => "type-declarations", case Section.GlobalDeclarations => "global-declarations",
-        case Section.RuntimeDeclarations => "runtime-declarations", case Section.FunctionDeclarations => "function-declarations",
-        case Section.RuntimeDefinitions => "runtime-definitions", case Section.GlobalDefinitions => "global-definitions",
-        case Section.FunctionDefinitions => "function-definitions", case Section.Entry => "entry",
-        case Section.Epilogue => "epilogue", case Section.Count => "count",
+        case Section::None => "none", case Section::Banner => "banner", case Section::FeatureMacros => "feature-macros",
+        case Section::Includes => "includes", case Section::ForwardDeclarations => "forward-declarations",
+        case Section::TypeDeclarations => "type-declarations", case Section::GlobalDeclarations => "global-declarations",
+        case Section::RuntimeDeclarations => "runtime-declarations", case Section::FunctionDeclarations => "function-declarations",
+        case Section::RuntimeDefinitions => "runtime-definitions", case Section::GlobalDefinitions => "global-definitions",
+        case Section::FunctionDefinitions => "function-definitions", case Section::Entry => "entry",
+        case Section::Epilogue => "epilogue", case Section::Count => "count",
     }
 }
 
@@ -283,9 +283,9 @@ pub proc backend_set_source_map_handler(backend: &mut Backend, handler: ?SourceM
 pub proc backend_report(backend: &mut Backend, level: DiagnosticLevel, code: str, message: str) {
     if not backend_is_valid(backend) { return; }
     match level {
-        case DiagnosticLevel.Error => set backend.stats.error_count = backend_sat_add(backend.stats.error_count, 1),
-        case DiagnosticLevel.Warning => set backend.stats.warning_count = backend_sat_add(backend.stats.warning_count, 1),
-        case DiagnosticLevel.Note|DiagnosticLevel.Count => set backend.stats.note_count = backend_sat_add(backend.stats.note_count, 1),
+        case DiagnosticLevel::Error => set backend.stats.error_count = backend_sat_add(backend.stats.error_count, 1),
+        case DiagnosticLevel::Warning => set backend.stats.warning_count = backend_sat_add(backend.stats.warning_count, 1),
+        case DiagnosticLevel::Note|DiagnosticLevel::Count => set backend.stats.note_count = backend_sat_add(backend.stats.note_count, 1),
     }
     if backend.diagnostic_handler != null {
         let callback = backend.diagnostic_handler?;

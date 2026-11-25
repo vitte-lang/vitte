@@ -63,7 +63,7 @@ const CONTEXT_MAX_SOURCE_SIZE: usize = (1024 * 1024 * 1024) as usize;
 const CONTEXT_MAX_SOURCE_NAME: usize = 32768;
 
 const SOURCE_ID_NONE: SourceId = 0;
-const CONTEXT_SOURCE_ID_MAX: SourceId = 0xffffffffffffffff;
+const CONTEXT_SOURCE_ID_MAX: SourceId = 0xffffffffffffffff as u64;
 
 const CONTEXT_FNV_OFFSET: u64 = 14695981039346656037 as u64;
 const CONTEXT_FNV_PRIME: u64 = 1099511628211 as u64;
@@ -301,15 +301,15 @@ proc state_valid(
     state: ContextState
 ) -> bool {
     match state {
-        case ContextState.Ready => {
+        case ContextState::Ready => {
             return true;
         }
 
-        case ContextState.Compiling => {
+        case ContextState::Compiling => {
             return true;
         }
 
-        case ContextState.Failed => {
+        case ContextState::Failed => {
             return true;
         }
 
@@ -340,8 +340,9 @@ export proc context_is_valid(
         return false;
     }
 
+    let context_value = context?;
     if not diagnostic_bag_validate(
-        &context?.diagnostics
+        &context_value.diagnostics
     ) {
         return false;
     }
@@ -1542,29 +1543,26 @@ export proc context_state_name(
     state: ContextState
 ) -> str {
     match state {
-        case ContextState.Uninitialized => {
+        case ContextState::Uninitialized => {
             return "uninitialized";
         }
 
-        case ContextState.Ready => {
+        case ContextState::Ready => {
             return "ready";
         }
 
-        case ContextState.Compiling => {
+        case ContextState::Compiling => {
             return "compiling";
         }
 
-        case ContextState.Failed => {
+        case ContextState::Failed => {
             return "failed";
         }
 
-        case ContextState.Destroyed => {
+        case ContextState::Destroyed => {
             return "destroyed";
         }
 
-        else => {
-            return "unknown";
-        }
     }
 }
 

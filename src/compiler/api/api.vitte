@@ -160,14 +160,29 @@ extern proc vitte_native_api_file_error(file: *mut u8) -> i32;
 extern proc vitte_native_api_file_close(file: *mut u8) -> i32;
 extern proc vitte_native_api_allocate(size: usize) -> *mut u8;
 extern proc vitte_native_api_deallocate(pointer: *mut u8);
-extern proc vitte_native_api_bytes_to_string(data: *mut u8, length: usize) -> ?string;
-extern proc vitte_native_environment_value(name: string) -> ?str;
+extern proc vitte_native_api_bytes_to_string_raw(data: *mut u8, length: usize) -> *mut u8;
+extern proc vitte_native_environment_value_raw(name: string) -> *const u8;
 extern proc vitte_native_write_stdout(data: *const char, length: usize);
 extern proc vitte_native_write_stderr(data: *const char, length: usize);
 extern proc vitte_native_write_stdout_bytes(data: *const u8, length: usize);
 extern proc vitte_native_write_stderr_bytes(data: *const u8, length: usize);
 extern proc vitte_native_render_cli_diagnostics(source_name: *const char, source: *const char, source_length: usize, source_id: u64, diagnostics: *const u8, diagnostic_count: usize, color: bool, format: u32) -> bool;
 extern proc vitte_native_write_file(path: string, data: *const u8, length: usize) -> i32;
+
+proc vitte_native_api_bytes_to_string(data: *mut u8, length: usize) -> ?string {
+    let result = vitte_native_api_bytes_to_string_raw(data, length);
+    if result == null { return null; }
+    return string.from_bytes(result, length);
+}
+
+proc vitte_native_environment_value(name: string) -> ?str {
+    let result = vitte_native_environment_value_raw(name);
+    if result == null { return null; }
+    return string.from_bytes(
+        result as *mut u8,
+        cstring_length(result)
+    );
+}
 
 
 /// =========================================================================
@@ -1867,23 +1882,25 @@ proc api_append_json_cstring(buffer: &mut ApiBuffer, text: *const char) -> bool 
 
 proc api_pipeline_diagnostic_phase(origin: CliDiagnosticOrigin) -> string {
     match origin {
-        case CliDiagnosticOrigin.Lexer => return "lexer";
-        case CliDiagnosticOrigin.Scanner => return "scanner";
-        case CliDiagnosticOrigin.Parser => return "parser";
-        case CliDiagnosticOrigin.Import => return "import";
-        case CliDiagnosticOrigin.NameResolution => return "name_resolution";
-        case CliDiagnosticOrigin.TypeCheck => return "type_check";
-        case CliDiagnosticOrigin.Contract => return "contract";
-        case CliDiagnosticOrigin.ConstantEval => return "constant_evaluation";
-        case CliDiagnosticOrigin.Hir => return "hir";
-        case CliDiagnosticOrigin.Ir => return "ir";
-        case CliDiagnosticOrigin.Codegen => return "codegen";
-        case CliDiagnosticOrigin.C17Backend => return "backend";
-        case CliDiagnosticOrigin.CCompiler => return "c_compiler";
-        case CliDiagnosticOrigin.Linker => return "linker";
-        case CliDiagnosticOrigin.Runtime => return "runtime";
-        case CliDiagnosticOrigin.Driver => return "driver";
-        case CliDiagnosticOrigin.Internal => return "internal";
+        case CliDiagnosticOrigin::Unknown => return "unknown";
+        case CliDiagnosticOrigin::Io => return "io";
+        case CliDiagnosticOrigin::Lexer => return "lexer";
+        case CliDiagnosticOrigin::Scanner => return "scanner";
+        case CliDiagnosticOrigin::Parser => return "parser";
+        case CliDiagnosticOrigin::Import => return "import";
+        case CliDiagnosticOrigin::NameResolution => return "name_resolution";
+        case CliDiagnosticOrigin::TypeCheck => return "type_check";
+        case CliDiagnosticOrigin::Contract => return "contract";
+        case CliDiagnosticOrigin::ConstantEval => return "constant_evaluation";
+        case CliDiagnosticOrigin::Hir => return "hir";
+        case CliDiagnosticOrigin::Ir => return "ir";
+        case CliDiagnosticOrigin::Codegen => return "codegen";
+        case CliDiagnosticOrigin::C17Backend => return "backend";
+        case CliDiagnosticOrigin::CCompiler => return "c_compiler";
+        case CliDiagnosticOrigin::Linker => return "linker";
+        case CliDiagnosticOrigin::Runtime => return "runtime";
+        case CliDiagnosticOrigin::Driver => return "driver";
+        case CliDiagnosticOrigin::Internal => return "internal";
     }
 }
 
@@ -2590,7 +2607,7 @@ export proc vitte_api_compile_path(source_path: string, output_path: string, dia
 /// remain owned by the Vitte API.
 export proc vitte_api_build_path(
     source_path: string,
-    output_path: ?string,
+    output_path: string,
     run_program: bool,
     diagnostic_format: u32,
     diagnostic_color: bool,
@@ -2627,10 +2644,10 @@ export proc vitte_api_build_path(
     }
     let generated_bytes = generated?;
     let mut failed_stage: u32 = 0;
-    let host_output_path: *const u8 = if output_path == null {
+    let host_output_path: *const u8 = if output_path.len() == 0 {
         null
     } else {
-        (output_path?).as_ptr() as *const u8
+        output_path.as_ptr() as *const u8
     };
     let host_status: u32 = vitte_native_driver_run_host_toolchain(
         generated_bytes.as_ptr(),

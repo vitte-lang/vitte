@@ -100,36 +100,36 @@ proc ir_dump_value(context: &IRContext, id: IRValueId) -> string {
     let value = vitte_ir_get_value(context as *mut IRContext, id);
     if value == null { return "<invalid-value>"; }
     match value.kind {
-        case IRValueKind.ConstantBool => {
+        case IRValueKind::ConstantBool => {
             return if value.bool_value { "true" } else { "false" };
         }
-        case IRValueKind.ConstantInteger => {
+        case IRValueKind::ConstantInteger => {
             return ir_dump_u64(value.integer_value);
         }
-        case IRValueKind.ConstantFloat => {
+        case IRValueKind::ConstantFloat => {
             return ir_dump_f64(value.float_value);
         }
-        case IRValueKind.Null => return "null";
-        case IRValueKind.Undef => return "undef";
-        case IRValueKind.Poison => return "poison";
-        case IRValueKind.ConstantString => {
+        case IRValueKind::Null => return "null";
+        case IRValueKind::Undef => return "undef";
+        case IRValueKind::Poison => return "poison";
+        case IRValueKind::ConstantString => {
             return "string#" + ir_dump_u64(value.string_value as u64);
         }
-        case IRValueKind.Function => {
+        case IRValueKind::Function => {
             let function: *IRFunction = vitte_ir_get_function(context as *mut IRContext, value.function);
             if function == null { return "@function#" + ir_dump_u64(value.function as u64); }
             let name = vitte_ir_get_string(context as *mut IRContext, function.name);
             if name == null { return "@function#" + ir_dump_u64(value.function as u64); }
             return "@" + name.data.slice(0, name.length);
         }
-        case IRValueKind.Global => {
+        case IRValueKind::Global => {
             let global = vitte_ir_get_global(context as *mut IRContext, value.global);
             if global == null { return "@global#" + ir_dump_u64(value.global); }
             let name = vitte_ir_get_string(context as *mut IRContext, global.name);
             if name == null { return "@global#" + ir_dump_u64(value.global); }
             return "@" + name.data.slice(0, name.length);
         }
-        case IRValueKind.Parameter => {
+        case IRValueKind::Parameter => {
             return "%arg" + value.parameter_index.to_string();
         }
         else => return "%v" + ir_dump_u64(id as u64);

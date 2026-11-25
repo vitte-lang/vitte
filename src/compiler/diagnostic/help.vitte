@@ -23,8 +23,12 @@ use compiler::diagnostic::registry::{
     vitte_diagnostic_registry_find_public,
     vitte_diagnostic_registry_find_internal
 };
+use vitte::core::pointer::{add_bytes_const};
 
 const HELP_EXCERPT_CAPACITY: usize = 160;
+const HELP_MAX_LABELS: usize = 16;
+const HELP_MAX_CAUSES: usize = 16;
+const HELP_MAX_RELATED: usize = 16;
 const HELP_REASON_LIMIT: usize = 192;
 const HELP_SUBJECT_LIMIT: usize = 128;
 const HELP_TYPE_LIMIT: usize = 128;
@@ -886,7 +890,7 @@ proc help_primary_label(
         return "";
     }
     let mut index: usize = 0;
-    while index < diagnostic_value.labels.len() and index < MAX_LABELS {
+    while index < diagnostic_value.labels.len() and index < HELP_MAX_LABELS {
         let label = &diagnostic_value.labels[index];
         if label.style == DiagnosticLabelStyle.Primary and
            help_text_present(label.message) {
@@ -904,7 +908,7 @@ proc help_first_cause(
         return "";
     }
     let mut index: usize = 0;
-    while index < diagnostic_value.causes.len() and index < MAX_CAUSES {
+    while index < diagnostic_value.causes.len() and index < HELP_MAX_CAUSES {
         if help_text_present(diagnostic_value.causes[index].message) {
             return diagnostic_value.causes[index].message;
         }
@@ -1270,16 +1274,25 @@ proc help_subject_from_message(message: string, marker: string) -> string {
         return "";
     }
     let bytes: [u8] = message.bytes();
-    let begin = marker_start + marker.bytes().len();
+    let begin: usize = marker_start + marker.len();
     if begin >= bytes.len() {
         return "";
     }
-    let suffix = message.slice(begin, bytes.len());
+    let suffix_data = add_bytes_const(
+        message.as_ptr() as *const u8,
+        begin
+    );
+    if suffix_data == null { return ""; }
+    let mut suffix_length: usize = 0;
+    while begin + suffix_length < bytes.len() {
+        set suffix_length += 1;
+    }
+    let suffix = string.from_bytes(suffix_data as *mut u8, suffix_length);
     let end = help_find_bytes(suffix, "`");
     if end == 18446744073709551615 as usize or end == 0 {
         return "";
     }
-    return suffix.slice(0, end);
+    return string.from_bytes(suffix_data as *mut u8, end);
 }
 
 proc help_append_semantic_context(
@@ -1399,7 +1412,7 @@ proc help_append_context_details(
     let mut index: usize = 0;
     let mut shown: usize = 0;
     while index < diagnostic_value.related.len() and
-          index < MAX_RELATED and shown < 2 {
+          index < HELP_MAX_RELATED and shown < 2 {
         let related = &diagnostic_value.related[index];
         if help_text_present(related.label) and
            not help_output_contains(result, related.label) {

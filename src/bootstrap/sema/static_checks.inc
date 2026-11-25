@@ -830,54 +830,58 @@ vitte_sema_check_match(vitte_sema_t *context, const vitte_ast_node_t *node)
             }
         }
         if (!duplicate && pick_declaration != NULL && pattern != NULL) {
-            size_t previous;
-            for (previous = 1u; previous < index; ++previous) {
-                const vitte_ast_node_t *earlier = vitte_sema_node(
-                    context, node->children[previous]);
-                const vitte_ast_node_t *earlier_pattern = earlier != NULL &&
-                        earlier->child_count >= 2u
-                    ? vitte_sema_node(context, earlier->children[0]) : NULL;
-                bool earlier_unguarded = earlier != NULL &&
-                    earlier->child_count == 2u;
-                size_t variant_index;
-                if (!earlier_unguarded && earlier != NULL &&
-                    earlier->child_count == 3u) {
-                    const vitte_ast_node_t *earlier_guard =
-                        vitte_sema_node(context, earlier->children[1]);
-                    vitte_constant_t value = vitte_sema_known_value(
-                        context, earlier_guard);
-                    earlier_unguarded = value.kind ==
-                            VITTE_CONSTANT_KIND_BOOL && value.as.boolean;
-                }
-                if (!earlier_unguarded || earlier_pattern == NULL) continue;
-                if (vitte_sema_pattern_is_wildcard_private(
-                        context, earlier_pattern)) {
-                    duplicate = true;
-                    covering_pattern = earlier_pattern;
-                    break;
-                }
-                for (variant_index = 1u;
-                     variant_index < pick_declaration->child_count;
-                     ++variant_index) {
-                    const vitte_ast_node_t *variant = vitte_sema_node(
-                        context,
-                        pick_declaration->children[variant_index]);
-                    if (variant == NULL ||
-                        variant->kind != VITTE_AST_NODE_VARIANT_DECL) continue;
-                    if (vitte_sema_pattern_covers_pick_variant_private(
-                            context, earlier_pattern, match_scope,
-                            subject_symbol->id, variant, 0u) &&
+            size_t variant_index;
+            size_t current_variant_count = 0u;
+            bool every_current_variant_covered = true;
+            /* An overlap is not enough to make an arm unreachable. Require
+             * the earlier arms' union to cover every variant this pattern
+             * can match. */
+            for (variant_index = 1u;
+                 variant_index < pick_declaration->child_count;
+                 ++variant_index) {
+                const vitte_ast_node_t *variant = vitte_sema_node(
+                    context,
+                    pick_declaration->children[variant_index]);
+                bool covered = false;
+                size_t previous;
+                if (variant == NULL ||
+                    variant->kind != VITTE_AST_NODE_VARIANT_DECL ||
+                    !vitte_sema_pattern_covers_pick_variant_private(
+                        context, pattern, match_scope,
+                        subject_symbol->id, variant, 0u)) continue;
+                ++current_variant_count;
+                for (previous = 1u; previous < index; ++previous) {
+                    const vitte_ast_node_t *earlier = vitte_sema_node(
+                        context, node->children[previous]);
+                    const vitte_ast_node_t *earlier_pattern = earlier != NULL &&
+                            earlier->child_count >= 2u
+                        ? vitte_sema_node(context, earlier->children[0]) : NULL;
+                    bool earlier_unguarded = earlier != NULL &&
+                        earlier->child_count == 2u;
+                    if (!earlier_unguarded && earlier != NULL &&
+                        earlier->child_count == 3u) {
+                        const vitte_ast_node_t *earlier_guard =
+                            vitte_sema_node(context, earlier->children[1]);
+                        vitte_constant_t value = vitte_sema_known_value(
+                            context, earlier_guard);
+                        earlier_unguarded = value.kind ==
+                                VITTE_CONSTANT_KIND_BOOL && value.as.boolean;
+                    }
+                    if (earlier_unguarded && earlier_pattern != NULL &&
                         vitte_sema_pattern_covers_pick_variant_private(
-                            context, pattern, match_scope,
+                            context, earlier_pattern, match_scope,
                             subject_symbol->id, variant, 0u)) {
-                        duplicate = true;
-                        covering_pattern = earlier_pattern;
+                        covered = true;
+                        if (covering_pattern == NULL)
+                            covering_pattern = earlier_pattern;
                         covering_line = earlier_pattern->span.line;
                         break;
                     }
                 }
-                if (duplicate) break;
+                if (!covered) every_current_variant_covered = false;
             }
+            duplicate = current_variant_count != 0u &&
+                every_current_variant_covered;
         }
         if (duplicate && pattern != NULL &&
             vitte_sema_add_diagnostic(context, VITTE_SEMA_DIAGNOSTIC_ERROR,

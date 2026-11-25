@@ -2588,11 +2588,11 @@ proc parser_type_expression_error(
 ) -> ParserError {
     if begin_token == null { return ParserError.ExpectedType; }
     match (*begin_token).kind {
-        case TokenKind.KwProc => return ParserError.InvalidProcedureType,
-        case TokenKind.Question => return ParserError.InvalidOptionalType,
-        case TokenKind.Amp | TokenKind.KwRef => return ParserError.InvalidReferenceType,
-        case TokenKind.Star => return ParserError.InvalidPointerType,
-        case TokenKind.LeftBracket => {
+        case TokenKind::KwProc => return ParserError.InvalidProcedureType,
+        case TokenKind::Question => return ParserError.InvalidOptionalType,
+        case TokenKind::Amp | TokenKind::KwRef => return ParserError.InvalidReferenceType,
+        case TokenKind::Star => return ParserError.InvalidPointerType,
+        case TokenKind::LeftBracket => {
             let first_item = parser_token_at_private(parser, begin_position + 1);
             if first_item != null and (*first_item).kind == TokenKind.IntegerLiteral {
                 return ParserError.InvalidArrayType;
@@ -4270,12 +4270,12 @@ proc parser_pattern_has_top_level_range_operator(
                 return true;
             }
             match (*token).kind {
-                case TokenKind.LeftParen => { set parentheses += 1; },
-                case TokenKind.RightParen => { if parentheses != 0 { set parentheses -= 1; } },
-                case TokenKind.LeftBracket => { set brackets += 1; },
-                case TokenKind.RightBracket => { if brackets != 0 { set brackets -= 1; } },
-                case TokenKind.LeftBrace => { set braces += 1; },
-                case TokenKind.RightBrace => { if braces != 0 { set braces -= 1; } },
+                case TokenKind::LeftParen => { set parentheses += 1; },
+                case TokenKind::RightParen => { if parentheses != 0 { set parentheses -= 1; } },
+                case TokenKind::LeftBracket => { set brackets += 1; },
+                case TokenKind::RightBracket => { if brackets != 0 { set brackets -= 1; } },
+                case TokenKind::LeftBrace => { set braces += 1; },
+                case TokenKind::RightBrace => { if braces != 0 { set braces -= 1; } },
                 else => {}
             }
         }
@@ -4844,6 +4844,8 @@ proc parser_parse_set_statement(parser: *mut Parser) -> ASTNodeId {
 }
 
 proc parser_parse_block(parser: *mut Parser) -> ASTNodeId {
+    if parser == null { return PARSER_INVALID_NODE_ID; }
+    let diagnostic_start = (*parser).diagnostic_count;
     if not parser_enter_recursion(parser) {
         return PARSER_INVALID_NODE_ID;
     }
@@ -5781,31 +5783,31 @@ proc parser_parse_unary_expression(parser: *mut Parser) -> ASTNodeId {
 
 proc parser_expression_error_for_operator(kind: TokenKind) -> ParserError {
     match kind {
-        case TokenKind.Equal | TokenKind.PlusEqual | TokenKind.MinusEqual |
-             TokenKind.StarEqual | TokenKind.SlashEqual | TokenKind.PercentEqual |
-             TokenKind.AmpEqual | TokenKind.PipeEqual | TokenKind.CaretEqual |
-             TokenKind.ShiftLeftEqual | TokenKind.ShiftRightEqual => {
+        case TokenKind::Equal | TokenKind::PlusEqual | TokenKind::MinusEqual |
+             TokenKind::StarEqual | TokenKind::SlashEqual | TokenKind::PercentEqual |
+             TokenKind::AmpEqual | TokenKind::PipeEqual | TokenKind::CaretEqual |
+             TokenKind::ShiftLeftEqual | TokenKind::ShiftRightEqual => {
             return ParserError.InvalidAssignmentExpression;
         },
-        case TokenKind.QuestionQuestion => return ParserError.InvalidCoalescingExpression;
-        case TokenKind.AmpAmp | TokenKind.PipePipe | TokenKind.KwAnd | TokenKind.KwOr => {
+        case TokenKind::QuestionQuestion => return ParserError.InvalidCoalescingExpression;
+        case TokenKind::AmpAmp | TokenKind::PipePipe | TokenKind::KwAnd | TokenKind::KwOr => {
             return ParserError.InvalidLogicalExpression;
         },
-        case TokenKind.Amp | TokenKind.Pipe | TokenKind.Caret => {
+        case TokenKind::Amp | TokenKind::Pipe | TokenKind::Caret => {
             return ParserError.InvalidBitwiseExpression;
         },
-        case TokenKind.EqualEqual | TokenKind.BangEqual | TokenKind.Less |
-             TokenKind.LessEqual | TokenKind.Greater | TokenKind.GreaterEqual => {
+        case TokenKind::EqualEqual | TokenKind::BangEqual | TokenKind::Less |
+             TokenKind::LessEqual | TokenKind::Greater | TokenKind::GreaterEqual => {
             return ParserError.InvalidComparisonExpression;
         },
-        case TokenKind.ShiftLeft | TokenKind.ShiftRight => {
+        case TokenKind::ShiftLeft | TokenKind::ShiftRight => {
             return ParserError.InvalidShiftExpression;
         },
-        case TokenKind.Plus | TokenKind.Minus | TokenKind.Star |
-             TokenKind.Slash | TokenKind.Percent => {
+        case TokenKind::Plus | TokenKind::Minus | TokenKind::Star |
+             TokenKind::Slash | TokenKind::Percent => {
             return ParserError.InvalidArithmeticExpression;
         },
-        case TokenKind.DotDot | TokenKind.DotDotEqual => {
+        case TokenKind::DotDot | TokenKind::DotDotEqual => {
             return ParserError.InvalidRangeExpression;
         },
         else => return ParserError.ExpectedExpression;
@@ -8740,135 +8742,133 @@ proc parser_next_generation(generation: u64) -> u64 {
 
 export proc vitte_parser_error_name(error: ParserError) -> string {
     match error {
-        case ParserError.None => return "none";
-        case ParserError.InvalidArgument => return "invalid_argument";
-        case ParserError.InvalidContext => return "invalid_context";
-        case ParserError.InvalidState => return "invalid_state";
-        case ParserError.InvalidToken => return "invalid_token";
-        case ParserError.InvalidNode => return "invalid_node";
-        case ParserError.ExpectedToken => return "expected_token";
-        case ParserError.ExpectedIdentifier => return "expected_identifier";
-        case ParserError.ExpectedExpression => return "expected_expression";
-        case ParserError.ExpectedType => return "expected_type";
-        case ParserError.ExpectedStatement => return "expected_statement";
-        case ParserError.ExpectedDeclaration => return "expected_declaration";
-        case ParserError.UnexpectedToken => return "unexpected_token";
-        case ParserError.NodeLimit => return "node_limit";
-        case ParserError.DiagnosticLimit => return "diagnostic_limit";
-        case ParserError.RecursionLimit => return "recursion_limit";
-        case ParserError.Overflow => return "overflow";
-        case ParserError.OutOfMemory => return "out_of_memory";
-        case ParserError.Validation => return "validation";
-        case ParserError.Corruption => return "corruption";
-        case ParserError.Unsupported => return "unsupported";
-        case ParserError.Internal => return "internal";
-        case ParserError.InvalidModulePath => return "invalid_module_path";
-        case ParserError.DuplicateModuleHeader => return "duplicate_module_header";
-        case ParserError.MisplacedModuleHeader => return "misplaced_module_header";
-        case ParserError.InvalidUseDeclaration => return "invalid_use_declaration";
-        case ParserError.InvalidUseAlias => return "invalid_use_alias";
-        case ParserError.InvalidImportGroup => return "invalid_import_group";
-        case ParserError.InvalidGlobImport => return "invalid_glob_import";
-        case ParserError.InvalidExportClause => return "invalid_export_clause";
-        case ParserError.EmptyExportGroup => return "empty_export_group";
-        case ParserError.InvalidExportAlias => return "invalid_export_alias";
-        case ParserError.TrailingTokens => return "trailing_tokens";
-        case ParserError.MissingModuleHeader => return "missing_module_header";
-        case ParserError.InvalidValueDeclaration => return "invalid_value_declaration";
-        case ParserError.MissingValueInitializer => return "missing_value_initializer";
-        case ParserError.InvalidTypeDeclaration => return "invalid_type_declaration";
-        case ParserError.InvalidOpaqueDeclaration => return "invalid_opaque_declaration";
-        case ParserError.InvalidFormDeclaration => return "invalid_form_declaration";
-        case ParserError.DuplicateFormField => return "duplicate_form_field";
-        case ParserError.InvalidFormFieldSeparator => return "invalid_form_field_separator";
-        case ParserError.InvalidPickDeclaration => return "invalid_pick_declaration";
-        case ParserError.DuplicatePickVariant => return "duplicate_pick_variant";
-        case ParserError.InvalidPickVariantPayload => return "invalid_pick_variant_payload";
-        case ParserError.InvalidTraitDeclaration => return "invalid_trait_declaration";
-        case ParserError.InvalidImplDeclaration => return "invalid_impl_declaration";
-        case ParserError.MissingImplTargetType => return "missing_impl_target_type";
-        case ParserError.InvalidImplForClause => return "invalid_impl_for_clause";
-        case ParserError.InvalidProcedureDeclaration => return "invalid_procedure_declaration";
-        case ParserError.InvalidProcedureParameters => return "invalid_procedure_parameters";
-        case ParserError.InvalidProcedureReturnType => return "invalid_procedure_return_type";
-        case ParserError.InvalidProcedureModifier => return "invalid_procedure_modifier";
-        case ParserError.InvalidProcedureBodyForm => return "invalid_procedure_body_form";
-        case ParserError.InvalidExternalProcedure => return "invalid_external_procedure";
-        case ParserError.InvalidIntrinsicDeclaration => return "invalid_intrinsic_declaration";
-        case ParserError.InvalidAbiStringLiteral => return "invalid_abi_string_literal";
-        case ParserError.InvalidGenericParameterList => return "invalid_generic_parameter_list";
-        case ParserError.InvalidConstGenericParameter => return "invalid_const_generic_parameter";
-        case ParserError.InvalidGenericBound => return "invalid_generic_bound";
-        case ParserError.InvalidWhereClause => return "invalid_where_clause";
-        case ParserError.InvalidRequiresClause => return "invalid_requires_clause";
-        case ParserError.InvalidEnsuresClause => return "invalid_ensures_clause";
-        case ParserError.InvalidMacroDeclaration => return "invalid_macro_declaration";
-        case ParserError.InvalidMacroParameters => return "invalid_macro_parameters";
-        case ParserError.InvalidTestDeclaration => return "invalid_test_declaration";
-        case ParserError.InvalidDeclarationModifierOrder => return "invalid_declaration_modifier_order";
-        case ParserError.InvalidAttribute => return "invalid_attribute";
-        case ParserError.InvalidAttributeName => return "invalid_attribute_name";
-        case ParserError.InvalidAttributeArguments => return "invalid_attribute_arguments";
-        case ParserError.MissingAttributeValue => return "missing_attribute_value";
-        case ParserError.InvalidAttributeLiteral => return "invalid_attribute_literal";
-        case ParserError.UnexpectedDeclaration => return "unexpected_declaration";
-        case ParserError.UnexpectedStatement => return "unexpected_statement";
-        case ParserError.UnexpectedExpression => return "unexpected_expression";
-        case ParserError.InvalidProcedureType => return "invalid_procedure_type";
-        case ParserError.InvalidReferenceType => return "invalid_reference_type";
-        case ParserError.InvalidPointerType => return "invalid_pointer_type";
-        case ParserError.InvalidArrayType => return "invalid_array_type";
-        case ParserError.InvalidSliceType => return "invalid_slice_type";
-        case ParserError.InvalidOptionalType => return "invalid_optional_type";
-        case ParserError.InvalidTypePath => return "invalid_type_path";
-        case ParserError.InvalidGenericArguments => return "invalid_generic_arguments";
-        case ParserError.InvalidLetStatement => return "invalid_let_statement";
-        case ParserError.InvalidSetStatement => return "invalid_set_statement";
-        case ParserError.InvalidAssignmentOperator => return "invalid_assignment_operator";
-        case ParserError.InvalidReturnStatement => return "invalid_return_statement";
-        case ParserError.InvalidJumpStatement => return "invalid_jump_statement";
-        case ParserError.InvalidDeferStatement => return "invalid_defer_statement";
-        case ParserError.InvalidAssertStatement => return "invalid_assert_statement";
-        case ParserError.InvalidUnsafeStatement => return "invalid_unsafe_statement";
-        case ParserError.InvalidAsmStatement => return "invalid_asm_statement";
-        case ParserError.InvalidControlFlowStatement => return "invalid_control_flow_statement";
-        case ParserError.InvalidMatchStatement => return "invalid_match_statement";
-        case ParserError.InvalidMatchArm => return "invalid_match_arm";
-        case ParserError.InvalidPattern => return "invalid_pattern";
-        case ParserError.InvalidRangePattern => return "invalid_range_pattern";
-        case ParserError.InvalidAssignmentExpression => return "invalid_assignment_expression";
-        case ParserError.InvalidCoalescingExpression => return "invalid_coalescing_expression";
-        case ParserError.InvalidLogicalExpression => return "invalid_logical_expression";
-        case ParserError.InvalidBitwiseExpression => return "invalid_bitwise_expression";
-        case ParserError.InvalidComparisonExpression => return "invalid_comparison_expression";
-        case ParserError.InvalidShiftExpression => return "invalid_shift_expression";
-        case ParserError.InvalidArithmeticExpression => return "invalid_arithmetic_expression";
-        case ParserError.InvalidRangeExpression => return "invalid_range_expression";
-        case ParserError.InvalidUnaryExpression => return "invalid_unary_expression";
-        case ParserError.InvalidCastExpression => return "invalid_cast_expression";
-        case ParserError.InvalidPostfixExpression => return "invalid_postfix_expression";
-        case ParserError.InvalidIfExpression => return "invalid_if_expression";
-        case ParserError.InvalidBlockExpression => return "invalid_block_expression";
-        case ParserError.InvalidArrayExpression => return "invalid_array_expression";
-        case ParserError.InvalidSizeofExpression => return "invalid_sizeof_expression";
-        case ParserError.InvalidAlignofExpression => return "invalid_alignof_expression";
-        case ParserError.InvalidNullConstruction => return "invalid_null_construction";
-        case ParserError.InvalidExpressionList => return "invalid_expression_list";
-        case ParserError.Count => return "count";
-        else => return "unknown";
+        case ParserError::None => return "none";
+        case ParserError::InvalidArgument => return "invalid_argument";
+        case ParserError::InvalidContext => return "invalid_context";
+        case ParserError::InvalidState => return "invalid_state";
+        case ParserError::InvalidToken => return "invalid_token";
+        case ParserError::InvalidNode => return "invalid_node";
+        case ParserError::ExpectedToken => return "expected_token";
+        case ParserError::ExpectedIdentifier => return "expected_identifier";
+        case ParserError::ExpectedExpression => return "expected_expression";
+        case ParserError::ExpectedType => return "expected_type";
+        case ParserError::ExpectedStatement => return "expected_statement";
+        case ParserError::ExpectedDeclaration => return "expected_declaration";
+        case ParserError::UnexpectedToken => return "unexpected_token";
+        case ParserError::NodeLimit => return "node_limit";
+        case ParserError::DiagnosticLimit => return "diagnostic_limit";
+        case ParserError::RecursionLimit => return "recursion_limit";
+        case ParserError::Overflow => return "overflow";
+        case ParserError::OutOfMemory => return "out_of_memory";
+        case ParserError::Validation => return "validation";
+        case ParserError::Corruption => return "corruption";
+        case ParserError::Unsupported => return "unsupported";
+        case ParserError::Internal => return "internal";
+        case ParserError::InvalidModulePath => return "invalid_module_path";
+        case ParserError::DuplicateModuleHeader => return "duplicate_module_header";
+        case ParserError::MisplacedModuleHeader => return "misplaced_module_header";
+        case ParserError::InvalidUseDeclaration => return "invalid_use_declaration";
+        case ParserError::InvalidUseAlias => return "invalid_use_alias";
+        case ParserError::InvalidImportGroup => return "invalid_import_group";
+        case ParserError::InvalidGlobImport => return "invalid_glob_import";
+        case ParserError::InvalidExportClause => return "invalid_export_clause";
+        case ParserError::EmptyExportGroup => return "empty_export_group";
+        case ParserError::InvalidExportAlias => return "invalid_export_alias";
+        case ParserError::TrailingTokens => return "trailing_tokens";
+        case ParserError::MissingModuleHeader => return "missing_module_header";
+        case ParserError::InvalidValueDeclaration => return "invalid_value_declaration";
+        case ParserError::MissingValueInitializer => return "missing_value_initializer";
+        case ParserError::InvalidTypeDeclaration => return "invalid_type_declaration";
+        case ParserError::InvalidOpaqueDeclaration => return "invalid_opaque_declaration";
+        case ParserError::InvalidFormDeclaration => return "invalid_form_declaration";
+        case ParserError::DuplicateFormField => return "duplicate_form_field";
+        case ParserError::InvalidFormFieldSeparator => return "invalid_form_field_separator";
+        case ParserError::InvalidPickDeclaration => return "invalid_pick_declaration";
+        case ParserError::DuplicatePickVariant => return "duplicate_pick_variant";
+        case ParserError::InvalidPickVariantPayload => return "invalid_pick_variant_payload";
+        case ParserError::InvalidTraitDeclaration => return "invalid_trait_declaration";
+        case ParserError::InvalidImplDeclaration => return "invalid_impl_declaration";
+        case ParserError::MissingImplTargetType => return "missing_impl_target_type";
+        case ParserError::InvalidImplForClause => return "invalid_impl_for_clause";
+        case ParserError::InvalidProcedureDeclaration => return "invalid_procedure_declaration";
+        case ParserError::InvalidProcedureParameters => return "invalid_procedure_parameters";
+        case ParserError::InvalidProcedureReturnType => return "invalid_procedure_return_type";
+        case ParserError::InvalidProcedureModifier => return "invalid_procedure_modifier";
+        case ParserError::InvalidProcedureBodyForm => return "invalid_procedure_body_form";
+        case ParserError::InvalidExternalProcedure => return "invalid_external_procedure";
+        case ParserError::InvalidIntrinsicDeclaration => return "invalid_intrinsic_declaration";
+        case ParserError::InvalidAbiStringLiteral => return "invalid_abi_string_literal";
+        case ParserError::InvalidGenericParameterList => return "invalid_generic_parameter_list";
+        case ParserError::InvalidConstGenericParameter => return "invalid_const_generic_parameter";
+        case ParserError::InvalidGenericBound => return "invalid_generic_bound";
+        case ParserError::InvalidWhereClause => return "invalid_where_clause";
+        case ParserError::InvalidRequiresClause => return "invalid_requires_clause";
+        case ParserError::InvalidEnsuresClause => return "invalid_ensures_clause";
+        case ParserError::InvalidMacroDeclaration => return "invalid_macro_declaration";
+        case ParserError::InvalidMacroParameters => return "invalid_macro_parameters";
+        case ParserError::InvalidTestDeclaration => return "invalid_test_declaration";
+        case ParserError::InvalidDeclarationModifierOrder => return "invalid_declaration_modifier_order";
+        case ParserError::InvalidAttribute => return "invalid_attribute";
+        case ParserError::InvalidAttributeName => return "invalid_attribute_name";
+        case ParserError::InvalidAttributeArguments => return "invalid_attribute_arguments";
+        case ParserError::MissingAttributeValue => return "missing_attribute_value";
+        case ParserError::InvalidAttributeLiteral => return "invalid_attribute_literal";
+        case ParserError::UnexpectedDeclaration => return "unexpected_declaration";
+        case ParserError::UnexpectedStatement => return "unexpected_statement";
+        case ParserError::UnexpectedExpression => return "unexpected_expression";
+        case ParserError::InvalidProcedureType => return "invalid_procedure_type";
+        case ParserError::InvalidReferenceType => return "invalid_reference_type";
+        case ParserError::InvalidPointerType => return "invalid_pointer_type";
+        case ParserError::InvalidArrayType => return "invalid_array_type";
+        case ParserError::InvalidSliceType => return "invalid_slice_type";
+        case ParserError::InvalidOptionalType => return "invalid_optional_type";
+        case ParserError::InvalidTypePath => return "invalid_type_path";
+        case ParserError::InvalidGenericArguments => return "invalid_generic_arguments";
+        case ParserError::InvalidLetStatement => return "invalid_let_statement";
+        case ParserError::InvalidSetStatement => return "invalid_set_statement";
+        case ParserError::InvalidAssignmentOperator => return "invalid_assignment_operator";
+        case ParserError::InvalidReturnStatement => return "invalid_return_statement";
+        case ParserError::InvalidJumpStatement => return "invalid_jump_statement";
+        case ParserError::InvalidDeferStatement => return "invalid_defer_statement";
+        case ParserError::InvalidAssertStatement => return "invalid_assert_statement";
+        case ParserError::InvalidUnsafeStatement => return "invalid_unsafe_statement";
+        case ParserError::InvalidAsmStatement => return "invalid_asm_statement";
+        case ParserError::InvalidControlFlowStatement => return "invalid_control_flow_statement";
+        case ParserError::InvalidMatchStatement => return "invalid_match_statement";
+        case ParserError::InvalidMatchArm => return "invalid_match_arm";
+        case ParserError::InvalidPattern => return "invalid_pattern";
+        case ParserError::InvalidRangePattern => return "invalid_range_pattern";
+        case ParserError::InvalidAssignmentExpression => return "invalid_assignment_expression";
+        case ParserError::InvalidCoalescingExpression => return "invalid_coalescing_expression";
+        case ParserError::InvalidLogicalExpression => return "invalid_logical_expression";
+        case ParserError::InvalidBitwiseExpression => return "invalid_bitwise_expression";
+        case ParserError::InvalidComparisonExpression => return "invalid_comparison_expression";
+        case ParserError::InvalidShiftExpression => return "invalid_shift_expression";
+        case ParserError::InvalidArithmeticExpression => return "invalid_arithmetic_expression";
+        case ParserError::InvalidRangeExpression => return "invalid_range_expression";
+        case ParserError::InvalidUnaryExpression => return "invalid_unary_expression";
+        case ParserError::InvalidCastExpression => return "invalid_cast_expression";
+        case ParserError::InvalidPostfixExpression => return "invalid_postfix_expression";
+        case ParserError::InvalidIfExpression => return "invalid_if_expression";
+        case ParserError::InvalidBlockExpression => return "invalid_block_expression";
+        case ParserError::InvalidArrayExpression => return "invalid_array_expression";
+        case ParserError::InvalidSizeofExpression => return "invalid_sizeof_expression";
+        case ParserError::InvalidAlignofExpression => return "invalid_alignof_expression";
+        case ParserError::InvalidNullConstruction => return "invalid_null_construction";
+        case ParserError::InvalidExpressionList => return "invalid_expression_list";
+        case ParserError::Count => return "count";
     }
 }
 
 export proc vitte_parser_state_name(state: ParserState) -> string {
     match state {
-        case ParserState.Invalid => return "invalid";
-        case ParserState.Ready => return "ready";
-        case ParserState.Parsing => return "parsing";
-        case ParserState.Done => return "done";
-        case ParserState.Failed => return "failed";
-        case ParserState.Destroyed => return "destroyed";
-        case ParserState.Count => return "count";
-        else => return "unknown";
+        case ParserState::Invalid => return "invalid";
+        case ParserState::Ready => return "ready";
+        case ParserState::Parsing => return "parsing";
+        case ParserState::Done => return "done";
+        case ParserState::Failed => return "failed";
+        case ParserState::Destroyed => return "destroyed";
+        case ParserState::Count => return "count";
     }
 }
 

@@ -77,7 +77,7 @@ native_deallocate(
 }
 
 const char *
-vitte_native_environment_value(
+vitte_native_environment_value_raw(
     const char *name)
 {
     if (name == NULL) {
@@ -349,7 +349,7 @@ vitte_native_api_deallocate(
 }
 
 char *
-vitte_native_api_bytes_to_string(
+vitte_native_api_bytes_to_string_raw(
     uint8_t *data,
     size_t length)
 {
