@@ -355,7 +355,7 @@ proc ast_reject_unsupported_attributes(emitter: &mut C17AstEmitter) {
                 };
                 if not supported or attribute.argument_count != 0 {
                     ast_record_source_context(emitter, node);
-                    ast_fail(emitter, "only #[cold] on procedures and #[thread_local] on statics are supported by C17 code generation");
+                    ast_fail(emitter, "unsupported attribute: only #[cold] on procedures and #[thread_local] on statics are supported by C17 code generation");
                     return;
                 }
                 set attribute_index += 1;
@@ -532,8 +532,10 @@ proc ast_exported_proc_c_name(name: string, qualified_name: string) -> string {
         return ast_mangle(qualified_name, "vitte_fn_");
     }
     if (name.len() >= "api_".len() and name.slice(0, "api_".len()) == "api_") or
-       (name.len() >= "vitte_api_".len() and
-        name.slice(0, "vitte_api_".len()) == "vitte_api_") {
+       (name.len() >= "vitte_api_".len() and name.slice(0, "vitte_api_".len()) == "vitte_api_") or
+       (name.len() >= "vitte_cli_diagnostic_".len() and name.slice(0, "vitte_cli_diagnostic_".len()) == "vitte_cli_diagnostic_") or
+       (name.len() >= "vitte_cli_option_".len() and name.slice(0, "vitte_cli_option_".len()) == "vitte_cli_option_") or
+       (name.len() >= "vitte_diagnostic_cli_".len() and name.slice(0, "vitte_diagnostic_cli_".len()) == "vitte_diagnostic_cli_") {
         return name;
     }
     let mut result: string = "";
@@ -711,7 +713,7 @@ proc ast_collect_symbols(
                 let child_space = ast_join_space(active_space, ast_path_text(emitter, path));
                 ast_collect_symbols(emitter, body?, child_space, depth + 1);
             } elif body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         } elif declaration_node.kind == ASTNodeKind.UseDecl {
             ast_collect_use_imports(emitter, declaration_node, active_space);
@@ -1147,10 +1149,7 @@ proc ast_collect_generic_impl_methods_in_scope(
                     depth + 1
                 );
             } elif path != null and body == null {
-                set active_space = ast_join_space(
-                    active_space,
-                    ast_path_text(emitter, path)
-                );
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set declaration_index += 1;
@@ -1256,10 +1255,7 @@ proc ast_collect_impl_methods_in_scope(
                     depth + 1
                 );
             } elif path != null and body == null {
-                set active_space = ast_join_space(
-                    active_space,
-                    ast_path_text(emitter, path)
-                );
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set index += 1;
@@ -1593,6 +1589,17 @@ proc ast_resolve_proc_path(emitter: &C17AstEmitter, path: ?&ASTNode, namespace: 
         let mut index: usize = 0;
         while index < emitter.procedure_count {
             if emitter.procedures[index].qualified_name == raw {
+                return index;
+            }
+            set index += 1;
+        }
+        // Imported modules are nested inside the source file's declared space.
+        // Alias resolution returns the import path relative to that space, so
+        // try the current namespace before treating the path as unresolved.
+        let contextual = ast_qualified_name(raw, namespace);
+        set index = 0;
+        while index < emitter.procedure_count {
+            if emitter.procedures[index].qualified_name == contextual {
                 return index;
             }
             set index += 1;
@@ -2435,7 +2442,7 @@ proc ast_collect_generic_instances_in_scope(
                     depth + 1
                 );
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         } else {
             ast_collect_generic_instances_in_tree(emitter, declaration, active_space, depth + 1);
@@ -4059,6 +4066,50 @@ proc ast_emit_callback_parameter_declarator(
     return emitted;
 }
 
+proc ast_pointer_builtin_result_type_text(
+    emitter: &C17AstEmitter,
+    call: ?&ASTNode,
+    namespace: string
+) -> ?string {
+    if call == null or call?.kind != ASTNodeKind.CallExpr or
+       call?.child_count == 0 {
+        return null;
+    }
+    let callee = ast_child(emitter, call, 0);
+    if callee == null or
+       (callee?.kind != ASTNodeKind.Identifier and
+        callee?.kind != ASTNodeKind.Path) {
+        return null;
+    }
+    let raw_name = ast_path_text(emitter, callee);
+    let mut qualified_name = ast_canonical_import_path(emitter, callee);
+    let local_callee = callee?.child_count <= 1 and
+        ast_local_index(emitter, raw_name) != usize.MAX;
+    let global_callee = callee?.child_count <= 1 and
+        ast_global_index(emitter, raw_name, namespace) != usize.MAX;
+    if not local_callee and not global_callee and
+       not ast_has_namespace_separator(qualified_name) {
+        let import_index = ast_import_index(emitter, raw_name, namespace);
+        if import_index != usize.MAX {
+            set qualified_name = emitter.imports[import_index].qualified_name;
+        }
+    }
+    if qualified_name == "vitte::core::pointer::add_bytes_const" {
+        return "const uint8_t *";
+    }
+    if qualified_name == "vitte::core::pointer::add_bytes" or
+       qualified_name == "vitte::core::pointer::from_address_mut" {
+        return "uint8_t *";
+    }
+    if qualified_name == "vitte::core::pointer::address" {
+        return "uintptr_t";
+    }
+    if qualified_name == "vitte::core::pointer::is_null" {
+        return "bool";
+    }
+    return null;
+}
+
 proc ast_infer_type_text(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace: string, depth: usize) -> ?string {
     if node == null or depth > AST_EMIT_MAX_DEPTH {
         return null;
@@ -4333,6 +4384,12 @@ proc ast_infer_type_text(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace
         }
     }
     if node.kind == ASTNodeKind::CallExpr and node.child_count != 0 {
+        let pointer_result = ast_pointer_builtin_result_type_text(
+            emitter,
+            node,
+            namespace
+        );
+        if pointer_result != null { return pointer_result; }
         let callee = ast_child(emitter, node, 0);
         if callee != null and callee?.kind == ASTNodeKind::MemberExpr {
             let method = ast_token_text(emitter, ast_child(emitter, callee, 1));
@@ -6660,7 +6717,7 @@ proc ast_collect_generic_proc_instances_in_scope(
                     depth + 1
                 );
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         } else {
             ast_collect_generic_proc_instances_in_tree(
@@ -8408,13 +8465,18 @@ proc ast_emit_statement(emitter: &mut C17AstEmitter, node: ?&ASTNode, namespace:
                 emitter.parser,
                 node.token_index + 1
             );
+            let first_asm_child = ast_child(emitter, node, 0);
             if syntax_token == null {
                 ast_fail(emitter, "asm statement is missing its syntax token");
                 return;
             }
+            let template_form = syntax_token.kind == TokenKind.StringLiteral or
+                (syntax_token.kind == TokenKind.LeftParen and
+                 first_asm_child != null and
+                 first_asm_child?.kind == ASTNodeKind.StringLiteral);
             ast_write(emitter, "#if defined(__GNUC__) || defined(__clang__)\n");
             ast_emit_indent(emitter, depth);
-            if syntax_token.kind == TokenKind.StringLiteral {
+            if template_form {
                 if node.child_count != 1 or
                    ast_child(emitter, node, 0)?.kind != ASTNodeKind.StringLiteral {
                     ast_fail(emitter, "asm template form requires one string literal");
@@ -9354,7 +9416,7 @@ proc ast_emit_async_helpers_in_scope(
                     depth + 1
                 );
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set index += 1;
@@ -9549,7 +9611,7 @@ proc ast_emit_forward_types(emitter: &mut C17AstEmitter, scope: &ASTNode, namesp
             if path != null and body != null and body?.kind == ASTNodeKind.Block {
                 ast_emit_forward_types(emitter, body?, ast_join_space(active_space, ast_path_text(emitter, path)), depth + 1);
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         } elif declaration.kind == ASTNodeKind.TypeDecl {
             /* Generic aliases expand at their concrete type-use sites. */
@@ -9601,7 +9663,7 @@ proc ast_emit_picks(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace: str
             if path != null and body != null and body?.kind == ASTNodeKind.Block {
                 ast_emit_picks(emitter, body?, ast_join_space(active_space, ast_path_text(emitter, path)), depth + 1);
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set index += 1;
@@ -9771,7 +9833,7 @@ proc ast_emit_aliases(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace: s
             if path != null and body != null and body?.kind == ASTNodeKind.Block {
                 ast_emit_aliases(emitter, body?, ast_join_space(active_space, ast_path_text(emitter, path)), depth + 1);
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set index += 1;
@@ -10036,7 +10098,7 @@ proc ast_emit_types(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace: str
             if path != null and body != null and body?.kind == ASTNodeKind.Block {
                 ast_emit_types(emitter, body?, ast_join_space(active_space, ast_path_text(emitter, path)), depth + 1);
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set index += 1;
@@ -10268,7 +10330,7 @@ proc ast_emit_globals(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace: s
             if path != null and body != null and body?.kind == ASTNodeKind.Block {
                 ast_emit_globals(emitter, body?, ast_join_space(active_space, ast_path_text(emitter, path)), depth + 1);
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set index += 1;
@@ -10331,7 +10393,7 @@ proc ast_emit_prototypes(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace
             if path != null and body != null and body?.kind == ASTNodeKind.Block {
                 ast_emit_prototypes(emitter, body?, ast_join_space(active_space, ast_path_text(emitter, path)), depth + 1);
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         } elif declaration.kind == ASTNodeKind.ImplDecl {
             let mut method_index: usize = 0;
@@ -10569,7 +10631,7 @@ proc ast_emit_definitions(emitter: &mut C17AstEmitter, scope: &ASTNode, namespac
             if path != null and body != null and body?.kind == ASTNodeKind.Block {
                 ast_emit_definitions(emitter, body?, ast_join_space(active_space, ast_path_text(emitter, path)), depth + 1);
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set index += 1;
@@ -10602,7 +10664,7 @@ proc ast_emit_tests(emitter: &mut C17AstEmitter, scope: &ASTNode, namespace: str
             if path != null and body != null and body?.kind == ASTNodeKind.Block {
                 ast_emit_tests(emitter, body?, ast_join_space(active_space, ast_path_text(emitter, path)), depth + 1);
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set index += 1;
@@ -10637,7 +10699,7 @@ proc ast_find_entry_in_scope(
                 );
                 if nested != null { return nested; }
             } elif path != null and body == null {
-                set active_space = ast_join_space(active_space, ast_path_text(emitter, path));
+                set active_space = ast_path_text(emitter, path);
             }
         }
         set index += 1;
@@ -10896,6 +10958,30 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
                 ast_fail(&mut emitter, "entry procedure symbol is ambiguous");
                 return ast_failure_result(&emitter);
             }
+            if (entry_proc?.node_flags & PARSER_AST_FLAG_ASYNC) != 0 {
+                let task_type = ast_async_task_type_name(entry_proc?);
+                let create_task = ast_async_task_function_name(entry_proc?, "create");
+                let await_task = ast_async_task_function_name(entry_proc?, "await");
+                if ast_async_result_is_void(
+                    &mut emitter,
+                    entry_proc?,
+                    emitter.procedures[entry_index].namespace
+                ) {
+                    ast_write(
+                        &mut emitter,
+                        "int main(void) { " + task_type + " task = " +
+                            create_task + "(); " + await_task +
+                            "(&task); return 0; }\n"
+                    );
+                } else {
+                    ast_write(
+                        &mut emitter,
+                        "int main(void) { " + task_type + " task = " +
+                            create_task + "(); return (int)" + await_task +
+                            "(&task); }\n"
+                    );
+                }
+            } else {
             let entry_symbol = ast_mangle(emitter.procedures[entry_index].qualified_name, "vitte_fn_");
             let return_type = ast_function_return_type(&emitter, entry_proc?);
             if return_type != null {
@@ -10909,6 +10995,7 @@ export proc c17_emit_ast_with_options(parser: &Parser, options: &C17AstEmitOptio
                 }
             } else {
                 ast_write(&mut emitter, "int main(void) { " + entry_symbol + "(); return 0; }\n");
+            }
             }
         }
     } elif options.emit_entry_wrapper and entry_proc == null and emitter.test_count != 0 and not emitter.failed {

@@ -297,6 +297,10 @@ NATIVE_FRONTEND_SOURCES := $(shell find $(VITTE_ROOT)/compiler -type f -name '*.
 NATIVE_MODULE_SOURCES := modules/core/Vitte.toml $(shell find modules/core/src -type f \( -name '*.vit' -o -name '*.vitte' \) | LC_ALL=C sort)
 VITTE_MODULE_PATH ?= modules/core/src
 NATIVE_FRONTEND_COMPILER ?= $(BOOTSTRAP_TARGET_BIN)
+# The C bootstrap backend emits root parser symbols while the native backend
+# retains the compiler module path. The grammar harness selects the matching
+# ABI; callers can override this for custom frontend compiler wrappers.
+NATIVE_CANONICAL_PARSER_QUALIFIED ?= $(if $(findstring vitte-bootstrap,$(NATIVE_FRONTEND_COMPILER)),0,1)
 NATIVE_FRONTEND_DIR := $(BUILD)/native-frontend
 NATIVE_FRONTEND_C := $(NATIVE_FRONTEND_DIR)/api-implementation.c
 NATIVE_FRONTEND_OBJECT := $(NATIVE_FRONTEND_DIR)/api-implementation.o
@@ -932,6 +936,7 @@ $(NATIVE_GRAMMAR_TEST_BIN): $(TEST_DIR)/native_canonical_grammar_test.c $(NATIVE
 	@mkdir -p $(BIN_DIR)
 	@printf '[TEST-CC] native_canonical_grammar_test\n'
 	$(CC) $(CPPFLAGS) $(TEST_CFLAGS) \
+		$(if $(filter 1,$(NATIVE_CANONICAL_PARSER_QUALIFIED)),-DVITTE_CANONICAL_PARSER_QUALIFIED,) \
 		$(TEST_DIR)/native_canonical_grammar_test.c \
 		$(NATIVE_GRAMMAR_PARSER_OBJECT) $(LDFLAGS) $(LDLIBS) -o $@
 
@@ -1597,7 +1602,7 @@ $(SELFHOST_STAGE2_STAMP): $(SELFHOST_STAGE1_STAMP) $(SELFHOST_STAGE2_BIN) \
 		--generated "$(SELFHOST_STAGE1_C)" --generated "$(SELFHOST_STAGE2_C)" \
 		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage2" -- \
 	cmp -s "$(SELFHOST_STAGE1_C)" "$(SELFHOST_STAGE2_C)"
-	@printf '\n[SELFHOST] stage0 and stage1 API output match\n'
+	@printf '\n[SELFHOST] stage1 and stage2 API output match\n'
 	@printf '[SELFHOST] stage2 frontend corpus and parity\n'
 	$(SELFHOST_STEP_RUNNER) --stage 2 --step "frontend corpus and parity" $(call SELFHOST_STEP_EVIDENCE,2) \
 		--compiler "$(SELFHOST_STAGE2_BIN)" --generated "$(SELFHOST_STAGE2_C)" \
@@ -1645,7 +1650,7 @@ $(SELFHOST_STAGE3_STAMP): $(SELFHOST_STAGE2_STAMP) $(SELFHOST_STAGE3_BIN) \
 		--generated "$(SELFHOST_STAGE2_C)" --generated "$(SELFHOST_STAGE3_C)" \
 		--reproduce "$(MAKE) MODE=$(MODE) bootstrap-stage3" -- \
 	cmp -s "$(SELFHOST_STAGE2_C)" "$(SELFHOST_STAGE3_C)"
-	@printf '\n[SELFHOST] stage1 and stage2 API output match\n'
+	@printf '\n[SELFHOST] stage2 and stage3 API output match\n'
 	@printf '[SELFHOST] stage3 frontend corpus and parity\n'
 	$(SELFHOST_STEP_RUNNER) --stage 3 --step "frontend corpus and parity" $(call SELFHOST_STEP_EVIDENCE,3) \
 		--compiler "$(SELFHOST_STAGE3_BIN)" --generated "$(SELFHOST_STAGE3_C)" \

@@ -158,6 +158,7 @@ class CompilerScaleTests(unittest.TestCase):
 
             output.write(
                 b"*/\n"
+                b"space scale::large_comments;\n"
                 b"export proc main() -> int {\n"
                 b"    return 0;\n"
                 b"}\n"
@@ -175,7 +176,7 @@ class CompilerScaleTests(unittest.TestCase):
             buffering=MIB,
         ) as output:
             output.write(
-                "space scale.large_declarations;\n\n"
+                "space scale::large_declarations;\n\n"
             )
 
             for index in range(declaration_count):
@@ -263,7 +264,7 @@ class CompilerScaleTests(unittest.TestCase):
 
             with source.open("wb", buffering=MIB) as output:
                 output.write(
-                    b"space scale.large_boundary;\n"
+                    b"space scale::large_boundary;\n"
                     b"/*"
                 )
 
@@ -307,6 +308,7 @@ class CompilerScaleTests(unittest.TestCase):
 
                 output.write(
                     b"\n"
+                    b"space scale::large_line_comment;\n"
                     b"export proc main() -> int {\n"
                     b"    return 0;\n"
                     b"}\n"
@@ -335,7 +337,7 @@ class CompilerScaleTests(unittest.TestCase):
 
             with source.open("wb", buffering=MIB) as output:
                 output.write(
-                    b"space scale.large_whitespace;\n"
+                    b"space scale::large_whitespace;\n"
                 )
 
                 for _ in range(LARGE_SOURCE_MIB):
@@ -428,7 +430,7 @@ class CompilerScaleTests(unittest.TestCase):
                 buffering=MIB,
             ) as output:
                 output.write(
-                    "space scale.forward_references;\n\n"
+                    "space scale::forward_references;\n\n"
                 )
 
                 for index in range(declaration_count - 1):
@@ -479,7 +481,7 @@ class CompilerScaleTests(unittest.TestCase):
                 buffering=MIB,
             ) as output:
                 output.write(
-                    "space scale.many_constants;\n\n"
+                    "space scale::many_constants;\n\n"
                 )
 
                 for index in range(constant_count):
@@ -530,7 +532,7 @@ class CompilerScaleTests(unittest.TestCase):
                 buffering=MIB,
             ) as output:
                 output.write(
-                    "space scale.many_forms;\n\n"
+                    "space scale::many_forms;\n\n"
                 )
 
                 for index in range(form_count):
@@ -585,7 +587,7 @@ class CompilerScaleTests(unittest.TestCase):
                 buffering=MIB,
             ) as output:
                 output.write(
-                    "space scale.many_locals;\n\n"
+                    "space scale::many_locals;\n\n"
                     "export proc main() -> int {\n"
                 )
 
@@ -637,7 +639,7 @@ class CompilerScaleTests(unittest.TestCase):
                 buffering=MIB,
             ) as output:
                 output.write(
-                    "space scale.many_assignments;\n\n"
+                    "space scale::many_assignments;\n\n"
                     "export proc main() -> int {\n"
                     "    let mut value: int = 0;\n"
                 )
@@ -698,7 +700,7 @@ class CompilerScaleTests(unittest.TestCase):
                 buffering=MIB,
             ) as output:
                 output.write(
-                    "space scale.nested_blocks;\n\n"
+                    "space scale::nested_blocks;\n\n"
                     "export proc main() -> int {\n"
                     "    let mut result: int = 0;\n"
                 )
@@ -752,7 +754,7 @@ class CompilerScaleTests(unittest.TestCase):
                 buffering=MIB,
             ) as output:
                 output.write(
-                    "space scale.many_identifiers;\n\n"
+                    "space scale::many_identifiers;\n\n"
                 )
 
                 for index in range(identifier_count):
@@ -820,7 +822,7 @@ class CompilerScaleTests(unittest.TestCase):
             source = Path(directory) / "repeat.vit"
 
             source.write_text(
-                "space scale.repeat;\n"
+                "space scale::repeat;\n"
                 "\n"
                 "proc answer() -> int {\n"
                 "    return 42;\n"
@@ -873,7 +875,7 @@ class CompilerScaleTests(unittest.TestCase):
                 buffering=MIB,
             ) as output:
                 output.write(
-                    "space scale.large_invalid;\n\n"
+                    "space scale::large_invalid;\n\n"
                 )
 
                 for index in range(declaration_count):

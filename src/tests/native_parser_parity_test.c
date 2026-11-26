@@ -102,6 +102,8 @@ typedef struct native_parser {
     size_t max_recursion_depth;
     size_t max_recovery_tokens;
     size_t recursion_depth;
+    size_t match_subject_depth;
+    size_t match_arm_depth;
     bool recovering;
     native_parser_stats_t stats;
     uint64_t generation;
@@ -207,29 +209,45 @@ node_has_shared_token_anchor(int32_t kind)
 }
 
 static uint32_t
-normalize_native_parser_flags(uint32_t flags)
+normalize_native_parser_flags(uint32_t flags, int32_t kind)
 {
-    /* The native parser stores pattern and const-generic flags in bits 18-24;
-     * the bootstrap AST uses the public flag positions below bit 19. */
+    /* The native parser reuses bits 18-24 for pattern and const-generic flags.
+     * Normalize those aliases by node kind so intrinsic and parameter flags
+     * keep the bootstrap AST's public positions. */
     uint32_t normalized = flags & ~UINT32_C(0x01fc0000);
 
-    if ((flags & (UINT32_C(1) << 18u)) != 0u) {
-        normalized |= UINT32_C(1) << 10u;
-    }
-    if ((flags & (UINT32_C(1) << 19u)) != 0u) {
-        normalized |= UINT32_C(1) << 11u;
-    }
-    if ((flags & (UINT32_C(1) << 20u)) != 0u) {
-        normalized |= UINT32_C(1) << 12u;
-    }
-    if ((flags & (UINT32_C(1) << 21u)) != 0u) {
-        normalized |= UINT32_C(1) << 13u;
-    }
-    if ((flags & (UINT32_C(1) << 22u)) != 0u) {
-        normalized |= UINT32_C(1) << 14u;
-    }
-    if ((flags & (UINT32_C(1) << 24u)) != 0u) {
-        normalized |= UINT32_C(1) << 18u;
+    if (kind == VITTE_AST_NODE_PATTERN) {
+        if ((flags & (UINT32_C(1) << 18u)) != 0u) {
+            normalized |= UINT32_C(1) << 10u;
+        }
+        if ((flags & (UINT32_C(1) << 19u)) != 0u) {
+            normalized |= UINT32_C(1) << 11u;
+        }
+        if ((flags & (UINT32_C(1) << 20u)) != 0u) {
+            normalized |= UINT32_C(1) << 12u;
+        }
+        if ((flags & (UINT32_C(1) << 21u)) != 0u) {
+            normalized |= UINT32_C(1) << 13u;
+        }
+        if ((flags & (UINT32_C(1) << 22u)) != 0u) {
+            normalized |= UINT32_C(1) << 14u;
+        }
+        normalized |= flags & ((UINT32_C(1) << 23u) |
+                               (UINT32_C(1) << 24u));
+    } else if (kind == VITTE_AST_NODE_GENERIC_PARAM) {
+        if ((flags & (UINT32_C(1) << 24u)) != 0u) {
+            normalized |= UINT32_C(1) << 18u;
+        }
+    } else if (kind == VITTE_AST_NODE_PROC_DECL ||
+               kind == VITTE_AST_NODE_EXTERN_PROC_DECL) {
+        normalized |= flags & ((UINT32_C(1) << 19u) |
+                               (UINT32_C(1) << 20u) |
+                               (UINT32_C(1) << 21u) |
+                               (UINT32_C(1) << 22u));
+    } else if (kind == VITTE_AST_NODE_PARAMETER) {
+        normalized |= flags & ((UINT32_C(1) << 20u) |
+                               (UINT32_C(1) << 21u) |
+                               (UINT32_C(1) << 22u));
     }
     return normalized;
 }
@@ -274,13 +292,15 @@ compare_node(
     CHECK_NODE_FIELD(operator_kind);
     CHECK_NODE_FIELD(child_count);
     CHECK_NODE_FIELD(attribute_count);
-    if (bootstrap_node->flags != normalize_native_parser_flags(native_node->flags)) {
+    if (bootstrap_node->flags != normalize_native_parser_flags(
+            native_node->flags, native_node->kind)) {
         (void)fprintf(stderr,
             "%s: AST node bootstrap=%" PRIu64 " native=%" PRIu64 " kind=%d/%d flags differ (bootstrap=%" PRIu64 " native-normalized=%" PRIu64 ") spans=%zu-%zu/%zu-%zu\n",
             test_case->name, bootstrap_node_id, native_node_id,
             (int)bootstrap_node->kind, (int)native_node->kind,
             (uint64_t)bootstrap_node->flags,
-            (uint64_t)normalize_native_parser_flags(native_node->flags),
+            (uint64_t)normalize_native_parser_flags(
+                native_node->flags, native_node->kind),
             bootstrap_node->span.begin, bootstrap_node->span.end,
             native_node->span.begin, native_node->span.end);
         return 0;
@@ -480,11 +500,19 @@ compare_native_parser(const parser_parity_case_t *test_case)
         }
         goto failure;
     }
-    if (bootstrap_parsed &&
-        (!vitte_parser_validate(&bootstrap_parser) ||
-         !compiler_parser_parser_vitte_parser_validate(&native_parser))) {
-        (void)fprintf(stderr, "%s: parser accepted an invalid AST\n", test_case->name);
-        goto failure;
+    if (bootstrap_parsed) {
+        const bool bootstrap_valid = vitte_parser_validate(&bootstrap_parser);
+        const bool native_valid =
+            compiler_parser_parser_vitte_parser_validate(&native_parser);
+        if (!bootstrap_valid || !native_valid) {
+            (void)fprintf(stderr,
+                "%s: parser accepted an invalid AST "
+                "(bootstrap_valid=%d native_valid=%d)\n",
+                test_case->name,
+                bootstrap_valid ? 1 : 0,
+                native_valid ? 1 : 0);
+            goto failure;
+        }
     }
     if (!bootstrap_parsed) {
         size_t diagnostic_index;

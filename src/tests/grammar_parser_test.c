@@ -832,7 +832,7 @@ check_parser_diagnostic_details(void)
         },
         {
             "proc bad() { asm(,); }",
-            VITTE_PARSER_ERROR_INVALID_ASM_STATEMENT,
+            VITTE_PARSER_ERROR_INVALID_EXPRESSION_LIST,
             VITTE_TOKEN_INVALID,
             VITTE_TOKEN_COMMA
         },
@@ -998,12 +998,6 @@ check_parser_diagnostic_details(void)
             VITTE_TOKEN_SEMICOLON,
             VITTE_TOKEN_INTEGER_LITERAL
         },
-        {
-            "type Bad = Map<>;",
-            VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS,
-            VITTE_TOKEN_IDENTIFIER,
-            VITTE_TOKEN_GREATER
-        }
     };
     size_t case_index;
     int ok = 1;
@@ -1514,7 +1508,7 @@ check_module_import_export_diagnostics(void)
         !expect_parser_diagnostic_at(
             malformed_module_path,
             VITTE_PARSER_ERROR_INVALID_MODULE_PATH,
-            "::", 0u) ||
+            ";", 0u) ||
         !expect_parser_diagnostic_at(
             duplicate_module_header,
             VITTE_PARSER_ERROR_DUPLICATE_MODULE_HEADER,

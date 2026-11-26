@@ -12,6 +12,20 @@ from pathlib import Path
 
 
 SEMANTIC_CASES = {
+    "pick constructor through a transparent type alias": (
+        "pick Order { Less, Equal, Greater }\n"
+        "type OrderAlias = Order;\n"
+        "proc selected_order() -> OrderAlias { return OrderAlias.Less; }\n"
+        "proc main() -> i64 { if selected_order() == OrderAlias.Less { return 0; } return 1; }\n",
+        True,
+    ),
+    "qualified module header preserves forward procedure signatures": (
+        "space tests::forward_reference;\n"
+        "proc caller() -> i64 { return later(); }\n"
+        "proc later() -> i64 { return 42; }\n"
+        "proc main() -> i64 { return caller() - 42; }\n",
+        True,
+    ),
     "nullable coalescing accepts an optional payload": (
         "proc main() -> i64 { let value: i64 = 42; let optional: ?i64 = &value; "
         "return (optional ?? 0) - 42; }\n",
@@ -36,22 +50,27 @@ SEMANTIC_CASES = {
     ),
     "await accepts a direct async call": (
         "async proc delayed_value() -> i64 { return 42; }\n"
-        "proc main() -> i64 { return (await delayed_value()) - 42; }\n",
+        "async proc main() -> i64 { return (await delayed_value()) - 42; }\n",
         True,
     ),
     "await rejects a synchronous call": (
         "proc immediate_value() -> i64 { return 42; }\n"
-        "proc main() -> i64 { return await immediate_value(); }\n",
+        "async proc main() -> i64 { return await immediate_value(); }\n",
+        False,
+    ),
+    "await outside async procedure": (
+        "async proc delayed_value() -> i64 { return 42; }\n"
+        "proc main() -> i64 { return await delayed_value(); }\n",
         False,
     ),
     "async call creates a storable task": (
         "async proc delayed_value() -> i64 { return 42; }\n"
-        "proc main() -> i64 { let task = delayed_value(); return await task - 42; }\n",
+        "async proc main() -> i64 { let task = delayed_value(); return await task - 42; }\n",
         True,
     ),
     "await rejects a non-call value": (
         "async proc delayed_value() -> i64 { return 42; }\n"
-        "proc main() -> i64 { let value: i64 = 42; return await value; }\n",
+        "async proc main() -> i64 { let value: i64 = 42; return await value; }\n",
         False,
     ),
     "print rejects zero arguments": (
@@ -2340,7 +2359,7 @@ def main() -> int:
                     text=True,
                     timeout=60,
                 )
-                if rejected.returncode == 0 or "E0902" not in rejected.stderr:
+                if rejected.returncode == 0 or "E0903" not in rejected.stderr:
                     raise AssertionError(
                         f"{compiler.name} must reject unsupported {name} "
                         "semantics at code generation; "

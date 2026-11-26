@@ -1699,6 +1699,18 @@ vitte_parser_parse_type_expression_with_pending(
     vitte_parser_t *parser,
     size_t *pending_generic_closers);
 
+static vitte_ast_node_id_t
+vitte_parser_parse_type_expression_with_pending_mode(
+    vitte_parser_t *parser,
+    size_t *pending_generic_closers,
+    bool allow_trait_bound_colon);
+
+static vitte_ast_node_id_t
+vitte_parser_parse_type_expression_inner(
+    vitte_parser_t *parser,
+    size_t *pending_generic_closers,
+    bool allow_trait_bound_colon);
+
 static bool
 vitte_parser_check_type_closer(
     const vitte_parser_t *parser,
@@ -5322,9 +5334,15 @@ vitte_parser_parse_type_expression(
 }
 
 static vitte_ast_node_id_t
-vitte_parser_parse_type_expression_inner(
-    vitte_parser_t *parser,
-    size_t *pending_generic_closers);
+vitte_parser_parse_where_subject(
+    vitte_parser_t *parser)
+{
+    size_t pending_generic_closers = 0u;
+    return vitte_parser_parse_type_expression_with_pending_mode(
+        parser,
+        &pending_generic_closers,
+        true);
+}
 
 static vitte_parser_error_t
 vitte_parser_type_expression_error(
@@ -5398,6 +5416,18 @@ vitte_parser_parse_type_expression_with_pending(
     vitte_parser_t *parser,
     size_t *pending_generic_closers)
 {
+    return vitte_parser_parse_type_expression_with_pending_mode(
+        parser,
+        pending_generic_closers,
+        false);
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_type_expression_with_pending_mode(
+    vitte_parser_t *parser,
+    size_t *pending_generic_closers,
+    bool allow_trait_bound_colon)
+{
     const vitte_token_t *begin_token;
     size_t begin;
     size_t diagnostic_start;
@@ -5408,7 +5438,7 @@ vitte_parser_parse_type_expression_with_pending(
     diagnostic_start = parser != NULL ? parser->diagnostic_count : 0u;
     begin_token = vitte_parser_current(parser);
     type = vitte_parser_parse_type_expression_inner(
-        parser, pending_generic_closers);
+        parser, pending_generic_closers, allow_trait_bound_colon);
     if (parser != NULL &&
         parser->diagnostic_count > diagnostic_start) {
         specific_error = vitte_parser_type_expression_error(
@@ -5424,7 +5454,8 @@ vitte_parser_parse_type_expression_with_pending(
 static vitte_ast_node_id_t
 vitte_parser_parse_type_expression_inner(
     vitte_parser_t *parser,
-    size_t *pending_generic_closers)
+    size_t *pending_generic_closers,
+    bool allow_trait_bound_colon)
 {
     size_t begin;
     size_t generic_diagnostic_start;
@@ -5797,7 +5828,8 @@ vitte_parser_parse_type_expression_inner(
         return base;
     }
 
-    if (vitte_parser_check(parser, VITTE_TOKEN_COLON)) {
+    if (vitte_parser_check(parser, VITTE_TOKEN_COLON) &&
+        !allow_trait_bound_colon) {
         (void)vitte_parser_error_here(
             parser,
             VITTE_PARSER_ERROR_INVALID_TYPE_PATH,
@@ -5940,13 +5972,6 @@ vitte_parser_parse_type_expression_inner(
                 vitte_parser_leave_recursion(parser);
                 return VITTE_AST_INVALID_ID;
             }
-        } else {
-            (void)vitte_parser_error_here(
-                parser,
-                VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS,
-                VITTE_TOKEN_IDENTIFIER);
-            vitte_parser_leave_recursion(parser);
-            return VITTE_AST_INVALID_ID;
         }
 
         if (!vitte_parser_consume_type_closer(
@@ -6187,9 +6212,7 @@ vitte_parser_parse_where_clause(
         size_t predicate_begin = parser->position;
         size_t diagnostic_start = parser->diagnostic_count;
 
-        subject =
-            vitte_parser_parse_type_expression(
-                parser);
+        subject = vitte_parser_parse_where_subject(parser);
 
         if (subject == VITTE_AST_INVALID_ID) {
             vitte_parser_reclassify_last_diagnostic(
@@ -7908,6 +7931,14 @@ vitte_parser_parse_asm_statement_inner(
 
     if (statement == VITTE_AST_INVALID_ID) {
         return statement;
+    }
+
+    {
+        vitte_ast_node_t *node =
+            vitte_parser_get_node_mut(parser, statement);
+        if (node != NULL) {
+            node->token_index = begin;
+        }
     }
 
     if (vitte_parser_match(

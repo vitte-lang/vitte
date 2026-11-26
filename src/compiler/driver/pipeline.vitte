@@ -453,6 +453,8 @@ proc native_pipeline_sema_code(code: SemaDiagnosticCode) -> string {
         case SemaDiagnosticCode::RecursionLimit => return "VITTE_INFRA_E_LIMIT";
         case SemaDiagnosticCode::TypeMismatch => return "VITTE_TYPE_E_MISMATCH";
         case SemaDiagnosticCode::InvalidType => return "VITTE_TYPE_E_MISMATCH";
+        case SemaDiagnosticCode::AsyncAwaitContext => return "VITTE_ASYNC_E_AWAIT_CONTEXT";
+        case SemaDiagnosticCode::AsyncTaskType => return "VITTE_ASYNC_E_TASK_TYPE";
         case SemaDiagnosticCode::InvalidPatternBindings => return "VITTE_PATTERN_E_BINDING";
         case SemaDiagnosticCode::ReferenceEscape => return "VITTE_MEMORY_E_REFERENCE_ESCAPE";
         case SemaDiagnosticCode::BorrowConflict => return "VITTE_MEMORY_E_BORROW_CONFLICT";
@@ -2987,7 +2989,7 @@ proc native_pipeline_export_diagnostics(
             set context_text = "type lookup / visible declarations";
         }
         if (*source_diagnostic).related_span.valid and
-           (*source_diagnostic).related_span.file_id == file_id and
+           (*source_diagnostic).related_span.file_id == span.file_id and
            (*source_diagnostic).related_span.end >= (*source_diagnostic).related_span.begin and
            (*source_diagnostic).related_span.end <= source.length {
             let mut scanner: Scanner;
@@ -3856,6 +3858,36 @@ proc native_pipeline_has_string_intrinsic_call(parser: &Parser) -> bool {
     return false;
 }
 
+/// Pointer helpers from vitte::core::pointer have dedicated C17 lowering,
+/// while native IR does not yet preserve imported intrinsic bindings.
+proc native_pipeline_has_pointer_intrinsic_call(parser: &Parser) -> bool {
+    if parser.nodes == null { return false; }
+    let mut index: usize = 0;
+    while index < parser.node_count {
+        let node = &parser.nodes[index];
+        if node.kind == ASTNodeKind.CallExpr and node.child_count != 0 {
+            let callee = vitte_parser_get_node(parser, node.children[0]);
+            let name_node = if callee != null and callee.kind == ASTNodeKind.Path and
+                callee.child_count != 0 {
+                vitte_parser_get_node(parser, callee.children[callee.child_count - 1])
+            } else {
+                callee
+            };
+            let name = vitte_parser_node_token(parser, name_node);
+            if name != null and
+               ((*name).lexeme == "add_bytes" or
+                (*name).lexeme == "add_bytes_const" or
+                (*name).lexeme == "from_address_mut" or
+                (*name).lexeme == "address" or
+                (*name).lexeme == "is_null") {
+                return true;
+            }
+        }
+        set index += 1;
+    }
+    return false;
+}
+
 proc native_pipeline_requires_generic_pick_ast_codegen(parser: &Parser) -> bool {
     if parser.nodes == null { return false; }
     let mut index: usize = 0;
@@ -4352,6 +4384,8 @@ proc native_pipeline_run_with_config(
         native_pipeline_requires_reference_codegen(&parser) or
         native_pipeline_requires_attribute_codegen(&parser) or
         generic_pick_ast_fallback or
+        (action == NATIVE_FRONTEND_ACTION_COMPILE and
+         native_pipeline_has_pointer_intrinsic_call(&parser)) or
         (action == NATIVE_FRONTEND_ACTION_COMPILE and
          native_pipeline_has_module_alias_import(&parser));
     let generic_proc_c17_fallback = action == NATIVE_FRONTEND_ACTION_COMPILE and

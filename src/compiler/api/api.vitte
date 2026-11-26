@@ -80,6 +80,8 @@ use compiler::diagnostic::diagnostic::{
 };
 use compiler::diagnostic::cli_bridge::{
     CliDiagnostic,
+    CliDiagnosticLocation,
+    CliDiagnosticSpan,
     CliDiagnosticOrigin,
     vitte_cli_diagnostic_severity_name,
     vitte_cli_diagnostic_transport_destroy
@@ -802,31 +804,13 @@ proc api_module_append_namespace_open(
     output: &mut ApiBuffer,
     name: str
 ) -> usize {
-    let bytes = name.as_bytes();
-    let mut segment_start: usize = 0;
-    let mut index: usize = 0;
-    let mut depth: usize = 0;
-    while index <= bytes.len() {
-        let end_segment = index == bytes.len() or
-            (index + 1 < bytes.len() and bytes[index] == 58 and bytes[index + 1] == 58);
-        if end_segment {
-            if index == segment_start or
-               not api_module_append_text(output, "export space ") or
-               not buffer_append_range(output, name, segment_start, index) or
-               not api_module_append_text(output, " {\n") {
-                return 0;
-            }
-            set depth += 1;
-            if index == bytes.len() {
-                break;
-            }
-            set index += 2;
-            set segment_start = index;
-        } else {
-            set index += 1;
-        }
+    if name.length == 0 or
+       not api_module_append_text(output, "export space ") or
+       not buffer_append_range(output, name, 0, name.length) or
+       not api_module_append_text(output, " {\n") {
+        return 0;
     }
-    return depth;
+    return 1;
 }
 
 proc api_module_append_namespace_close(output: &mut ApiBuffer, depth: usize) -> bool {
@@ -1057,6 +1041,26 @@ proc api_module_expand_source(
         while line_end < bytes.len() and bytes[line_end] != 10 {
             set line_end += 1;
         }
+        let mut directive_start = offset;
+        while directive_start < line_end and
+              (bytes[directive_start] == 32 or bytes[directive_start] == 9) {
+            set directive_start += 1;
+        }
+        if module_name == null and line_end - directive_start >= 6 and
+           bytes[directive_start] == 115 and bytes[directive_start + 1] == 112 and
+           bytes[directive_start + 2] == 97 and bytes[directive_start + 3] == 99 and
+           bytes[directive_start + 4] == 101 and bytes[directive_start + 5] == 32 {
+            if not buffer_append_range(
+                &mut expansion.output,
+                source,
+                offset,
+                line_end
+            ) or (line_end < bytes.len() and
+                  not buffer_append_byte(&mut expansion.output, 10)) {
+                vitte_native_api_deallocate(source.as_ptr() as *mut u8);
+                return false;
+            }
+        }
         let import_name = api_module_use_name(source, offset, line_end);
         if import_name != null {
             let import_name_value = import_name?;
@@ -1142,10 +1146,14 @@ proc api_module_expand_source(
                   bytes[directive_start] == 115 and bytes[directive_start + 1] == 112 and
                   bytes[directive_start + 2] == 97 and bytes[directive_start + 3] == 99 and
                   bytes[directive_start + 4] == 101 and bytes[directive_start + 5] == 32 {
-                set offset = if line_end < bytes.len() { line_end + 1 } else { line_end };
-                if line_end < bytes.len() and not buffer_append_byte(&mut expansion.output, 10) {
-                    vitte_native_api_deallocate(source.as_ptr() as *mut u8);
-                    return false;
+                if line_end < bytes.len() {
+                    if not buffer_append_byte(&mut expansion.output, 10) {
+                        vitte_native_api_deallocate(source.as_ptr() as *mut u8);
+                        return false;
+                    }
+                    set offset = line_end + 1;
+                } else {
+                    set offset = line_end;
                 }
             } else {
                 if not buffer_append_range(
@@ -1998,6 +2006,87 @@ proc api_render_pipeline_diagnostics_json(
                 buffer_destroy(&mut buffer);
                 return false;
             }
+        }
+        if not api_module_append_text(&mut buffer, ",\"related_locations\":[") {
+            buffer_destroy(&mut buffer);
+            return false;
+        }
+        let mut related_index: usize = 0;
+        let related_locations = (*diagnostic_entry).related as *const CliDiagnosticLocation;
+        while related_locations != null and
+              related_index < (*diagnostic_entry).related_count {
+            let related = &related_locations[related_index];
+            if related_index != 0 and
+               not buffer_append_byte(&mut buffer, ',' as u8) {
+                buffer_destroy(&mut buffer);
+                return false;
+            }
+            if not api_module_append_text(&mut buffer, "{\"kind\":\"related\",\"label\":") or
+               not api_append_json_cstring(&mut buffer, (*related).label) or
+               not api_module_append_text(&mut buffer, ",\"span\":") {
+                buffer_destroy(&mut buffer);
+                return false;
+            }
+            let related_span: *const CliDiagnosticSpan = &(*related).span;
+            if not (*related_span).valid {
+                if not api_module_append_text(&mut buffer, "null") {
+                    buffer_destroy(&mut buffer);
+                    return false;
+                }
+            } elif not api_module_append_text(&mut buffer, "{\"source\":") or
+                   not api_append_json_cstring(&mut buffer, (*related_span).source_name) or
+                   not api_module_append_text(&mut buffer, ",\"source_id\":") or
+                   not api_module_append_text(
+                       &mut buffer,
+                       if (*related_span).source_id == 0 {
+                           "null"
+                       } else {
+                           api_cli_size_to_string((*related_span).source_id as usize)
+                       }
+                   ) or
+                   not api_module_append_text(&mut buffer, ",\"start_byte\":") or
+                   not api_module_append_text(
+                       &mut buffer,
+                       api_cli_size_to_string((*related_span).start_offset)
+                   ) or
+                   not api_module_append_text(&mut buffer, ",\"end_byte\":") or
+                   not api_module_append_text(
+                       &mut buffer,
+                       api_cli_size_to_string((*related_span).end_offset)
+                   ) or
+                   not api_module_append_text(&mut buffer, ",\"start_line\":") or
+                   not api_module_append_text(
+                       &mut buffer,
+                       api_cli_size_to_string((*related_span).start_line)
+                   ) or
+                   not api_module_append_text(&mut buffer, ",\"start_column\":") or
+                   not api_module_append_text(
+                       &mut buffer,
+                       api_cli_size_to_string((*related_span).start_column)
+                   ) or
+                   not api_module_append_text(&mut buffer, ",\"end_line\":") or
+                   not api_module_append_text(
+                       &mut buffer,
+                       api_cli_size_to_string((*related_span).end_line)
+                   ) or
+                   not api_module_append_text(&mut buffer, ",\"end_column\":") or
+                   not api_module_append_text(
+                       &mut buffer,
+                       api_cli_size_to_string((*related_span).end_column)
+                   ) or
+                   not api_module_append_text(&mut buffer, "}") {
+                buffer_destroy(&mut buffer);
+                return false;
+            }
+            if not buffer_append_byte(&mut buffer, '}' as u8) {
+                buffer_destroy(&mut buffer);
+                return false;
+            }
+            set related_index += 1;
+        }
+        if not buffer_append_byte(&mut buffer, ']' as u8) {
+            buffer_destroy(&mut buffer);
+            return false;
         }
         if not buffer_append_byte(&mut buffer, '}' as u8) {
             buffer_destroy(&mut buffer);

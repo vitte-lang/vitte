@@ -6,8 +6,8 @@ changing an exported signature. Contracts and error semantics are described
 in [`README.md`](README.md). This is a source API index, not a stable ABI
 promise.
 
-Source files indexed: 184.
-Exported declarations indexed: 1930.
+Source files indexed: 182.
+Exported declarations indexed: 1919.
 
 ## `core::array::compare`
 
@@ -2622,9 +2622,9 @@ export const CORE_VERSION_MINOR: u32 = 1;
 export const CORE_VERSION_PATCH: u32 = 1;
 ```
 
-## `core::error::assert`
+## `core::error::assertions`
 
-Source: [`src/error/assert.vit`](src/error/assert.vit) · exports: 3
+Source: [`src/error/assertions.vit`](src/error/assertions.vit) · exports: 3
 
 ```vit
 export form AssertionResult {
@@ -3288,7 +3288,7 @@ export type PhantomData<T> = [T;
 Source: [`src/marker/send.vit`](src/marker/send.vit) · exports: 1
 
 ```vit
-
+export trait Send {}
 ```
 
 ## `core::marker::sized`
@@ -3304,7 +3304,7 @@ export trait Sized {}
 Source: [`src/marker/sync.vit`](src/marker/sync.vit) · exports: 1
 
 ```vit
-
+export trait Sync {}
 ```
 
 ## `core::marker::unpin`
@@ -3363,7 +3363,12 @@ Source: [`src/mem/memory.vit`](src/mem/memory.vit) · exports: 5
 ```vit
 export proc mem_fill(destination: *mut u8, value: u8, length: usize) -> bool;
 export proc mem_copy(destination: *mut u8, source: *const u8, length: usize) -> bool;
-export proc mem_compare(left: *const u8, right: *const u8, length: usize, ordering: &mut i8) -> bool;
+export proc mem_compare(
+    left: *const u8,
+    right: *const u8,
+    length: usize,
+    ordering: &mut i8
+) -> bool;
 export proc mem_equal(left: *const u8, right: *const u8, length: usize) -> bool;
 export proc mem_zero(destination: *mut u8, length: usize) -> bool;
 ```
@@ -3779,6 +3784,22 @@ export proc bitxor_u32(left: u32, right: u32) -> u32;
 export proc bitxor_u64(left: u64, right: u64) -> u64;
 ```
 
+## `core::ops::complement`
+
+Source: [`src/ops/complement.vit`](src/ops/complement.vit) · exports: 9
+
+```vit
+export proc bitnot_i8(value: i8) -> i8;
+export proc bitnot_i16(value: i16) -> i16;
+export proc bitnot_i32(value: i32) -> i32;
+export proc bitnot_i64(value: i64) -> i64;
+export proc bitnot_u8(value: u8) -> u8;
+export proc bitnot_u16(value: u16) -> u16;
+export proc bitnot_u32(value: u32) -> u32;
+export proc bitnot_u64(value: u64) -> u64;
+export proc logical_not(value: bool) -> bool;
+```
+
 ## `core::ops::deref`
 
 Source: [`src/ops/deref.vit`](src/ops/deref.vit) · exports: 2
@@ -3865,22 +3886,6 @@ export proc neg_i32(value: i32) -> i32;
 export proc neg_i64(value: i64) -> i64;
 export proc neg_f32(value: f32) -> f32;
 export proc neg_f64(value: f64) -> f64;
-```
-
-## `core::ops::not`
-
-Source: [`src/ops/not.vit`](src/ops/not.vit) · exports: 9
-
-```vit
-export proc bitnot_i8(value: i8) -> i8;
-export proc bitnot_i16(value: i16) -> i16;
-export proc bitnot_i32(value: i32) -> i32;
-export proc bitnot_i64(value: i64) -> i64;
-export proc bitnot_u8(value: u8) -> u8;
-export proc bitnot_u16(value: u16) -> u16;
-export proc bitnot_u32(value: u32) -> u32;
-export proc bitnot_u64(value: u64) -> u64;
-export proc logical_not(value: bool) -> bool;
 ```
 
 ## `core::ops::rem`
@@ -4126,22 +4131,6 @@ Source: [`src/ptr/copy.vit`](src/ptr/copy.vit) · exports: 1
 export proc ptr_copy(destination: *mut u8, source: *const u8, length: usize) -> bool;
 ```
 
-## `vitte::core::memory`
-
-Source: [`src/ptr/memory.vit`](src/ptr/memory.vit) · exports: 9
-
-```vit
-export intrinsic native_allocate(size: usize) -> *mut u8;
-export intrinsic native_deallocate(pointer: *mut u8);
-export proc allocate(size: usize) -> *mut u8;
-export proc deallocate(pointer: *mut u8);
-export proc fill(destination: *mut u8, value: u8, length: usize) -> bool;
-export proc copy(destination: *mut u8, source: *const u8, length: usize) -> bool;
-export proc cstring_length(value: *const u8) -> usize;
-export proc copy_string_bytes(destination: *mut u8, source: string, length: usize) -> bool;
-export proc format(format_text: string, arguments: [string]) -> string;
-```
-
 ## `core::ptr`
 
 Source: [`src/ptr/mod.vit`](src/ptr/mod.vit) · exports: 1
@@ -4174,9 +4163,9 @@ export proc nonnull_is_valid<T>(value: &NonNull[T]) -> bool;
 export proc nonnull_const_is_valid<T>(value: &NonNullConst[T]) -> bool;
 ```
 
-## `core::ptr::null`
+## `core::ptr::null_pointer`
 
-Source: [`src/ptr/null.vit`](src/ptr/null.vit) · exports: 2
+Source: [`src/ptr/null_pointer.vit`](src/ptr/null_pointer.vit) · exports: 2
 
 ```vit
 export proc null_const<T>() -> *const T;
@@ -4200,9 +4189,9 @@ export proc ptr_read<T>(source: *const T) -> ?T;
 export proc ptr_read_unchecked<T>(source: *const T) -> T;
 ```
 
-## `core::ptr::volatile`
+## `core::ptr::volatile_access`
 
-Source: [`src/ptr/volatile.vit`](src/ptr/volatile.vit) · exports: 2
+Source: [`src/ptr/volatile_access.vit`](src/ptr/volatile_access.vit) · exports: 2
 
 ```vit
 
@@ -4785,15 +4774,6 @@ export trait Iterator<Receiver, Item> {
 export trait DoubleEndedIterator<Receiver, Item> {
     proc next_back(iterator: &mut Receiver) -> ?Item;
 }
-```
-
-## `core::types::array`
-
-Source: [`src/types/array.vit`](src/types/array.vit) · exports: 2
-
-```vit
-export type FixedArray<T, const N: usize> = [T; N];
-export proc fixed_array_length<T, const N: usize>() -> usize;
 ```
 
 ## `core::types::marker`

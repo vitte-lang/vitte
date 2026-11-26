@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,31 @@ from pathlib import Path
 
 
 VALID_CASES = {
+    "pick constructor through a transparent type alias": """\
+pick Order { Less, Equal, Greater }
+type OrderAlias = Order;
+proc selected_order() -> OrderAlias { return OrderAlias.Less; }
+proc main() -> i64 {
+    if selected_order() == OrderAlias.Less { return 0; }
+    return 1;
+}
+""",
+    "qualified module header preserves forward procedure signatures": """\
+space tests::forward_reference;
+proc caller() -> i64 { return later(); }
+proc later() -> i64 { return 42; }
+proc main() -> i64 { return caller() - 42; }
+""",
+    "imported pointer intrinsic result type is inferred": """\
+space probe::pointer_intrinsic;
+use vitte::core::pointer;
+proc main() -> i64 {
+    let original: *const u8 = null;
+    let advanced = pointer::add_bytes_const(original, 2);
+    if advanced == null { return 0; }
+    return 1;
+}
+""",
     "qualified module header with exported runtime declarations": """\
 /// Runtime module parser regression fixture.
 space vitte::runtime;
@@ -379,12 +405,12 @@ INVALID_CASES = {
     ),
     "generic type arity is validated": (
         "form Box<T> { value: T }\n"
-        "proc use(value: Box) -> i64 { return 0; }\n",
+        "proc consume(value: Box) -> i64 { return 0; }\n",
         "VITTE_GENERIC_E_ARGUMENT_COUNT",
     ),
     "const generic argument kind is diagnosed": (
         "form Buffer<const N: usize> { value: i64 }\n"
-        "proc use(value: Buffer<i64>) -> i64 { return 0; }\n",
+        "proc consume(value: Buffer<i64>) -> i64 { return 0; }\n",
         "VITTE_GENERIC_E_ARGUMENT_KIND",
     ),
     "opaque layout use reports incomplete type": (
@@ -394,7 +420,7 @@ INVALID_CASES = {
     ),
     "recursive aliases are diagnosed": (
         "type Loop = Loop;\n"
-        "proc use(value: Loop) -> i64 { return 0; }\n",
+        "proc consume(value: Loop) -> i64 { return 0; }\n",
         "VITTE_TYPE_E_RECURSIVE",
     ),
     "trait implementation must provide required methods": (
@@ -422,7 +448,7 @@ INVALID_CASES = {
     "ambiguous generic method candidates are diagnosed": (
         "trait ReadNumber { proc read() -> i64; }\n"
         "trait ReadFlag { proc read() -> bool; }\n"
-        "proc use<T: ReadNumber + ReadFlag>(value: T) -> i64 { "
+        "proc consume<T: ReadNumber + ReadFlag>(value: T) -> i64 { "
         "let result = value.read(); return 0; }\n",
         "VITTE_TRAIT_E_AMBIGUOUS_METHOD",
     ),
@@ -463,7 +489,7 @@ INVALID_CASES = {
     ),
     "match pattern must belong to its pick type": (
         "pick State { Ready, Done }\npick Other { Started }\nproc main() -> i64 { let state: State = State::Ready; match state { Other::Started => { return 1; }, else => { return 0; } } return 2; }\n",
-        "VITTE_TYPE_E_MISMATCH",
+        "VITTE_PATTERN_E_TYPE",
     ),
     "payload pick constructor requires its payload": (
         "pick Maybe { Some(i64) }\nproc main() -> i64 { let value: Maybe = Maybe::Some(); return 0; }\n",
@@ -475,7 +501,7 @@ INVALID_CASES = {
     ),
     "payload pick pattern requires its binding": (
         "pick Maybe { Some(i64) }\nproc main() -> i64 { let value: Maybe = Maybe::Some(1); match value { Maybe::Some() => { return 0; } } return 1; }\n",
-        "VITTE_CALL_E_ARITY",
+        "VITTE_PATTERN_E_TYPE",
     ),
     "multi-field payload pick constructor checks arity": (
         "pick Payload { Data(i64, bool, i64) }\nproc main() -> i64 { let value: Payload = Payload::Data(1, true); return 0; }\n",
@@ -487,7 +513,7 @@ INVALID_CASES = {
     ),
     "multi-field payload pick pattern checks arity": (
         "pick Payload { Data(i64, bool, i64) }\nproc main() -> i64 { let value: Payload = Payload::Data(1, true, 2); match value { Payload::Data(first, enabled) => { return first; } } return 0; }\n",
-        "VITTE_CALL_E_ARITY",
+        "VITTE_PATTERN_E_TYPE",
     ),
     "unknown payload pick variant is rejected": (
         "pick Maybe { Some(i64) }\nproc main() -> i64 { let value: Maybe = Maybe::Missing(1); return 0; }\n",
@@ -570,7 +596,7 @@ AST_FALLBACK_CASES = {
 }
 
 
-def invoke(binary: Path, command: str, source_path: Path):
+def invoke(binary: Path, command: str, source_path: Path, env=None):
     return subprocess.run(
         [
             str(binary), command, str(source_path), "--quiet", "--no-color",
@@ -579,7 +605,83 @@ def invoke(binary: Path, command: str, source_path: Path):
         capture_output=True,
         text=True,
         timeout=60,
+        env=env,
     )
+
+
+def assert_qualified_import_ast_codegen(binary: Path, directory: Path):
+    module_root = directory / "modules"
+    module_file = module_root / "foo" / "types" / "mod.vit"
+    module_file.parent.mkdir(parents=True, exist_ok=True)
+    module_file.write_text(
+        "space foo::types;\n"
+        "export form Thing { value: i64 }\n",
+        encoding="utf-8",
+    )
+    source_path = directory / "qualified_import_namespace.vit"
+    source_path.write_text(
+        "space app::main;\n"
+        "use foo::types::{Thing};\n"
+        "#[cold] proc main() -> i64 {\n"
+        "    let value: Thing = Thing { value: 42 };\n"
+        "    return value.value - 42;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    extra_paths = env.get("VITTE_MODULE_PATH", "modules/core/src:src")
+    env["VITTE_MODULE_PATH"] = os.pathsep.join((str(module_root), extra_paths))
+
+    checked = invoke(binary, "check", source_path, env)
+    if checked.returncode != 0:
+        raise AssertionError(
+            "qualified imported form: check failed; "
+            f"stdout={checked.stdout!r}; stderr={checked.stderr!r}"
+        )
+
+    output_path = directory / "qualified_import_namespace.c"
+    emitted = subprocess.run(
+        [
+            str(binary), "compile", str(source_path), "--emit-c", "--quiet",
+            "--no-color", "-o", str(output_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=env,
+    )
+    if emitted.returncode != 0:
+        raise AssertionError(
+            "qualified imported form: C17 emission failed; "
+            f"stdout={emitted.stdout!r}; stderr={emitted.stderr!r}"
+        )
+    generated = output_path.read_text(encoding="utf-8")
+    expected_type = "vitte_type_foo_x3A_x3Atypes_x3A_x3AThing"
+    if expected_type not in generated or "app_x3A_x3Amain_x3A_x3Afoo" in generated:
+        raise AssertionError(
+            "qualified imported form: generated C did not preserve the absolute module namespace"
+        )
+
+    object_path = directory / "qualified_import_namespace.o"
+    c_compiler = os.environ.get("CC", "cc")
+    compiled = subprocess.run(
+        [c_compiler, "-std=c17", "-c", str(output_path), "-o", str(object_path)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if compiled.returncode != 0:
+        raise AssertionError(
+            "qualified imported form: generated C did not compile; "
+            f"stdout={compiled.stdout!r}; stderr={compiled.stderr!r}"
+        )
+
+    executed = invoke(binary, "run", source_path, env)
+    if executed.returncode != 0:
+        raise AssertionError(
+            "qualified imported form: runtime failed; "
+            f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
+        )
 
 
 def diagnostics_for(result: subprocess.CompletedProcess[str], label: str):
@@ -636,7 +738,10 @@ def assert_ast_fallback_path(binary: Path, source_path: Path, name: str, expecta
         (
             item
             for item in diagnostics
-            if item.get("internal_code") == "VITTE_BACKEND_E_CODEGEN"
+            if item.get("internal_code") in (
+                "VITTE_BACKEND_E_CODEGEN",
+                "VITTE_BACKEND_E_UNSUPPORTED",
+            )
         ),
         None,
     )
@@ -722,6 +827,33 @@ def main() -> int:
                 )
             if name in c17_fallback_cases:
                 assert_ast_fallback_path(binary, source_path, name, "accept")
+            if name == "imported pointer intrinsic result type is inferred":
+                output_path = directory / "pointer_intrinsic.c"
+                emitted = subprocess.run(
+                    [
+                        str(binary), "compile", str(source_path), "--emit-c",
+                        "--quiet", "--no-color", "-o", str(output_path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if emitted.returncode != 0:
+                    raise AssertionError(
+                        f"{name}: C17 emission returned {emitted.returncode}; "
+                        f"stdout={emitted.stdout!r}; stderr={emitted.stderr!r}"
+                    )
+                generated = output_path.read_text(encoding="utf-8")
+                if "vitte_pointer_add_bytes_const" not in generated:
+                    raise AssertionError(
+                        f"{name}: pointer intrinsic lowering is missing from C output"
+                    )
+                executed = invoke(binary, "run", source_path)
+                if executed.returncode != 0:
+                    raise AssertionError(
+                        f"{name}: runtime returned {executed.returncode}; "
+                        f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
+                    )
             if name == "scalar operators and compound assignment":
                 executed = invoke(binary, "run", source_path)
                 if executed.returncode != 0:
@@ -731,6 +863,7 @@ def main() -> int:
                     )
             if name in {
                 "qualified module header with exported runtime declarations",
+                "qualified module header preserves forward procedure signatures",
                 "while branches with continue and break",
             }:
                 executed = invoke(binary, "run", source_path)
@@ -760,6 +893,7 @@ def main() -> int:
                         f"nested generic procedure runtime failed; "
                         f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
                     )
+
             if name == "generic procedure C17 specializations cover bool and multiple parameters":
                 executed = invoke(binary, "run", source_path)
                 if executed.returncode != 0:
@@ -978,6 +1112,8 @@ def main() -> int:
                         f"stdout={executed.stdout!r}; stderr={executed.stderr!r}"
                     )
 
+        assert_qualified_import_ast_codegen(binary, directory)
+
         for name, (source, expected_code) in INVALID_CASES.items():
             source_path = directory / (name.replace(" ", "_") + ".vit")
             source_path.write_text(source, encoding="utf-8")
@@ -1063,6 +1199,26 @@ def main() -> int:
             assert_ast_fallback_path(binary, source_path, name, "accept-runtime")
 
     assert_generic_form_runtime(binary)
+
+    formes_choix = (
+        Path(__file__).resolve().parents[2]
+        / "examples"
+        / "tutorials"
+        / "formes-choix.vit"
+    )
+    checked = invoke(binary, "check", formes_choix)
+    if checked.returncode != 0:
+        raise AssertionError(
+            "formes-choix tutorial: check failed; "
+            f"stdout={checked.stdout!r}; stderr={checked.stderr!r}"
+        )
+    executed = invoke(binary, "run", formes_choix)
+    if executed.returncode != 0:
+        raise AssertionError(
+            "formes-choix tutorial: run failed; "
+            f"exit={executed.returncode}; stdout={executed.stdout!r}; "
+            f"stderr={executed.stderr!r}"
+        )
 
     print(
         f"Native frontend subset passed: {len(VALID_CASES)} valid and "

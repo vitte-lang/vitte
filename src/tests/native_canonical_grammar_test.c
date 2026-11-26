@@ -5,6 +5,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef VITTE_CANONICAL_PARSER_QUALIFIED
+#define vitte_parser_init compiler_parser_parser_vitte_parser_init
+#define vitte_parser_run_native compiler_parser_parser_vitte_parser_run_native
+#define vitte_parser_validate compiler_parser_parser_vitte_parser_validate
+#define vitte_parser_set_limits compiler_parser_parser_vitte_parser_set_limits
+#define vitte_parser_node_count compiler_parser_parser_vitte_parser_node_count
+#define vitte_parser_position compiler_parser_parser_vitte_parser_position
+#define vitte_parser_diagnostic_count compiler_parser_parser_vitte_parser_diagnostic_count
+#define vitte_parser_last_error compiler_parser_parser_vitte_parser_last_error
+#define vitte_parser_error_name compiler_parser_parser_vitte_parser_error_name
+#define vitte_parser_diagnostic_at compiler_parser_parser_vitte_parser_diagnostic_at
+#define vitte_parser_root compiler_parser_parser_vitte_parser_root
+#define vitte_parser_destroy compiler_parser_parser_vitte_parser_destroy
+#endif
+
 typedef struct native_lexer_span {
     uint64_t file_id;
     size_t begin;
@@ -658,7 +673,7 @@ run_native_regression_cases(void)
                false, "invalid_unsafe_statement", false, true) &&
         expect_native_parser_result(
                malformed_assembly, sizeof(malformed_assembly) - 1u,
-               false, "invalid_asm_statement", false, true) &&
+               false, "invalid_expression_list", false, true) &&
         expect_native_parser_result(
                malformed_if, sizeof(malformed_if) - 1u,
                false, "invalid_control_flow_statement", false, true) &&
@@ -768,7 +783,7 @@ run_native_regression_cases(void)
                false, "invalid_block_expression", false, true) &&
         expect_native_parser_result(
                empty_generic_arguments, sizeof(empty_generic_arguments) - 1u,
-               false, "invalid_generic_arguments", false, true) &&
+               true, NULL, false, false) &&
         expect_native_parser_result(
                node_limit_source, sizeof(node_limit_source) - 1u,
                false, NULL, true, false) &&

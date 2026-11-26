@@ -829,18 +829,23 @@ vitte_sema_add_diagnostic(
     }
 
     /* The same resolved type node can be visited by both declaration and
-     * body passes. Keep one public diagnostic for one offending name and
-     * retain the richer type information when the later pass has it. */
-    if (code == VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE) {
+     * body passes. Keep one public diagnostic for one offending name/bound
+     * and retain richer type information when a later pass has it. */
+    if (code == VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE ||
+        code == VITTE_SEMA_DIAGNOSTIC_GENERIC_BOUND_UNSATISFIED) {
         size_t index;
         for (index = 0u; index < context->diagnostic_count; ++index) {
             vitte_sema_diagnostic_t *previous =
                 &context->diagnostics[index];
             if (previous->code != code ||
-                previous->symbol_id != symbol_id ||
                 previous->span.file_id != span.file_id ||
                 previous->span.begin != span.begin ||
-                previous->span.end != span.end) {
+                previous->span.end != span.end ||
+                (code == VITTE_SEMA_DIAGNOSTIC_NOT_A_TYPE &&
+                 previous->symbol_id != symbol_id) ||
+                (code == VITTE_SEMA_DIAGNOSTIC_GENERIC_BOUND_UNSATISFIED &&
+                 (previous->expected_type != expected_type ||
+                  previous->found_type != found_type))) {
                 continue;
             }
             if (previous->expected_type == VITTE_SEMA_INVALID_TYPE_ID &&
@@ -3832,6 +3837,19 @@ vitte_sema_substitute_generic_type_private(
     instance_symbol_id = instance->symbol_id;
     instance_argument_count = instance->generic_argument_count;
     instance_arguments = instance->generic_arguments;
+    /* A generic parameter can reach this helper through a cached named
+     * wrapper when its declaration was registered in a separate scope. Treat
+     * that wrapper as the generic parameter it names so bounded forms,
+     * patterns and payloads still receive the concrete application argument. */
+    if (type_kind == VITTE_SEMA_TYPE_NAMED && argument_count == 0u) {
+        parameter_symbol = vitte_scope_get_symbol(
+            &context->scopes,
+            type_symbol_id);
+        if (parameter_symbol != NULL &&
+            parameter_symbol->kind == VITTE_SYMBOL_KIND_GENERIC_PARAMETER) {
+            type_kind = VITTE_SEMA_TYPE_GENERIC_PARAMETER;
+        }
+    }
 
     if (type_kind == VITTE_SEMA_TYPE_POINTER ||
         type_kind == VITTE_SEMA_TYPE_REFERENCE ||
@@ -3935,7 +3953,6 @@ vitte_sema_substitute_generic_type_private(
         parameter_symbol->kind != VITTE_SYMBOL_KIND_GENERIC_PARAMETER) {
         return type_id;
     }
-
     index = 0u;
     for (size_t child_index = 0u;
          child_index < owner_declaration->child_count;
@@ -8122,6 +8139,11 @@ vitte_sema_analyze_binary(
             if (left == context->type_null) {
                 result = right;
             } else {
+                /* Coalescing inspects the optional's payload type, so
+                 * transparent aliases must be expanded before matching the
+                 * optional representation. Other value operators perform
+                 * this normalization through their ordinary value path. */
+                left = vitte_sema_resolve_alias_type_private(context, left);
                 const vitte_sema_type_t *left_type =
                     vitte_sema_type_private(context, left);
 
@@ -8520,6 +8542,24 @@ vitte_sema_resolve_pick_variant_path(
                     VITTE_SCOPE_INVALID_SYMBOL_ID
                 ? vitte_scope_get_symbol(&context->scopes, pick_symbol_id)
                 : NULL;
+            if (pick_symbol != NULL &&
+                pick_symbol->kind == VITTE_SYMBOL_KIND_TYPE) {
+                pick_type_id = vitte_sema_type_for_symbol(
+                    context, pick_symbol_id);
+                pick_type_id = vitte_sema_resolve_alias_type_private(
+                    context, pick_type_id);
+                pick_type = vitte_sema_type_private(
+                    context, pick_type_id);
+                if (pick_type == NULL ||
+                    pick_type->kind != VITTE_SEMA_TYPE_NAMED ||
+                    pick_type->symbol_id ==
+                        VITTE_SCOPE_INVALID_SYMBOL_ID) {
+                    return false;
+                }
+                pick_symbol_id = pick_type->symbol_id;
+                pick_symbol = vitte_scope_get_symbol(
+                    &context->scopes, pick_symbol_id);
+            }
             pick = pick_symbol != NULL &&
                     pick_symbol->kind == VITTE_SYMBOL_KIND_PICK
                 ? (const vitte_ast_node_t *)pick_symbol->payload
@@ -19031,8 +19071,14 @@ vitte_sema_analyze_node(
         {
             const vitte_token_t *syntax_token =
                 vitte_parser_token_at(context->parser, node->token_index + 1u);
+            const vitte_ast_node_t *first_asm_child = node->child_count != 0u
+                ? vitte_sema_node(context, node->children[0])
+                : NULL;
             bool template_form = syntax_token != NULL &&
-                syntax_token->kind == VITTE_TOKEN_STRING_LITERAL;
+                (syntax_token->kind == VITTE_TOKEN_STRING_LITERAL ||
+                 (syntax_token->kind == VITTE_TOKEN_LEFT_PAREN &&
+                  first_asm_child != NULL &&
+                  first_asm_child->kind == VITTE_AST_NODE_STRING_LITERAL));
 
             if (!context->current_unsafe &&
                 vitte_sema_add_diagnostic(

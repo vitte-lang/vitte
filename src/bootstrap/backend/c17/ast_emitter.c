@@ -160,6 +160,10 @@ typedef struct vitte_c17_ast_emitter {
     vitte_c17_ast_type_alias_t *type_aliases;
     size_t type_alias_count;
     size_t type_alias_capacity;
+    const vitte_ast_node_t **form_declarations;
+    size_t form_declaration_count;
+    size_t form_declaration_capacity;
+    bool form_index_ready;
     const vitte_ast_node_t *root_local_type_scope;
     vitte_c17_ast_local_type_t *root_local_types;
     size_t root_local_type_count;
@@ -414,6 +418,45 @@ vitte_c17_ast_emitter_reserve_type_aliases(
 }
 
 static bool
+vitte_c17_ast_emitter_reserve_form_declarations(
+    vitte_c17_ast_emitter_t *emitter,
+    size_t required)
+{
+    size_t capacity;
+    const vitte_ast_node_t **declarations;
+
+    if (emitter == NULL) {
+        return false;
+    }
+    if (required <= emitter->form_declaration_capacity) {
+        return true;
+    }
+    capacity = emitter->form_declaration_capacity != 0u
+        ? emitter->form_declaration_capacity
+        : 8u;
+    while (capacity < required) {
+        if (capacity > SIZE_MAX / 2u) {
+            capacity = required;
+            break;
+        }
+        capacity *= 2u;
+    }
+    if (capacity < required ||
+        capacity > SIZE_MAX / sizeof(*declarations)) {
+        return false;
+    }
+    declarations = (const vitte_ast_node_t **)realloc(
+        (void *)emitter->form_declarations,
+        capacity * sizeof(*declarations));
+    if (declarations == NULL) {
+        return false;
+    }
+    emitter->form_declarations = declarations;
+    emitter->form_declaration_capacity = capacity;
+    return true;
+}
+
+static bool
 vitte_c17_ast_emitter_reserve_generic_procs(
     vitte_c17_ast_emitter_t *emitter,
     size_t required)
@@ -540,6 +583,7 @@ vitte_c17_ast_emitter_release_generic_state(
     free((void *)emitter->procedure_declarations);
     free(emitter->generic_proc_call_bindings);
     free(emitter->type_aliases);
+    free((void *)emitter->form_declarations);
     free(emitter->root_local_types);
     free(emitter->function_local_types);
     {
@@ -3554,7 +3598,26 @@ vitte_c17_ast_find_form(
 {
     size_t index;
 
-    if (node == NULL || name == NULL) {
+    if (emitter == NULL || node == NULL || name == NULL) {
+        return NULL;
+    }
+    if (emitter->form_index_ready &&
+        node == vitte_c17_ast_node(
+            emitter,
+            vitte_parser_root(emitter->parser))) {
+        for (index = 0u;
+             index < emitter->form_declaration_count;
+             ++index) {
+            const vitte_ast_node_t *form =
+                emitter->form_declarations[index];
+            if (form != NULL && form->child_count != 0u &&
+                vitte_c17_ast_token_equal(
+                    emitter,
+                    vitte_c17_ast_child(emitter, form, 0u),
+                    name)) {
+                return form;
+            }
+        }
         return NULL;
     }
     if (node->kind == VITTE_AST_NODE_FORM_DECL &&
@@ -3577,6 +3640,71 @@ vitte_c17_ast_find_form(
         }
     }
     return NULL;
+}
+
+static bool
+vitte_c17_ast_collect_form_declarations(
+    vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *root)
+{
+    const vitte_ast_node_t **stack;
+    size_t stack_capacity;
+    size_t stack_count;
+    size_t node_count;
+
+    if (emitter == NULL || root == NULL || emitter->parser == NULL ||
+        emitter->parser->node_count == SIZE_MAX) {
+        return false;
+    }
+    node_count = emitter->parser->node_count;
+    stack_capacity = node_count + 1u;
+    if (stack_capacity == 0u ||
+        stack_capacity > SIZE_MAX / sizeof(*stack)) {
+        return false;
+    }
+    stack = (const vitte_ast_node_t **)malloc(
+        stack_capacity * sizeof(*stack));
+    if (stack == NULL) {
+        return false;
+    }
+    stack_count = 1u;
+    stack[0] = root;
+    while (stack_count != 0u) {
+        const vitte_ast_node_t *node = stack[--stack_count];
+        size_t child_index;
+
+        if (node->kind == VITTE_AST_NODE_FORM_DECL &&
+            node->child_count != 0u) {
+            if (emitter->form_declaration_count == SIZE_MAX ||
+                !vitte_c17_ast_emitter_reserve_form_declarations(
+                    emitter,
+                    emitter->form_declaration_count + 1u)) {
+                free(stack);
+                return false;
+            }
+            emitter->form_declarations[
+                emitter->form_declaration_count++] = node;
+        }
+        child_index = node->child_count;
+        while (child_index != 0u) {
+            const vitte_ast_node_t *child;
+
+            --child_index;
+            child = vitte_c17_ast_child(
+                emitter, node, child_index);
+            if (child == NULL) {
+                continue;
+            }
+            if (stack_count >= stack_capacity) {
+                free(stack);
+                return false;
+            }
+            stack[stack_count++] = child;
+        }
+    }
+    free(stack);
+    emitter->form_index_ready = true;
+    return true;
 }
 
 static const vitte_ast_node_t *
@@ -12823,6 +12951,8 @@ vitte_c17_ast_emit_statement(
         case VITTE_AST_NODE_ASM_STMT:
         {
             const vitte_token_t *syntax_token;
+            const vitte_ast_node_t *first_asm_child;
+            bool template_form;
             size_t operand_index;
 
             if (node->child_count > 512u) {
@@ -12836,11 +12966,18 @@ vitte_c17_ast_emit_statement(
                 emitter->failed = true;
                 return;
             }
+            first_asm_child = node->child_count != 0u
+                ? vitte_c17_ast_child(emitter, node, 0u)
+                : NULL;
+            template_form = syntax_token->kind == VITTE_TOKEN_STRING_LITERAL ||
+                (syntax_token->kind == VITTE_TOKEN_LEFT_PAREN &&
+                 first_asm_child != NULL &&
+                 first_asm_child->kind == VITTE_AST_NODE_STRING_LITERAL);
             vitte_c17_ast_write(
                 emitter,
                 "#if defined(__GNUC__) || defined(__clang__)\n");
             vitte_c17_ast_indent(emitter, indent);
-            if (syntax_token->kind == VITTE_TOKEN_STRING_LITERAL) {
+            if (template_form) {
                 const vitte_ast_node_t *template_node =
                     vitte_c17_ast_child(emitter, node, 0u);
 
@@ -16125,6 +16262,7 @@ vitte_c17_emit_ast_with_options(
     vitte_c17_ast_emitter_t emitter;
     vitte_c17_compile_options_t default_options;
     const vitte_ast_node_t *root;
+    const vitte_ast_node_t *main_procedure;
     const vitte_ast_node_t *unsupported_node;
     size_t index;
     size_t test_count;
@@ -16184,6 +16322,10 @@ vitte_c17_emit_ast_with_options(
         return false;
     }
     if (!vitte_c17_ast_build_parent_index(&emitter)) {
+        return false;
+    }
+    if (!vitte_c17_ast_collect_form_declarations(&emitter, root)) {
+        vitte_c17_ast_emitter_release_generic_state(&emitter);
         return false;
     }
     if (!vitte_c17_ast_collect_type_aliases(&emitter, root)) {
@@ -16701,6 +16843,7 @@ vitte_c17_emit_ast_with_options(
     vitte_c17_ast_emit_async_task_helpers_in_scope(&emitter, root);
 
     has_main = false;
+    main_procedure = NULL;
     for (index = 0u; index < root->child_count; ++index) {
         const vitte_ast_node_t *node;
         const vitte_ast_node_t *name;
@@ -16717,6 +16860,7 @@ vitte_c17_emit_ast_with_options(
         name = vitte_c17_ast_child(&emitter, node, 0u);
         if (vitte_c17_ast_token_is(&emitter, name, "main")) {
             has_main = true;
+            main_procedure = node;
             break;
         }
     }
@@ -16778,12 +16922,39 @@ vitte_c17_emit_ast_with_options(
     vitte_c17_ast_emit_generic_proc_definitions(&emitter);
 
     if (has_main && !emitter.failed) {
-        vitte_c17_ast_write(
-            &emitter,
-            "int main(void) {\n"
-            "    srand((unsigned int)1u);\n"
-            "    return (int)vitte_entry_main();\n"
-            "}\n");
+        if (main_procedure != NULL &&
+            (main_procedure->flags & VITTE_AST_FLAG_ASYNC) != 0u) {
+            bool result_is_void = vitte_c17_ast_async_result_is_void(
+                &emitter, main_procedure);
+            vitte_c17_ast_write(
+                &emitter,
+                "int main(void) {\n"
+                "    srand((unsigned int)1u);\n"
+                "    ");
+            vitte_c17_ast_write_async_task_type_name(
+                &emitter, main_procedure);
+            vitte_c17_ast_write(&emitter, " task = ");
+            vitte_c17_ast_write_async_task_function_name(
+                &emitter, main_procedure, "create");
+            vitte_c17_ast_write(&emitter, "();\n    ");
+            if (!result_is_void) {
+                vitte_c17_ast_write(&emitter, "return (int)");
+            }
+            vitte_c17_ast_write_async_task_function_name(
+                &emitter, main_procedure, "await");
+            vitte_c17_ast_write(&emitter, "(&task);");
+            if (result_is_void) {
+                vitte_c17_ast_write(&emitter, "\n    return 0;");
+            }
+            vitte_c17_ast_write(&emitter, "\n}\n");
+        } else {
+            vitte_c17_ast_write(
+                &emitter,
+                "int main(void) {\n"
+                "    srand((unsigned int)1u);\n"
+                "    return (int)vitte_entry_main();\n"
+                "}\n");
+        }
     } else if (test_count != 0u && !emitter.failed) {
         vitte_c17_ast_write(
             &emitter,

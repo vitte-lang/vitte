@@ -113,6 +113,8 @@ Les traits de formatage écrivent dans `core::fmt::Formatter` fourni par
 l'appelant, sans exiger la création d'une chaîne allouée. Les marqueurs
 `Copy`, `Send`, `Sync`, `Sized` et `Unpin` sont déclarés, mais le compilateur ne
 vérifie pas encore leurs implémentations ni leurs propriétés automatiques.
+Le modificateur `unsafe` sur une déclaration de trait n'est pas pris en charge;
+`Send` et `Sync` sont donc des traits ordinaires sans garantie de sûreté.
 Les contrats de traits prennent explicitement leur type récepteur et leurs
 types de sortie en paramètres, car le langage ne fournit pas encore `Self`, les
 récepteurs de trait ni les types associés. Les déclarations `impl` ne sont pas
@@ -134,8 +136,11 @@ atomique sont écrits en Vitte.
 fonctions de copie s'arrêtent à la capacité disponible. Il ne s'agit pas de
 fonctions à longueur constante : les déclarations génériques `const N: usize`
 sont reconnues et analysées, mais l'instanciation avec une valeur constante et
-la spécialisation du tableau fixe ne sont pas encore disponibles. La conversion
-automatique de `[N]T` vers `&[T]` manque aussi.
+la spécialisation du tableau fixe ne sont pas encore disponibles. Un paramètre
+constant ne peut pas être lu comme une valeur dans le corps d'une procédure.
+Les exports `FixedArray` et `fixed_array_length` ont donc été retirés de
+`core::types::array` pour 0.1.1. La conversion automatique de `[N]T` vers
+`&[T]` manque aussi.
 
 `core::array::init` et `core::array::repeat` exposent les remplissages, copies,
 motifs, plages, pas et séquences qui ne nécessitent pas de callback. Les
@@ -262,13 +267,17 @@ pour la révision Core actuelle.
 
 Ce résultat valide ce sous-ensemble sur le chemin bootstrap, pas toute la
 bibliothèque ni la compatibilité intégrale du module. `make check-core-sources`
-vérifie les 202 sources individuellement avec le bootstrap et en accepte 199
-à l'analyse sémantique. Les trois rejets sont : `cell/lazycell.vit` et
-`cell/oncecell.vit` butent sur l'accès aux valeurs génériques optionnelles;
-`cell/refcell.vit` demande une mutabilité intérieure absente du langage.
-`types/array.vit` et sa déclaration `const N: usize` passent maintenant le
-parseur et l'analyse sémantique, mais l'instanciation effective des paramètres
-const et la spécialisation native correspondante restent à terminer.
+vérifie les 203 sources individuellement avec le bootstrap et en accepte 200
+à l'analyse sémantique. Les trois rejets documentés et suivis dans la
+[checklist de stabilisation #43](https://github.com/vitte-lang/vitte/issues/43)
+sont : `cell/lazycell.vit` (E0501, substitution de fonction générique),
+`cell/oncecell.vit` (E0605, conversion d'une référence en valeur nullable)
+et `cell/refcell.vit` (E0513, mutabilité intérieure absente du langage).
+`src/tests/sema_const_generic_declaration_ok.vit` vérifie seulement que le
+parseur et l'analyse sémantique acceptent une déclaration `const N: usize`;
+l'instanciation avec une valeur et la spécialisation correspondante restent
+reportées. L'API `FixedArray` et `fixed_array_length` n'est donc pas publiée
+par `core::types::array` en 0.1.1.
 `types/never.vit`, `error/panic.vit` et `intrinsics/unreachable.vit` sont
 maintenant acceptés par les deux frontends;
 `primitive/unit.vit` et les 14 fichiers de traits le sont aussi. Les traits
