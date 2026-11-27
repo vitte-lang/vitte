@@ -295,7 +295,7 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     { "E0268", "Write a slice as `[ElementType]` and include a complete element type before the closing `]`." },
     { "E0269", "Write `?Type` and put a complete type after `?`." },
     { "E0270", "Use nonempty path segments separated by `::` or `/`; use `::` instead of `:`, add a segment after every separator and remove repeated separators." },
-    { "E0271", "Provide at least one comma-separated type in `<Type, Type>` or `[Type, Type]`; close the list with the matching `>` or `]`." },
+    { "E0271", "Use zero or more comma-separated types in `<Type, Type>` or `[Type, Type]`; a trailing comma and an empty list are allowed, and the closing delimiter must match." },
     { "E0272", "Write `let [mut] pattern [: Type] [= expression];`. Add a type annotation when there is no initializer and the binding type cannot be inferred." },
     { "E0273", "Write `set target assignment_operator expression;` and provide a complete target, value and terminating semicolon." },
     { "E0274", "Use one of `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=` or `>>=` after the assignment target." },

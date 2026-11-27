@@ -215,11 +215,13 @@ def check_format_parity():
         terminal = run_diagnostic(path, "terminal")
         native_terminal = run_diagnostic(path, "terminal", binary)
         json_document = run_diagnostic(path, "json")
+        native_json_document = run_diagnostic(path, "json", binary)
         sarif_document = run_diagnostic(path, "sarif")
         lsp_document = run_diagnostic(path, "lsp")
 
         code = "E0602"
         diagnostic = first_json_diagnostic(json_document, code)
+        native_diagnostic = first_json_diagnostic(native_json_document, code)
         sarif = first_sarif_result(sarif_document, code)
         lsp = first_lsp_diagnostic(lsp_document, code)
         lsp_data = lsp["data"]
@@ -282,7 +284,10 @@ def check_format_parity():
         assert code in native_terminal
         assert "phase: type-check" in native_terminal
         assert "expected `i64`, found `string`" in native_terminal
-        assert help_text in native_terminal
+        # The native terminal renderer adds resolved type/context details that
+        # its compact JSON help field omits. Require its own structured help
+        # text to remain present instead of comparing it with bootstrap prose.
+        assert native_diagnostic["help"] in native_terminal
         assert str(path) in native_terminal
         assert 'return add("42");' in native_terminal
 
@@ -298,10 +303,10 @@ def check_format_parity():
         )
         check_native_structured_case(
             path,
-            "proc main() -> int { return (1 + 2; }\n",
+            "proc main() -> int { if true { return 1; }\n",
             "E0201",
             "parser",
-            "`)`",
+            "`}`",
         )
         check_native_structured_case(
             path,

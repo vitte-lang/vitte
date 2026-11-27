@@ -315,21 +315,21 @@ test_lexer_error_matrix(void)
                        VITTE_LEXER_ERROR_UNTERMINATED_STRING);
     expect_lexer_error(invalid_character_empty,
                        sizeof(invalid_character_empty) - 1u,
-                       VITTE_LEXER_ERROR_INVALID_CHARACTER);
+                       VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL);
     expect_lexer_error(invalid_character_many,
                        sizeof(invalid_character_many) - 1u,
-                       VITTE_LEXER_ERROR_INVALID_CHARACTER);
+                       VITTE_LEXER_ERROR_INVALID_CHARACTER_LITERAL);
     expect_lexer_error(unterminated_comment,
                        sizeof(unterminated_comment) - 1u,
                        VITTE_LEXER_ERROR_UNTERMINATED_COMMENT);
     expect_lexer_error(invalid_binary, sizeof(invalid_binary) - 1u,
-                       VITTE_LEXER_ERROR_INVALID_NUMBER);
+                       VITTE_LEXER_ERROR_INVALID_NUMERIC_BASE);
     expect_lexer_error(invalid_separators,
                        sizeof(invalid_separators) - 1u,
-                       VITTE_LEXER_ERROR_INVALID_NUMBER);
+                       VITTE_LEXER_ERROR_INVALID_NUMERIC_SEPARATOR);
     expect_lexer_error(invalid_hex_float,
                        sizeof(invalid_hex_float) - 1u,
-                       VITTE_LEXER_ERROR_INVALID_NUMBER);
+                       VITTE_LEXER_ERROR_INVALID_EXPONENT);
     expect_lexer_error(integer_overflow, sizeof(integer_overflow) - 1u,
                        VITTE_LEXER_ERROR_NUMBER_OVERFLOW);
     expect_lexer_error(invalid_scalar, sizeof(invalid_scalar) - 1u,

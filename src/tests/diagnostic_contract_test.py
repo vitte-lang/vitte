@@ -1486,7 +1486,9 @@ def check_declaration_origins(directory: Path):
     ]
     for name, source, code, label, previous in cases:
         path = root / f"{name}.vit"
-        path.write_text(source, encoding="utf-8")
+        # The asserted source-map offsets count encoded input bytes. Preserve
+        # LF on Windows instead of translating these fixture bytes to CRLF.
+        path.write_bytes(source.encode("utf-8"))
         result = invoke(path, "compile", "json")
         expected_status = 1 if code.startswith("E") else 0
         assert result.returncode == expected_status, (result.returncode, result.stdout, result.stderr)

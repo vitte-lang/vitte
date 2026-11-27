@@ -2738,7 +2738,7 @@ vitte_main_parser_contextual_expectation(
             return true;
         case VITTE_PARSER_ERROR_INVALID_GENERIC_ARGUMENTS:
             *message = "malformed generic arguments";
-            *help = "Use comma-separated types in `<Type, Type>` or `[Type, Type]`; close the list with the matching `>` or `]`.";
+            *help = "Use zero or more comma-separated types in `<Type, Type>` or `[Type, Type]`; a trailing comma and an empty list are allowed, and the closing delimiter must match.";
             return true;
         case VITTE_PARSER_ERROR_INVALID_LET_STATEMENT:
             *message = "malformed let binding statement";

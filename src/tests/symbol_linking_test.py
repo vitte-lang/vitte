@@ -107,6 +107,10 @@ def verify_compiler(
         link_inputs = [("generated C", generated_c_objects)]
         if supports_object_output:
             link_inputs.append(("compiler object output", emitted_objects))
+        # The native frontend qualifies exported C symbols with the module
+        # path, while the compatibility bootstrap emits the source name.
+        # Both object sets must remain linkable by a matching C consumer.
+        harness_flags = [] if supports_object_output else ["-DVITTE_NATIVE_FRONTEND"]
         for label, objects in link_inputs:
             link_check = work / (
                 f"link-check-{label.replace(' ', '-')}.exe"
@@ -117,6 +121,7 @@ def verify_compiler(
                 cc
                 + [
                     "-std=c17",
+                    *harness_flags,
                     str(HARNESS),
                     *objects,
                     "-o",

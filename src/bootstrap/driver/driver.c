@@ -663,7 +663,7 @@ vitte_driver_size_mul(
 static uint64_t
 vitte_driver_now_nanoseconds(void)
 {
-#if defined(TIME_UTC)
+#if defined(TIME_UTC) && !defined(__ANDROID__)
     struct timespec value;
     uint64_t seconds;
     uint64_t nanoseconds;
