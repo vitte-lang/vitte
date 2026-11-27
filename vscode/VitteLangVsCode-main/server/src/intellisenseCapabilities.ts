@@ -3,6 +3,8 @@ import matrix from "./capability-matrix.json";
 type CapabilityStatus = "implemented" | "partial" | "planned" | "unavailable";
 type EditorFeature = (typeof matrix.editorFeatures)[number];
 
+export const LANGUAGE_SERVER_VERSION = matrix.versions.languageServer;
+
 export interface VitteCapabilityMatrix {
   schema: string;
   matrixVersion: string;

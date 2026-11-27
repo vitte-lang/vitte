@@ -1,8 +1,12 @@
 import * as vscode from 'vscode';
-import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { locateVitteRuntime } from '../debug/runtimeLocator';
+import { spawnManaged } from '../utils/managedProcesses';
+import { requireTrustedWorkspace } from '../utils/workspaceTrust';
+import { redactLogText } from '../utils/logRedaction';
+
+let benchOutputChannel: vscode.OutputChannel | undefined;
 
 /**
  * Bench tasks & commands for Vitte
@@ -16,6 +20,8 @@ import { locateVitteRuntime } from '../debug/runtimeLocator';
  *  - type: 'vitte' with command: 'bench' to integrate with VS Code Tasks
  */
 export function registerBenchTasks(ctx: vscode.ExtensionContext) {
+  benchOutputChannel = vscode.window.createOutputChannel('Vitte Bench');
+  ctx.subscriptions.push(benchOutputChannel);
   // Commands
   ctx.subscriptions.push(
     vscode.commands.registerCommand('vitte.bench', async () => {
@@ -32,6 +38,7 @@ export function registerBenchTasks(ctx: vscode.ExtensionContext) {
 
   const provider = {
     provideTasks: async (_token?: vscode.CancellationToken): Promise<vscode.Task[]> => {
+      if (!vscode.workspace.isTrusted) return [];
       const bin = await benchBin();
       if (!bin) return [];
       const definition: VitteBenchTaskDefinition = { type: 'vitte-bench', command: 'bench' };
@@ -45,7 +52,7 @@ export function registerBenchTasks(ctx: vscode.ExtensionContext) {
       );
       return [task];
     },
-    resolveTask: (task: vscode.Task) => task,
+    resolveTask: async (task: vscode.Task) => (await requireTrustedWorkspace('running a benchmark')) ? task : undefined,
   } as unknown as vscode.TaskProvider;
   ctx.subscriptions.push(vscode.tasks.registerTaskProvider('vitte-bench', provider));
 }
@@ -143,13 +150,14 @@ async function runBench(openAfter: boolean) {
     void vscode.window.showErrorMessage('Vitte: aucun workspace ouvert.');
     return;
   }
+  if (!(await requireTrustedWorkspace('running benchmarks'))) return;
 
   const { bin, args } = await benchCommand();
   if (!bin) {
     void vscode.window.showInformationMessage('Vitte: aucun outil benchmark configuré pour ce projet.');
     return;
   }
-  const outChan = vscode.window.createOutputChannel('Vitte Bench');
+  const outChan = benchOutputChannel ?? vscode.window.createOutputChannel('Vitte Bench');
 
   await vscode.window.withProgress({
     location: vscode.ProgressLocation.Notification,
@@ -158,14 +166,14 @@ async function runBench(openAfter: boolean) {
   }, async () => {
     outChan.clear();
     outChan.show(true);
-    outChan.appendLine(`[cmd] ${formatCommandForDisplay(bin, args)}`);
+    outChan.appendLine(`[cmd] ${redactLogText(formatCommandForDisplay(bin, args))}`);
 
     await new Promise<void>((resolve) => {
-      const proc = cp.spawn(bin, args, { cwd: root, shell: false, env: process.env });
-      proc.stdout?.on('data', (b: Buffer) => outChan.append(b.toString()));
-      proc.stderr?.on('data', (b: Buffer) => outChan.append(b.toString()));
+      const proc = spawnManaged(bin, args, { cwd: root, shell: false, env: process.env });
+      proc.stdout?.on('data', (b: Buffer) => outChan.append(redactLogText(b.toString())));
+      proc.stderr?.on('data', (b: Buffer) => outChan.append(redactLogText(b.toString())));
       proc.on('error', (e) => {
-        outChan.appendLine(`\n[error] ${e.message}`);
+        outChan.appendLine(`\n[error] ${redactLogText(e.message)}`);
         resolve();
       });
       proc.on('close', (code) => {

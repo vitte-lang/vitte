@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 export const BUILD_PROFILES = ['default', 'debug', 'release', 'size', 'sanitize', 'freestanding'] as const;
 
@@ -32,9 +33,17 @@ export function workspaceBinaryRoots(roots: readonly string[]): string[] {
 }
 
 export function expandToolPath(value: string, workspaceRoot: string, toolchainRoot?: string): string {
-  const expanded = value.replace(/\$\{workspaceFolder}/g, workspaceRoot)
+  const substituted = value.replace(/\$\{workspaceFolder}/g, workspaceRoot)
     .replace(/\$\{env:([^}]+)}/g, (_match: string, key: string) => process.env[key] ?? '');
+  const expanded = substituted.replace(/^~(?=$|[\\/])/, os.homedir());
   return path.isAbsolute(expanded) ? expanded : path.resolve(toolchainRoot ?? workspaceRoot, expanded);
+}
+
+/** Resolve an optional per-workspace Vitte project root. */
+export function resolveProjectRoot(configuredRoot: string | undefined, workspaceRoot: string | undefined): string | undefined {
+  const configured = configuredRoot?.trim();
+  if (!configured) return workspaceRoot;
+  return path.resolve(workspaceRoot ?? process.cwd(), configured);
 }
 
 export interface ProjectCommand {

@@ -1,13 +1,15 @@
-import { workspaceBinaryRoots, expandToolPath } from "./project";
+import { workspaceBinaryRoots, expandToolPath, resolveProjectRoot } from "./project";
 import * as vscode from 'vscode';
+import { existsSync as fsExistsSync } from 'node:fs';
 import * as path from 'path';
 import * as os from 'os';
-import * as cp from 'child_process';
+import type * as cp from 'child_process';
 import { exists } from './fs';
+import { spawnManaged } from './managedProcesses';
 
 /**
  * Vitte toolchain resolver
- * - Detects toolchain root from settings/env/which
+ * - Detects toolchain root from explicit settings, then resolves environment and PATH binaries
  * - Resolves the current unified `vitte` CLI plus optional companion tools
  * - Reads versions lazily ("--version")
  * - Caches results in globalState with a short TTL to avoid costy lookups
@@ -36,13 +38,34 @@ interface CacheEntry {
 const CACHE_KEY = 'vitte.toolchain.cache';
 const CACHE_TTL_MS = 30_000; // 30s — safe for repeated commands
 
-/** Resolve the configured toolchain root from settings/env, or undefined. */
+/** Resolve an explicitly configured toolchain root, or undefined. */
 export function configuredToolchainRoot(): string | undefined {
   const cfg = vscode.workspace.getConfiguration('vitte');
   const s1 = cfg.get<string>('toolchain.root');
   const s2 = cfg.get<string>('toolchainPath'); // legacy
-  const env = process.env.VITTE_TOOLCHAIN_ROOT;
-  return firstNonEmpty(s1, s2, env);
+  const configured = firstNonEmpty(s1, s2);
+  if (!configured) return undefined;
+  return expandToolPath(configured, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd());
+}
+
+function projectBinaryRoots(): string[] {
+  const folders = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  const projectRoot = resolveProjectRoot(vscode.workspace.getConfiguration('vitte').get<string>('project.root'), folders[0]);
+  return workspaceBinaryRoots([...new Set([...(projectRoot ? [projectRoot] : []), ...folders])]);
+}
+
+function environmentBinary(name: string): string | undefined {
+  const executable = nameWithExt(name);
+  const binDir = process.env.VITTE_BIN_DIR;
+  if (binDir) {
+    const candidate = path.join(binDir, executable);
+    if (existsSync(candidate)) return candidate;
+  }
+  for (const root of [process.env.VITTE_TOOLCHAIN_ROOT, process.env.VITTE_ROOT, process.env.VITTE_HOME].filter((v): v is string => Boolean(v))) {
+    const candidate = path.join(root, 'bin', executable);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 /** Try to resolve a binary path by checking setting, toolchain root, then PATH. */
@@ -56,7 +79,7 @@ export async function resolveBinary(
   for (const k of keys) {
     const raw = cfg.get<string>(k)?.trim();
     if (raw) {
-      const p = expandToolPath(raw, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(), opts?.root);
+      const p = expandToolPath(raw, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd());
       if (await exists(p)) return p;
     }
   }
@@ -66,10 +89,12 @@ export async function resolveBinary(
     const candidate = path.join(root, 'bin', nameWithExt(name));
     if (await exists(candidate)) return candidate;
   }
-  for (const binRoot of workspaceBinaryRoots((vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath))) {
+  for (const binRoot of projectBinaryRoots()) {
     const candidate = path.join(binRoot, nameWithExt(name));
     if (await exists(candidate)) return candidate;
   }
+  const environment = environmentBinary(name);
+  if (environment) return environment;
   // 3) PATH lookup
   return await which(name);
 }
@@ -108,13 +133,17 @@ export async function getToolchain(ctx?: vscode.ExtensionContext, forceRefresh =
   const info: ToolchainInfo = { bins, versions: {}, ok, messages };
   if (root !== undefined) info.root = root;
 
-  // Optionally read versions (best-effort, don't throw)
-  await Promise.all(
-    (Object.entries(bins) as [BinKind, string][]).map(async ([k, p]) => {
-      const ver = await readVersion(p);
-      if (ver) info.versions[k] = ver;
-    })
-  );
+  // Do not execute a tool from an untrusted workspace just to read its version.
+  if (vscode.workspace.isTrusted) {
+    await Promise.all(
+      (Object.entries(bins) as [BinKind, string][]).map(async ([k, p]) => {
+        const ver = await readVersion(p);
+        if (ver) info.versions[k] = ver;
+      })
+    );
+  } else {
+    messages.push('Workspace trust is required before running toolchain version checks.');
+  }
 
   if (state) await state.update(CACHE_KEY, { info, ts: Date.now() } as CacheEntry);
   return info;
@@ -152,6 +181,10 @@ export async function which(bin: string | undefined): Promise<string | undefined
     }
   }
   return undefined;
+}
+
+function existsSync(candidate: string): boolean {
+  try { return fsExistsSync(candidate); } catch { return false; }
 }
 
 async function readVersion(bin: string): Promise<string | undefined> {
@@ -193,7 +226,7 @@ async function execCapture(cmd: string[] | string, opts?: { cwd?: string; env?: 
       shell: false,
     };
 
-    const child = cp.spawn(file, args, options); // type: cp.ChildProcess
+    const child = spawnManaged(file, args, options); // type: cp.ChildProcess
 
     let out = '';
     let err = '';

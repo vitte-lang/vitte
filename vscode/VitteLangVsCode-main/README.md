@@ -55,6 +55,8 @@ automated evidence for their stated scope. Use **Vitte: Show Capabilities** for
 live enablement, evidence, limitations, compiler frontend status, CLI commands,
 platforms, and planned follow-up work. That view uses the bundled matrix when
 the language server is offline and marks the data as a packaged baseline.
+Enterprise dead-code, documentation-coverage, and API-breakage reports are not
+implemented; the plugin picker does not offer them. Follow-up: `CAP-EXT-002`.
 
 The native debug path compiles with DWARF symbols and `#line` source mappings,
 then exposes the debuggee lifecycle through a persistent LLDB-backed DAP
@@ -90,6 +92,24 @@ adapter, use **Vitte: Debug: Attach** or set `request` to `attach` with a
 `host` and `port`; attach always uses TCP.
 
 The extension uses its bundled TypeScript language server by default. Toolchain, compiler, language-server, and formatter paths can be set explicitly when auto-detection is not suitable.
+
+### Activation, trust, and installation
+
+The extension activates for `.vit`, `.vitl`, and legacy `.vitte` documents, or when a workspace root contains `vitte.toml`, `vitte.config.json`, or `.vitte/config.json`. Extension registration is lightweight; the language server starts only after a Vitte document or project is detected. In Restricted Mode, language services, compiler checks, build/run, formatting, debugging, project generation, Doctor, benchmarks, and project shell tools remain paused until the workspace is trusted.
+
+The VSIX includes the compiled extension, TypeScript language server, production runtime dependencies, TextMate grammar, snippets, schemas, and icon. It does not include the Vitte compiler. Install from the Marketplace or use **Extensions: Install from VSIX...** with a locally available `.vsix`; after installation the bundled editor features work without a repository checkout or network access. Compiler-backed commands need a compatible local toolchain. Updating from the Marketplace requires network access; an offline update can be installed from a newer local VSIX.
+
+Toolchain discovery uses this precedence:
+
+1. `vitte.compiler.path` for the compiler executable.
+2. `vitte.toolchain.root` (or its legacy alias), looking under `bin/`.
+3. Project-local bins such as `build/bin`, `.vitte/bin`, `vitte/bin`, `.bin`, or `tools/vitte/bin`.
+4. `VITTE_BIN_DIR`, then `VITTE_TOOLCHAIN_ROOT`, `VITTE_ROOT`, or `VITTE_HOME`.
+5. User-installed binaries found on `PATH` and standard OS install locations.
+
+`vitte.serverPath` selects a custom JavaScript server module, then `vitte.lsp.path` selects an external executable with `vitte.lsp.args`; otherwise the packaged server runs. The selected language server must report a compatible `2.3.x` LSP version. Compiler-backed editor diagnostics, build/run tasks, and native debugging are verified against Vitte `0.1.1`; a missing or other compiler version is explained in the Vitte Language Server output with **Select Compiler** and settings actions. The extension does not silently substitute results from another compiler version.
+
+Most `vitte.*` settings use resource scope, so they can be set at user, workspace, or workspace-folder level. Telemetry and cloud consent are application-scoped. Settings have manifest schemas for their type and accepted values; paths are resolved relative to the workspace when they are not absolute. Use `vitte.trace.server` for LSP message tracing. Logs are available in **View: Output** under **Vitte Language Server**, **Vitte Build**, and **Vitte Bench**. After changing toolchain or project-root settings, the extension restarts services automatically; **Vitte: Restart Language Server** is also available from the Command Palette.
 
 ## A compact command center
 
@@ -132,14 +152,21 @@ Open **Preferences: Open Settings (UI)** and search for `vitte`.
 | Setting | Purpose |
 | --- | --- |
 | `vitte.toolchain.root` | Toolchain installation root |
-| `vitte.compiler.path` | Compiler binary used for live diagnostics |
+| `vitte.compiler.path` | Compiler binary used for live diagnostics, standalone build/run, and native debugging |
+| `vitte.project.root` | Project-root override for local binary discovery and build/run tasks |
 | `vitte.lsp.path` | Optional external language-server binary |
+| `vitte.lsp.args` | Arguments for the external language-server executable |
+| `vitte.serverPath` | Optional custom JavaScript language-server module |
+| `vitte.trace.server` | LSP message tracing, shown in the Vitte Language Server Output channel |
 | `vitte.features.signatureHelp` | Enable or disable procedure signature help |
 | `vitte.debug.nativeBackend` | Use the bundled native process DAP backend when no external adapter is configured |
 | `vitte.debug.program` | Optional external executable that implements DAP |
 | `vitte.debug.adapterArgs` | Startup arguments for the DAP executable, separate from debuggee arguments |
 | `vitte.debug.adapterTransport` | Default adapter transport for launch: `stdio` or an existing TCP server |
 | `vitte.fmt.path` | Optional external formatter |
+| `vitte.format.onSave` | Format Vitte documents on save |
+| `vitte.lint.*` | Lightweight style lint settings |
+| `vitte.build.args` | Extra compiler arguments for standalone build/run tasks |
 | `vitte.build.profile` | `dev`, `test`, `release`, or `bench` |
 | `vitte.build.incremental` | Enable incremental builds when supported |
 | `vitte.suggestions.localEngine.*` | Tune local indexing and suggestion behavior |
@@ -154,7 +181,7 @@ Open **Preferences: Open Settings (UI)** and search for `vitte`.
 
 ## Project
 
-- Extension: `VitteStudio.vitte-studio` · version `2.3.0`
+- Extension: `VitteStudio.vitte-studio` · version `2.3.1`
 - Requires VS Code `1.105` or later
 - License: [MIT](LICENSE)
 - Release notes: [CHANGELOG.md](CHANGELOG.md)

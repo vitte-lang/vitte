@@ -1,9 +1,9 @@
 {
   "schema": "vitte-capabilities@1",
-  "matrixVersion": "1.0.0",
+  "matrixVersion": "1.0.2",
   "updated": "2026-11-27",
   "versions": {
-    "extension": "2.3.0",
+    "extension": "2.3.1",
     "languageServer": "2.3.0",
     "compilerEvidence": "0.1.1"
   },
@@ -252,6 +252,7 @@
     {"id": "cross-target", "label": "Cross-target compile", "status": "unavailable", "description": "The native C17 host-tools path does not forward --target to a verified cross C toolchain.", "followUp": "CAP-PLATFORM-001", "evidence": ["src/compiler/driver/README.md", "docs/reference/support.html"]}
   ],
   "platforms": [
+    {"id": "vscode-engine", "product": "VS Code extension runtime", "platform": "VS Code 1.105 and later", "status": "partial", "description": "The manifest declares ^1.105.0 and validates its entry point; integration evidence currently runs on VS Code 1.148.0, not the minimum engine.", "followUp": "CAP-EXT-001", "evidence": ["test/language.test.cjs: manifest contract", "scripts/check-extension-manifest.mjs: engine and packaged-entry checks"]},
     {"id": "editor-linux-x64", "product": "Extension and language server", "platform": "Linux x86_64 / Ubuntu 24.04", "status": "implemented", "description": "Unit and VS Code integration/DAP CI run on Ubuntu 24.04.", "evidence": [".github/workflows/ci.yml: extension-dap", "vscode/VitteLangVsCode-main/test/language.test.cjs"]},
     {"id": "editor-macos-arm64", "product": "Extension and language server", "platform": "macOS arm64", "status": "partial", "description": "Local VS Code 1.148.0 integration run passed 39 cases and failed five native DAP/DWARF cases; the repository has no macOS CI gate.", "evidence": ["VITTE_COMPILER=/usr/local/bin/vitte node out/test/runTest.js on 2026-11-27: 39 passed, 5 failed", "vscode/VitteLangVsCode-main/package.json"]},
     {"id": "editor-windows-x64", "product": "Extension and language server", "platform": "Windows x86_64", "status": "partial", "description": "The extension is packaged as portable Node.js code, but this repository has no Windows VS Code integration/DAP gate.", "evidence": ["vscode/VitteLangVsCode-main/package.json"]},
@@ -261,6 +262,8 @@
     {"id": "other-targets", "product": "Compiler target", "platform": "Other OSes, architectures and cross targets", "status": "partial", "description": "Experimental smoke jobs are not a support promise; several jobs currently fail and the driver does not select a verified cross C toolchain.", "followUp": "CAP-PLATFORM-001", "evidence": ["docs/reference/support.html: experimental portability jobs"]}
   ],
   "followUps": [
+    {"id": "CAP-EXT-002", "label": "Implement or remove placeholder enterprise report plugins", "status": "planned", "description": "Do not map dead-code, documentation coverage or API-breakage reports to generic compiler checks. Add real tested providers or keep these plugin actions explicitly unavailable."},
+    {"id": "CAP-EXT-001", "label": "Verify the minimum VS Code engine and offline VSIX contents", "status": "planned", "description": "Run the extension integration suite on VS Code 1.105, and retain release evidence that the packaged server, runtime dependencies, grammar, snippets and icon install and work from a local VSIX without a repository checkout."},
     {"id": "CAP-LSP-001", "label": "Use compiler symbol/type APIs for semantic editor features", "status": "planned", "description": "Replace text-index approximations for workspace symbols, cross-module navigation, inlay hints and hierarchies with compiler/LSP semantic data; add parity tests before advertising them."},
     {"id": "CAP-CLI-001", "label": "Implement or remove v0.1.1 test and formatter CLI commands", "status": "planned", "description": "The parser accepts these names but the native driver rejects them. Keep editor actions explicitly unavailable until command behavior and tests exist."},
     {"id": "CAP-PLATFORM-001", "label": "Close compiler platform and cross-target gates", "status": "planned", "description": "Resolve and rerun Linux x86_64, macOS arm64 and Windows x86_64 release gates; publish no wider platform claim until toolchain jobs pass."},

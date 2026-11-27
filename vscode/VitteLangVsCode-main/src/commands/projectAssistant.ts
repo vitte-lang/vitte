@@ -1,10 +1,12 @@
 import { workspaceConfiguration, projectSource, PROJECT_CONFIG } from "../utils/project";
-import { locateVitteRuntime } from "../debug/runtimeLocator";
+import { isSupportedVitteCompilerVersion, locateVitteRuntime, VITTE_COMPILER_EVIDENCE_VERSION } from "../debug/runtimeLocator";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { spawn } from "node:child_process";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/node";
+import { spawnManaged } from "../utils/managedProcesses";
+import { requireTrustedWorkspace } from "../utils/workspaceTrust";
+import { redactLogText } from "../utils/logRedaction";
 
 function rootDir(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -104,6 +106,7 @@ async function generateWorkspaceVscodeFiles(base: string): Promise<void> {
 }
 
 async function createNewProject(): Promise<void> {
+  if (!(await requireTrustedWorkspace('creating Vitte project files'))) return;
   const ws = rootDir();
   if (!ws) {
     void vscode.window.showErrorMessage("Open a workspace folder first.");
@@ -129,6 +132,7 @@ async function createNewProject(): Promise<void> {
 }
 
 async function createNewModule(): Promise<void> {
+  if (!(await requireTrustedWorkspace('creating Vitte module files'))) return;
   const ws = rootDir();
   if (!ws) return;
   const mod = await vscode.window.showInputBox({ prompt: "Module path (example: app/network/http)" });
@@ -151,6 +155,7 @@ async function createNewModule(): Promise<void> {
 }
 
 async function createNewPackage(): Promise<void> {
+  if (!(await requireTrustedWorkspace('creating Vitte package files'))) return;
   const ws = rootDir();
   if (!ws) return;
   const input = await vscode.window.showInputBox({ prompt: "Package name", value: "core_utils" });
@@ -324,8 +329,7 @@ function diagnosticsFromToolResult(ws: string, res: ToolRunResult): Map<string, 
   return map;
 }
 
-async function runTool(ws: string, tool: DoctorTool): Promise<ToolRunResult> {
-  const runtime = await locateVitteRuntime();
+async function runTool(ws: string, tool: DoctorTool, runtime: Awaited<ReturnType<typeof locateVitteRuntime>>): Promise<ToolRunResult> {
   const current = vscode.window.activeTextEditor?.document.uri;
   const candidates = [
     ...(current?.scheme === "file" && /\.(vit|vitl|vitte)$/i.test(current.fsPath) ? [current.fsPath] : []),
@@ -338,11 +342,11 @@ async function runTool(ws: string, tool: DoctorTool): Promise<ToolRunResult> {
   if (!input) return { tool, cmd, args, code: 1, stdout: "", stderr: "Open a Vitte source file or create src/main.vit before running Doctor.", durationMs: 0 };
   const t0 = Date.now();
   return await new Promise<ToolRunResult>((resolve) => {
-    const child = spawn(cmd, args, { cwd: ws, shell: false });
+    const child = spawnManaged(cmd, args, { cwd: ws, shell: false });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (d) => { stdout += String(d); });
-    child.stderr.on("data", (d) => { stderr += String(d); });
+    child.stdout?.on("data", (d) => { stdout += String(d); });
+    child.stderr?.on("data", (d) => { stderr += String(d); });
     child.on("error", (err) => {
       resolve({ tool, cmd, args, code: 127, stdout, stderr: `${stderr}\n${String(err)}`, durationMs: Date.now() - t0 });
     });
@@ -353,18 +357,31 @@ async function runTool(ws: string, tool: DoctorTool): Promise<ToolRunResult> {
 }
 
 async function runDoctor(output: vscode.OutputChannel, selected?: DoctorTool): Promise<void> {
+  if (!(await requireTrustedWorkspace('running Vitte Doctor'))) return;
   const roots = workspaceRoots();
   if (roots.length === 0) return;
+  const runtime = await locateVitteRuntime();
+  if (!runtime.found || !isSupportedVitteCompilerVersion(runtime.versions?.cli)) {
+    const version = runtime.versions?.cli ?? (runtime.found ? 'unknown' : 'not found');
+    const choice = await vscode.window.showWarningMessage(
+      `Vitte Doctor requires a compiler verified at ${VITTE_COMPILER_EVIDENCE_VERSION}; detected ${version}.`,
+      'Select Compiler',
+      'Open Settings',
+    );
+    if (choice === 'Select Compiler') await vscode.commands.executeCommand('vitte.selectRuntime');
+    else if (choice === 'Open Settings') await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:VitteStudio.vitte-studio vitte.compiler.path');
+    return;
+  }
   const tools: DoctorTool[] = selected ? [selected] : ["check"];
   const finalMap = new Map<string, vscode.Diagnostic[]>();
   output.appendLine(`[doctor] run ${tools.join(", ")} on ${roots.length} root(s)`);
 
   for (const ws of roots) {
     for (const tool of tools) {
-      const res = await runTool(ws, tool);
+      const res = await runTool(ws, tool, runtime);
       const relRoot = vscode.workspace.asRelativePath(vscode.Uri.file(ws), false) || ws;
       output.appendLine(`[doctor:${tool}] root=${relRoot} cmd=${res.cmd} ${res.args.join(" ")} code=${res.code} ${res.durationMs}ms`);
-      if (res.stderr.trim()) output.appendLine(`[doctor:${tool}:stderr] ${res.stderr.trim()}`);
+      if (res.stderr.trim()) output.appendLine(`[doctor:${tool}:stderr] ${redactLogText(res.stderr.trim())}`);
       const dm = diagnosticsFromToolResult(ws, res);
       for (const [key, list] of dm) {
         const prev = finalMap.get(key) ?? [];
@@ -388,6 +405,7 @@ async function runExtensionBench(
   output: vscode.OutputChannel,
   activationMs?: number,
 ): Promise<void> {
+  if (!(await requireTrustedWorkspace('running the extension benchmark'))) return;
   const editor = vscode.window.activeTextEditor;
   const mem = process.memoryUsage();
   const sample: Record<string, unknown> = {
@@ -461,6 +479,7 @@ export function registerProjectAssistant(
     vscode.commands.registerCommand("vitte.newModule", createNewModule),
     vscode.commands.registerCommand("vitte.newPackage", createNewPackage),
     vscode.commands.registerCommand("vitte.generateWorkspaceConfig", async () => {
+      if (!(await requireTrustedWorkspace('writing workspace task and launch configuration'))) return;
       const roots = workspaceRoots();
       if (roots.length === 0) return;
       for (const ws of roots) await generateWorkspaceVscodeFiles(ws);

@@ -44,6 +44,11 @@ keywords: "capacités extension VS Code LSP CLI compiler frontend plateformes su
 <tr><td>Débogage natif</td><td>Partiel, expérimental, non annoncé</td><td>Le job DAP du dépôt cible Ubuntu 24.04. Le test local macOS arm64 avec le compilateur 0.1.1 échoue sur les frames DWARF, variables et breakpoints ; Windows n’a pas de gate. Les adaptateurs DAP externes restent configurables. Suivi : CAP-DBG-001.</td></tr>
 </tbody></table>
 
+<h2>Installation, activation et toolchain</h2>
+<p>L’extension démarre ses services à l’ouverture d’un fichier <code>.vit</code>, <code>.vitl</code> ou <code>.vitte</code>, ou d’un workspace contenant sa configuration Vitte. En Restricted Mode, le LSP, les compilateurs et les outils du projet restent suspendus jusqu’à l’approbation du workspace.</p>
+<p>Le VSIX contient le client, le serveur LSP, ses dépendances runtime, la grammaire, les snippets, les schémas et l’icône. Il ne contient pas le compilateur. Une installation locale depuis un VSIX n’exige ni checkout du dépôt ni réseau ; les actions de compilation ont besoin d’un compilateur local 0.1.1 vérifié. Le serveur LSP intégré annonce la version 2.3.0 ; un serveur externe doit rester compatible avec la série 2.3.x.</p>
+<p>Pour le compilateur, la résolution suit <code>vitte.compiler.path</code>, <code>vitte.toolchain.root/bin</code>, les binaires du projet, les variables <code>VITTE_BIN_DIR</code>/<code>VITTE_TOOLCHAIN_ROOT</code>/<code>VITTE_ROOT</code>/<code>VITTE_HOME</code>, puis les installations utilisateur et <code>PATH</code>. <code>vitte.serverPath</code> sélectionne un module JavaScript personnalisé, <code>vitte.lsp.path</code> un exécutable externe ; le serveur empaqueté est le défaut. Les réglages se consultent dans l’Output channel <strong>Vitte Language Server</strong> ; la commande <strong>Vitte: Restart Language Server</strong> est disponible après un changement de configuration.</p>
+
 <h2>Frontends et commandes CLI</h2>
 <table><thead><tr><th>Entrée</th><th>Statut</th><th>Portée observée</th></tr></thead><tbody>
 <tr><td>Bootstrap C17</td><td>Partiel</td><td>Compilateur seed et voie de compatibilité ; ne définit pas à lui seul le contrat complet du langage.</td></tr>
@@ -61,6 +66,7 @@ keywords: "capacités extension VS Code LSP CLI compiler frontend plateformes su
 
 <h2>Plateformes</h2>
 <table><thead><tr><th>Produit</th><th>Plateforme</th><th>Statut</th><th>Preuve ou limite</th></tr></thead><tbody>
+<tr><td>Extension VS Code</td><td>VS Code 1.105 et ultérieur</td><td>Partiel</td><td>Le manifeste fixe le minimum à 1.105 ; l’intégration est testée sur 1.148.0 seulement. Suivi : CAP-EXT-001.</td></tr>
 <tr><td>Extension et LSP</td><td>Linux x86_64, Ubuntu 24.04</td><td>Implémenté</td><td>CI d’intégration VS Code et DAP.</td></tr>
 <tr><td>Extension et LSP</td><td>macOS arm64</td><td>Partiel</td><td>Sur VS Code 1.148.0, 39 tests d’intégration passent et 5 tests DAP/DWARF échouent avec le compilateur 0.1.1 ; pas de gate CI macOS.</td></tr>
 <tr><td>Extension et LSP</td><td>Windows x86_64</td><td>Partiel</td><td>Code portable Node.js ; pas de gate CI d’intégration VS Code/DAP.</td></tr>
@@ -72,10 +78,13 @@ keywords: "capacités extension VS Code LSP CLI compiler frontend plateformes su
 
 <h2>Exclusions et suivi</h2>
 <ul>
+  <li><strong>CAP-EXT-001</strong> — Tester le minimum VS Code 1.105 et conserver une preuve de contenu VSIX hors réseau : serveur, dépendances runtime, grammaire, snippets et icône.</li>
+  <li><strong>CAP-EXT-002</strong> — Implémenter des providers réels pour les rapports dead-code, couverture de documentation et API, ou garder ces actions explicitement indisponibles.</li>
   <li><strong>CAP-LSP-001</strong> — Remplacer les index textuels et heuristiques par les API de symboles/types du compilateur, puis tester workspace symbols, navigation inter-modules, inlay hints et hiérarchies.</li>
   <li><strong>CAP-CLI-001</strong> — Implémenter ou retirer les commandes <code>vitte test</code> et <code>vitte fmt</code> du contrat du pilote natif ; garder les actions éditeur signalées comme indisponibles d’ici là.</li>
   <li><strong>CAP-PLATFORM-001</strong> — Fermer les gates Linux x86_64, macOS arm64 et Windows x86_64, puis établir un toolchain cross avant toute annonce multi-cible.</li>
   <li><strong>CAP-SUGGEST-001</strong> — Garder les moteurs inline opt-in jusqu’à validation de leurs sorties via le compilateur/LSP et rejet des résultats périmés.</li>
   <li><strong>CAP-DBG-001</strong> — Corriger les régressions DAP/DWARF macOS 0.1.1 et ajouter la couverture Windows avant d’annoncer le backend natif sur ces plateformes.</li>
 </ul>
-<p>Références détaillées : <a href="{{ '/reference/support/' | relative_url }}">support du langage par construction</a>, <a href="{{ '/reference/cli/' | relative_url }}">CLI et diagnostics</a>, et <a href="https://github.com/vitte-lang/vitte/blob/main/vscode/VitteLangVsCode-main/server/src/capability-matrix.json">matrice JSON versionnée 1.0.0</a>.</p>
+<p>Le VSIX embarque le client et le serveur LSP, ses dépendances de production, la grammaire, les snippets et l’icône. Il ne contient pas le compilateur Vitte : les commandes de compilation nécessitent un toolchain local compatible. Une fois le VSIX installé, les fonctionnalités incluses ne font pas de téléchargement réseau.</p>
+<p>Références détaillées : <a href="{{ '/reference/support/' | relative_url }}">support du langage par construction</a>, <a href="{{ '/reference/cli/' | relative_url }}">CLI et diagnostics</a>, et <a href="https://github.com/vitte-lang/vitte/blob/main/vscode/VitteLangVsCode-main/server/src/capability-matrix.json">matrice JSON versionnée 1.0.2</a>.</p>

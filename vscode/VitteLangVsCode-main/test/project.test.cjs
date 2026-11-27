@@ -4,8 +4,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { test } = require('node:test');
-const { findCompilerRepository, workspaceBinaryRoots, expandToolPath, projectCommand, workspaceConfiguration, projectSource, PROJECT_CONFIG, compilerProfile } = require('../out/utils/project');
+const { findCompilerRepository, workspaceBinaryRoots, expandToolPath, resolveProjectRoot, projectCommand, workspaceConfiguration, projectSource, PROJECT_CONFIG, compilerProfile } = require('../out/utils/project');
 const { normalizeCompilerDiagnostics } = require('../out/utils/compilerDiagnostics');
+const { redactLogText } = require('../out/utils/logRedaction');
+const { spawnManaged, stopManagedProcesses } = require('../out/utils/managedProcesses');
 const extensionRoot = path.resolve(__dirname, '..');
 const repo = findCompilerRepository(extensionRoot);
 const nativeCompiler = repo && path.join(repo, 'build/bin', process.platform === 'win32' ? 'vitte.exe' : 'vitte');
@@ -28,6 +30,26 @@ test('compiler checkout detection works from nested folders without selecting a 
   assert.equal(findCompilerRepository(path.dirname(root)), undefined);
   assert.equal(expandToolPath('${workspaceFolder}/build/bin/vitte', root), path.join(root, 'build/bin/vitte'));
   assert.equal(expandToolPath('build/bin/vitte', root), path.join(root, 'build/bin/vitte'));
+  assert.equal(resolveProjectRoot('app', root), path.join(root, 'app'));
+  assert.equal(resolveProjectRoot('', root), root);
+});
+
+test('extension logs redact common tokens, bearer credentials and URL passwords', () => {
+  const redacted = redactLogText('token=abc123 Authorization: Bearer top-secret https://user:pass@example.test/path');
+  assert.doesNotMatch(redacted, /abc123|top-secret|user:pass/);
+  assert.match(redacted, /token=\[redacted\]/);
+  assert.match(redacted, /Authorization: \[redacted\]/);
+  assert.match(redacted, /https:\/\/\[redacted\]@example\.test/);
+});
+
+test('managed child processes stop cleanly during extension shutdown', async () => {
+  const child = spawnManaged(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  await new Promise((resolve, reject) => {
+    child.once('spawn', resolve);
+    child.once('error', reject);
+  });
+  await stopManagedProcesses(500);
+  assert.ok(child.exitCode !== null || child.signalCode !== null, 'child process must be stopped');
 });
 
 test('compiler repository builds and tests use Make, current-file checks use the CLI', { skip: !repo }, () => {

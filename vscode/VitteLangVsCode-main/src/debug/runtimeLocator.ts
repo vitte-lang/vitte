@@ -1,10 +1,11 @@
-import { workspaceBinaryRoots, expandToolPath } from "../utils/project";
+import { workspaceBinaryRoots, expandToolPath, resolveProjectRoot } from "../utils/project";
+import { redactLogText } from "../utils/logRedaction";
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 
-import * as cp from 'child_process';
+import { spawnManaged } from '../utils/managedProcesses';
 
 interface VitteVersions {
   cli?: string;
@@ -102,18 +103,6 @@ function which(bin: string): string | undefined {
     if (isExecutableSync(c)) { const r = real(c) ?? c; WHICH_CACHE.set(bin, r); return r; }
   }
 
-  // As a last resort, try Homebrew prefix discovery (guarded)
-  if (!isWindows()) {
-    try {
-      const out = cp.spawnSync('brew', ['--prefix'], { encoding: 'utf8', timeout: 350 });
-      const prefix = (out.status === 0 && typeof out.stdout === 'string') ? out.stdout.trim() : '';
-      if (prefix) {
-        const full = path.join(prefix, 'bin', bin);
-        if (isExecutableSync(full)) { const r = real(full) ?? full; WHICH_CACHE.set(bin, r); return r; }
-      }
-    } catch { /* ignore */ }
-  }
-
   WHICH_CACHE.set(bin, undefined);
   return undefined;
 }
@@ -122,6 +111,12 @@ function which(bin: string): string | undefined {
 // semver helpers
 // -----------------------------
 interface VSemVer { major: number; minor: number; patch: number; prerelease?: string; }
+
+export const VITTE_COMPILER_EVIDENCE_VERSION = "0.1.1";
+
+export function isSupportedVitteCompilerVersion(version: string | undefined): boolean {
+  return version?.replace(/^v/i, "") === VITTE_COMPILER_EVIDENCE_VERSION;
+}
 
 function parseSemver(input: string | undefined): VSemVer | undefined {
   if (!input) return undefined;
@@ -147,27 +142,67 @@ function cmpSemver(a: VSemVer, b: VSemVer): number {
 // -----------------------------
 // discovery
 // -----------------------------
-function discoverWorkspaceBinRoots(): string[] {
-  return workspaceBinaryRoots((vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath));
+function explicitToolchainRoot(): string | undefined {
+  const cfg = vscode.workspace.getConfiguration('vitte');
+  const raw = firstNonEmpty(cfg.get<string>('toolchain.root'), cfg.get<string>('toolchainPath'));
+  if (!raw) return undefined;
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  return expandToolPath(raw, workspaceRoot);
 }
 
-/** Detect toolchain root by checking settings, env vars, workspace bins, or bin location. */
-export function detectVitteToolchainRoot(): string | undefined {
-  const cfg = vscode.workspace.getConfiguration('vitte');
-  const explicit = cfg.get<string>('toolchain.root') ?? cfg.get<string>('toolchainPath');
-  if (explicit && isExecutableSync(path.join(explicit, isWindows() ? 'bin/vitte.exe' : 'bin/vitte'))) return explicit;
-  if (explicit && isExecutableSync(path.join(explicit, isWindows() ? 'bin/vitte-runtime.exe' : 'bin/vitte-runtime'))) return explicit;
+function projectRoots(): string[] {
+  const folders = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  const configured = vscode.workspace.getConfiguration('vitte').get<string>('project.root');
+  const root = resolveProjectRoot(configured, folders[0]);
+  return [...new Set([...(root ? [root] : []), ...folders])];
+}
 
-  const envRoot = firstNonEmpty(process.env.VITTE_TOOLCHAIN_ROOT, process.env.VITTE_ROOT, process.env.VITTE_HOME, process.env.VITTE_BIN_DIR);
-  if (envRoot) {
-    const candidate = path.join(envRoot, 'bin', isWindows() ? 'vitte.exe' : 'vitte');
-    if (isExecutableSync(candidate)) return real(envRoot) ?? envRoot;
+function discoverWorkspaceBinRoots(): string[] {
+  return workspaceBinaryRoots(projectRoots());
+}
+
+function environmentToolchainRoots(): string[] {
+  const roots = [process.env.VITTE_TOOLCHAIN_ROOT, process.env.VITTE_ROOT, process.env.VITTE_HOME]
+    .filter((value): value is string => Boolean(value));
+  return [...new Set(roots)];
+}
+
+function environmentBinary(name: string): string | undefined {
+  const exe = name + (isWindows() ? '.exe' : '');
+  const binDir = process.env.VITTE_BIN_DIR;
+  if (binDir) {
+    const candidate = path.join(binDir, exe);
+    if (isExecutableSync(candidate)) return real(candidate) ?? candidate;
+  }
+  for (const root of environmentToolchainRoots()) {
+    const candidate = path.join(root, 'bin', exe);
+    if (isExecutableSync(candidate)) return real(candidate) ?? candidate;
+  }
+  return undefined;
+}
+
+/** Detect toolchain root using explicit settings, project bins, environment roots, then user PATH installs. */
+export function detectVitteToolchainRoot(): string | undefined {
+  const explicit = explicitToolchainRoot();
+  if (explicit && [
+    path.join(explicit, 'bin', isWindows() ? 'vitte.exe' : 'vitte'),
+    path.join(explicit, 'bin', isWindows() ? 'vitte-runtime.exe' : 'vitte-runtime'),
+  ].some(isExecutableSync)) return real(explicit) ?? explicit;
+
+  // Prefer project-local tools over ambient user PATH/environment installs.
+  for (const root of discoverWorkspaceBinRoots()) {
+    const candidate = path.join(root, isWindows() ? 'vitte.exe' : 'vitte');
+    if (isExecutableSync(candidate)) return real(path.resolve(root, '..')) ?? path.resolve(root, '..');
   }
 
-  // workspace embedded bins (e.g., monorepo/tools)
-  for (const r of discoverWorkspaceBinRoots()) {
-    const candidate = path.join(r, isWindows() ? 'vitte.exe' : 'vitte');
-    if (isExecutableSync(candidate)) return real(path.resolve(r, '..')) ?? path.resolve(r, '..');
+  for (const root of environmentToolchainRoots()) {
+    const candidate = path.join(root, 'bin', isWindows() ? 'vitte.exe' : 'vitte');
+    if (isExecutableSync(candidate)) return real(root) ?? root;
+  }
+
+  const binDir = process.env.VITTE_BIN_DIR;
+  if (binDir && isExecutableSync(path.join(binDir, isWindows() ? 'vitte.exe' : 'vitte'))) {
+    return real(path.dirname(binDir)) ?? path.dirname(binDir);
   }
 
   const cli = which('vitte');
@@ -182,59 +217,101 @@ export function detectVitteToolchainRoot(): string | undefined {
   return undefined;
 }
 
-function getVersion(bin: string | undefined): string | undefined {
-  if (!bin) return undefined;
-  try {
-    const res = cp.spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 700 });
-    const stdout = (res.stdout ?? '').trim();
-    const stderr = (res.stderr ?? '').trim();
-    const out = stdout.length > 0 ? stdout : stderr;
-    const match = /\b(v?\d+\.\d+\.\d+(?:[-+].*)?)\b/.exec(out);
-    if (match) return match[1];
-    return out.length > 0 ? out : undefined;
-  } catch { return undefined; }
+function getVersion(bin: string | undefined): Promise<string | undefined> {
+  if (!bin) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    let finished = false;
+    const child = spawnManaged(bin, ['--version'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const finish = (version: string | undefined): void => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      resolve(version);
+    };
+    const timeout = setTimeout(() => {
+      try { child.kill(); } catch { /* process may already have exited */ }
+      finish(undefined);
+    }, 700);
+    child.stdout?.on('data', (chunk: Buffer | string) => { stdout += String(chunk); });
+    child.stderr?.on('data', (chunk: Buffer | string) => { stderr += String(chunk); });
+    child.once('error', () => finish(undefined));
+    child.once('close', () => {
+      const output = stdout.trim() || stderr.trim();
+      const match = /\b(v?\d+\.\d+\.\d+(?:[-+].*)?)\b/.exec(output);
+      finish(match?.[1] ?? (output || undefined));
+    });
+  });
 }
 
 // -----------------------------
 // core location with memoization
 // -----------------------------
 let MEMO_RESULT: VitteRuntimePaths | undefined;
+let MEMO_PROMISE: Promise<VitteRuntimePaths> | undefined;
+let MEMO_GENERATION = 0;
 
-export function clearRuntimeLocatorCache(): void { MEMO_RESULT = undefined; }
+export function clearRuntimeLocatorCache(): void {
+  MEMO_RESULT = undefined;
+  MEMO_PROMISE = undefined;
+  MEMO_GENERATION += 1;
+  WHICH_CACHE.clear();
+}
 
-function resolveFromSettingOrRoot(cfg: vscode.WorkspaceConfiguration, root: string | undefined, name: string, settingKey: string): string | undefined {
+function resolveFromSettingOrRoot(cfg: vscode.WorkspaceConfiguration, name: string, settingKey: string): string | undefined {
   const raw = cfg.get<string>(settingKey);
-  const fromSetting = raw ? expandToolPath(raw, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(), root) : undefined;
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const fromSetting = raw ? expandToolPath(raw, workspaceRoot) : undefined;
   if (fromSetting && isExecutableSync(fromSetting)) return real(fromSetting) ?? fromSetting;
-  if (root) {
-    const candidate = path.join(root, 'bin', name + (isWindows() ? '.exe' : ''));
+  const configured = explicitToolchainRoot();
+  if (configured) {
+    const candidate = path.join(configured, 'bin', name + (isWindows() ? '.exe' : ''));
     if (isExecutableSync(candidate)) return real(candidate) ?? candidate;
   }
-  // workspace overrides
   for (const r of discoverWorkspaceBinRoots()) {
     const candidate = path.join(r, name + (isWindows() ? '.exe' : ''));
     if (isExecutableSync(candidate)) return real(candidate) ?? candidate;
   }
+  const fromEnvironment = environmentBinary(name);
+  if (fromEnvironment) return fromEnvironment;
   return which(name);
 }
 
 /**
  * Locate runtime and companion binaries. Memoized per session.
- * Prefers workspace settings, then toolchain root, then workspace bins, then PATH.
+ * Precedence: compiler.path, toolchain.root, project-local bins, environment roots, then PATH/user installs.
  */
 export function locateVitteRuntime(minRequired?: string): Promise<VitteRuntimePaths> {
   if (MEMO_RESULT) return Promise.resolve(MEMO_RESULT);
+  if (MEMO_PROMISE) return MEMO_PROMISE;
 
+  const generation = MEMO_GENERATION;
+  const pending = locateVitteRuntimeUncached(minRequired).then((result) => {
+    if (generation === MEMO_GENERATION) MEMO_RESULT = result;
+    return result;
+  }).finally(() => {
+    if (MEMO_PROMISE === pending) MEMO_PROMISE = undefined;
+  });
+  MEMO_PROMISE = pending;
+  return pending;
+}
+
+async function locateVitteRuntimeUncached(minRequired?: string): Promise<VitteRuntimePaths> {
   const cfg = vscode.workspace.getConfiguration('vitte');
   const toolchainRoot = detectVitteToolchainRoot();
 
-  const cliPath = resolveFromSettingOrRoot(cfg, toolchainRoot, 'vitte', 'compiler.path')
+  const hasCompilerSetting = Boolean(cfg.get<string>('compiler.path')?.trim());
+  const cliPath = resolveFromSettingOrRoot(cfg, 'vitte', 'compiler.path')
     ?? which('vitte');
   const runtimePath = cliPath ?? 'vitte';
-  const lspPath   = resolveFromSettingOrRoot(cfg, toolchainRoot, 'vitte-lsp',   'lsp.path');
-  const buildPath = resolveFromSettingOrRoot(cfg, toolchainRoot, 'vitte', 'build.path') ?? cliPath;
-  const fmtPath   = resolveFromSettingOrRoot(cfg, toolchainRoot, 'vitte-fmt', 'fmt.path');
-  const benchPath = resolveFromSettingOrRoot(cfg, toolchainRoot, 'vitte-bench', 'bench.path');
+  const lspPath   = resolveFromSettingOrRoot(cfg, 'vitte-lsp', 'lsp.path');
+  const buildPath = hasCompilerSetting ? cliPath : resolveFromSettingOrRoot(cfg, 'vitte', 'build.path') ?? cliPath;
+  const fmtPath   = resolveFromSettingOrRoot(cfg, 'vitte-fmt', 'fmt.path');
+  const benchPath = resolveFromSettingOrRoot(cfg, 'vitte-bench', 'bench.path');
 
   const found = isExecutableSync(cliPath) || isExecutableSync(runtimePath);
 
@@ -248,27 +325,40 @@ export function locateVitteRuntime(minRequired?: string): Promise<VitteRuntimePa
 
   // Versions
   const versions: VitteVersions = {};
-  const vc = getVersion(found ? cliPath : undefined);
+  const trusted = vscode.workspace.isTrusted;
+  const versionCache = new Map<string, Promise<string | undefined>>();
+  const readVersion = (bin: string | undefined): Promise<string | undefined> => {
+    if (!trusted || !bin) return Promise.resolve(undefined);
+    let version = versionCache.get(bin);
+    if (!version) {
+      version = getVersion(bin);
+      versionCache.set(bin, version);
+    }
+    return version;
+  };
+  const [vc, vr, vl, vb, vf, vn] = await Promise.all([
+    readVersion(found ? cliPath : undefined),
+    readVersion(found ? runtimePath : undefined),
+    readVersion(lspPath),
+    readVersion(buildPath),
+    readVersion(fmtPath),
+    readVersion(benchPath),
+  ]);
   if (vc) {
     versions.cli = vc;
   }
-  const vr = getVersion(found ? runtimePath : undefined);
   if (vr) {
     versions.runtime = vr;
   }
-  const vl = getVersion(lspPath);
   if (vl) {
     versions.lsp = vl;
   }
-  const vb = getVersion(buildPath);
   if (vb) {
     versions.build = vb;
   }
-  const vf = getVersion(fmtPath);
   if (vf) {
     versions.fmt = vf;
   }
-  const vn = getVersion(benchPath);
   if (vn) {
     versions.bench = vn;
   }
@@ -285,12 +375,19 @@ export function locateVitteRuntime(minRequired?: string): Promise<VitteRuntimePa
     }
   }
 
+  if (found && !trusted) {
+    result.message = 'Vitte CLI detected; workspace trust is required before checking its version or running it.';
+  } else if (found && !versions.cli) {
+    result.message = 'Vitte CLI version could not be determined; compiler-dependent behavior is not verified.';
+  } else if (found && !isSupportedVitteCompilerVersion(versions.cli)) {
+    result.message = `Vitte CLI ${versions.cli} is outside the tested compiler evidence version ${VITTE_COMPILER_EVIDENCE_VERSION}.`;
+  }
+
   result.message ??= found
     ? `vitte detected at ${cliPath ?? runtimePath}`
     : 'vitte not found in PATH or toolchain root';
 
-  MEMO_RESULT = result;
-  return Promise.resolve(result);
+  return result;
 }
 
 /** Quick command for users: Detect and show runtime info in VSCode output */
@@ -298,25 +395,25 @@ export async function detectAndShowRuntimeInfo(output?: vscode.OutputChannel): P
   const result = await locateVitteRuntime();
   const out = output ?? vscode.window.createOutputChannel('Vitte');
   out.appendLine('[Vitte] Toolchain detection');
-  if (result.toolchainRoot) out.appendLine(`Toolchain root: ${result.toolchainRoot}`);
-  if (result.cliPath) out.appendLine(`CLI: ${result.cliPath}`);
-  out.appendLine(`Runtime: ${result.runtimePath}`);
-  if (result.lspPath) out.appendLine(`LSP: ${result.lspPath}`);
-  if (result.buildPath) out.appendLine(`Build: ${result.buildPath}`);
-  if (result.fmtPath) out.appendLine(`Fmt: ${result.fmtPath}`);
-  if (result.benchPath) out.appendLine(`Bench: ${result.benchPath}`);
+  if (result.toolchainRoot) out.appendLine(redactLogText(`Toolchain root: ${result.toolchainRoot}`));
+  if (result.cliPath) out.appendLine(redactLogText(`CLI: ${result.cliPath}`));
+  out.appendLine(redactLogText(`Runtime: ${result.runtimePath}`));
+  if (result.lspPath) out.appendLine(redactLogText(`LSP: ${result.lspPath}`));
+  if (result.buildPath) out.appendLine(redactLogText(`Build: ${result.buildPath}`));
+  if (result.fmtPath) out.appendLine(redactLogText(`Fmt: ${result.fmtPath}`));
+  if (result.benchPath) out.appendLine(redactLogText(`Bench: ${result.benchPath}`));
   if (result.versions) {
     const v = result.versions;
     out.appendLine('Versions:');
-    if (v?.cli) out.appendLine(`  cli:     ${v.cli}`);
-    if (v?.runtime) out.appendLine(`  runtime: ${v.runtime}`);
-    if (v?.lsp) out.appendLine(`  lsp:     ${v.lsp}`);
-    if (v?.build) out.appendLine(`  build:   ${v.build}`);
-    if (v?.fmt) out.appendLine(`  fmt:     ${v.fmt}`);
-    if (v?.bench) out.appendLine(`  bench:   ${v.bench}`);
+    if (v?.cli) out.appendLine(redactLogText(`  cli:     ${v.cli}`));
+    if (v?.runtime) out.appendLine(redactLogText(`  runtime: ${v.runtime}`));
+    if (v?.lsp) out.appendLine(redactLogText(`  lsp:     ${v.lsp}`));
+    if (v?.build) out.appendLine(redactLogText(`  build:   ${v.build}`));
+    if (v?.fmt) out.appendLine(redactLogText(`  fmt:     ${v.fmt}`));
+    if (v?.bench) out.appendLine(redactLogText(`  bench:   ${v.bench}`));
   }
   out.appendLine(`Found: ${String(result.found)}`);
-  if (result.message) out.appendLine(result.message);
+  if (result.message) out.appendLine(redactLogText(result.message));
   out.show(true);
 }
 
@@ -326,14 +423,14 @@ export async function detectAndShowRuntimeInfo(output?: vscode.OutputChannel): P
  *  - vitte.selectRuntime: let user pick a binary and persist to settings
  *  - vitte.clearRuntimeCache: invalidate memoized result
  */
-export function registerRuntimeLocatorCommand(ctx: vscode.ExtensionContext): void {
+export function registerRuntimeLocatorCommand(ctx: vscode.ExtensionContext, output?: vscode.OutputChannel): void {
   const detectCmd = vscode.commands.registerCommand('vitte.detectToolchain', async () => {
-    await detectAndShowRuntimeInfo();
+    await detectAndShowRuntimeInfo(output);
   });
 
   const clearCmd = vscode.commands.registerCommand('vitte.clearRuntimeCache', () => {
     clearRuntimeLocatorCache();
-    vscode.window.showInformationMessage('Vitte: runtime cache cleared.');
+    vscode.window.showInformationMessage('Vitte: runtime cache cleared. Restart the language server to apply toolchain changes.');
   });
 
   const pickCmd = vscode.commands.registerCommand('vitte.selectRuntime', async () => {
@@ -355,7 +452,15 @@ export function registerRuntimeLocatorCommand(ctx: vscode.ExtensionContext): voi
       vscode.window.showErrorMessage('Le fichier sélectionné ne semble pas exécutable.');
       return;
     }
-    await vscode.workspace.getConfiguration('vitte').update('compiler.path', fsPath, vscode.ConfigurationTarget.Workspace);
+    const activeFolder = vscode.window.activeTextEditor
+      ? vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)
+      : undefined;
+    const target = activeFolder
+      ? vscode.ConfigurationTarget.WorkspaceFolder
+      : vscode.workspace.workspaceFolders?.length
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+    await vscode.workspace.getConfiguration('vitte', activeFolder?.uri).update('compiler.path', fsPath, target);
     clearRuntimeLocatorCache();
     vscode.window.showInformationMessage(`Vitte: CLI défini sur ${fsPath}`);
   });

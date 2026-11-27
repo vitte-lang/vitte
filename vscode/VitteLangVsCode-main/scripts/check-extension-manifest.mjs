@@ -69,6 +69,8 @@ function contributionPaths(pkg) {
   const contributes = pkg.contributes ?? {};
   const paths = [];
 
+  if (typeof pkg.icon === "string") paths.push(pkg.icon);
+
   for (const language of asArray(contributes.languages)) {
     if (typeof language.configuration === "string") paths.push(language.configuration);
   }
@@ -93,6 +95,7 @@ function contributionPaths(pkg) {
 
 async function main() {
   const pkg = JSON.parse(await fs.readFile(packagePath, "utf8"));
+  const matrix = JSON.parse(await fs.readFile(path.join(root, "server/src/capability-matrix.json"), "utf8"));
   const ignorePath = path.join(root, ".vscodeignore");
   const ignoreText = await fs.readFile(ignorePath, "utf8").catch(() => "");
   const ignoreRules = ignoreText.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
@@ -104,11 +107,63 @@ async function main() {
   if (ignoreRules.length === 0) {
     errors.push(".vscodeignore must define the files shipped in the extension package.");
   }
+  if (pkg.main !== "./out/extension.js") errors.push('Manifest main must target the compiled extension entry point "./out/extension.js".');
+  if (pkg.engines?.vscode !== "^1.105.0") errors.push('Manifest engine range must match the validated VS Code baseline "^1.105.0".');
+  if (pkg.version !== matrix.versions?.extension) errors.push("Extension package version must match the capability matrix.");
+  const extensionSeries = /^([0-9]+\.[0-9]+)\./.exec(pkg.version ?? "")?.[1];
+  const serverSeries = /^([0-9]+\.[0-9]+)\./.exec(matrix.versions?.languageServer ?? "")?.[1];
+  if (!extensionSeries || extensionSeries !== serverSeries) errors.push("Packaged language-server version must be compatible with the extension major/minor series.");
+
+  const languageRows = asArray(pkg.contributes?.languages);
+  const languageExtensions = new Map(languageRows.map((language) => [language.id, asArray(language.extensions)]));
+  for (const [id, extensions] of [["vit", [".vit", ".vitl"]], ["vitte", [".vitte"]]]) {
+    const actual = languageExtensions.get(id) ?? [];
+    for (const extension of extensions) {
+      if (!actual.includes(extension)) errors.push(`Language "${id}" is missing file extension "${extension}".`);
+    }
+  }
+  const activationEvents = asArray(pkg.activationEvents);
+  for (const event of ["onLanguage:vit", "onLanguage:vitte", "workspaceContains:vitte.toml", "workspaceContains:vitte.config.json", "workspaceContains:.vitte/config.json"]) {
+    if (!activationEvents.includes(event)) errors.push(`Activation event is missing: ${event}`);
+  }
+  if (activationEvents.some((event) => event === "*" || event === "onStartupFinished")) {
+    errors.push("The extension must not start language services through broad startup activation events.");
+  }
+  const grammarLanguages = new Set(asArray(pkg.contributes?.grammars).map((grammar) => grammar.language));
+  const snippetLanguages = new Set(asArray(pkg.contributes?.snippets).map((snippet) => snippet.language));
+  for (const id of ["vit", "vitte"]) {
+    if (!grammarLanguages.has(id)) errors.push(`No grammar contribution exists for language "${id}".`);
+    if (!snippetLanguages.has(id)) errors.push(`No snippet contribution exists for language "${id}".`);
+  }
+
+  const properties = pkg.contributes?.configuration?.properties ?? {};
+  const allowedScopes = new Set(["application", "machine", "window", "resource", "machine-overridable", "language-overridable"]);
+  for (const [key, setting] of Object.entries(properties)) {
+    if (!setting || typeof setting !== "object") {
+      errors.push(`Configuration setting "${key}" must have a schema object.`);
+      continue;
+    }
+    if (typeof setting.type !== "string") errors.push(`Configuration setting "${key}" must declare a JSON schema type.`);
+    if (!allowedScopes.has(setting.scope)) errors.push(`Configuration setting "${key}" has an invalid or missing scope.`);
+    if (typeof setting.description !== "string" || setting.description.trim().length === 0) errors.push(`Configuration setting "${key}" must be documented.`);
+    if (Object.hasOwn(setting, "default") && typeof setting.type === "string") {
+      const expectedType = setting.type;
+      const valid = expectedType === "array" ? Array.isArray(setting.default)
+        : expectedType === "object" ? setting.default !== null && typeof setting.default === "object" && !Array.isArray(setting.default)
+          : typeof setting.default === expectedType;
+      if (!valid) errors.push(`Configuration setting "${key}" default does not match its declared type "${expectedType}".`);
+    }
+  }
 
   const requiredArtifacts = [
     "out/extension.js",
+    "out/server.js",
     "server/out/src/server.js",
     "server/out/src/capability-matrix.json",
+    "assets/logo.png",
+    "node_modules/vscode-languageclient/node.js",
+    "node_modules/vscode-languageserver/node.js",
+    "node_modules/vscode-languageserver-textdocument/lib/umd/main.js",
     "syntaxes/vitte.tmLanguage.json",
     "snippets/vitte.json",
   ];

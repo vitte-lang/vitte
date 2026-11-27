@@ -1,9 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { spawn } from "node:child_process";
 import * as os from "node:os";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/node";
+import { spawnManaged } from "../utils/managedProcesses";
+import { requireTrustedWorkspace } from "../utils/workspaceTrust";
+import { redactLogText } from "../utils/logRedaction";
 import { summarizeWorkspaceDiagnostics, summarizeDiagnosticsByDirectory } from "../utils/diagnostics";
 import type { ServerMetricEntry } from "../types/metrics";
 
@@ -41,16 +43,17 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 async function runCommand(cmd: string, args: string[], cwd?: string): Promise<void> {
+  if (!(await requireTrustedWorkspace(`running ${cmd}`))) throw new Error('Workspace trust is required.');
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, shell: false });
+    const child = spawnManaged(cmd, args, { cwd, shell: false });
     let stderr = "";
-    child.stderr.on("data", (d) => {
+    child.stderr?.on("data", (d) => {
       stderr += String(d);
     });
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`${cmd} ${args.join(" ")} failed (${code}): ${stderr.trim()}`));
+      else reject(new Error(redactLogText(`${cmd} ${args.join(" ")} failed (${code}): ${stderr.trim()}`)));
     });
   });
 }
@@ -235,23 +238,24 @@ async function exportSarif(deps: EnterpriseDeps): Promise<void> {
 }
 
 async function runDoctorPlugin(plugin: string, output: vscode.OutputChannel): Promise<void> {
+  if (!(await requireTrustedWorkspace('running an enterprise doctor plugin'))) return;
   const root = workspaceRoot();
   if (!root) return;
-  const map: Record<string, string> = {
-    security: "npm audit --json",
-    licenses: "npm ls --json",
-    "dead-code": "vitte check --json",
-    freshness: "npm outdated --json",
-    "docs-coverage": "vitte check --json",
-    "api-breakage": "vitte check --json",
+  const map: Record<string, { command: string; args: string[] }> = {
+    security: { command: "npm", args: ["audit", "--json"] },
+    licenses: { command: "npm", args: ["ls", "--json"] },
+    freshness: { command: "npm", args: ["outdated", "--json"] },
   };
-  const fallback = "npm audit --json";
-  const cmd = map[plugin] ?? fallback;
-  output.appendLine(`[doctor-plugin] ${plugin}: ${cmd}`);
+  const selected = map[plugin];
+  if (!selected) {
+    void vscode.window.showWarningMessage(`The ${plugin} enterprise report is not implemented. Track CAP-EXT-002 in the capability matrix; use Vitte: Doctor for compiler checks.`);
+    return;
+  }
+  output.appendLine(`[doctor-plugin] ${plugin}: ${redactLogText([selected.command, ...selected.args].join(" "))}`);
   await new Promise<void>((resolve) => {
-    const child = spawn(cmd, [], { cwd: root, shell: true });
-    child.stdout.on("data", (d: Buffer | string) => output.appendLine(`[doctor-plugin:${plugin}] ${String(d).trimEnd()}`));
-    child.stderr.on("data", (d: Buffer | string) => output.appendLine(`[doctor-plugin:${plugin}:err] ${String(d).trimEnd()}`));
+    const child = spawnManaged(selected.command, selected.args, { cwd: root, shell: false });
+    child.stdout?.on("data", (d: Buffer | string) => output.appendLine(`[doctor-plugin:${plugin}] ${redactLogText(String(d).trimEnd())}`));
+    child.stderr?.on("data", (d: Buffer | string) => output.appendLine(`[doctor-plugin:${plugin}:err] ${redactLogText(String(d).trimEnd())}`));
     child.on("close", () => resolve());
     child.on("error", () => resolve());
   });
@@ -413,7 +417,8 @@ function registerAutoRemediation(context: vscode.ExtensionContext): void {
 }
 
 export function registerEnterpriseSuite(context: vscode.ExtensionContext, deps: EnterpriseDeps): void {
-  void applyStrictDefaults();
+  if (vscode.workspace.isTrusted) void applyStrictDefaults();
+  context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(() => { void applyStrictDefaults(); }));
   registerAutoRemediation(context);
   context.subscriptions.push(
     vscode.commands.registerCommand("vitte.enterprise.strict.apply", async () => applyStrictDefaults()),
@@ -421,7 +426,7 @@ export function registerEnterpriseSuite(context: vscode.ExtensionContext, deps: 
       try {
         await publishGate(deps);
       } catch (err) {
-        void vscode.window.showErrorMessage(String(err));
+        void vscode.window.showErrorMessage(redactLogText(err));
       }
     }),
     vscode.commands.registerCommand("vitte.perf.baseline.update", async () => perfBaselineUpdate()),
@@ -429,7 +434,7 @@ export function registerEnterpriseSuite(context: vscode.ExtensionContext, deps: 
     vscode.commands.registerCommand("vitte.exportSarif", async () => exportSarif(deps)),
     vscode.commands.registerCommand("vitte.exportWorkspaceState", async () => exportWorkspaceState(deps)),
     vscode.commands.registerCommand("vitte.doctor.plugin", async () => {
-      const pick = await vscode.window.showQuickPick(["security", "licenses", "dead-code", "freshness", "docs-coverage", "api-breakage"]);
+      const pick = await vscode.window.showQuickPick(["security", "licenses", "freshness"]);
       if (!pick) return;
       await runDoctorPlugin(pick, deps.output);
     }),
@@ -490,7 +495,7 @@ export function registerEnterpriseSuite(context: vscode.ExtensionContext, deps: 
       try {
         await crashForensicsBundle(deps);
       } catch (err) {
-        void vscode.window.showErrorMessage(`Crash forensics bundle failed: ${String(err)}`);
+        void vscode.window.showErrorMessage(`Crash forensics bundle failed: ${redactLogText(err)}`);
       }
     }),
     vscode.languages.registerHoverProvider([{ language: "vitte" }, { language: "vit" }], {

@@ -2,7 +2,7 @@
   "name": "vitte-studio",
   "displayName": "Vitte Language Support",
   "description": "Editor support and project workflows for Vitte. See the versioned capability matrix for tested scope and platform limits.",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "publisher": "VitteStudio",
   "license": "MIT",
   "repository": {
@@ -675,6 +675,14 @@
         "command": "vitte.crashForensics.bundle",
         "title": "Vitte: Crash Forensics Bundle",
         "category": "Vitte"
+      },
+      {
+        "command": "vitte.selectRuntime",
+        "title": "Vitte: Select Compiler"
+      },
+      {
+        "command": "vitte.clearRuntimeCache",
+        "title": "Vitte: Clear Toolchain Cache"
       }
     ],
     "menus": {
@@ -1074,154 +1082,178 @@
             "verbose"
           ],
           "default": "off",
-          "description": "Enable tracing for the Vitte language server."
+          "description": "Trace Vitte LSP messages in the dedicated Vitte Language Server Output channel. Verbose mode can include editor document content.",
+          "scope": "resource"
         },
         "vitte.serverPath": {
           "type": "string",
           "default": "",
-          "description": "Absolute path to a custom Vitte server binary. Empty = use the bundled server."
+          "description": "Legacy custom Node.js language-server module (.js/.cjs/.mjs), higher precedence than vitte.lsp.path. It must report serverInfo.version compatible with this extension.",
+          "scope": "resource"
         },
         "vitte.server.offline": {
           "type": "boolean",
           "default": false,
-          "description": "Do not start the language server (offline mode)."
+          "description": "Do not start the language server (offline mode). The bundled server and extension can still be used without network access after installation.",
+          "scope": "resource"
         },
         "vitte.server.offlinePermanent": {
           "type": "boolean",
           "default": false,
-          "description": "Force offline mode permanently (no auto-retry)."
+          "description": "Force offline mode permanently (no auto-retry).",
+          "scope": "resource"
         },
         "vitte.server.offlineMuteBanner": {
           "type": "boolean",
           "default": false,
-          "description": "Mute the offline banner notification."
+          "description": "Mute the offline banner notification.",
+          "scope": "resource"
         },
         "vitte.server.autoRetry": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically retry starting the server when offline."
+          "description": "Automatically retry starting the server when offline.",
+          "scope": "resource"
         },
         "vitte.server.autoRetryBaseMs": {
           "type": "number",
           "default": 60000,
           "minimum": 10000,
           "maximum": 300000,
-          "description": "Base delay (ms) before retrying server start when offline."
+          "description": "Base delay (ms) before retrying server start when offline.",
+          "scope": "resource"
         },
         "vitte.server.autoRetryMaxMs": {
           "type": "number",
           "default": 300000,
           "minimum": 60000,
           "maximum": 900000,
-          "description": "Max delay (ms) for retry backoff when offline."
+          "description": "Max delay (ms) for retry backoff when offline.",
+          "scope": "resource"
         },
         "vitte.requestTimeoutMs": {
           "type": "number",
           "default": 800,
           "minimum": 100,
           "maximum": 5000,
-          "description": "Timeout (ms) for LSP requests (completion, hover, etc.)."
+          "description": "Timeout (ms) for LSP requests (completion, hover, etc.).",
+          "scope": "resource"
         },
         "vitte.requestMaxConcurrent": {
           "type": "number",
           "default": 4,
           "minimum": 1,
           "maximum": 32,
-          "description": "Max concurrent LSP requests before backpressure."
+          "description": "Max concurrent LSP requests before backpressure.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.completion": {
           "type": "number",
           "default": 400,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for completion."
+          "description": "Timeout (ms) for completion.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.signatureHelp": {
           "type": "number",
           "default": 400,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for signature help."
+          "description": "Timeout (ms) for signature help.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.hover": {
           "type": "number",
           "default": 300,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for hover."
+          "description": "Timeout (ms) for hover.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.definition": {
           "type": "number",
           "default": 600,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for definition."
+          "description": "Timeout (ms) for definition.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.references": {
           "type": "number",
           "default": 800,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for references."
+          "description": "Timeout (ms) for references.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.rename": {
           "type": "number",
           "default": 800,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for rename."
+          "description": "Timeout (ms) for rename.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.documentSymbols": {
           "type": "number",
           "default": 600,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for document symbols."
+          "description": "Timeout (ms) for document symbols.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.workspaceSymbols": {
           "type": "number",
           "default": 800,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for workspace symbols."
+          "description": "Timeout (ms) for workspace symbols.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.semanticTokens": {
           "type": "number",
           "default": 800,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for semantic tokens."
+          "description": "Timeout (ms) for semantic tokens.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.formatting": {
           "type": "number",
           "default": 800,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for formatting."
+          "description": "Timeout (ms) for formatting.",
+          "scope": "resource"
         },
         "vitte.indexerMaxRssMB": {
           "type": "number",
           "default": 1024,
           "minimum": 256,
           "maximum": 8192,
-          "description": "Max RSS memory (MB) before skipping index updates."
+          "description": "Max RSS memory (MB) before skipping index updates.",
+          "scope": "resource"
         },
         "vitte.indexerCacheEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Persist index cache to speed up restarts."
+          "description": "Persist index cache to speed up restarts.",
+          "scope": "resource"
         },
         "vitte.traceSampleRate": {
           "type": "number",
           "default": 0.01,
           "minimum": 0,
           "maximum": 1,
-          "description": "Sampling rate for verbose trace metrics."
+          "description": "Sampling rate for verbose trace metrics.",
+          "scope": "resource"
         },
         "vitte.enterprise.strict": {
           "type": "boolean",
           "default": false,
-          "description": "Enable global enterprise strict mode and quality gates."
+          "description": "Enable global enterprise strict mode and quality gates.",
+          "scope": "resource"
         },
         "vitte.channel": {
           "type": "string",
@@ -1230,120 +1262,140 @@
             "canary"
           ],
           "default": "stable",
-          "description": "Release channel for extension behavior."
+          "description": "Release channel for extension behavior.",
+          "scope": "resource"
         },
         "vitte.reliability.maxRestartAttempts": {
           "type": "number",
           "default": 3,
           "minimum": 1,
           "maximum": 20,
-          "description": "Maximum automatic restart attempts in reliability guard."
+          "description": "Maximum automatic restart attempts in reliability guard.",
+          "scope": "resource"
         },
         "vitte.reliability.cooldownMs": {
           "type": "number",
           "default": 120000,
           "minimum": 10000,
           "maximum": 1800000,
-          "description": "Cooldown window for restart attempts."
+          "description": "Cooldown window for restart attempts.",
+          "scope": "resource"
         },
         "vitte.reliability.baseRetryMs": {
           "type": "number",
           "default": 30000,
           "minimum": 1000,
           "maximum": 600000,
-          "description": "Base retry delay for reliability guard."
+          "description": "Base retry delay for reliability guard.",
+          "scope": "resource"
         },
         "vitte.reliability.maxRetryMs": {
           "type": "number",
           "default": 300000,
           "minimum": 5000,
           "maximum": 3600000,
-          "description": "Maximum retry delay for reliability guard."
+          "description": "Maximum retry delay for reliability guard.",
+          "scope": "resource"
         },
         "vitte.semanticBudget.completionP95Ms": {
           "type": "number",
           "default": 900,
           "minimum": 10,
           "maximum": 10000,
-          "description": "Semantic diagnostics budget for completion p95."
+          "description": "Semantic diagnostics budget for completion p95.",
+          "scope": "resource"
         },
         "vitte.semanticBudget.hoverP95Ms": {
           "type": "number",
           "default": 600,
           "minimum": 10,
           "maximum": 10000,
-          "description": "Semantic diagnostics budget for hover p95."
+          "description": "Semantic diagnostics budget for hover p95.",
+          "scope": "resource"
         },
         "vitte.semanticBudget.renameP95Ms": {
           "type": "number",
           "default": 1200,
           "minimum": 10,
           "maximum": 20000,
-          "description": "Semantic diagnostics budget for rename p95."
+          "description": "Semantic diagnostics budget for rename p95.",
+          "scope": "resource"
         },
         "vitte.semanticBudget.referencesP95Ms": {
           "type": "number",
           "default": 1200,
           "minimum": 10,
           "maximum": 20000,
-          "description": "Semantic diagnostics budget for references p95."
+          "description": "Semantic diagnostics budget for references p95.",
+          "scope": "resource"
         },
         "vitte.policy.path": {
           "type": "string",
           "default": "vitte.policy.json",
-          "description": "Path to policy-as-code file used by enterprise checks."
+          "description": "Path to policy-as-code file used by enterprise checks.",
+          "scope": "resource"
         },
         "vitte.features.completion": {
           "type": "boolean",
           "default": true,
-          "description": "Enable completion provider."
+          "description": "Enable completion provider.",
+          "scope": "resource"
         },
         "vitte.completion.enabledInComments": {
           "type": "boolean",
           "default": false,
-          "description": "Enable completion suggestions when cursor is in a comment."
+          "description": "Enable completion suggestions when cursor is in a comment.",
+          "scope": "resource"
         },
         "vitte.completion.enabledInStrings": {
           "type": "boolean",
           "default": false,
-          "description": "Enable completion suggestions when cursor is in a string literal."
+          "description": "Enable completion suggestions when cursor is in a string literal.",
+          "scope": "resource"
         },
         "vitte.completion.includeSnippets": {
           "type": "boolean",
           "default": true,
-          "description": "Include snippet completions in completion results."
+          "description": "Include snippet completions in completion results.",
+          "scope": "resource"
         },
         "vitte.completion.workspaceSymbols": {
           "type": "boolean",
           "default": true,
-          "description": "Include multi-file workspace symbols in completion results."
+          "description": "Include multi-file workspace symbols in completion results.",
+          "scope": "resource"
         },
         "vitte.completion.maxItems": {
           "type": "number",
           "default": 200,
           "minimum": 16,
           "maximum": 1000,
-          "description": "Maximum number of completion items returned per request."
+          "description": "Maximum number of completion items returned per request.",
+          "scope": "resource"
         },
         "vitte.suggestions.adaptiveRanking": {
           "type": "boolean",
           "default": true,
-          "description": "Enable adaptive completion ranking based on prefix/context/usage."
+          "description": "Enable adaptive completion ranking based on prefix/context/usage.",
+          "scope": "resource"
         },
         "vitte.suggestions.dynamicBudget": {
           "type": "boolean",
           "default": true,
-          "description": "Enable dynamic top-N completion budget according to latency/load."
+          "description": "Enable dynamic top-N completion budget according to latency/load.",
+          "scope": "resource"
         },
         "vitte.suggestions.showExplainLabels": {
           "type": "boolean",
           "default": true,
-          "description": "Append short why-labels to completion details."
+          "description": "Append short why-labels to completion details.",
+          "scope": "resource"
         },
         "vitte.suggestions.showMatchHighlights": {
           "type": "boolean",
           "default": true,
-          "description": "Append compact match hints (prefix/contains/fuzzy positions) to completion details."
+          "description": "Append compact match hints (prefix/contains/fuzzy positions) to completion details.",
+          "scope": "resource"
         },
         "vitte.suggestions.rankingVariant": {
           "type": "string",
@@ -1353,12 +1405,14 @@
             "scope_heavy"
           ],
           "default": "default",
-          "description": "Primary ranking variant profile."
+          "description": "Primary ranking variant profile.",
+          "scope": "resource"
         },
         "vitte.suggestions.shadowRankingEnabled": {
           "type": "boolean",
           "default": false,
-          "description": "Run a shadow ranking profile in background for A/B comparison metrics (no UX impact)."
+          "description": "Run a shadow ranking profile in background for A/B comparison metrics (no UX impact).",
+          "scope": "resource"
         },
         "vitte.suggestions.shadowRankingVariant": {
           "type": "string",
@@ -1368,140 +1422,162 @@
             "scope_heavy"
           ],
           "default": "scope_heavy",
-          "description": "Variant used by shadow ranking A/B metrics."
+          "description": "Variant used by shadow ranking A/B metrics.",
+          "scope": "resource"
         },
         "vitte.suggestions.churnPenaltyEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Penalize suggestions that move too much between consecutive refreshes for the same request."
+          "description": "Penalize suggestions that move too much between consecutive refreshes for the same request.",
+          "scope": "resource"
         },
         "vitte.suggestions.churnPenaltyWeight": {
           "type": "number",
           "default": 1,
           "minimum": 0,
           "maximum": 4,
-          "description": "Weight applied to churn penalty during ranking."
+          "description": "Weight applied to churn penalty during ranking.",
+          "scope": "resource"
         },
         "vitte.suggestions.typeBudgetEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Apply per-kind budget for completion list (function/variable/snippet)."
+          "description": "Apply per-kind budget for completion list (function/variable/snippet).",
+          "scope": "resource"
         },
         "vitte.suggestions.functionBudgetRatio": {
           "type": "number",
           "default": 0.45,
           "minimum": 0,
           "maximum": 1,
-          "description": "Target ratio of function/method suggestions in final completion list."
+          "description": "Target ratio of function/method suggestions in final completion list.",
+          "scope": "resource"
         },
         "vitte.suggestions.variableBudgetRatio": {
           "type": "number",
           "default": 0.35,
           "minimum": 0,
           "maximum": 1,
-          "description": "Target ratio of variable/field/property suggestions in final completion list."
+          "description": "Target ratio of variable/field/property suggestions in final completion list.",
+          "scope": "resource"
         },
         "vitte.suggestions.snippetBudgetRatio": {
           "type": "number",
           "default": 0.15,
           "minimum": 0,
           "maximum": 1,
-          "description": "Target ratio of snippet suggestions in final completion list."
+          "description": "Target ratio of snippet suggestions in final completion list.",
+          "scope": "resource"
         },
         "vitte.suggestions.topN": {
           "type": "number",
           "default": 50,
           "minimum": 5,
           "maximum": 200,
-          "description": "Target number of completion suggestions when system is healthy."
+          "description": "Target number of completion suggestions when system is healthy.",
+          "scope": "resource"
         },
         "vitte.suggestions.minN": {
           "type": "number",
           "default": 20,
           "minimum": 5,
           "maximum": 200,
-          "description": "Minimum completion suggestion budget under degraded latency/load."
+          "description": "Minimum completion suggestion budget under degraded latency/load.",
+          "scope": "resource"
         },
         "vitte.suggestions.maxN": {
           "type": "number",
           "default": 80,
           "minimum": 5,
           "maximum": 300,
-          "description": "Maximum completion suggestion cap."
+          "description": "Maximum completion suggestion cap.",
+          "scope": "resource"
         },
         "vitte.suggestions.slowMs": {
           "type": "number",
           "default": 180,
           "minimum": 20,
           "maximum": 5000,
-          "description": "Latency threshold (ms) considered slow for dynamic suggestion budgeting."
+          "description": "Latency threshold (ms) considered slow for dynamic suggestion budgeting.",
+          "scope": "resource"
         },
         "vitte.suggestions.rankingDeadlineMs": {
           "type": "number",
           "default": 25,
           "minimum": 3,
           "maximum": 120,
-          "description": "CPU deadline (ms) for completion ranking pass; beyond this the ranker falls back to neutral ordering."
+          "description": "CPU deadline (ms) for completion ranking pass; beyond this the ranker falls back to neutral ordering.",
+          "scope": "resource"
         },
         "vitte.suggestions.streaming": {
           "type": "boolean",
           "default": true,
-          "description": "Enable time-bounded language-server completion; only language-server results are displayed."
+          "description": "Enable time-bounded language-server completion; only language-server results are displayed.",
+          "scope": "resource"
         },
         "vitte.suggestions.streamingFirstPaintMs": {
           "type": "number",
           "default": 75,
           "minimum": 10,
           "maximum": 2000,
-          "description": "Wait budget (ms) before reporting an LSP timeout; local or cached candidates are not substituted."
+          "description": "Wait budget (ms) before reporting an LSP timeout; local or cached candidates are not substituted.",
+          "scope": "resource"
         },
         "vitte.suggestions.streamingAutoRefresh": {
           "type": "boolean",
           "default": true,
-          "description": "Auto refresh suggest widget when background LSP completion arrives."
+          "description": "Auto refresh suggest widget when background LSP completion arrives.",
+          "scope": "resource"
         },
         "vitte.suggestions.autoRefreshDebounceMinMs": {
           "type": "number",
           "default": 80,
           "minimum": 40,
           "maximum": 500,
-          "description": "Minimum debounce (ms) before triggering auto-refresh of suggest widget."
+          "description": "Minimum debounce (ms) before triggering auto-refresh of suggest widget.",
+          "scope": "resource"
         },
         "vitte.suggestions.autoRefreshDebounceMaxMs": {
           "type": "number",
           "default": 260,
           "minimum": 40,
           "maximum": 1000,
-          "description": "Maximum adaptive debounce (ms) based on typing speed before auto-refresh."
+          "description": "Maximum adaptive debounce (ms) based on typing speed before auto-refresh.",
+          "scope": "resource"
         },
         "vitte.suggestions.lspHardTimeoutMs": {
           "type": "number",
           "default": 120,
           "minimum": 50,
           "maximum": 1000,
-          "description": "Hard timeout (ms) for a language-server completion response before an explicit timeout warning is shown."
+          "description": "Hard timeout (ms) for a language-server completion response before an explicit timeout warning is shown.",
+          "scope": "resource"
         },
         "vitte.suggestions.lintGuard": {
           "type": "boolean",
           "default": true,
-          "description": "When the current line has diagnostics errors, filter risky completion entries (snippet/multiline/non-prefix)."
+          "description": "When the current line has diagnostics errors, filter risky completion entries (snippet/multiline/non-prefix).",
+          "scope": "resource"
         },
         "vitte.suggestions.diagnosticContextFilterEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Filter suggestions using diagnostic message context on the current line."
+          "description": "Filter suggestions using diagnostic message context on the current line.",
+          "scope": "resource"
         },
         "vitte.suggestions.diagnosticContextMinTokenLen": {
           "type": "number",
           "default": 4,
           "minimum": 2,
           "maximum": 12,
-          "description": "Minimum token length extracted from diagnostics for context-based suggestion filtering."
+          "description": "Minimum token length extracted from diagnostics for context-based suggestion filtering.",
+          "scope": "resource"
         },
         "vitte.suggestions.securityGuardEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable security guard filtering for risky completion patterns."
+          "description": "Enable security guard filtering for risky completion patterns.",
+          "scope": "resource"
         },
         "vitte.suggestions.securityBlockedPatterns": {
           "type": "array",
@@ -1515,7 +1591,8 @@
           "description": "Regex patterns (case-insensitive) blocked by the completion security guard.",
           "items": {
             "type": "string"
-          }
+          },
+          "scope": "resource"
         },
         "vitte.suggestions.workspaceWhitelistPatterns": {
           "type": "array",
@@ -1523,7 +1600,8 @@
           "description": "If non-empty, only suggestions matching at least one regex pattern (case-insensitive) are kept.",
           "items": {
             "type": "string"
-          }
+          },
+          "scope": "resource"
         },
         "vitte.suggestions.workspaceBlacklistPatterns": {
           "type": "array",
@@ -1531,7 +1609,8 @@
           "description": "Suggestions matching any of these regex patterns (case-insensitive) are removed.",
           "items": {
             "type": "string"
-          }
+          },
+          "scope": "resource"
         },
         "vitte.suggestions.intentMode": {
           "type": "string",
@@ -1544,218 +1623,254 @@
             "terminal"
           ],
           "default": "auto",
-          "description": "Suggestion intent mode used to reweight completion ranking."
+          "description": "Suggestion intent mode used to reweight completion ranking.",
+          "scope": "resource"
         },
         "vitte.suggestions.stickyTopEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Boost recently accepted suggestions for the current document near the top of the list."
+          "description": "Boost recently accepted suggestions for the current document near the top of the list.",
+          "scope": "resource"
         },
         "vitte.suggestions.stickyTopCount": {
           "type": "number",
           "default": 8,
           "minimum": 1,
           "maximum": 32,
-          "description": "Number of recently accepted labels (per document) considered for sticky-top boosting."
+          "description": "Number of recently accepted labels (per document) considered for sticky-top boosting.",
+          "scope": "resource"
         },
         "vitte.suggestions.pagination": {
           "type": "boolean",
           "default": true,
-          "description": "Enable paged completion budgeting with progressive load on repeated invoke."
+          "description": "Enable paged completion budgeting with progressive load on repeated invoke.",
+          "scope": "resource"
         },
         "vitte.suggestions.pageSize": {
           "type": "number",
           "default": 20,
           "minimum": 5,
           "maximum": 200,
-          "description": "Number of completion items returned per page."
+          "description": "Number of completion items returned per page.",
+          "scope": "resource"
         },
         "vitte.suggestions.maxPages": {
           "type": "number",
           "default": 5,
           "minimum": 1,
           "maximum": 10,
-          "description": "Maximum page escalation for the same completion request key."
+          "description": "Maximum page escalation for the same completion request key.",
+          "scope": "resource"
         },
         "vitte.suggestions.pageResetMs": {
           "type": "number",
           "default": 5000,
           "minimum": 500,
           "maximum": 30000,
-          "description": "Reset paging state when repeated invoke happens after this delay (ms)."
+          "description": "Reset paging state when repeated invoke happens after this delay (ms).",
+          "scope": "resource"
         },
         "vitte.suggestions.ghostTextTop1Stable": {
           "type": "boolean",
           "default": false,
-          "description": "Experimental: enable inline suggestions from heuristic templates and optional local/AI engines. Disabled by default; candidates are not compiler-checked."
+          "description": "Experimental: enable inline suggestions from heuristic templates and optional local/AI engines. Disabled by default; candidates are not compiler-checked.",
+          "scope": "resource"
         },
         "vitte.suggestions.ghostTextStableThreshold": {
           "type": "number",
           "default": 2,
           "minimum": 1,
           "maximum": 8,
-          "description": "Number of consecutive stable top-1 observations before ghost text is shown."
+          "description": "Number of consecutive stable top-1 observations before ghost text is shown.",
+          "scope": "resource"
         },
         "vitte.suggestions.ghostTextMaxAgeMs": {
           "type": "number",
           "default": 2500,
           "minimum": 200,
           "maximum": 10000,
-          "description": "Maximum age (ms) of a stable top-1 candidate kept for ghost text preview."
+          "description": "Maximum age (ms) of a stable top-1 candidate kept for ghost text preview.",
+          "scope": "resource"
         },
         "vitte.suggestions.inlineCacheTtlMs": {
           "type": "number",
           "default": 150,
           "minimum": 50,
           "maximum": 1000,
-          "description": "Inline completion cache TTL (ms). Target hot-path latency under 150ms."
+          "description": "Inline completion cache TTL (ms). Target hot-path latency under 150ms.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Experimental: enable local n-gram/pattern inline suggestions. Disabled by default because candidates are not compiler-resolved."
+          "description": "Experimental: enable local n-gram/pattern inline suggestions. Disabled by default because candidates are not compiler-resolved.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.maxFiles": {
           "type": "number",
           "default": 6000,
           "minimum": 50,
           "maximum": 50000,
-          "description": "Maximum number of workspace source files indexed by the local inline engine."
+          "description": "Maximum number of workspace source files indexed by the local inline engine.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.maxFileSizeKB": {
           "type": "number",
           "default": 256,
           "minimum": 16,
           "maximum": 8192,
-          "description": "Per-file size cap (KB) for local inline indexing."
+          "description": "Per-file size cap (KB) for local inline indexing.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.reindexDebounceMs": {
           "type": "number",
           "default": 120,
           "minimum": 25,
           "maximum": 3000,
-          "description": "Debounce delay (ms) for incremental local index updates while typing."
+          "description": "Debounce delay (ms) for incremental local index updates while typing.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.inlineTopK": {
           "type": "number",
           "default": 8,
           "minimum": 1,
           "maximum": 24,
-          "description": "Maximum number of local engine inline candidates evaluated per cursor request."
+          "description": "Maximum number of local engine inline candidates evaluated per cursor request.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.persistIndex": {
           "type": "boolean",
           "default": true,
-          "description": "Persist local inline index to disk and reload it on startup."
+          "description": "Persist local inline index to disk and reload it on startup.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.expectedValueHints": {
           "type": "boolean",
           "default": true,
-          "description": "Enable expected-value inline hints (bool/string/number/enum-like) from local context."
+          "description": "Enable expected-value inline hints (bool/string/number/enum-like) from local context.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.errorRecoveryHints": {
           "type": "boolean",
           "default": true,
-          "description": "Enable recovery inline hints for incomplete code (missing ), ], })."
+          "description": "Enable recovery inline hints for incomplete code (missing ), ], }).",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.multilineEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable multi-line inline generation from local beam search + learned block patterns."
+          "description": "Enable multi-line inline generation from local beam search + learned block patterns.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.beamWidth": {
           "type": "number",
           "default": 6,
           "minimum": 2,
           "maximum": 16,
-          "description": "Beam width for local token generation (higher = richer but slower)."
+          "description": "Beam width for local token generation (higher = richer but slower).",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.maxGeneratedTokens": {
           "type": "number",
           "default": 24,
           "minimum": 4,
           "maximum": 64,
-          "description": "Maximum generated tokens for local multi-line continuations."
+          "description": "Maximum generated tokens for local multi-line continuations.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.apiChainHints": {
           "type": "boolean",
           "default": true,
-          "description": "Enable learned API chain continuations (e.g., .map().filter().collect()) from repo usage."
+          "description": "Enable learned API chain continuations (e.g., .map().filter().collect()) from repo usage.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.adaptiveLearning": {
           "type": "boolean",
           "default": true,
-          "description": "Enable persistent local reranking from accepted inline suggestions by context."
+          "description": "Enable persistent local reranking from accepted inline suggestions by context.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.contextClassifierEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable local context classifier (declaration/call/member/guard/return/test) for strategy-specific ranking."
+          "description": "Enable local context classifier (declaration/call/member/guard/return/test) for strategy-specific ranking.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.fastCacheEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable ultra-fast local LRU cache for hot inline contexts."
+          "description": "Enable ultra-fast local LRU cache for hot inline contexts.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.fastCacheSize": {
           "type": "number",
           "default": 512,
           "minimum": 32,
           "maximum": 4096,
-          "description": "LRU entry count for local inline hot-context cache."
+          "description": "LRU entry count for local inline hot-context cache.",
+          "scope": "resource"
         },
         "vitte.suggestions.localEngine.fastCacheTtlMs": {
           "type": "number",
           "default": 400,
           "minimum": 20,
           "maximum": 5000,
-          "description": "TTL in milliseconds for local inline hot-context cache entries."
+          "description": "TTL in milliseconds for local inline hot-context cache entries.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable advanced inline AI pipeline (RAG context + reranking + anti-hallucination) with local fallback."
+          "description": "Enable advanced inline AI pipeline (RAG context + reranking + anti-hallucination) with local fallback.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.backendEnabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable dedicated LLM backend calls for inline suggestions."
+          "description": "Enable dedicated LLM backend calls for inline suggestions.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.backendUrl": {
           "type": "string",
           "default": "",
-          "description": "Dedicated LLM endpoint URL for inline completion candidates."
+          "description": "Dedicated LLM endpoint URL for inline completion candidates.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.backendTimeoutMs": {
           "type": "number",
           "default": 800,
           "minimum": 100,
           "maximum": 10000,
-          "description": "Timeout budget (ms) for dedicated LLM backend inline calls."
+          "description": "Timeout budget (ms) for dedicated LLM backend inline calls.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.ragTopK": {
           "type": "number",
           "default": 6,
           "minimum": 1,
           "maximum": 24,
-          "description": "Top-k local repository chunks selected for prompt context (RAG)."
+          "description": "Top-k local repository chunks selected for prompt context (RAG).",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.maxCandidates": {
           "type": "number",
           "default": 6,
           "minimum": 1,
           "maximum": 16,
-          "description": "Maximum inline candidates kept after dedupe + scoring."
+          "description": "Maximum inline candidates kept after dedupe + scoring.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.antiHallucination": {
           "type": "boolean",
           "default": true,
-          "description": "Apply anti-hallucination filtering (prefer known repository symbols)."
+          "description": "Apply anti-hallucination filtering (prefer known repository symbols).",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.allowUnknownSymbols": {
           "type": "boolean",
           "default": false,
-          "description": "Allow candidates containing unknown identifiers when anti-hallucination is enabled."
+          "description": "Allow candidates containing unknown identifiers when anti-hallucination is enabled.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.styleMode": {
           "type": "string",
@@ -1764,7 +1879,8 @@
             "user"
           ],
           "default": "project",
-          "description": "Style adaptation basis for AI pipeline ranking."
+          "description": "Style adaptation basis for AI pipeline ranking.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.userMode": {
           "type": "string",
@@ -1774,12 +1890,14 @@
             "conservative"
           ],
           "default": "balanced",
-          "description": "Per-user suggestion behavior profile."
+          "description": "Per-user suggestion behavior profile.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.privacyStrict": {
           "type": "boolean",
           "default": true,
-          "description": "Strict privacy mode: backend usage requires explicit allowlist match."
+          "description": "Strict privacy mode: backend usage requires explicit allowlist match.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.backendAllowlist": {
           "type": "array",
@@ -1787,63 +1905,74 @@
           "items": {
             "type": "string"
           },
-          "description": "Allowed backend hostnames/domains when privacyStrict is enabled."
+          "description": "Allowed backend hostnames/domains when privacyStrict is enabled.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.redactSecrets": {
           "type": "boolean",
           "default": true,
-          "description": "Redact likely secrets/tokens before sending context to backend."
+          "description": "Redact likely secrets/tokens before sending context to backend.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.trustedWorkspaceOnly": {
           "type": "boolean",
           "default": true,
-          "description": "Allow backend inline requests only in trusted VS Code workspaces."
+          "description": "Allow backend inline requests only in trusted VS Code workspaces.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.cloudOptIn": {
           "type": "boolean",
           "default": false,
-          "description": "Explicit consent to send code context to cloud backend."
+          "description": "Explicit consent to send code context to cloud backend.",
+          "scope": "application"
         },
         "vitte.suggestions.aiPipeline.localOnly": {
           "type": "boolean",
           "default": true,
-          "description": "Force local-only suggestions (disables remote backend calls)."
+          "description": "Force local-only suggestions (disables remote backend calls).",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.dataRetentionDays": {
           "type": "number",
           "default": 0,
           "minimum": 0,
           "maximum": 3650,
-          "description": "Declared data retention policy sent to backend (days). 0 = no retention requested."
+          "description": "Declared data retention policy sent to backend (days). 0 = no retention requested.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.allowExternalTraining": {
           "type": "boolean",
           "default": false,
-          "description": "Declare whether backend may use prompts/snippets for external model training."
+          "description": "Declare whether backend may use prompts/snippets for external model training.",
+          "scope": "application"
         },
         "vitte.suggestions.aiPipeline.useWorkerIndexing": {
           "type": "boolean",
           "default": true,
-          "description": "Use dedicated worker thread for AI pipeline chunk parsing/indexing."
+          "description": "Use dedicated worker thread for AI pipeline chunk parsing/indexing.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.promptCacheEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable prompt/RAG chunk cache for repeated nearby contexts."
+          "description": "Enable prompt/RAG chunk cache for repeated nearby contexts.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.promptCacheTtlMs": {
           "type": "number",
           "default": 400,
           "minimum": 20,
           "maximum": 5000,
-          "description": "Prompt cache TTL (ms) for AI pipeline context retrieval."
+          "description": "Prompt cache TTL (ms) for AI pipeline context retrieval.",
+          "scope": "resource"
         },
         "vitte.suggestions.aiPipeline.promptCacheSize": {
           "type": "number",
           "default": 512,
           "minimum": 16,
           "maximum": 4096,
-          "description": "Prompt cache size for AI pipeline hot contexts."
+          "description": "Prompt cache size for AI pipeline hot contexts.",
+          "scope": "resource"
         },
         "vitte.suggestions.granularity": {
           "type": "string",
@@ -1853,69 +1982,82 @@
             "hybrid"
           ],
           "default": "hybrid",
-          "description": "Suggestions mode granularity: classic completions only, inline only, or hybrid."
+          "description": "Suggestions mode granularity: classic completions only, inline only, or hybrid.",
+          "scope": "resource"
         },
         "vitte.features.hover": {
           "type": "boolean",
           "default": true,
-          "description": "Enable hover provider."
+          "description": "Enable hover provider.",
+          "scope": "resource"
         },
         "vitte.features.signatureHelp": {
           "type": "boolean",
           "default": true,
-          "description": "Enable procedure signature help while entering arguments."
+          "description": "Enable procedure signature help while entering arguments.",
+          "scope": "resource"
         },
         "vitte.features.definition": {
           "type": "boolean",
           "default": true,
-          "description": "Enable definition provider."
+          "description": "Enable definition provider.",
+          "scope": "resource"
         },
         "vitte.features.references": {
           "type": "boolean",
           "default": true,
-          "description": "Enable references provider."
+          "description": "Enable references provider.",
+          "scope": "resource"
         },
         "vitte.features.rename": {
           "type": "boolean",
           "default": true,
-          "description": "Enable rename provider."
+          "description": "Enable rename provider.",
+          "scope": "resource"
         },
         "vitte.features.documentSymbols": {
           "type": "boolean",
           "default": true,
-          "description": "Enable document symbols."
+          "description": "Enable document symbols.",
+          "scope": "resource"
         },
         "vitte.features.workspaceSymbols": {
           "type": "boolean",
           "default": false,
-          "description": "Experimental prototype searches open documents only; disabled and not advertised until workspace indexing is complete and tested."
+          "description": "Experimental prototype searches open documents only; disabled and not advertised until workspace indexing is complete and tested.",
+          "scope": "resource"
         },
         "vitte.features.semanticTokens": {
           "type": "boolean",
           "default": true,
-          "description": "Enable semantic tokens."
+          "description": "Enable semantic tokens.",
+          "scope": "resource"
         },
         "vitte.features.formatting": {
           "type": "boolean",
           "default": true,
-          "description": "Enable document formatting."
+          "description": "Enable document formatting.",
+          "scope": "resource"
         },
         "vitte.features.lint": {
           "type": "boolean",
           "default": true,
-          "description": "Enable lint diagnostics."
+          "description": "Enable lint diagnostics.",
+          "scope": "resource"
         },
         "vitte.features.inlayHints": {
           "type": "boolean",
           "default": false,
-          "description": "Experimental source heuristics can be inaccurate; disabled and not advertised until hints use compiler-resolved types."
+          "description": "Experimental source heuristics can be inaccurate; disabled and not advertised until hints use compiler-resolved types.",
+          "scope": "resource"
         },
         "vitte.requestTimeouts.inlayHints": {
           "type": "number",
           "default": 600,
           "minimum": 50,
           "maximum": 5000,
-          "description": "Timeout (ms) for inlay hints."
+          "description": "Timeout (ms) for inlay hints.",
+          "scope": "resource"
         },
         "vitte.inlayHints.parameterHints": {
           "type": "boolean",
@@ -1946,21 +2088,24 @@
           "default": 900,
           "minimum": 50,
           "maximum": 10000,
-          "description": "Workspace diagnostics latency budget (ms)."
+          "description": "Workspace diagnostics latency budget (ms).",
+          "scope": "resource"
         },
         "vitte.diagnosticsBudget.maxMemoryMb": {
           "type": "number",
           "default": 1024,
           "minimum": 128,
           "maximum": 8192,
-          "description": "Workspace diagnostics memory budget (MB)."
+          "description": "Workspace diagnostics memory budget (MB).",
+          "scope": "resource"
         },
         "vitte.diagnosticsBudget.dynamicThrottleFactor": {
           "type": "number",
           "default": 1.5,
           "minimum": 1,
           "maximum": 8,
-          "description": "Dynamic throttle multiplier when budget is exceeded."
+          "description": "Dynamic throttle multiplier when budget is exceeded.",
+          "scope": "resource"
         },
         "vitte.diagnostics.displayMode": {
           "type": "string",
@@ -1969,7 +2114,8 @@
             "detailed"
           ],
           "default": "compact",
-          "description": "Display mode for the Vitte Diagnostics view."
+          "description": "Display mode for the Vitte Diagnostics view.",
+          "scope": "resource"
         },
         "vitte.diagnostics.helpSource": {
           "type": "string",
@@ -1979,14 +2125,16 @@
             "local"
           ],
           "default": "auto",
-          "description": "Source for diagnostic help text: auto prefers vitte --explain with local fallback, vitte uses only vitte --explain, local uses built-in help."
+          "description": "Source for diagnostic help text: auto prefers vitte --explain with local fallback, vitte uses only vitte --explain, local uses built-in help.",
+          "scope": "resource"
         },
         "vitte.diagnostics.explainTimeoutMs": {
           "type": "number",
           "default": 450,
           "minimum": 100,
           "maximum": 5000,
-          "description": "Timeout in milliseconds for external diagnostic help resolution via vitte --explain."
+          "description": "Timeout in milliseconds for external diagnostic help resolution via vitte --explain.",
+          "scope": "resource"
         },
         "vitte.topSyntaxErrors.displayMode": {
           "type": "string",
@@ -1995,29 +2143,34 @@
             "detailed"
           ],
           "default": "compact",
-          "description": "Display mode for the Top Syntax Errors view."
+          "description": "Display mode for the Top Syntax Errors view.",
+          "scope": "resource"
         },
         "vitte.format.onSave": {
           "type": "boolean",
           "default": false,
-          "description": "Run Vitte document formatter automatically after saving Vitte/Vit files."
+          "description": "Run Vitte document formatter automatically after saving Vitte/Vit files.",
+          "scope": "resource"
         },
         "vitte.syntax.liveDiagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Run lightweight parser diagnostics in real time and underline syntax errors while typing."
+          "description": "Run lightweight parser diagnostics in real time and underline syntax errors while typing.",
+          "scope": "resource"
         },
         "vitte.syntax.liveDiagnosticsDelayMs": {
           "type": "number",
           "default": 120,
           "minimum": 60,
           "maximum": 2000,
-          "description": "Base debounce delay for live syntax diagnostics (adaptive: can rise to 300ms during fast typing)."
+          "description": "Base debounce delay for live syntax diagnostics (adaptive: can rise to 300ms during fast typing).",
+          "scope": "resource"
         },
         "vitte.syntax.liveDiagnosticsOnSaveOnly": {
           "type": "boolean",
           "default": true,
-          "description": "Only refresh live syntax diagnostics on save (useful for large projects or slower machines)."
+          "description": "Only refresh live syntax diagnostics on save (useful for large projects or slower machines).",
+          "scope": "resource"
         },
         "vitte.syntax.firstErrorMode": {
           "type": "string",
@@ -2026,31 +2179,36 @@
             "file"
           ],
           "default": "line",
-          "description": "Limit parser error noise by keeping either the first error per line or only the first error per file."
+          "description": "Limit parser error noise by keeping either the first error per line or only the first error per file.",
+          "scope": "resource"
         },
         "vitte.syntax.maxDiagnosticsPerFile": {
           "type": "number",
           "default": 200,
           "minimum": 1,
           "maximum": 2000,
-          "description": "Maximum number of live syntax diagnostics to keep per file."
+          "description": "Maximum number of live syntax diagnostics to keep per file.",
+          "scope": "resource"
         },
         "vitte.syntax.maxLiveFileLines": {
           "type": "number",
           "default": 5000,
           "minimum": 100,
           "maximum": 200000,
-          "description": "Disable live syntax diagnostics for files larger than this number of lines."
+          "description": "Disable live syntax diagnostics for files larger than this number of lines.",
+          "scope": "resource"
         },
         "vitte.debug.program": {
           "type": "string",
           "default": "",
-          "description": "Optional path to an external Vitte-compatible DAP adapter executable. Leave blank to use the native Vitte backend."
+          "description": "Optional path to an external Vitte-compatible DAP adapter executable. Leave blank to use the native Vitte backend.",
+          "scope": "resource"
         },
         "vitte.debug.nativeBackend": {
           "type": "boolean",
           "default": true,
-          "description": "Experimental: enable the bundled native Vitte DAP backend when no external adapter is configured. The repository DAP job targets Ubuntu 24.04; configure an external adapter for other environments."
+          "description": "Experimental: enable the bundled native Vitte DAP backend when no external adapter is configured. The repository DAP job targets Ubuntu 24.04; configure an external adapter for other environments.",
+          "scope": "resource"
         },
         "vitte.debug.adapterArgs": {
           "type": "array",
@@ -2058,7 +2216,8 @@
             "type": "string"
           },
           "default": [],
-          "description": "Arguments passed to the configured DAP adapter executable."
+          "description": "Arguments passed to the configured DAP adapter executable.",
+          "scope": "resource"
         },
         "vitte.debug.adapterTransport": {
           "type": "string",
@@ -2067,52 +2226,62 @@
             "tcp"
           ],
           "default": "stdio",
-          "description": "Default launch transport for the DAP adapter. Attach configurations always use TCP."
+          "description": "Default launch transport for the DAP adapter. Attach configurations always use TCP.",
+          "scope": "resource"
         },
         "vitte.toolchain.root": {
           "type": "string",
           "default": "",
-          "description": "Root directory of the Vitte toolchain (prefix for binaries)."
+          "description": "Explicit Vitte toolchain prefix containing bin/vitte. Precedence follows vitte.compiler.path and precedes project-local, environment and PATH discovery.",
+          "scope": "resource"
         },
         "vitte.toolchainPath": {
           "type": "string",
           "default": "",
-          "description": "(Legacy) Deprecated fallback for the toolchain root."
+          "description": "(Legacy) Deprecated fallback for the toolchain root.",
+          "scope": "resource"
         },
         "vitte.runtime.path": {
           "type": "string",
           "default": "",
-          "description": "Legacy alias for the DAP adapter executable path (alternative to debug.program)."
+          "description": "Legacy alias for the DAP adapter executable path (alternative to debug.program).",
+          "scope": "resource"
         },
         "vitte.lsp.path": {
           "type": "string",
           "default": "",
-          "description": "Optional external LSP binary. Leave blank to use the bundled TypeScript language server."
+          "description": "Optional external Vitte language-server executable. It is started with the configured stdio arguments and must report a compatible LSP serverInfo.version; empty uses the packaged server.",
+          "scope": "resource"
         },
         "vitte.compiler.path": {
           "type": "string",
           "default": "",
-          "description": "Vitte compiler executable. Relative paths resolve from the workspace; build/bin/vitte is detected in compiler checkouts."
+          "description": "Explicit Vitte compiler executable. Relative paths resolve from the workspace. Precedence: this setting, vitte.toolchain.root, project-local bins, user/environment installs and PATH. The extension does not bundle the compiler.",
+          "scope": "resource"
         },
         "vitte.experimental.commands": {
           "type": "boolean",
           "default": false,
-          "description": "Show experimental AI, profiler, enterprise, and migration commands in the command palette."
+          "description": "Show experimental AI, profiler, enterprise, and migration commands in the command palette.",
+          "scope": "resource"
         },
         "vitte.build.path": {
           "type": "string",
           "default": "",
-          "description": "Legacy alias for the vitte CLI binary path used with the build subcommand."
+          "description": "Legacy compiler executable override used when vitte.compiler.path is empty.",
+          "scope": "resource"
         },
         "vitte.fmt.path": {
           "type": "string",
           "default": "",
-          "description": "Optional external formatter binary. Leave blank to use the bundled language-server formatter."
+          "description": "Optional external formatter binary. Leave blank to use the bundled language-server formatter.",
+          "scope": "resource"
         },
         "vitte.bench.path": {
           "type": "string",
           "default": "",
-          "description": "Optional external benchmark binary. Leave blank when the project CLI has no benchmark subcommand yet."
+          "description": "Optional external benchmark binary. Leave blank when the project CLI has no benchmark subcommand yet.",
+          "scope": "resource"
         },
         "vitte.build.profile": {
           "type": "string",
@@ -2125,56 +2294,66 @@
             "freestanding"
           ],
           "default": "default",
-          "description": "Compiler profile. In the Vitte compiler checkout, Build and Test use Make with the corresponding build mode."
+          "description": "Compiler profile. In the Vitte compiler checkout, Build and Test use Make with the corresponding build mode.",
+          "scope": "resource"
         },
         "vitte.build.incremental": {
           "type": "boolean",
           "default": false,
-          "description": "Enable incremental build when supported."
+          "description": "Enable incremental build when supported.",
+          "scope": "resource"
         },
         "vitte.build.distributed": {
           "type": "boolean",
           "default": false,
-          "description": "Enable distributed build when supported."
+          "description": "Enable distributed build when supported.",
+          "scope": "resource"
         },
         "vitte.bench.reportDir": {
           "type": "string",
           "default": ".vitte/bench",
-          "description": "Directory that stores benchmark reports."
+          "description": "Directory that stores benchmark reports.",
+          "scope": "resource"
         },
         "vitte.lint.maxLineLength": {
           "type": "number",
           "default": 120,
           "minimum": 40,
           "maximum": 400,
-          "description": "Maximum line length before emitting a lint hint."
+          "description": "Maximum line length before emitting a lint hint.",
+          "scope": "resource"
         },
         "vitte.lint.allowTabs": {
           "type": "boolean",
           "default": false,
-          "description": "Allow tab characters in source files."
+          "description": "Allow tab characters in source files.",
+          "scope": "resource"
         },
         "vitte.lint.allowTrailingWhitespace": {
           "type": "boolean",
           "default": false,
-          "description": "Allow trailing whitespace at end of line."
+          "description": "Allow trailing whitespace at end of line.",
+          "scope": "resource"
         },
         "vitte.lint.enableStyleRules": {
           "type": "boolean",
           "default": true,
-          "description": "Enable style-related lint rules (naming, module path conventions)."
+          "description": "Enable style-related lint rules (naming, module path conventions).",
+          "scope": "resource"
         },
         "vitte.telemetry.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable local telemetry (JSONL stored under .vitte/telemetry)."
+          "description": "Enable local telemetry (JSONL stored under .vitte/telemetry).",
+          "scope": "application"
         },
         "vitte.telemetry.sampleRate": {
           "type": "number",
           "default": 0.1,
           "minimum": 0,
           "maximum": 1,
-          "description": "Sampling rate in the [0,1] range."
+          "description": "Sampling rate in the [0,1] range.",
+          "scope": "application"
         },
         "vitte.quickActions.sequences": {
           "type": "array",
@@ -2226,7 +2405,8 @@
                 "description": "Ordered list of commands to execute."
               }
             }
-          }
+          },
+          "scope": "resource"
         },
         "vitte.quickActions.defaults": {
           "type": "object",
@@ -2278,7 +2458,8 @@
                 }
               }
             }
-          }
+          },
+          "scope": "resource"
         },
         "vitte.commandShortcuts": {
           "type": "array",
@@ -2318,7 +2499,34 @@
                 "default": true
               }
             }
-          }
+          },
+          "scope": "resource"
+        },
+        "vitte.lsp.args": {
+          "type": "array",
+          "default": [
+            "--stdio"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Arguments passed to vitte.lsp.path. Used only when an external language server executable is selected.",
+          "scope": "resource"
+        },
+        "vitte.project.root": {
+          "type": "string",
+          "default": "",
+          "description": "Optional project root override for build/run tasks and project-local toolchain discovery. Relative paths resolve from the first workspace folder; the LSP document scope still follows VS Code workspace folders.",
+          "scope": "resource"
+        },
+        "vitte.build.args": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra compiler arguments for standalone project build/run commands. Ignored for compiler repository Make targets.",
+          "scope": "resource"
         }
       }
     }
@@ -2370,5 +2578,12 @@
     "typescript-eslint": "^8.46.3",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.2.0"
-  }
+  },
+  "activationEvents": [
+    "onLanguage:vit",
+    "onLanguage:vitte",
+    "workspaceContains:vitte.toml",
+    "workspaceContains:vitte.config.json",
+    "workspaceContains:.vitte/config.json"
+  ]
 }

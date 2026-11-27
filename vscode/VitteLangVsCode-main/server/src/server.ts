@@ -83,7 +83,7 @@ import { provideFormattingEdits, provideRangeFormattingEdits } from "./formattin
 import { getSemanticTokensLegend, buildSemanticTokens, provideHover } from "./semantic.js";
 import { provideInlayHints, type InlayHintPrefs } from "./inlay.js";
 import { provideSignatureHelp } from "./signatureHelp.js";
-import { getIntelliSenseCapabilities, isCapabilityAdvertised } from "./intellisenseCapabilities.js";
+import { getIntelliSenseCapabilities, isCapabilityAdvertised, LANGUAGE_SERVER_VERSION } from "./intellisenseCapabilities.js";
 import { lintToPublishable } from "./lint.js";
 import { registerCommands } from "./commands.js";
 import { indexDocument as indexWorkspaceDocument, removeDocument as removeWorkspaceDocument, clearIndex, exportIndexSnapshot, loadIndexSnapshot, getIndex, type IndexSnapshot } from "./indexer.js";
@@ -262,7 +262,10 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     serverCapabilities.semanticTokensProvider = { legend, full: true, range: false };
   }
 
-  const result: InitializeResult = { capabilities: serverCapabilities };
+  const result: InitializeResult = {
+    capabilities: serverCapabilities,
+    serverInfo: { name: "vitte-language-server", version: LANGUAGE_SERVER_VERSION },
+  };
 
   return result;
 });

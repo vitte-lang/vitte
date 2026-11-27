@@ -16,7 +16,13 @@ import * as vscode from "vscode";
 import { PlaygroundPanel } from "./providers/playgroundPanel";
 import { registerBuildTasks } from "./tasks/buildTasks";
 import { registerBenchTasks } from "./tasks/benchTasks";
-import { locateVitteRuntime, registerRuntimeLocatorCommand } from "./debug/runtimeLocator";
+import {
+  clearRuntimeLocatorCache,
+  isSupportedVitteCompilerVersion,
+  locateVitteRuntime,
+  registerRuntimeLocatorCommand,
+  VITTE_COMPILER_EVIDENCE_VERSION,
+} from "./debug/runtimeLocator";
 import { registerDebugFactory } from "./debug/adapterFactory";
 import { registerDebugConfigurationProvider } from "./debug/configurationProvider";
 import { registerTelemetry } from "./utils/telemetry";
@@ -62,6 +68,10 @@ import {
 } from "./utils/suggestions";
 import { LocalInlineEngine, type LocalInlineEngineOptions } from "./utils/localInlineEngine";
 import { AiInlinePipeline, type AiInlinePipelineOptions } from "./utils/aiInlinePipeline";
+import { spawnManaged, stopManagedProcesses } from "./utils/managedProcesses";
+import { requireTrustedWorkspace } from "./utils/workspaceTrust";
+import { stopVitteTasks } from "./tasks/buildTasks";
+import { redactLogText } from "./utils/logRedaction";
 
 interface CapabilityRow {
   id: string;
@@ -130,6 +140,15 @@ let client: LanguageClient | undefined;
 let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
 let completionTimeoutNoticeShown = false;
+let compilerRuntimeStatus: "checking" | "supported" | "missing" | "unsupported" = "checking";
+let compilerValidationInFlight: Promise<boolean> | undefined;
+let lastCompilerWarning = "";
+let trustNoticeShown = false;
+let startupCommandPromptShown = false;
+let cloudOptInPromptShown = false;
+let optionalEngineWorkspaceRoot: string | undefined;
+let localInlineEngineInitialized = false;
+let aiInlinePipelineInitialized = false;
 
 let statusBaseIcon = "$(rocket)";
 const STATUS_LABEL = "Vitte";
@@ -1071,6 +1090,8 @@ export interface ExtensionApi {
 }
 
 const LANGUAGES = ["vitte", "vit"] as const;
+const VITTE_FILE_EXTENSION = /\.(?:vit|vitl|vitte)$/i;
+const SUPPORTED_SERVER_VERSION = "2.3.0";
 const WATCH_PATTERNS = [
   "**/*.{vitte,vit,vitl}",
   "**/vitte.toml",
@@ -1080,6 +1101,8 @@ const WATCH_PATTERNS = [
 const LANGUAGE_SET = new Set<string>(LANGUAGES);
 const RESTART_RELEVANT_CONFIG_KEYS = [
   "vitte.serverPath",
+  "vitte.lsp.path",
+  "vitte.lsp.args",
   "vitte.server.offline",
   "vitte.server.offlinePermanent",
   "vitte.requestTimeoutMs",
@@ -1090,11 +1113,107 @@ const RESTART_RELEVANT_CONFIG_KEYS = [
   "vitte.indexerCacheEnabled",
   "vitte.channel",
   "vitte.features",
-  "vitte.lsp.path",
+  "vitte.compiler.path",
+  "vitte.toolchain.root",
+  "vitte.toolchainPath",
+  "vitte.project.root",
   "vitte.lang",
   "vitte.policy.path",
   "vitte.policy.json",
 ] as const;
+
+function isRelevantVitteContext(): boolean {
+  if (process.env.VSCODE_TESTING === "1") return true;
+  if (vscode.workspace.textDocuments.some(isVitteDocument)) return true;
+
+  const cfg = vscode.workspace.getConfiguration("vitte");
+  const configuredRoot = cfg.get<string>("project.root", "").trim();
+  if (configuredRoot) {
+    const base = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+    try {
+      if (fs.statSync(expandToolPath(configuredRoot, base)).isDirectory()) return true;
+    } catch { /* invalid override is reported by settings validation */ }
+  }
+
+  const markers = ["vitte.toml", "vitte.config.json", path.join(".vitte", "config.json")];
+  return (vscode.workspace.workspaceFolders ?? []).some((folder) =>
+    markers.some((marker) => fs.existsSync(path.join(folder.uri.fsPath, marker))));
+}
+
+async function initializeOptionalSuggestionEngines(context: vscode.ExtensionContext): Promise<void> {
+  if (!vscode.workspace.isTrusted || !isRelevantVitteContext()) return;
+
+  const configuredRoot = vscode.workspace.getConfiguration("vitte").get<string>("project.root", "").trim();
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const root = configuredRoot ? expandToolPath(configuredRoot, workspaceRoot) : workspaceRoot;
+  if (optionalEngineWorkspaceRoot !== root) {
+    localInlineEngine?.dispose();
+    localInlineEngine = undefined;
+    localInlineEngineInitialized = false;
+    aiInlinePipeline?.dispose();
+    aiInlinePipeline = undefined;
+    aiInlinePipelineInitialized = false;
+    optionalEngineWorkspaceRoot = root;
+  }
+
+  const localOptions = readLocalInlineEngineOptions();
+  if (!localOptions.enabled) {
+    localInlineEngine?.dispose();
+    localInlineEngine = undefined;
+    localInlineEngineInitialized = false;
+  } else {
+    localInlineEngine ??= new LocalInlineEngine(localOptions);
+  }
+  if (localInlineEngine && !localInlineEngineInitialized) {
+    await localInlineEngine.initialize(context);
+    localInlineEngineInitialized = true;
+  }
+
+  const aiOptions = readAiInlinePipelineOptions();
+  if (!aiOptions.enabled) {
+    aiInlinePipeline?.dispose();
+    aiInlinePipeline = undefined;
+    aiInlinePipelineInitialized = false;
+  } else {
+    aiInlinePipeline ??= new AiInlinePipeline(aiOptions);
+  }
+  if (aiInlinePipeline && !aiInlinePipelineInitialized) {
+    await aiInlinePipeline.initialize();
+    aiInlinePipelineInitialized = true;
+  }
+  updateSuggestionEngineModeSuffix();
+}
+
+async function ensureLanguageServices(context: vscode.ExtensionContext, reason: string): Promise<boolean> {
+  if (extensionShuttingDown || !isRelevantVitteContext()) return false;
+  if (!vscode.workspace.isTrusted) {
+    setOfflineStatus("Workspace is untrusted; Vitte language services and project tools are paused.", false);
+    if (!trustNoticeShown) {
+      trustNoticeShown = true;
+      output.appendLine(`[workspace-trust] paused language services after ${reason}; no project tool was executed`);
+      void vscode.window.showWarningMessage(
+        "Vitte language services are paused in Restricted Mode. Trust this workspace to start the language server and compiler diagnostics.",
+        "Manage Workspace Trust",
+      ).then((choice) => choice === "Manage Workspace Trust"
+        ? vscode.commands.executeCommand("workbench.action.manageTrust")
+        : undefined);
+    }
+    return false;
+  }
+
+  trustNoticeShown = false;
+  await initializeOptionalSuggestionEngines(context);
+  if (!cloudOptInPromptShown) {
+    cloudOptInPromptShown = true;
+    void ensureCloudOptInIfNeeded();
+  }
+  const started = await startClient(context);
+  if (started && !startupCommandPromptShown) {
+    startupCommandPromptShown = true;
+    void showStartupCommandPrompt(context);
+  }
+  return started;
+}
 
 interface CommandMenuEntry {
   label: string;
@@ -1132,16 +1251,30 @@ function obsLog(event: string, lvl: ObsLevel = "info", data?: Record<string, unk
     lvl,
   };
   if (requestId) entry.requestId = requestId;
-  if (data && Object.keys(data).length > 0) entry.data = data;
+  if (data && Object.keys(data).length > 0) entry.data = redactStructuredLogData(data) as Record<string, unknown>;
   obsHistory.push(entry);
   if (obsHistory.length > OBS_HISTORY_MAX) {
     obsHistory.splice(0, obsHistory.length - OBS_HISTORY_MAX);
   }
   try {
-    output.appendLine(`[obs] ${JSON.stringify(entry)}`);
+    output.appendLine(`[obs] ${redactLogText(JSON.stringify(entry))}`);
   } catch {
     // noop: output channel may not be ready during very early activation
   }
+}
+
+function redactStructuredLogData(value: unknown): unknown {
+  if (typeof value === "string") return redactLogText(value);
+  if (Array.isArray(value)) return value.map(redactStructuredLogData);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key,
+      /(?:access[_-]?token|refresh[_-]?token|authorization|password|passwd|secret|api[_-]?key)/i.test(key)
+        ? "[redacted]"
+        : redactStructuredLogData(item),
+    ]));
+  }
+  return value;
 }
 
 function readNumberSetting(cfg: vscode.WorkspaceConfiguration, key: string, fallback: number): number {
@@ -1192,20 +1325,61 @@ function validateRuntimeSettings(): string[] {
     issues.push(`vitte.syntax.liveDiagnosticsDelayMs (${liveDelayMs}) is outside supported range [60..2000].`);
   }
 
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const resolveConfiguredPath = (raw: string): string => expandToolPath(raw, workspaceRoot);
   const serverPath = cfg.get<string>("serverPath", "").trim();
-  if (serverPath && !fs.existsSync(serverPath)) {
-    issues.push(`vitte.serverPath points to a missing file: ${serverPath}`);
+  if (serverPath) {
+    const resolved = resolveConfiguredPath(serverPath);
+    try {
+      if (!fs.statSync(resolved).isFile()) issues.push("vitte.serverPath must point to a JavaScript module file.");
+      else if (!/\.(?:c?js|mjs)$/i.test(resolved)) issues.push("vitte.serverPath must use .js, .cjs, or .mjs.");
+    } catch { issues.push(`vitte.serverPath does not exist: ${resolved}`); }
+  }
+  for (const key of ["lsp.path", "compiler.path"] as const) {
+    const raw = cfg.get<string>(key, "").trim();
+    if (!raw) continue;
+    const resolved = resolveConfiguredPath(raw);
+    try {
+      if (!fs.statSync(resolved).isFile()) issues.push(`vitte.${key} must point to a file.`);
+      else if (process.platform !== "win32" && (fs.statSync(resolved).mode & 0o111) === 0) {
+        issues.push(`vitte.${key} is not executable: ${resolved}`);
+      }
+    } catch { issues.push(`vitte.${key} does not exist: ${resolved}`); }
   }
   const toolchainRoot = cfg.get<string>("toolchain.root", "").trim();
-  if (toolchainRoot && !fs.existsSync(toolchainRoot)) {
-    issues.push(`vitte.toolchain.root points to a missing directory: ${toolchainRoot}`);
+  if (toolchainRoot) {
+    const resolved = resolveConfiguredPath(toolchainRoot);
+    try {
+      if (!fs.statSync(resolved).isDirectory()) issues.push("vitte.toolchain.root must point to a directory.");
+      else {
+        const compiler = path.join(resolved, "bin", process.platform === "win32" ? "vitte.exe" : "vitte");
+        if (!fs.existsSync(compiler)) issues.push(`vitte.toolchain.root must contain ${path.join("bin", process.platform === "win32" ? "vitte.exe" : "vitte")}.`);
+      }
+    }
+    catch { issues.push(`vitte.toolchain.root does not exist: ${resolved}`); }
+  }
+  const projectRoot = cfg.get<string>("project.root", "").trim();
+  if (projectRoot) {
+    const resolved = resolveConfiguredPath(projectRoot);
+    try { if (!fs.statSync(resolved).isDirectory()) issues.push("vitte.project.root must point to a directory."); }
+    catch { issues.push(`vitte.project.root does not exist: ${resolved}`); }
+  }
+  for (const key of ["lsp.args", "build.args"] as const) {
+    const value = cfg.get<unknown>(key, []);
+    if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+      issues.push(`vitte.${key} must be an array of strings.`);
+    }
+  }
+  const trace = cfg.get<string>("trace.server", "off");
+  if (!(["off", "messages", "verbose"] as const).includes(trace as "off" | "messages" | "verbose")) {
+    issues.push("vitte.trace.server must be off, messages, or verbose.");
   }
 
   return issues;
 }
 
 function reportSettingsIssues(outputChannel: vscode.OutputChannel, phase: "activate" | "config"): void {
-  const issues = validateRuntimeSettings();
+  const issues = validateRuntimeSettings().map(redactLogText);
   const digest = issues.join(" | ");
   if (digest === lastSettingsIssueDigest) return;
   lastSettingsIssueDigest = digest;
@@ -1273,7 +1447,7 @@ let commandMenuButton: vscode.StatusBarItem | undefined;
 const DIAGNOSTICS_REFRESH_KEY = "vitte.quickActions.diagRefresh";
 
 function logServerResolution(message: string): void {
-  const text = `[vitte] ${message}`;
+  const text = `[vitte] ${redactLogText(message)}`;
   output?.appendLine(text);
 }
 
@@ -1414,7 +1588,7 @@ function isOfflineEffective(): boolean {
   return isOfflineEnabled() || isOfflinePermanent();
 }
 
-function setOfflineStatus(reason: string): void {
+function setOfflineStatus(reason: string, notify = true): void {
   offlineReason = reason;
   offlineSince = offlineSince ?? Date.now();
   setStatusBase("$(circle-slash)", "Vitte LSP: offline");
@@ -1423,7 +1597,7 @@ function setOfflineStatus(reason: string): void {
   setStatusOverride(`$(circle-slash) Vitte ${forced.toUpperCase()}`, `${reason}${since}`);
   void setServerOnlineContext(false);
   logOfflineReason(reason);
-  void showOfflineBanner(reason);
+  if (notify) void showOfflineBanner(reason);
   scheduleOfflineRetry();
   void vscode.commands.executeCommand("vitte.offline.refresh");
 }
@@ -1476,6 +1650,7 @@ async function setOfflineMode(enabled: boolean, reason?: string): Promise<void> 
 
 function scheduleOfflineRetry(): void {
   if (extensionShuttingDown) return;
+  if (!vscode.workspace.isTrusted) return;
   if (isOfflineEffective()) return;
   const cfg = vscode.workspace.getConfiguration("vitte");
   const enabled = cfg.get<boolean>("server.autoRetry", true);
@@ -1520,7 +1695,7 @@ async function appendOfflineLog(reason: string): Promise<void> {
     const dir = path.join(base, ".vitte");
     await fs.promises.mkdir(dir, { recursive: true });
     const file = path.join(dir, "offline.log");
-    const line = `${new Date().toISOString()} ${reason}\n`;
+    const line = `${new Date().toISOString()} ${redactLogText(reason)}\n`;
     await fs.promises.appendFile(file, line, "utf8");
   } catch { /* noop */ }
 }
@@ -1675,15 +1850,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   refreshDiagnosticsStatus();
   statusItem.show();
   reportSettingsIssues(output, "activate");
-  localInlineEngine = new LocalInlineEngine(readLocalInlineEngineOptions());
-  await localInlineEngine.initialize(context);
-  aiInlinePipeline = new AiInlinePipeline(readAiInlinePipelineOptions());
-  await aiInlinePipeline.initialize();
-  void ensureCloudOptInIfNeeded();
   updateSuggestionEngineModeSuffix();
   updateCommandButtons(context);
-  void showStartupCommandPrompt(context);
   void setServerOnlineContext(false);
+
+  context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(() => {
+    trustNoticeShown = false;
+    clearRuntimeLocatorCache();
+    void ensureLanguageServices(context, "workspace trust granted");
+  }));
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    optionalEngineWorkspaceRoot = undefined;
+    if (isRelevantVitteContext()) {
+      void ensureLanguageServices(context, "workspace folders changed");
+    } else {
+      const previousClient = client;
+      void (async () => {
+        await stopLanguageClient(previousClient);
+        if (client === previousClient) client = undefined;
+        if (healthCheckTimer) clearInterval(healthCheckTimer);
+        healthCheckTimer = undefined;
+        localInlineEngine?.dispose();
+        localInlineEngine = undefined;
+        localInlineEngineInitialized = false;
+        aiInlinePipeline?.dispose();
+        aiInlinePipeline = undefined;
+        aiInlinePipelineInitialized = false;
+        await stopVitteTasks();
+        PlaygroundPanel.disposeCurrent();
+        await stopManagedProcesses();
+      })();
+    }
+  }));
 
   // Register command shortcuts early so they're available even if later init fails.
   context.subscriptions.push(
@@ -1705,9 +1903,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     })
   );
 
-  void startClient(context).catch((err) => {
+  void ensureLanguageServices(context, "activation").catch((err) => {
     const message = err instanceof Error ? err.message : String(err);
-    output.appendLine(`[activate] startClient failed: ${message}`);
+    output.appendLine(`[activate] language-service startup failed: ${message}`);
   });
   if (isOfflineEffective()) {
     void showOfflineBanner(offlineReason ?? (isOfflinePermanent()
@@ -1720,6 +1918,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   context.subscriptions.push(editorLintCollection);
   context.subscriptions.push(syntaxLintCollection);
   context.subscriptions.push(vscode.workspace.onDidOpenTextDocument((doc) => {
+    if (isVitteDocument(doc)) void ensureLanguageServices(context, "Vitte document opened");
     updateEditorLint(doc);
     scheduleLiveSyntaxDiagnostics(doc, "open");
     completionOpenedAtByDoc.set(doc.uri.toString(), Date.now());
@@ -1802,7 +2001,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   // Debug & runtime tooling
   registerDebugConfigurationProvider(context);
   registerDebugFactory(context);
-  registerRuntimeLocatorCommand(context);
+  registerRuntimeLocatorCommand(context, output);
   registerBuildTasks(context);
   registerBenchTasks(context);
   registerQuickActions(context);
@@ -2587,6 +2786,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     }
     if (e.affectsConfiguration("vitte")) {
       reportSettingsIssues(output, "config");
+      if (["vitte.compiler.path", "vitte.toolchain.root", "vitte.toolchainPath", "vitte.project.root", "vitte.lsp.path"].some((key) => e.affectsConfiguration(key))) {
+        clearRuntimeLocatorCache();
+        compilerRuntimeStatus = "checking";
+        lastCompilerWarning = "";
+      }
       if (shouldRestartForConfigChange(e)) {
         scheduleConfigRestart(context, "config-change");
       } else {
@@ -2606,19 +2810,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     }
     if (e.affectsConfiguration("vitte.suggestions.localEngine")) {
       localInlineEngine?.dispose();
-      localInlineEngine = new LocalInlineEngine(readLocalInlineEngineOptions());
-      void localInlineEngine.initialize(context);
-      for (const doc of vscode.workspace.textDocuments) {
-        scheduleLocalInlineEngineUpdate(doc);
-      }
+      localInlineEngine = undefined;
+      localInlineEngineInitialized = false;
+      void initializeOptionalSuggestionEngines(context).then(() => {
+        for (const doc of vscode.workspace.textDocuments) scheduleLocalInlineEngineUpdate(doc);
+      });
     }
     if (e.affectsConfiguration("vitte.suggestions.aiPipeline")) {
       aiInlinePipeline?.dispose();
-      aiInlinePipeline = new AiInlinePipeline(readAiInlinePipelineOptions());
-      void aiInlinePipeline.initialize();
-      for (const doc of vscode.workspace.textDocuments) {
-        if (isVitteDocument(doc)) void aiInlinePipeline.upsert(doc.uri.toString(), doc.getText());
-      }
+      aiInlinePipeline = undefined;
+      aiInlinePipelineInitialized = false;
+      void initializeOptionalSuggestionEngines(context).then(() => {
+        for (const doc of vscode.workspace.textDocuments) {
+          if (isVitteDocument(doc)) void aiInlinePipeline?.upsert(doc.uri.toString(), doc.getText());
+        }
+      });
       updateSuggestionEngineModeSuffix();
     }
     if (e.affectsConfiguration("vitte.suggestions.ghostTextTop1Stable") || e.affectsConfiguration("vitte.suggestions.granularity")) {
@@ -2664,7 +2870,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         await editor.document.save();
       }
     } catch (err) {
-      output.appendLine(`[format.onSave] ${String(err)}`);
+      output.appendLine(`[format.onSave] ${redactLogText(err)}`);
     } finally {
       formatOnSaveInFlight.delete(doc.uri.toString());
     }
@@ -2680,8 +2886,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   if (isOfflinePermanent()) {
     setOfflineStatus("Offline permanent (user-forced).");
   }
-
-  startHealthChecks(context);
 
   if (process.env.VSCODE_TESTING === "1") {
     const api: ExtensionApi = {
@@ -2719,7 +2923,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
 
 export async function deactivate(): Promise<void> {
   extensionShuttingDown = true;
-  try { await client?.stop(); } catch { /* noop */ }
+  await stopLanguageClient(client);
+  await stopVitteTasks();
+  PlaygroundPanel.disposeCurrent();
   client = undefined;
   cancelOfflineRetry();
   if (configRestartTimer) {
@@ -2774,24 +2980,42 @@ export async function deactivate(): Promise<void> {
   reliabilityNextDelayMs = 30000;
   recentStops.length = 0;
   offlineBannerShown = false;
+  trustNoticeShown = false;
+  startupCommandPromptShown = false;
+  cloudOptInPromptShown = false;
+  optionalEngineWorkspaceRoot = undefined;
+  localInlineEngineInitialized = false;
+  aiInlinePipelineInitialized = false;
+  compilerRuntimeStatus = "checking";
+  compilerValidationInFlight = undefined;
+  lastCompilerWarning = "";
+  clearRuntimeLocatorCache();
   for (const watcher of fileWatchers) {
     try { watcher.dispose(); } catch { /* noop */ }
   }
   fileWatchers = [];
+  await stopManagedProcesses();
 }
 
 /* --------------------------------- LSP ----------------------------------- */
 
+interface ServerLaunchResolution {
+  options: ServerOptions;
+  source: "bundled" | "custom-module" | "external-executable";
+  path: string;
+}
+
+function resolveConfiguredServerPath(raw: string): string {
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const resolved = expandToolPath(raw.trim(), workspaceRoot);
+  let stats: fs.Stats;
+  try { stats = fs.statSync(resolved); }
+  catch { throw new Error(`Configured language-server path does not exist: ${resolved}. Update vitte.serverPath or vitte.lsp.path.`); }
+  if (!stats.isFile()) throw new Error(`Configured language-server path is not a file: ${resolved}.`);
+  return resolved;
+}
+
 function resolveServerModule(context: vscode.ExtensionContext): string {
-  // Permet d’overrider via settings: vitte.serverPath
-  const cfgPath = vscode.workspace.getConfiguration("vitte").get<string>("serverPath");
-  if (cfgPath) {
-    if (fs.existsSync(cfgPath)) {
-      logServerResolution(`Using custom server: ${cfgPath}`);
-      return cfgPath;
-    }
-    logServerResolution(`Custom server path not found: ${cfgPath}`);
-  }
   const nested = context.asAbsolutePath(path.join("server", "out", "src", "server.js"));
   if (fs.existsSync(nested)) {
     logServerResolution(`Using packaged server (server/out/src): ${nested}`);
@@ -2807,15 +3031,133 @@ function resolveServerModule(context: vscode.ExtensionContext): string {
     logServerResolution(`Using embedded server: ${bundled}`);
     return bundled;
   }
-  const message = "Module serveur Vitte introuvable (out/server.js ou server/out/server.js)";
+  const message = "Packaged Vitte language server is missing. Reinstall the extension or set vitte.serverPath / vitte.lsp.path.";
   logServerResolution(message);
   throw new Error(message);
+}
+
+function resolveServerOptions(context: vscode.ExtensionContext): ServerLaunchResolution {
+  const cfg = vscode.workspace.getConfiguration("vitte");
+  const moduleSetting = cfg.get<string>("serverPath", "").trim();
+  if (moduleSetting) {
+    const modulePath = resolveConfiguredServerPath(moduleSetting);
+    if (!/\.(?:c?js|mjs)$/i.test(modulePath)) {
+      throw new Error(`vitte.serverPath must point to a JavaScript LSP module (.js, .cjs or .mjs): ${modulePath}`);
+    }
+    logServerResolution(`Using custom language-server module: ${modulePath}`);
+    const debugOptions = { execArgv: ["--nolazy", "--inspect=6009"] };
+    return {
+      source: "custom-module",
+      path: modulePath,
+      options: {
+        run: { module: modulePath, transport: TransportKind.ipc },
+        debug: { module: modulePath, transport: TransportKind.ipc, options: debugOptions },
+      },
+    };
+  }
+
+  const executableSetting = cfg.get<string>("lsp.path", "").trim();
+  if (executableSetting) {
+    const executable = resolveConfiguredServerPath(executableSetting);
+    if (process.platform !== "win32") {
+      try { fs.accessSync(executable, fs.constants.X_OK); }
+      catch { throw new Error(`Configured language-server file is not executable: ${executable}`); }
+    }
+    const configuredArgs = cfg.get<unknown>("lsp.args", ["--stdio"]);
+    const args = Array.isArray(configuredArgs)
+      ? configuredArgs.filter((argument): argument is string => typeof argument === "string")
+      : ["--stdio"];
+    logServerResolution(`Using configured external language-server executable: ${executable}`);
+    return {
+      source: "external-executable",
+      path: executable,
+      options: {
+        run: { command: executable, args, transport: TransportKind.stdio },
+        debug: { command: executable, args, transport: TransportKind.stdio },
+      },
+    };
+  }
+
+  const modulePath = resolveServerModule(context);
+  logServerResolution(`Using packaged language server: ${modulePath}`);
+  const debugOptions = { execArgv: ["--nolazy", "--inspect=6009"] };
+  return {
+    source: "bundled",
+    path: modulePath,
+    options: {
+      run: { module: modulePath, transport: TransportKind.ipc },
+      debug: { module: modulePath, transport: TransportKind.ipc, options: debugOptions },
+    },
+  };
+}
+
+function compatibleServerVersion(version: string | undefined): boolean {
+  if (!version) return false;
+  const actual = /\b(\d+)\.(\d+)\.(\d+)\b/.exec(version);
+  const expected = /^(\d+)\.(\d+)\.(\d+)$/.exec(SUPPORTED_SERVER_VERSION);
+  return Boolean(actual && expected && actual[1] === expected[1] && actual[2] === expected[2]);
+}
+
+function sanitizedErrorMessage(error: unknown): string {
+  return redactLogText(error instanceof Error ? error.message : error);
+}
+
+async function validateCompilerRuntime(): Promise<boolean> {
+  if (!vscode.workspace.isTrusted) return false;
+  if (compilerValidationInFlight) return compilerValidationInFlight;
+
+  compilerRuntimeStatus = "checking";
+  compilerValidationInFlight = (async () => {
+    const runtime = await locateVitteRuntime();
+    const version = runtime.versions?.cli;
+    let message: string | undefined;
+    if (!runtime.found) {
+      compilerRuntimeStatus = "missing";
+      message = "Vitte compiler was not found. Set vitte.compiler.path or vitte.toolchain.root, or install Vitte on PATH.";
+    } else if (!isSupportedVitteCompilerVersion(version)) {
+      compilerRuntimeStatus = "unsupported";
+      message = version
+        ? `Vitte ${version} is not verified by this extension; compiler evidence targets ${VITTE_COMPILER_EVIDENCE_VERSION}.`
+        : `Vitte compiler version could not be determined; compiler evidence targets ${VITTE_COMPILER_EVIDENCE_VERSION}.`;
+    } else {
+      compilerRuntimeStatus = "supported";
+      output.appendLine(`[toolchain] compiler version verified: ${version}`);
+      for (const document of vscode.workspace.textDocuments) {
+        if (isVitteDocument(document)) scheduleLiveSyntaxDiagnostics(document, "config");
+      }
+      return true;
+    }
+
+    for (const document of vscode.workspace.textDocuments) {
+      if (isVitteDocument(document)) syntaxLintCollection?.delete(document.uri);
+    }
+    if (message && message !== lastCompilerWarning) {
+      lastCompilerWarning = message;
+      output.appendLine(`[toolchain] ${redactLogText(message)}`);
+      const selection = await vscode.window.showWarningMessage(
+        `${message} The language server remains available for non-compiler editor features.`,
+        "Select Compiler",
+        "Open Settings",
+        "Show Capabilities",
+      );
+      if (selection === "Select Compiler") await vscode.commands.executeCommand("vitte.selectRuntime");
+      else if (selection === "Open Settings") await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:VitteStudio.vitte-studio vitte.compiler.path");
+      else if (selection === "Show Capabilities") await vscode.commands.executeCommand("vitte.showCapabilities");
+    }
+    return false;
+  })().finally(() => { compilerValidationInFlight = undefined; });
+  return compilerValidationInFlight;
 }
 
 async function startClient(context: vscode.ExtensionContext | undefined): Promise<boolean> {
   if (extensionShuttingDown) return false;
   if (client) return true; // already running
   if (!context) return false;
+  if (!isRelevantVitteContext()) return false;
+  if (!vscode.workspace.isTrusted) {
+    await requireTrustedWorkspace("starting the language server");
+    return false;
+  }
 
   if (isOfflineEffective()) {
     const reason = isOfflinePermanent()
@@ -2825,20 +3167,22 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
     return false;
   }
 
-  let serverModule: string;
+  let serverResolution: ServerLaunchResolution;
   try {
-    serverModule = resolveServerModule(context);
+    serverResolution = resolveServerOptions(context);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = sanitizedErrorMessage(err);
     setOfflineStatus(msg);
-    void vscode.window.showWarningMessage(`Vitte: server offline — ${msg}`);
+    output.appendLine(`[startup:error] ${msg}`);
+    void vscode.window.showErrorMessage(`Vitte language server could not start. ${msg}`, "Open Vitte Log", "Open Settings")
+      .then((choice) => {
+        if (choice === "Open Vitte Log") output.show(true);
+        else if (choice === "Open Settings") return vscode.commands.executeCommand("workbench.action.openSettings", "@ext:VitteStudio.vitte-studio vitte.serverPath");
+        return undefined;
+      });
     return false;
   }
-  const debugOptions = { execArgv: ["--nolazy", "--inspect=6009"] };
-  const serverOptions: ServerOptions = {
-    run:   { module: serverModule, transport: TransportKind.ipc },
-    debug: { module: serverModule, transport: TransportKind.ipc, options: debugOptions },
-  };
+  const serverOptions = serverResolution.options;
 
   const documentSelector: DocumentSelector = LANGUAGES.flatMap((id) => ([
     { scheme: "file", language: id },
@@ -3269,13 +3613,54 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
   client = new LanguageClient("vitte-lsp", "Vitte Language Server", serverOptions, clientOptions);
 
   client.onTelemetry((e: unknown) => {
-    output.appendLine(`[telemetry] ${JSON.stringify(e)}`);
+    output.appendLine(`[telemetry] ${redactLogText(JSON.stringify(e))}`);
     obsLog("lsp.telemetry", "info", { payloadType: typeof e });
   });
 
   wireClientState(client);
 
-  await client.start();
+  try {
+    await client.start();
+  } catch (error) {
+    const message = sanitizedErrorMessage(error);
+    output.appendLine(`[startup:error] language server start failed: ${message}`);
+    const failedClient = client;
+    client = undefined;
+    try { await failedClient.stop(); } catch { /* startup may not have reached Running */ }
+    setOfflineStatus("Vitte language server failed to start. Open the Vitte Language Server output for details.");
+    void vscode.window.showErrorMessage(
+      `Vitte language server failed to start: ${message}`,
+      "Open Vitte Log",
+      "Open Settings",
+    ).then((choice) => {
+      if (choice === "Open Vitte Log") output.show(true);
+      else if (choice === "Open Settings") return vscode.commands.executeCommand("workbench.action.openSettings", "@ext:VitteStudio.vitte-studio vitte.serverPath");
+      return undefined;
+    });
+    return false;
+  }
+
+  const serverVersion = client.initializeResult?.serverInfo?.version;
+  if (!compatibleServerVersion(serverVersion)) {
+    const message = serverVersion
+      ? `Configured Vitte language server ${serverVersion} is unsupported; this extension requires ${SUPPORTED_SERVER_VERSION.split(".").slice(0, 2).join(".")}.x.`
+      : `Configured Vitte language server did not report serverInfo.version; ${SUPPORTED_SERVER_VERSION.split(".").slice(0, 2).join(".")}.x is required.`;
+    output.appendLine(`[startup:error] ${message}`);
+    const incompatibleClient = client;
+    client = undefined;
+    try { await incompatibleClient.stop(); } catch { /* no-op */ }
+    setOfflineStatus(message);
+    void vscode.window.showErrorMessage(`${message} Clear vitte.serverPath or vitte.lsp.path to use the packaged server.`, "Open Vitte Log", "Open Settings")
+      .then((choice) => {
+        if (choice === "Open Vitte Log") output.show(true);
+        else if (choice === "Open Settings") return vscode.commands.executeCommand("workbench.action.openSettings", "@ext:VitteStudio.vitte-studio serverPath");
+        return undefined;
+      });
+    return false;
+  }
+  output.appendLine(`[lsp] ${serverResolution.source} server ${serverVersion} started`);
+  void validateCompilerRuntime();
+  startHealthChecks(context);
   return true;
 }
 
@@ -3309,6 +3694,20 @@ async function restartClient(context: vscode.ExtensionContext | undefined): Prom
     return false;
   }
   return startClient(context);
+}
+
+async function stopLanguageClient(target: LanguageClient | undefined): Promise<void> {
+  if (!target) return;
+  if (target.state === ClientState.Starting) {
+    try { await target.start(); } catch { /* startup may fail during shutdown */ }
+  }
+  if (target.state === ClientState.Running) {
+    try { await target.stop(); } catch { /* let state polling finish cleanup */ }
+  } else if (target.state !== ClientState.Stopped) {
+    try { await target.stop(); } catch { /* it may not have started */ }
+  }
+  const deadline = Date.now() + 5000;
+  while (target.state !== ClientState.Stopped && Date.now() < deadline) await sleep(25);
 }
 
 async function requestClientRestart(
@@ -3400,8 +3799,8 @@ function startHealthChecks(context: vscode.ExtensionContext): void {
         }
       } catch (err) {
         healthFailures += 1;
-        output.appendLine(`[health] ping failure #${healthFailures}: ${String(err)}`);
-        obsLog("health.ping.failed", "error", { failures: healthFailures, message: String(err) });
+        output.appendLine(`[health] ping failure #${healthFailures}: ${redactLogText(err)}`);
+        obsLog("health.ping.failed", "error", { failures: healthFailures, message: redactLogText(err) });
         if (healthFailures < 2) return;
         if (healthRestartInFlight) return;
         const cfg = vscode.workspace.getConfiguration("vitte");
@@ -3484,7 +3883,7 @@ function wireClientState(c: LanguageClient): void {
   });
 
   c.onNotification("vitte/log", (msg: unknown) => {
-    output.appendLine(typeof msg === "string" ? msg : JSON.stringify(msg));
+    output.appendLine(redactLogText(typeof msg === "string" ? msg : JSON.stringify(msg)));
     if (typeof msg === "string") {
       obsLog("lsp.log", "info", { message: msg.slice(0, 240) });
     } else if (msg && typeof msg === "object") {
@@ -3675,7 +4074,7 @@ async function readOfflineLogTail(lines: number): Promise<string> {
 }
 
 function isVitteDocument(doc: vscode.TextDocument): boolean {
-  return LANGUAGE_SET.has(doc.languageId as typeof LANGUAGES[number]);
+  return LANGUAGE_SET.has(doc.languageId as typeof LANGUAGES[number]) || VITTE_FILE_EXTENSION.test(doc.uri.path);
 }
 
 function shouldRunLiveSyntaxDiagnostics(doc: vscode.TextDocument): boolean {
@@ -3958,6 +4357,7 @@ function explainHelpFromVitte(
   explainTimeoutMs: number
 ): DiagnosticExplainPayload | undefined {
   if (!/^E\d{4}$/.test(code) && !/^VITTE-[A-Z]\d{4}$/.test(code)) return undefined;
+  if (compilerRuntimeStatus !== "supported" || !vscode.workspace.isTrusted) return undefined;
   const versionSignature = resolveVitteVersionSignature(resolved);
   const cachePath = vitteExplainHelpCachePath(resolved.cwd);
   loadVitteExplainHelpCache(cachePath, versionSignature);
@@ -4214,6 +4614,7 @@ function textDiagnosticSeverity(code: string): vscode.DiagnosticSeverity {
 
 function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): void {
   if (!syntaxLintCollection || !shouldRunLiveSyntaxDiagnostics(doc)) return;
+  if (!vscode.workspace.isTrusted || compilerRuntimeStatus !== "supported") return;
   const resolved = resolveVitteBinary(doc);
   if (!resolved) return;
 
@@ -4232,7 +4633,7 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
   applyStatusBar();
   const maxDiag = Math.max(1, cfg.get<number>("syntax.maxDiagnosticsPerFile", 200));
   const firstErrorMode = cfg.get<SyntaxFirstErrorMode>("syntax.firstErrorMode", "line");
-  const child = cp.spawn(resolved.bin, args, { cwd: resolved.cwd, shell: false });
+  const child = spawnManaged(resolved.bin, args, { cwd: resolved.cwd, shell: false });
   syntaxLintProcByDoc.set(key, child);
   let stdout = "";
   let stderr = "";
@@ -4368,7 +4769,7 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
       storeCompilerSuggestions(doc.uri.toString(), incoming);
       syntaxLintCollection.set(doc.uri, dedupeDiagnosticsBySpanCodeSource(diagnostics));
     } catch (parseErr) {
-      output.appendLine(`[syntax.live] invalid diagnostic json: ${String(parseErr)}`);
+      output.appendLine(`[syntax.live] invalid diagnostic json: ${redactLogText(parseErr)}`);
       syntaxLintCollection.set(doc.uri, []);
     }
   });
@@ -4380,7 +4781,7 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
     syntaxParsingInFlight = Math.max(0, syntaxParsingInFlight - 1);
     applyStatusBar();
     if (process.env.VITTE_DEBUG_LIVE_SYNTAX === "1") {
-      output.appendLine(`[syntax.live] spawn error: ${String(spawnErr)}`);
+      output.appendLine(`[syntax.live] spawn error: ${redactLogText(spawnErr)}`);
     }
   });
 }

@@ -5,6 +5,17 @@ and adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.1] — 2026-11-27
+### Added
+- Lazy language-server startup for Vitte files and marked project workspaces, with Workspace Trust gates for project tools and debug sessions.
+- Explicit compiler selection, documented discovery precedence, version checks, validated project-root/build-argument settings, and actionable restart guidance.
+- VSIX manifest and payload checks for engine range, language identifiers, activation events, packaged server dependencies, grammar, snippets, and icon.
+
+### Fixed
+- Stop the language client, extension-owned helper processes, active task executions, and playground terminal during reload/deactivation.
+- Redact common credentials from extension, toolchain, build, benchmark, and plugin logs.
+- Remove placeholder enterprise report choices that only repeated generic compiler checks; unimplemented choices now explain their status and follow-up.
+
 ## [2.3.0] — 2026-11-02
 ### Fixed
 - Prevent semantic highlighting from hanging on ordinary `r` identifiers, including `return`.

@@ -1,10 +1,15 @@
-import { projectCommand, BUILD_PROFILES, findCompilerRepository } from "../utils/project";
+import { projectCommand, BUILD_PROFILES, findCompilerRepository, resolveProjectRoot } from "../utils/project";
 import type { ProjectCommand } from "../utils/project";
 import * as vscode from 'vscode';
-import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import { locateVitteRuntime } from '../debug/runtimeLocator';
+import { isSupportedVitteCompilerVersion, locateVitteRuntime, VITTE_COMPILER_EVIDENCE_VERSION } from '../debug/runtimeLocator';
+import { spawnManaged } from '../utils/managedProcesses';
+import { requireTrustedWorkspace } from '../utils/workspaceTrust';
+import { redactLogText } from '../utils/logRedaction';
+
+const activeTaskExecutions = new Set<vscode.TaskExecution>();
+let buildOutputChannel: vscode.OutputChannel | undefined;
 
 /**
  * Build / Run / Test tasks & commands for Vitte
@@ -24,13 +29,15 @@ import { locateVitteRuntime } from '../debug/runtimeLocator';
  *  - type: 'vitte' with command: 'build' | 'clean' | 'run' | 'test'
  */
 export function registerBuildTasks(ctx: vscode.ExtensionContext) {
+  buildOutputChannel = vscode.window.createOutputChannel('Vitte Build');
+  ctx.subscriptions.push(buildOutputChannel);
   ctx.subscriptions.push(
-    vscode.commands.registerCommand('vitte.build', async () => { await runBuild('build'); }),
-    vscode.commands.registerCommand('vitte.clean', async () => { await runBuild('clean'); }),
-    vscode.commands.registerCommand('vitte.run', async () => { await runBuild('run'); }),
-    vscode.commands.registerCommand('vitte.test', async () => { await runBuild('test'); }),
+    vscode.commands.registerCommand('vitte.build', async () => { await runBuild('build', ctx); }),
+    vscode.commands.registerCommand('vitte.clean', async () => { await runBuild('clean', ctx); }),
+    vscode.commands.registerCommand('vitte.run', async () => { await runBuild('run', ctx); }),
+    vscode.commands.registerCommand('vitte.test', async () => { await runBuild('test', ctx); }),
     vscode.commands.registerCommand('vitte.testCurrent', async () => { await runTestCurrentFile(); }),
-    vscode.commands.registerCommand('vitte.runTests', async () => { await runBuild('test'); }),
+    vscode.commands.registerCommand('vitte.runTests', async () => { await runBuild('test', ctx); }),
     vscode.commands.registerCommand('vitte.refreshTests', async () => {
       try {
         await vscode.commands.executeCommand('testing.refreshTests');
@@ -40,16 +47,22 @@ export function registerBuildTasks(ctx: vscode.ExtensionContext) {
     }),
     vscode.commands.registerCommand('vitte.switchProfile', async () => { await cycleProfile(); }),
     vscode.commands.registerCommand('vitte.toggleIncremental', async () => { await toggleIncremental(); }),
+    vscode.tasks.onDidStartTask((event) => {
+      if ((event.execution.task.definition as Partial<VitteTaskDefinition>).type === 'vitte') activeTaskExecutions.add(event.execution);
+    }),
+    vscode.tasks.onDidEndTask((event) => activeTaskExecutions.delete(event.execution)),
   );
 
   const provider = {
     provideTasks: async (_token?: vscode.CancellationToken): Promise<vscode.Task[]> => {
+      if (!vscode.workspace.isTrusted) return [];
       const defs: { cmd: SubCmd; label: string }[] = [
         { cmd: 'build', label: 'Vitte Build' },
         { cmd: 'run', label: 'Vitte Run' },
       ];
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (workspaceRoot && findCompilerRepository(workspaceRoot)) defs.push({ cmd: 'test', label: 'Vitte Test (compiler repository)' });
+      const configuredRoot = resolveProjectRoot(vscode.workspace.getConfiguration('vitte').get<string>('project.root'), workspaceRoot);
+      if (configuredRoot && findCompilerRepository(configuredRoot)) defs.push({ cmd: 'test', label: 'Vitte Test (compiler repository)' });
       const tasks = await Promise.all(defs.map(async ({ cmd, label }) => {
         try {
         const plan = await buildCommand(cmd);
@@ -62,10 +75,12 @@ export function registerBuildTasks(ctx: vscode.ExtensionContext) {
       return tasks.filter((task): task is vscode.Task => !!task);
     },
     resolveTask: async (task: vscode.Task) => {
+      if (!(await requireTrustedWorkspace('running a Vitte task'))) return undefined;
       const command: unknown = task.definition.command;
       if (command !== 'build' && command !== 'run' && command !== 'test') return undefined;
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (command === 'test' && (!workspaceRoot || !findCompilerRepository(workspaceRoot))) return undefined;
+      const configuredRoot = resolveProjectRoot(vscode.workspace.getConfiguration('vitte').get<string>('project.root'), workspaceRoot);
+      if (command === 'test' && (!configuredRoot || !findCompilerRepository(configuredRoot))) return undefined;
       try {
         const plan = await buildCommand(command);
         if (plan.outputDir) await fs.promises.mkdir(plan.outputDir, { recursive: true });
@@ -77,6 +92,18 @@ export function registerBuildTasks(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(vscode.tasks.registerTaskProvider('vitte', provider));
 }
 
+export async function stopVitteTasks(): Promise<void> {
+  const pending = [...activeTaskExecutions];
+  for (const execution of pending) {
+    try { execution.terminate(); } catch { /* task may already have ended */ }
+  }
+  const deadline = Date.now() + 1500;
+  while (activeTaskExecutions.size > 0 && Date.now() < deadline) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+  }
+  activeTaskExecutions.clear();
+}
+
 type SubCmd = 'build' | 'clean' | 'run' | 'test';
 
 interface VitteTaskDefinition extends vscode.TaskDefinition {
@@ -86,15 +113,22 @@ interface VitteTaskDefinition extends vscode.TaskDefinition {
 
 async function buildBin(): Promise<string> {
   const located = await locateVitteRuntime();
-  return located.buildPath ?? located.cliPath ?? located.runtimePath ?? 'vitte';
+  const compiler = located.cliPath ?? located.runtimePath;
+  if (!located.found || !compiler) {
+    throw new Error('Vitte compiler not found. Set vitte.compiler.path, vitte.toolchain.root, or install Vitte on PATH.');
+  }
+  const binary = located.buildPath ?? compiler;
+  const version = binary === located.cliPath ? located.versions?.cli : located.versions?.build;
+  if (!isSupportedVitteCompilerVersion(version)) {
+    const detectedVersion = version ?? 'unknown';
+    throw new Error(`Vitte ${detectedVersion} is not verified by this extension; version ${VITTE_COMPILER_EVIDENCE_VERSION} is required for compiler-backed tasks. Run Vitte: Select Compiler or update vitte.compiler.path.`);
+  }
+  return binary;
 }
 
-async function defaultInputFile(): Promise<string | undefined> {
+async function defaultInputFile(root: string): Promise<string | undefined> {
   const current = vscode.window.activeTextEditor?.document.uri.fsPath;
   if (current && /\.(vit|vitl|vitte)$/i.test(current)) return current;
-
-  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!root) return undefined;
 
   const candidates = [
     path.join(root, 'src', 'main.vit'),
@@ -113,29 +147,49 @@ async function defaultInputFile(): Promise<string | undefined> {
 }
 
 async function buildCommand(sub: SubCmd): Promise<ProjectCommand> {
-  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
   const cfg = vscode.workspace.getConfiguration('vitte');
-  return projectCommand({
-    root, compiler: await buildBin(), action: sub,
-    input: await defaultInputFile(),
+  const root = resolveProjectRoot(cfg.get<string>('project.root'), workspaceRoot) ?? workspaceRoot;
+  const inCompilerRepository = Boolean(findCompilerRepository(root));
+  const needsCli = !inCompilerRepository && (sub === 'build' || sub === 'run');
+  const plan = projectCommand({
+    root, compiler: needsCli ? await buildBin() : '', action: sub,
+    input: await defaultInputFile(root),
     profile: cfg.get<string>('build.profile', 'default'), incremental: cfg.get<boolean>('build.incremental', false),
   });
+  if (plan.bin !== 'make') {
+    const extraArgs = cfg.get<unknown>('build.args', []);
+    if (Array.isArray(extraArgs)) plan.args.push(...extraArgs.filter((value): value is string => typeof value === 'string'));
+  }
+  return plan;
 }
 
 function formatCommandForDisplay(bin: string, args: string[]): string {
   return [bin, ...args].map((s) => JSON.stringify(s)).join(' ');
 }
 
-async function runBuild(sub: SubCmd) {
-  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!root) {
+async function runBuild(sub: SubCmd, ctx: vscode.ExtensionContext) {
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspaceRoot) {
     void vscode.window.showErrorMessage('Vitte: aucun workspace ouvert.');
     return;
   }
+  if (!(await requireTrustedWorkspace(`running ${sub}`))) return;
 
   let plan: ProjectCommand;
   try { plan = await buildCommand(sub); }
-  catch (error) { void vscode.window.showErrorMessage(`Vitte: ${String(error)}`); return; }
+  catch (error) {
+    const message = redactLogText(error);
+    if (/not found|not verified/i.test(message)) {
+      const selection = await vscode.window.showErrorMessage(`Vitte: ${message}`, 'Select Compiler', 'Open Settings');
+      if (selection === 'Select Compiler') await vscode.commands.executeCommand('vitte.selectRuntime');
+      else if (selection === 'Open Settings') await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:VitteStudio.vitte-studio vitte.compiler.path');
+    } else {
+      const selection = await vscode.window.showErrorMessage(`Vitte: ${message}`, 'Show Capabilities');
+      if (selection === 'Show Capabilities') await vscode.commands.executeCommand('vitte.showCapabilities');
+    }
+    return;
+  }
   if (sub === 'clean' && !plan.bin) {
     if (plan.outputDir) await fs.promises.rm(plan.outputDir, { recursive: true, force: true });
     return;
@@ -143,7 +197,11 @@ async function runBuild(sub: SubCmd) {
   if (plan.outputDir) await fs.promises.mkdir(plan.outputDir, { recursive: true });
   const { bin, args } = plan;
 
-  const chan = vscode.window.createOutputChannel('Vitte Build');
+  const chan = buildOutputChannel ?? vscode.window.createOutputChannel('Vitte Build');
+  if (!buildOutputChannel) {
+    buildOutputChannel = chan;
+    ctx.subscriptions.push(chan);
+  }
   await vscode.window.withProgress({
     location: vscode.ProgressLocation.Notification,
     title: `Vitte: ${sub}…`,
@@ -151,12 +209,12 @@ async function runBuild(sub: SubCmd) {
   }, async () => {
     chan.clear();
     chan.show(true);
-    chan.appendLine(`[cmd] ${formatCommandForDisplay(bin, args)}`);
+    chan.appendLine(`[cmd] ${redactLogText(formatCommandForDisplay(bin, args))}`);
     await new Promise<void>((resolve) => {
-      const proc = cp.spawn(bin, args, { cwd: plan.cwd, shell: false, env: process.env });
-      proc.stdout?.on('data', (b: Buffer) => chan.append(b.toString()));
-      proc.stderr?.on('data', (b: Buffer) => chan.append(b.toString()));
-      proc.on('error', (e) => { chan.appendLine(`\n[error] ${e.message}`); resolve(); });
+      const proc = spawnManaged(bin, args, { cwd: plan.cwd, shell: false, env: process.env });
+      proc.stdout?.on('data', (b: Buffer) => chan.append(redactLogText(b.toString())));
+      proc.stderr?.on('data', (b: Buffer) => chan.append(redactLogText(b.toString())));
+      proc.on('error', (e) => { chan.appendLine(`\n[error] ${redactLogText(e.message)}`); resolve(); });
       proc.on('close', (code) => { chan.appendLine(`\n[exit] code=${code}`); resolve(); });
     });
   });

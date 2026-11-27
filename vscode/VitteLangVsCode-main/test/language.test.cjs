@@ -226,6 +226,26 @@ test('extension manifest exposes the matrix and keeps heuristic defaults off', (
   assert.equal(settings['vitte.features.workspaceSymbols'].default, false);
   assert.equal(settings['vitte.features.inlayHints'].default, false);
   assert.match(settings['vitte.features.inlayHints'].description, /not advertised/i);
+  assert.equal(manifest.main, './out/extension.js');
+  assert.equal(manifest.engines.vscode, '^1.105.0');
+  const capabilityMatrix = JSON.parse(fs.readFileSync(path.join(root, 'server/src/capability-matrix.json'), 'utf8'));
+  assert.equal(capabilityMatrix.versions.extension, manifest.version);
+  assert.equal(capabilityMatrix.versions.languageServer.split('.').slice(0, 2).join('.'), manifest.version.split('.').slice(0, 2).join('.'));
+  assert.deepEqual(new Set(manifest.contributes.languages.flatMap(language => language.extensions)), new Set(['.vit', '.vitl', '.vitte']));
+  for (const event of ['onLanguage:vit', 'onLanguage:vitte', 'workspaceContains:vitte.toml']) {
+    assert.ok(manifest.activationEvents.includes(event), `missing activation event ${event}`);
+  }
+  assert.ok(!manifest.activationEvents.includes('*'));
+  for (const [key, setting] of Object.entries(settings)) {
+    assert.ok(setting.type, `${key} must declare a schema type`);
+    assert.ok(setting.description, `${key} must be documented`);
+    assert.ok(['application', 'machine', 'window', 'resource', 'machine-overridable', 'language-overridable'].includes(setting.scope), `${key} must have a valid settings scope`);
+  }
+  assert.equal(settings['vitte.compiler.path'].type, 'string');
+  assert.equal(settings['vitte.serverPath'].type, 'string');
+  assert.equal(settings['vitte.lsp.path'].type, 'string');
+  assert.equal(settings['vitte.lsp.args'].type, 'array');
+  assert.equal(settings['vitte.build.args'].type, 'array');
   assert.ok(!manifest.files, 'package uses .vscodeignore so VSCE includes runtime dependencies by default');
 });
 
@@ -238,6 +258,8 @@ test('bundled server serves completion, semantic tokens and symbols over stdio L
   child.stderr.resume();
   connection.listen();
   const initialized = await connection.sendRequest('initialize', { processId: process.pid, rootUri: null, capabilities: {} });
+  const capabilityMatrix = JSON.parse(fs.readFileSync(path.join(root, 'server/src/capability-matrix.json'), 'utf8'));
+  assert.equal(initialized.serverInfo?.version, capabilityMatrix.versions.languageServer);
   assert.ok(initialized.capabilities.completionProvider);
   assert.ok(initialized.capabilities.completionProvider.triggerCharacters.length > 0);
   assert.equal(initialized.capabilities.completionProvider.resolveProvider, undefined);

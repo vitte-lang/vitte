@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { requireTrustedWorkspace } from '../utils/workspaceTrust';
+import { isSupportedVitteCompilerVersion, locateVitteRuntime, VITTE_COMPILER_EVIDENCE_VERSION } from './runtimeLocator';
 
 interface VitteDebugSettings {
   program?: string;
@@ -162,6 +164,7 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
   }
 
   async resolveDebugConfiguration(folder: vscode.WorkspaceFolder | undefined, config: vscode.DebugConfiguration): Promise<vscode.DebugConfiguration | null | undefined> {
+    if (!(await requireTrustedWorkspace('starting or attaching a Vitte debug session'))) return undefined;
     const settings = vscode.workspace.getConfiguration('vitte');
     const project = await readVitteProjectConfig();
 
@@ -260,6 +263,22 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
         'Vitte: aucun adaptateur DAP configuré. Définissez "vitte.debug.program", "adapter" ou activez "vitte.debug.nativeBackend".',
       );
       return undefined;
+    }
+    if (request === 'launch' && nativeBackend && !base.adapter) {
+      const runtime = await locateVitteRuntime();
+      if (!runtime.found || !isSupportedVitteCompilerVersion(runtime.versions?.cli)) {
+        const version = runtime.versions?.cli ?? (runtime.found ? 'unknown' : 'not found');
+        const choice = await vscode.window.showWarningMessage(
+          `Vitte ${version} is not verified for native debugging. Version ${VITTE_COMPILER_EVIDENCE_VERSION} is required. Configure vitte.compiler.path or select a supported compiler.`,
+          'Select Compiler',
+          'Open Settings',
+        );
+        if (choice === 'Select Compiler') await vscode.commands.executeCommand('vitte.selectRuntime');
+        else if (choice === 'Open Settings') await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:VitteStudio.vitte-studio vitte.compiler.path');
+        return undefined;
+      }
+      const compiler = runtime.cliPath ?? runtime.runtimePath;
+      if (compiler) base.env = { ...((base.env as Record<string, string> | undefined) ?? {}), VITTE_COMPILER: compiler };
     }
     if (request === 'attach' && (!Number.isInteger(base.port) || Number(base.port) < 1 || Number(base.port) > 65535)) {
       void vscode.window.showErrorMessage('Vitte: le port du serveur DAP doit être compris entre 1 et 65535.');
