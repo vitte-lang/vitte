@@ -54,14 +54,42 @@ def split_macro_arguments(text: str) -> list[str]:
 
 def parse_native_registry() -> dict[str, dict[str, str]]:
     text = NATIVE_REGISTRY.read_text(encoding="utf-8")
-    row_pattern = re.compile(r"DiagnosticRegistryEntry\s*\{([^{}]*)\}")
+    row_pattern = re.compile(r"DiagnosticRegistryEntry\s*\{")
     field_pattern = re.compile(r'\b(\w+)\s*:\s*"((?:\\.|[^"\\])*)"')
     rows: dict[str, dict[str, str]] = {}
     public_codes: dict[str, str] = {}
     required = ("internal_code", "public_code", "category", "title", "explanation")
 
     for match in row_pattern.finditer(text):
-        fields = dict(field_pattern.findall(match.group(1)))
+        depth = 1
+        index = match.end()
+        quote: str | None = None
+        escaped = False
+        while index < len(text) and depth:
+            char = text[index]
+            if quote:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+            elif char in "\"'":
+                quote = char
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+            index += 1
+        if depth:
+            fail("unterminated native diagnostic registry entry")
+        body = text[match.end():index - 1]
+        fields: dict[str, str] = {}
+        for name, encoded_value in field_pattern.findall(body):
+            try:
+                fields[name] = json.loads(f'"{encoded_value}"')
+            except json.JSONDecodeError:
+                fail(f"native diagnostic field {name} is not a valid string literal")
         if "internal_code" not in fields:
             continue  # The exported record declaration is not a registry entry.
         for name in required:
@@ -69,8 +97,8 @@ def parse_native_registry() -> dict[str, dict[str, str]]:
                 fail(f"native diagnostic {fields.get('internal_code', '<unknown>')} has empty {name}")
         if not re.fullmatch(r"[EWHN]\d{4}", fields["public_code"]):
             fail(f"invalid public diagnostic code: {fields['public_code']}")
-        severity = re.search(r"default_severity:\s*DiagnosticSeverity\.(\w+)", match.group(1))
-        origin = re.search(r"origin:\s*DiagnosticOrigin\.(\w+)", match.group(1))
+        severity = re.search(r"default_severity:\s*DiagnosticSeverity\.(\w+)", body)
+        origin = re.search(r"origin:\s*DiagnosticOrigin\.(\w+)", body)
         if not severity or severity.group(1) not in {"Error", "Fatal", "Warning"}:
             fail(f"diagnostic {fields['internal_code']} has no recognized default severity")
         if not origin or origin.group(1) in {"Unknown", "Invalid"}:
@@ -355,7 +383,7 @@ def check_frontend_paths() -> None:
     ast_runtime_witnesses = {
         "async_runtime.vit": ("async proc", "await "),
         "assert_runtime.vit": ("assert(", "unsafe {"),
-        "asm_runtime.vit": ("asm ",),
+        "asm_runtime.vit": ("asm(",),
         "defer_runtime.vit": ("defer",),
         "intrinsic_runtime.vit": ("intrinsic ",),
     }
@@ -421,7 +449,7 @@ def check_diagnostic_contract_gate() -> None:
     for witness in (
         "ACTIVE_BOOTSTRAP_SOURCE_CODES",
         "check_source_code_inventory",
-        "c_api_only_codes",
+        "api_witness_codes",
         "expected_codes",
         'position["start_byte"]',
         'position["end_byte"]',
