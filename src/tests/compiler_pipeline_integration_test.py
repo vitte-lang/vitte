@@ -58,6 +58,60 @@ def expect_compiler_error(
         )
 
 
+def verify_configured_module_root(compiler: Path, work: Path) -> None:
+    if not compiler.name.endswith("bootstrap"):
+        return
+
+    project_root = work / "module-root-precedence"
+    source_root = project_root / "project"
+    conflicting_root = project_root / "probe"
+    configured_root = project_root / "configured"
+    for directory in (source_root, conflicting_root, configured_root / "probe"):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    main_source = source_root / "main.vit"
+    main_source.write_text(
+        "space app::main;\n"
+        "use probe::answer::{answer};\n"
+        "proc main() -> int {\n"
+        "    if answer() != 42 { return 1; }\n"
+        "    return 0;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (conflicting_root / "answer.vit").write_text(
+        "space probe::answer;\n"
+        "export proc answer() -> int { return 41; }\n",
+        encoding="utf-8",
+    )
+    (configured_root / "probe" / "answer.vit").write_text(
+        "space probe::answer;\n"
+        "export proc answer() -> int { return 42; }\n",
+        encoding="utf-8",
+    )
+
+    environment = os.environ.copy()
+    environment["VITTE_MODULE_PATH"] = str(configured_root)
+    executable = work / (
+        "module-root-precedence-bin.exe"
+        if os.name == "nt"
+        else "module-root-precedence-bin"
+    )
+    run(
+        [
+            str(compiler),
+            "compile",
+            str(main_source),
+            "--quiet",
+            "--no-color",
+            "-o",
+            str(executable),
+        ],
+        environment,
+    )
+    run([str(executable)])
+
+
 def verify(compiler: Path, c_compiler: list[str]) -> None:
     with tempfile.TemporaryDirectory(prefix=f"vitte-integration-{compiler.name}-") as directory:
         work = Path(directory)
@@ -93,6 +147,7 @@ def verify(compiler: Path, c_compiler: list[str]) -> None:
             + ["-std=c17", str(generated_c), "-o", str(executable)]
         )
         run([str(executable)], environment)
+        verify_configured_module_root(compiler, work)
 
         invalid_source = work / "invalid-name.vit"
         invalid_source.write_text(

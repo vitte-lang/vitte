@@ -50,6 +50,8 @@ INSTALL_TEST_MODULE_ROOT := $(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/share/vit
 
 VITTE ?= ../../build/bin/vitte
 VITTE_EXECUTABLE := $(if $(wildcard $(VITTE)),$(VITTE),$(if $(wildcard $(VITTE).exe),$(VITTE).exe,$(VITTE)))
+VITTE_IMPORT_COMPILER ?= ../../build/bin/vitte-bootstrap
+VITTE_IMPORT_COMPILER_EXECUTABLE := $(if $(wildcard $(VITTE_IMPORT_COMPILER)),$(VITTE_IMPORT_COMPILER),$(if $(wildcard $(VITTE_IMPORT_COMPILER).exe),$(VITTE_IMPORT_COMPILER).exe,$(VITTE_IMPORT_COMPILER)))
 
 BUILD_HOST_OS := $(shell uname -s 2>/dev/null || echo unknown)
 EXE_SUFFIX ?= $(if $(filter MINGW% MSYS% CYGWIN%,$(BUILD_HOST_OS)),.exe,)
@@ -180,6 +182,7 @@ endef
 	all \
 	check \
 	check-compiler \
+	check-import-compiler \
 	check-layout \
 	check-sources \
 	check-library \
@@ -248,6 +251,17 @@ check-compiler:
 	fi
 	$(call success,$(VITTE_EXECUTABLE))
 
+check-import-compiler:
+	$(call heading,Checking import-capable Vitte compiler)
+	@if [ ! -x "$(VITTE_IMPORT_COMPILER_EXECUTABLE)" ]; then \
+		$(PRINTF) 'Import-capable Vitte compiler not found or not executable:\n'; \
+		$(PRINTF) '  %s\n\n' "$(VITTE_IMPORT_COMPILER_EXECUTABLE)"; \
+		$(PRINTF) 'Override it with:\n'; \
+		$(PRINTF) '  make VITTE_IMPORT_COMPILER=/path/to/vitte-bootstrap\n'; \
+		exit 1; \
+	fi
+	$(call success,$(VITTE_IMPORT_COMPILER_EXECUTABLE))
+
 # ----------------------------------------------------------------------------
 # Layout validation
 # ----------------------------------------------------------------------------
@@ -294,7 +308,7 @@ define run_check
 	@set -e; \
 	for source in $(1); do \
 		$(PRINTF) '    CHECK %s\n' "$$source"; \
-		VITTE_MODULE_PATH=".." "$(VITTE_EXECUTABLE)" check $(VITTE_FLAGS) $(VITTE_CHECK_FLAGS) "$$source"; \
+		VITTE_MODULE_PATH=".." "$(VITTE_IMPORT_COMPILER_EXECUTABLE)" check $(VITTE_FLAGS) $(VITTE_CHECK_FLAGS) "$$source"; \
 	done
 endef
 
@@ -302,27 +316,27 @@ endef
 # Library checks
 # ----------------------------------------------------------------------------
 
-check-core: check-compiler check-sources
+check-core: check-import-compiler check-sources
 	$(call heading,Checking core)
 	$(call run_check,$(CORE_SOURCES))
 
-check-error: check-compiler check-sources
+check-error: check-import-compiler check-sources
 	$(call heading,Checking error subsystem)
 	$(call run_check,$(ERROR_SOURCES))
 
-check-runtime: check-compiler check-sources
+check-runtime: check-import-compiler check-sources
 	$(call heading,Checking runtime)
 	$(call run_check,$(RUNTIME_SOURCES))
 
-check-lexer: check-compiler check-sources
+check-lexer: check-import-compiler check-sources
 	$(call heading,Checking lexer)
 	$(call run_check,$(LEXER_SOURCES))
 
-check-parser: check-compiler check-sources
+check-parser: check-import-compiler check-sources
 	$(call heading,Checking parser)
 	$(call run_check,$(PARSER_SOURCES))
 
-check-encode: check-compiler check-sources
+check-encode: check-import-compiler check-sources
 	$(call heading,Checking encoder)
 	$(call run_check,$(ENCODE_SOURCES))
 
@@ -340,7 +354,7 @@ check-library: \
 # Test source checks
 # ----------------------------------------------------------------------------
 
-check-tests: check-compiler check-sources
+check-tests: check-import-compiler check-sources
 	$(call heading,Checking test sources)
 	$(call run_check,$(TEST_SOURCES))
 	$(call success,test sources)
@@ -365,7 +379,7 @@ check: \
 define run_test
 	@$(PRINTF) '    COMPILE TEST %s\n' "$(1)"
 	@$(MKDIR) "$(BUILD_DIR)/tests"
-	@VITTE_MODULE_PATH=".." "$(VITTE_EXECUTABLE)" compile $(VITTE_FLAGS) $(VITTE_TEST_FLAGS) \
+	@VITTE_MODULE_PATH=".." "$(VITTE_IMPORT_COMPILER_EXECUTABLE)" compile $(VITTE_FLAGS) $(VITTE_TEST_FLAGS) \
 		"$(1)" \
 		-o "$(BUILD_DIR)/tests/$(notdir $(basename $(1)))$(EXE_SUFFIX)"
 	@"$(BUILD_DIR)/tests/$(notdir $(basename $(1)))$(EXE_SUFFIX)"
@@ -375,7 +389,7 @@ endef
 # Runtime tests
 # ----------------------------------------------------------------------------
 
-test-runtime: check-compiler check-sources
+test-runtime: check-import-compiler check-sources
 	$(call heading,Running numeric runtime tests)
 	$(call run_test,runtime/test_numeric.vit)
 	$(call success,runtime tests)
@@ -384,17 +398,17 @@ test-runtime: check-compiler check-sources
 # Consumer import smoke test
 # ----------------------------------------------------------------------------
 
-test-vitte: check-compiler check-sources
+test-vitte: check-import-compiler check-sources
 	$(call heading,Resolving an installed JSON module from a consumer)
 	@$(MAKE) install \
 		PREFIX="$(INSTALL_TEST_PREFIX)" \
 		DESTDIR="$(INSTALL_TEST_ROOT)"
 	@$(MKDIR) "$(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/bin"
-	@install -m 755 "$(VITTE_EXECUTABLE)" \
-		"$(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/bin/vitte$(EXE_SUFFIX)"
+	@install -m 755 "$(VITTE_IMPORT_COMPILER_EXECUTABLE)" \
+		"$(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/bin/vitte-bootstrap$(EXE_SUFFIX)"
 	@cp tests/import_smoke.vit "$(INSTALL_TEST_MODULE_ROOT)/consumer.vit"
 	@VITTE_MODULE_PATH="$(INSTALL_TEST_MODULE_ROOT)" \
-		"$(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/bin/vitte$(EXE_SUFFIX)" \
+		"$(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/bin/vitte-bootstrap$(EXE_SUFFIX)" \
 		compile "$(INSTALL_TEST_MODULE_ROOT)/consumer.vit" \
 		-o "$(INSTALL_TEST_MODULE_ROOT)/consumer$(EXE_SUFFIX)"
 	@"$(INSTALL_TEST_MODULE_ROOT)/consumer$(EXE_SUFFIX)"
@@ -404,12 +418,12 @@ test-vitte: check-compiler check-sources
 # Encoder tests
 # ----------------------------------------------------------------------------
 
-test-encode: check-compiler check-sources
+test-encode: check-import-compiler check-sources
 	$(call heading,Running encoder tests)
 	$(call run_test,$(TEST_ENCODE))
 	$(call success,encode tests)
 
-test-string-concat: check-compiler check-sources
+test-string-concat: check-import-compiler check-sources
 	$(call heading,Running string concatenation test)
 	$(call run_test,$(TEST_STRING_CONCAT))
 	$(call success,string concatenation)
@@ -418,7 +432,7 @@ test-string-concat: check-compiler check-sources
 # Invalid JSON tests
 # ----------------------------------------------------------------------------
 
-test-invalid: check-compiler check-sources
+test-invalid: check-import-compiler check-sources
 	$(call heading,Running invalid JSON tests)
 	$(call run_test,$(TEST_INVALID))
 	$(call success,invalid JSON tests)
@@ -427,7 +441,7 @@ test-invalid: check-compiler check-sources
 # Parser tests
 # ----------------------------------------------------------------------------
 
-test-parse: check-compiler check-sources
+test-parse: check-import-compiler check-sources
 	$(call heading,Running parser tests)
 	$(call run_test,$(TEST_PARSE))
 	$(call success,parser tests)
@@ -436,7 +450,7 @@ test-parse: check-compiler check-sources
 # Round-trip tests
 # ----------------------------------------------------------------------------
 
-test-roundtrip: check-compiler check-sources
+test-roundtrip: check-import-compiler check-sources
 	$(call heading,Running round-trip tests)
 	$(call run_test,$(TEST_ROUNDTRIP))
 	$(call success,round-trip tests)
@@ -445,7 +459,7 @@ test-roundtrip: check-compiler check-sources
 # Unicode tests
 # ----------------------------------------------------------------------------
 
-test-unicode: check-compiler check-sources
+test-unicode: check-import-compiler check-sources
 	$(call heading,Running Unicode tests)
 	$(call run_test,$(TEST_UNICODE))
 	$(call success,Unicode tests)

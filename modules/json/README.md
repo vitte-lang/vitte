@@ -53,14 +53,19 @@ make -C modules/json test-vitte
 make install PREFIX="$HOME/.local"
 ```
 
-`test-vitte` stages a compiler installation, then compiles and runs a consumer
-that imports the parser and encoder, parses a JSON object, and checks its
-compact encoding from the installed source tree.
-On MSYS2 in this checkout, run that smoke test with the bootstrap compiler:
+`test-vitte` stages the bootstrap compiler by default, then compiles and runs a
+consumer that imports the parser and encoder, parses a JSON object, and checks
+its compact encoding from the installed source tree. The native frontend does
+not yet resolve source imports. Override the smoke-test compiler with
+`VITTE_IMPORT_COMPILER` when needed; for example, on MSYS2:
 
 ```sh
-make -C modules/json VITTE=../../build/bin/vitte-bootstrap.exe test-vitte
+make -C modules/json VITTE_IMPORT_COMPILER=../../build/bin/vitte-bootstrap.exe test-vitte
 ```
+
+The source checks and other module tests also use `VITTE_IMPORT_COMPILER` by
+default because they compile files with JSON imports. `VITTE` remains the
+compiler for the package entry check and the import-free smoke target.
 
 Normal `make install` installs the compiler and JSON source tree under
 `$PREFIX/share/vitte/modules/json`; `make uninstall` removes both. A staged
@@ -78,7 +83,8 @@ is useful for development or a compiler invoked via a custom wrapper.
 ## Current compiler compatibility
 
 The current bootstrap is Vitte 0.1.1. `make test-vitte` stages the package,
-then compiles and runs a consumer of the installed parser and encoder API.
+then compiles and runs a consumer of the installed parser and encoder API with
+the import-capable bootstrap compiler.
 `make test-parse` compiles and runs the parser suite, including configurable
 resource limits.
 

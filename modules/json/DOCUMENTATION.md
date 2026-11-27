@@ -57,6 +57,14 @@ make -C modules/json check-library
 make -C modules/json test-vitte
 ```
 
+`test-vitte` utilise `build/bin/vitte-bootstrap` par défaut, car le frontend
+natif ne résout pas encore les imports de sources. Remplacez ce chemin avec
+`VITTE_IMPORT_COMPILER=/chemin/vers/vitte-bootstrap` si le seed se trouve
+ailleurs. `check-library`, `check-tests` et les suites `test-*` qui compilent
+des sources JSON utilisent également ce compilateur import-capable. La
+variable `VITTE` reste réservée à la vérification de l’entrée du paquet et au
+smoke test sans import.
+
 Les suites détaillées sont disponibles avec :
 
 ```sh

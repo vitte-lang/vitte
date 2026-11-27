@@ -1686,7 +1686,7 @@ vitte_main_module_trace_root(
 }
 
 static bool
-vitte_main_module_resolve_installed(
+vitte_main_module_resolve_configured(
     const char *module_path,
     char *resolved,
     size_t resolved_capacity,
@@ -1696,10 +1696,7 @@ vitte_main_module_resolve_installed(
     const char *configured_paths;
     const char *cursor;
     char root[VITTE_MAIN_MODULE_PATH_MAX];
-    char executable_directory[VITTE_MAIN_MODULE_PATH_MAX];
-    char *slash;
     size_t length;
-    int written;
 
     configured_paths = getenv("VITTE_MODULE_PATH");
     cursor = configured_paths;
@@ -1730,6 +1727,21 @@ vitte_main_module_resolve_installed(
         }
         cursor = separator + 1;
     }
+    return false;
+}
+
+static bool
+vitte_main_module_resolve_installed(
+    const char *module_path,
+    char *resolved,
+    size_t resolved_capacity,
+    char *lookup_roots,
+    size_t lookup_roots_capacity)
+{
+    char root[VITTE_MAIN_MODULE_PATH_MAX];
+    char executable_directory[VITTE_MAIN_MODULE_PATH_MAX];
+    char *slash;
+    int written;
 
 #if defined(_WIN32)
     {
@@ -1981,6 +1993,18 @@ vitte_main_module_resolve_path(
             requested, NULL, NULL, NULL, NULL) !=
         VITTE_MAIN_MODULE_PATH_VALID) {
         return false;
+    }
+
+    /* Explicit roots must win over incidental matching paths in ancestor
+       directories. Otherwise a nearby checkout can shadow the selected
+       package and mix files from two versions of the same module. */
+    if (vitte_main_module_resolve_configured(
+            module_path,
+            resolved,
+            resolved_capacity,
+            lookup_roots,
+            lookup_roots_capacity)) {
+        return true;
     }
 
     if (vitte_filesystem_path_is_absolute(importer_path)) {
