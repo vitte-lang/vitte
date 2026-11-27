@@ -11,6 +11,11 @@ import tempfile
 binary = Path(sys.argv[1]).resolve()
 root = Path(__file__).resolve().parents[2]
 
+
+def write_utf8_fixture(path: Path, contents: str, *, encoding: str = "utf-8") -> None:
+    """Write fixture bytes without Windows newline translation."""
+    path.write_bytes(contents.encode(encoding))
+
 # Each span is the exact source fragment that the compiler must underline.
 # Byte offsets and human-readable line/column coordinates are checked
 # separately, including a multibyte UTF-8 character before a later error.
@@ -1326,7 +1331,11 @@ def check_valid_contracts_and_returns(directory: Path):
     )
     for index, source in enumerate(sources):
         path = directory / f"valid-contract-flow-{index}.vit"
-        path.write_text(f"space diagnostics::valid_contract_flow_{index}\n" + source, encoding="utf-8")
+        write_utf8_fixture(
+            path,
+            f"space diagnostics::valid_contract_flow_{index}\n" + source,
+            encoding="utf-8",
+        )
         result = invoke(path, "compile", "json")
         assert result.returncode == 0, (source, result.stderr)
         assert not result.stdout and not result.stderr, (source, result)
@@ -1510,12 +1519,14 @@ def check_invalid_reexport(directory: Path):
     module_dir = root / "sample"
     module_dir.mkdir(parents=True)
     library = module_dir / "lib.vit"
-    library.write_text(
+    write_utf8_fixture(
+        library,
         "space sample::lib;\nexport const VALUE: i64 = 1;\n",
         encoding="utf-8",
     )
     path = root / "main.vit"
-    path.write_text(
+    write_utf8_fixture(
+        path,
         "space sample::main;\n"
         "use sample::lib::{VALUE};\n"
         "export VALUE as public_value;\n"
@@ -1547,7 +1558,7 @@ def check_invalid_reexport(directory: Path):
         "export lib::MISSING;\n"
         "proc main() -> i64 { return 0; }\n"
     )
-    path.write_text(qualified_source, encoding="utf-8")
+    write_utf8_fixture(path, qualified_source, encoding="utf-8")
     result = invoke(path, "compile", "json")
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
     document = json.loads(result.stderr)
@@ -1576,11 +1587,13 @@ def check_conflicting_import_alias(directory: Path):
     root = directory / "conflicting-imports"
     modules = root / "sample"
     modules.mkdir(parents=True)
-    (modules / "lib.vit").write_text(
+    write_utf8_fixture(
+        (modules / "lib.vit"),
         "space sample::lib;\nexport const VALUE: i64 = 1;\n",
         encoding="utf-8",
     )
-    (modules / "other.vit").write_text(
+    write_utf8_fixture(
+        (modules / "other.vit"),
         "space sample::other;\nexport const VALUE: i64 = 2;\n",
         encoding="utf-8",
     )
@@ -1591,7 +1604,7 @@ def check_conflicting_import_alias(directory: Path):
         "proc main() -> i64 { return 0; }\n"
     )
     path = root / "main.vit"
-    path.write_text(source, encoding="utf-8")
+    write_utf8_fixture(path, source, encoding="utf-8")
     result = invoke(path, "compile", "json")
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
     assert not result.stdout, result.stdout
@@ -1636,12 +1649,14 @@ def check_duplicate_group_import(directory: Path):
     root = directory / "duplicate-symbol-imports"
     module_dir = root / "sample"
     module_dir.mkdir(parents=True)
-    (module_dir / "lib.vit").write_text(
+    write_utf8_fixture(
+        (module_dir / "lib.vit"),
         "space sample::lib;\nexport const VALUE: i64 = 1;\n",
         encoding="utf-8",
     )
     path = root / "main.vit"
-    path.write_text(
+    write_utf8_fixture(
+        path,
         "space sample::main;\n"
         "use sample::lib::{VALUE, VALUE};\n"
         "proc main() -> i64 { return VALUE; }\n",
@@ -1669,16 +1684,19 @@ def check_glob_import_ambiguity(directory: Path):
     module_dir.mkdir(parents=True)
     first = module_dir / "one.vit"
     second = module_dir / "two.vit"
-    first.write_text(
+    write_utf8_fixture(
+        first,
         "space sample::one;\nexport const VALUE: i64 = 1;\n",
         encoding="utf-8",
     )
-    second.write_text(
+    write_utf8_fixture(
+        second,
         "space sample::two;\nexport const VALUE: i64 = 2;\n",
         encoding="utf-8",
     )
     path = root / "main.vit"
-    path.write_text(
+    write_utf8_fixture(
+        path,
         "space sample::main;\n"
         "use sample::one::*;\n"
         "use sample::two::*;\n"
@@ -1709,16 +1727,19 @@ def check_group_import_ambiguity(directory: Path):
     module_dir.mkdir(parents=True)
     first = module_dir / "one.vit"
     second = module_dir / "two.vit"
-    first.write_text(
+    write_utf8_fixture(
+        first,
         "space sample::one;\nexport const VALUE: i64 = 1;\n",
         encoding="utf-8",
     )
-    second.write_text(
+    write_utf8_fixture(
+        second,
         "space sample::two;\nexport const VALUE: i64 = 2;\n",
         encoding="utf-8",
     )
     path = root / "main.vit"
-    path.write_text(
+    write_utf8_fixture(
+        path,
         "space sample::main;\n"
         "use sample::one::{VALUE};\n"
         "use sample::two::{VALUE};\n"
@@ -1746,12 +1767,14 @@ def check_module_member_import_help(directory: Path):
     root = directory / "module-member-import"
     module_dir = root / "sample"
     module_dir.mkdir(parents=True)
-    (module_dir / "lib.vit").write_text(
+    write_utf8_fixture(
+        (module_dir / "lib.vit"),
         "space sample::lib;\nexport const public_value: i64 = 1;\n",
         encoding="utf-8",
     )
     path = root / "main.vit"
-    path.write_text(
+    write_utf8_fixture(
+        path,
         "space sample::main;\n"
         "use sample::lib;\n"
         "proc main() -> i64 { return public_value; }\n",
@@ -1776,7 +1799,8 @@ def check_visible_name_suggestions(directory: Path):
     root = directory / "visible-name-suggestions"
     root.mkdir()
     unique = root / "unique.vit"
-    unique.write_text(
+    write_utf8_fixture(
+        unique,
         "proc main() -> i64 { let counter = 1; return countr; }\n",
         encoding="utf-8",
     )
@@ -1791,7 +1815,8 @@ def check_visible_name_suggestions(directory: Path):
     assert "Did you mean `counter`" in unique_help, unique_diagnostic
 
     tied = root / "tied.vit"
-    tied.write_text(
+    write_utf8_fixture(
+        tied,
         "proc main() -> i64 { let counter = 1; let counte = 2; return countr; }\n",
         encoding="utf-8",
     )
@@ -1811,12 +1836,13 @@ def check_import_cycle(directory: Path):
     module_dir.mkdir(parents=True)
     first = module_dir / "a.vit"
     first_source = "space sample::a;\nuse sample::b;\nconst A: i64 = 1;\n"
-    first.write_text(first_source, encoding="utf-8")
+    write_utf8_fixture(first, first_source, encoding="utf-8")
     second = module_dir / "b.vit"
     second_source = "space sample::b;\nuse sample::a;\nconst B: i64 = 2;\n"
-    second.write_text(second_source, encoding="utf-8")
+    write_utf8_fixture(second, second_source, encoding="utf-8")
     path = module_dir.parent / "main.vit"
-    path.write_text(
+    write_utf8_fixture(
+        path,
         "space sample::main;\nuse sample::a;\n"
         "proc main() -> i64 { return a::A; }\n",
         encoding="utf-8",
@@ -1866,7 +1892,8 @@ def check_missing_package(directory: Path):
     source_dir = root_dir / "src"
     source_dir.mkdir(parents=True)
     package = "diagnostic_contract_absent_pkg"
-    (root_dir / "vitte.packages.toml").write_text(
+    write_utf8_fixture(
+        (root_dir / "vitte.packages.toml"),
         f'dependency.{package} = "1.2.3"\n', encoding="utf-8")
     source = (
         "space package_test::main;\n"
@@ -1874,7 +1901,7 @@ def check_missing_package(directory: Path):
         "proc main() -> i64 { return 0; }\n"
     )
     path = source_dir / "main.vit"
-    path.write_text(source, encoding="utf-8")
+    write_utf8_fixture(path, source, encoding="utf-8")
     result = invoke(path, "compile", "json")
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
     document = json.loads(result.stderr)
@@ -1908,7 +1935,8 @@ def check_missing_module_in_installed_package(directory: Path):
     package_root = root_dir / ".vitte" / "modules" / package_name
     source_dir.mkdir(parents=True)
     package_root.mkdir(parents=True)
-    (root_dir / "vitte.packages.toml").write_text(
+    write_utf8_fixture(
+        (root_dir / "vitte.packages.toml"),
         f'dependency.{package_name} = "2.0.0"\n', encoding="utf-8")
     source = (
         "space package_test::main;\n"
@@ -1916,7 +1944,7 @@ def check_missing_module_in_installed_package(directory: Path):
         "proc main() -> i64 { return 0; }\n"
     )
     path = source_dir / "main.vit"
-    path.write_text(source, encoding="utf-8")
+    write_utf8_fixture(path, source, encoding="utf-8")
     result = invoke(path, "compile", "json")
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
     document = json.loads(result.stderr)
@@ -1932,14 +1960,14 @@ def check_module_path_mismatch(directory: Path):
     module_dir.mkdir(parents=True)
     library = module_dir / "wanted.vit"
     library_source = "space demo::actual;\nexport const VALUE: i64 = 1;\n"
-    library.write_text(library_source, encoding="utf-8")
+    write_utf8_fixture(library, library_source, encoding="utf-8")
     source = (
         "space demo::main;\n"
         "use demo::wanted;\n"
         "proc main() -> i64 { return 0; }\n"
     )
     path = module_dir.parent / "main.vit"
-    path.write_text(source, encoding="utf-8")
+    write_utf8_fixture(path, source, encoding="utf-8")
     result = invoke(path, "compile", "json")
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
     document = json.loads(result.stderr)
