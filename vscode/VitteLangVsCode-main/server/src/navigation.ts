@@ -1,4 +1,4 @@
-import { scanLexical } from "./lexical.js";
+import { maskNonCode, scanLexical } from "./lexical.js";
 // navigation.ts — symboles, définitions, références, rename, workspace symbols
 // Version enrichie :
 // - Parsing tolérant qui ignore commentaires/chaînes
@@ -26,6 +26,16 @@ import type {
   TypeHierarchySupertypesParams,
   WorkspaceSymbol,
 } from "vscode-languageserver/node";
+import {
+  resolveSourceSymbol,
+  resolveAliasType,
+  sourceIndex,
+  sourceTokenAt,
+  visibleBindingsAt,
+  type SourceIndex,
+  type SourceSymbol,
+} from "./sourceSymbols.js";
+import { importedCompletionModel, readModuleExports, type CompletionEnvironment } from "./moduleResolver.js";
 
 /* --------------------------------- Types ---------------------------------- */
 
@@ -265,7 +275,7 @@ function indexDocument(doc: TextDocument): DocIndex {
 /* --------------------------------- API doc --------------------------------- */
 
 export function documentSymbols(doc: TextDocument): DocumentSymbol[] {
-  return indexDocument(doc).outline;
+  return sourceIndex(doc).outline;
 }
 
 export function symbolOutline(doc: TextDocument): DocumentSymbol[] {
@@ -275,17 +285,9 @@ export function symbolOutline(doc: TextDocument): DocumentSymbol[] {
 /* --------------------------- Définitions / refs ---------------------------- */
 
 export function definitionAtPosition(doc: TextDocument, pos: Position, uri: string): Location[] {
-  const tok = tokenAt(doc, pos) ?? wordAt(doc, pos);
-  if (!tok) return [];
-  const pathLike = /[./:-]/.test(tok);
-  const { byName } = indexDocument(doc);
-  const defs = pathLike
-    ? indexDocument(doc).flat.filter((s) => s.kind === SymbolKind.Namespace && (s.name === tok || s.name.endsWith(`/${tok}`) || s.name.endsWith(`.${tok}`)))
-    : (byName.get(tok) ?? []);
-  // Tri par priorité de kind puis proximité
-  const baseOff = doc.offsetAt(pos);
-  defs.sort((a, b) => kindPriority(a.kind) - kindPriority(b.kind) || Math.abs(doc.offsetAt(a.selectionRange.start) - baseOff) - Math.abs(doc.offsetAt(b.selectionRange.start) - baseOff));
-  return defs.map(d => Location.create(uri, d.selectionRange));
+  void uri;
+  const resolved = resolveSourceSymbol(doc, pos)?.symbol;
+  return resolved ? [resolved.location] : [];
 }
 
 export function referencesAtPosition(doc: TextDocument, pos: Position, uri: string): Location[] {
@@ -310,6 +312,295 @@ export function referencesAtPosition(doc: TextDocument, pos: Position, uri: stri
     if (m[0].length === 0) re.lastIndex++;
   }
   return out;
+}
+
+export interface NavigationOutcome {
+  locations: Location[];
+  unavailableReason?: string;
+}
+
+export async function definitionAtPositionWithImports(
+  doc: TextDocument,
+  pos: Position,
+  environment: CompletionEnvironment,
+): Promise<NavigationOutcome> {
+  const resolved = resolveSourceSymbol(doc, pos)?.symbol;
+  if (resolved?.role === "procedure" && resolved.traitOwner) {
+    const index = sourceIndex(doc);
+    const span = sourceTokenAt(doc, pos);
+    const prefix = maskNonCode(doc.getText().slice(0, span?.start ?? doc.offsetAt(pos)));
+    const receiver = /([A-Za-z_]\w*)\s*\.\s*$/.exec(prefix)?.[1];
+    const receiverType = receiver ? visibleBindingsAt(index.symbols, receiver, doc.offsetAt(pos))[0]?.type?.match(/[A-Za-z_]\w*/)?.[0] : undefined;
+    const owner = receiverType ? resolveAliasType(index.model.types, receiverType) : undefined;
+    const activeProcedure = index.model.procedures.find((procedure) => procedure.bodyStart !== undefined && procedure.bodyStart <= doc.offsetAt(pos) && (procedure.bodyEnd ?? doc.getText().length) >= doc.offsetAt(pos));
+    const isGenericReceiver = Boolean(receiverType && activeProcedure?.generics.includes(receiverType));
+    if (owner && !isGenericReceiver) {
+      const implementation = index.model.procedures.find((procedure) => procedure.name === resolved.name && procedure.implementedTrait === resolved.traitOwner && procedure.ownerType === owner);
+      const implementationSymbol = implementation ? index.symbols.find((symbol) => symbol.role === "procedure" && symbol.nameStart === implementation.nameStart) : undefined;
+      if (implementationSymbol) return { locations: [implementationSymbol.location] };
+    }
+  }
+  const local = definitionAtPosition(doc, pos, doc.uri);
+  if (local.length > 0) return { locations: local };
+  const span = sourceTokenAt(doc, pos);
+  if (!span) return { locations: [], unavailableReason: "Aucun nom Vitte sous le curseur." };
+  const imports = await importedCompletionModel(doc, environment);
+  const source = doc.getText();
+  const prefix = maskNonCode(source.slice(0, span.start));
+  const memberPrefix = /([A-Za-z_]\w*)\s*\.\s*$/.exec(prefix);
+  if (memberPrefix?.[1]) {
+    const sourceModel = sourceIndex(doc);
+    const receiver = visibleBindingsAt(sourceModel.symbols, memberPrefix[1], span.start)[0];
+    const receiverType = receiver?.type?.match(/[A-Za-z_]\w*/)?.[0];
+    const importedType = only(imports.symbols.filter((symbol) => symbol.name === receiverType && symbol.type));
+    const memberLocation = importedType?.memberLocations?.[span.name];
+    if (memberLocation) return { locations: [memberLocation] };
+  }
+  const qualifiedPrefix = /([A-Za-z_]\w*)\s*::\s*$/.exec(prefix);
+  if (qualifiedPrefix?.[1]) {
+    const importedType = only(imports.symbols.filter((symbol) => symbol.name === qualifiedPrefix[1] && symbol.type));
+    const memberLocation = importedType?.memberLocations?.[span.name];
+    if (memberLocation) return { locations: [memberLocation] };
+  }
+  const matchingImports = imports.symbols.filter((symbol) => symbol.name === span.name);
+  const imported = only(matchingImports);
+  if (imported?.location) return { locations: [imported.location] };
+  if (matchingImports.length > 1) return { locations: [], unavailableReason: `Plusieurs imports portent le nom « ${span.name} »; la cible reste ambiguë.` };
+  const matchingModules = imports.modules.filter((module) => module.alias === span.name);
+  const moduleAlias = only(matchingModules);
+  if (moduleAlias?.uri) return { locations: [emptyModuleLocation(moduleAlias.uri)] };
+  if (matchingModules.length > 1) return { locations: [], unavailableReason: `Plusieurs modules portent l’alias « ${span.name} »; la cible reste ambiguë.` };
+  const modulePath = importedModulePathAt(doc, span.start, imports.modules);
+  if (modulePath) {
+    const exported = await readModuleExports(modulePath, doc.uri, environment);
+    if (span.name === modulePath.split(/::|\//).pop() && exported.moduleUri) return { locations: [emptyModuleLocation(exported.moduleUri)] };
+    const target = only(exported.symbols.filter((symbol) => symbol.name === span.name || symbol.originalName === span.name));
+    if (target?.location) return { locations: [target.location] };
+  }
+  return { locations: [], unavailableReason: `La déclaration de « ${span.name} » n’est pas résolue dans ce fichier ni dans ses imports explicites.` };
+}
+
+export async function declarationAtPositionWithImports(
+  doc: TextDocument,
+  pos: Position,
+  environment: CompletionEnvironment,
+): Promise<NavigationOutcome> {
+  // Vitte 0.1.1 does not distinguish declaration and definition locations in
+  // an editor API, so source declarations are the best verified target.
+  return definitionAtPositionWithImports(doc, pos, environment);
+}
+
+export async function typeDefinitionAtPositionWithImports(
+  doc: TextDocument,
+  pos: Position,
+  environment: CompletionEnvironment,
+): Promise<NavigationOutcome> {
+  const resolved = resolveSourceSymbol(doc, pos);
+  const typeIndex = sourceIndex(doc);
+  if (!resolved?.symbol) {
+    const imports = await importedCompletionModel(doc, environment);
+    const importedType = only(imports.symbols.filter((candidate) => candidate.name === resolved?.token && candidate.type));
+    if (!importedType?.type) return { locations: [], unavailableReason: "Le type du symbole n’est pas résolu par le frontend actif." };
+    const aliasName = importedType.type.aliasTarget ? /[A-Za-z_]\w*/.exec(importedType.type.aliasTarget)?.[0] : undefined;
+    const moduleExports = aliasName
+      ? await readModuleExports(importedType.modulePath, doc.uri, environment)
+      : undefined;
+    const target = aliasName
+      ? only([...(moduleExports?.symbols ?? []), ...imports.symbols].filter((candidate) => candidate.name === aliasName && candidate.type))
+      : undefined;
+    if (target?.location) return { locations: [target.location] };
+    if (importedType.location) return { locations: [importedType.location] };
+    return { locations: [], unavailableReason: `La définition du type « ${resolved?.token ?? "?"} » n’est pas résolue dans les imports explicites.` };
+  }
+  const symbol = resolved.symbol;
+  let targetName = symbol.role === "type" ? symbol.aliasTarget ?? symbol.name : symbol.type;
+  if (!targetName) {
+    const procedure = typeIndex.model.procedures.find((candidate) => candidate.nameStart === symbol.nameStart);
+    targetName = procedure?.returnType;
+  }
+  const name = targetName ? /[A-Za-z_]\w*/.exec(targetName)?.[0] : undefined;
+  if (!name) return { locations: [], unavailableReason: `Aucune définition de type n’est connue pour « ${symbol.name} ».` };
+  const local = typeIndex.symbols.find((candidate) => candidate.role === "type" && candidate.name === name);
+  if (local) {
+    let actual = local;
+    const seen = new Set<string>();
+    while (actual.aliasTarget && !seen.has(actual.name)) {
+      seen.add(actual.name);
+      const aliasName = /[A-Za-z_]\w*/.exec(actual.aliasTarget)?.[0];
+      const next = typeIndex.symbols.find((candidate) => candidate.role === "type" && candidate.name === aliasName);
+      if (!next) break;
+      actual = next;
+    }
+    return { locations: [actual.location] };
+  }
+  const imports = await importedCompletionModel(doc, environment);
+  const imported = only(imports.symbols.filter((candidate) => candidate.name === name && candidate.type));
+  if (imported?.type?.aliasTarget) {
+    const targetName = /[A-Za-z_]\w*/.exec(imported.type.aliasTarget)?.[0];
+    const target = imports.symbols.find((candidate) => candidate.name === targetName && candidate.type);
+    if (target?.location) return { locations: [target.location] };
+  }
+  if (imported?.location) return { locations: [imported.location] };
+  return { locations: [], unavailableReason: `La définition du type « ${name} » n’est pas résolue dans le fichier ou ses imports explicites.` };
+}
+
+export async function implementationAtPositionWithImports(
+  doc: TextDocument,
+  pos: Position,
+  environment: CompletionEnvironment,
+  workspaceDocs: readonly { uri: string; doc: TextDocument }[] = [],
+): Promise<NavigationOutcome> {
+  const resolved = resolveSourceSymbol(doc, pos);
+  const imports = await importedCompletionModel(doc, environment);
+  const selected = resolved?.symbol;
+  const importedType = !selected ? only(imports.symbols.filter((symbol) =>
+    symbol.type?.kind === "trait" && (symbol.name === resolved?.token || symbol.type.methods.some((method) => method.name === resolved?.token)))) : undefined;
+  const traitName = selected?.role === "type" && typeIsTrait(sourceIndex(doc), selected.name)
+    ? selected.name
+    : selected?.traitOwner ?? importedType?.type?.name;
+  if (!traitName) return { locations: [], unavailableReason: `Aucune relation d’implémentation validée pour « ${selected?.name ?? resolved?.token ?? "ce symbole"} ».` };
+  const methodName = selected?.role === "procedure" ? selected.name
+    : importedType?.type?.methods.some((method) => method.name === resolved?.token) ? resolved?.token
+      : undefined;
+  const locations = new Map<string, Location>();
+  for (const candidateDoc of [doc, ...workspaceDocs.filter((candidate) => candidate.uri !== doc.uri).map((candidate) => candidate.doc)]) {
+    const index = sourceIndex(candidateDoc);
+    for (const symbol of index.symbols) {
+      if (symbol.role !== "procedure" || symbol.implementedTrait !== traitName || (methodName && symbol.name !== methodName)) continue;
+      locations.set(locationKey(symbol.location), symbol.location);
+    }
+  }
+  for (const symbol of imports.symbols) {
+    const procedure = symbol.procedure;
+    if (!procedure?.implementedTrait || procedure.implementedTrait !== traitName || (methodName && procedure.name !== methodName) || !symbol.location) continue;
+    locations.set(locationKey(symbol.location), symbol.location);
+  }
+  if (importedType) {
+    const exports = await readModuleExports(importedType.modulePath, doc.uri, environment);
+    for (const symbol of exports.symbols) {
+      const procedure = symbol.procedure;
+      if (!procedure?.implementedTrait || procedure.implementedTrait !== traitName || !symbol.location) continue;
+      locations.set(locationKey(symbol.location), symbol.location);
+    }
+  }
+  if (locations.size === 0) return { locations: [], unavailableReason: `Aucune implémentation source visible de « ${traitName} » n’a été trouvée.` };
+  return { locations: Array.from(locations.values()) };
+}
+
+export async function referencesAtPositionWithWorkspace(
+  doc: TextDocument,
+  pos: Position,
+  environment: CompletionEnvironment,
+  workspaceDocs: readonly { uri: string; doc: TextDocument }[],
+  includeDeclaration = true,
+): Promise<NavigationOutcome> {
+  const resolved = resolveSourceSymbol(doc, pos);
+  if (!resolved?.token) return { locations: [], unavailableReason: "Aucun nom Vitte sous le curseur." };
+  const originImports = await importedCompletionModel(doc, environment);
+  let localTarget = resolved.symbol;
+  const matchingImportedTargets = localTarget ? [] : originImports.symbols.filter((symbol) => symbol.name === resolved.token && symbol.location);
+  let importedTarget = only(matchingImportedTargets);
+  if (!localTarget && matchingImportedTargets.length > 1) return { locations: [], unavailableReason: `Plusieurs imports portent le nom « ${resolved.token} »; les références ne sont pas résolues.` };
+  let memberOwner: string | undefined;
+  if (!localTarget && !importedTarget) {
+    const prefix = maskNonCode(doc.getText().slice(0, doc.offsetAt(pos)));
+    const receiverName = /([A-Za-z_]\w*)\s*\.\s*$/.exec(prefix)?.[1];
+    const receiver = receiverName ? visibleBindingsAt(sourceIndex(doc).symbols, receiverName, doc.offsetAt(pos))[0] : undefined;
+    const receiverType = receiver?.type?.match(/[A-Za-z_]\w*/)?.[0];
+    importedTarget = only(originImports.symbols.filter((symbol) => symbol.name === receiverType
+      && (Boolean(symbol.type?.fields.some((field) => field.name === resolved.token))
+        || Boolean(symbol.type?.variants.some((variant) => variant.name === resolved.token)))));
+    memberOwner = importedTarget?.type?.name;
+    if (importedTarget?.memberLocations?.[resolved.token]) {
+      const memberLocation = importedTarget.memberLocations[resolved.token];
+      localTarget = {
+        name: resolved.token,
+        role: importedTarget.type?.variants.some((variant) => variant.name === resolved.token) ? "variant" : "field",
+        ownerType: memberOwner,
+        isPublic: importedTarget.type?.isPublic,
+        location: memberLocation,
+      } as SourceSymbol;
+    }
+  }
+  if (!localTarget && !importedTarget?.location) return { locations: [], unavailableReason: "La référence n’est pas reliée à une déclaration connue." };
+  const targetLocation = localTarget?.location ?? importedTarget?.location;
+  if (!targetLocation) return { locations: [], unavailableReason: "La déclaration source de cette référence est indisponible." };
+  const targetName = localTarget?.name ?? importedTarget?.originalName ?? resolved.token;
+  const targetRole = localTarget?.role ?? (importedTarget?.type ? "type" : importedTarget?.procedure ? "procedure" : "binding");
+  const targetPublic = localTarget?.isPublic ?? Boolean(importedTarget);
+  const targetOwner = localTarget?.ownerType ?? memberOwner;
+  const localScope = targetRole === "binding" || targetRole === "parameter" || ((targetRole === "field" || targetRole === "variant") && !targetPublic);
+  const documents = [doc, ...workspaceDocs.filter((candidate) => candidate.uri !== doc.uri).map((candidate) => candidate.doc)];
+  const locations: Location[] = [];
+  if (includeDeclaration) locations.push(targetLocation);
+  for (const candidateDoc of documents) {
+    if (localScope && candidateDoc.uri !== doc.uri) continue;
+    if (candidateDoc.uri !== doc.uri && !targetPublic) continue;
+    const code = maskNonCode(candidateDoc.getText());
+    let searchableNames: string[] = [];
+    let importModel: Awaited<ReturnType<typeof importedCompletionModel>> | undefined;
+    if (candidateDoc.uri === targetLocation.uri) searchableNames = [targetName];
+    else if (candidateDoc.uri === doc.uri) searchableNames = [resolved.token];
+    else {
+      importModel = await importedCompletionModel(candidateDoc, environment);
+      searchableNames = importModel.symbols
+        .filter((symbol) => symbol.uri === targetLocation.uri && symbol.originalName === targetName)
+        .map((symbol) => symbol.name);
+      if (targetOwner && (targetRole === "field" || targetRole === "variant")) {
+        const importsOwner = importModel.symbols.some((symbol) => symbol.uri === targetLocation.uri && symbol.type?.name === targetOwner
+          && Boolean(symbol.memberLocations?.[targetName]));
+        if (importsOwner) searchableNames.push(targetName);
+      }
+    }
+    if (candidateDoc.uri === doc.uri && importedTarget) importModel = originImports;
+    for (const name of new Set(searchableNames)) {
+      const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(name)}(?![A-Za-z0-9_])`, "g");
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(code))) {
+        const start = match.index;
+        const occurrenceSymbol = resolveSourceSymbol(candidateDoc, candidateDoc.positionAt(start))?.symbol;
+        if (candidateDoc.uri === targetLocation.uri) {
+          if (!occurrenceSymbol || locationKey(occurrenceSymbol.location) !== locationKey(targetLocation)) continue;
+        } else {
+          if (occurrenceSymbol) continue;
+          if (!importModel?.symbols.some((symbol) => symbol.uri === targetLocation.uri && (symbol.name === name || symbol.type?.name === targetOwner))) continue;
+        }
+        const range = Range.create(candidateDoc.positionAt(start), candidateDoc.positionAt(start + name.length));
+        if (!includeDeclaration && candidateDoc.uri === targetLocation.uri && range.start.line === targetLocation.range.start.line && range.start.character === targetLocation.range.start.character) continue;
+        locations.push(Location.create(candidateDoc.uri, range));
+      }
+    }
+  }
+  return { locations: dedupeBy(locations, (location) => locationKey(location)) };
+}
+
+function importedModulePathAt(doc: TextDocument, offset: number, aliases: readonly { alias: string; modulePath: string }[]): string | undefined {
+  const code = maskNonCode(doc.getText());
+  const lineStart = code.lastIndexOf("\n", offset) + 1;
+  const line = code.slice(lineStart, offset);
+  const importMatch = /\b(?:use|pull)\s+([A-Za-z_]\w*(?:(?:::|\/)[A-Za-z_]\w*)*)/.exec(line);
+  if (importMatch?.[1]) return importMatch[1];
+  const qualified = /([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)::$/.exec(line);
+  if (!qualified?.[1]) return undefined;
+  const path = qualified[1];
+  const alias = aliases.find((candidate) => candidate.alias === path || path.startsWith(candidate.alias + "::"));
+  return alias ? alias.modulePath + path.slice(alias.alias.length) : path;
+}
+
+function emptyModuleLocation(uri: string): Location {
+  return Location.create(uri, Range.create(Position.create(0, 0), Position.create(0, 0)));
+}
+
+function typeIsTrait(index: SourceIndex, name: string): boolean {
+  return index.model.types.some((type) => type.name === name && type.kind === "trait");
+}
+
+function locationKey(location: Location): string {
+  return `${location.uri}:${location.range.start.line}:${location.range.start.character}:${location.range.end.line}:${location.range.end.character}`;
+}
+
+function only<T>(items: readonly T[]): T | undefined {
+  return items.length === 1 ? items[0] : undefined;
 }
 
 /* --------------------------------- Rename ---------------------------------- */
@@ -546,12 +837,13 @@ export function workspaceSymbols(
   const result: { ws: WorkspaceSymbol; score: number; idx: number }[] = [];
   let seq = 0;
   for (const { uri, doc } of openDocs) {
-    const { flat } = indexDocument(doc);
-    for (const s of flat) {
+    const { symbols } = sourceIndex(doc);
+    for (const s of symbols) {
+      if (s.role === "parameter" || s.role === "binding" || s.role === "module" || s.role === "implementation") continue;
       const score = q ? fuzzyScore(s.name, q) : 1;
       if (q && score <= 0) continue;
       result.push({
-        ws: { name: s.name, kind: s.kind, location: Location.create(uri, s.selectionRange) },
+        ws: { name: s.name, kind: s.kind, location: Location.create(uri, s.selectionRange), ...(s.containerName ? { containerName: s.containerName } : {}) },
         score,
         idx: seq++,
       });
@@ -563,22 +855,6 @@ export function workspaceSymbols(
 }
 
 /* --------------------------------- Helpers -------------------------------- */
-
-function kindPriority(k: SymbolKind): number {
-  switch (k) {
-    case SymbolKind.Function: return 0;
-    case SymbolKind.Method: return 1;
-    case SymbolKind.Variable: return 2;
-    case SymbolKind.Constant: return 3;
-    case SymbolKind.Struct: return 4;
-    case SymbolKind.Class: return 5;
-    case SymbolKind.Enum: return 6;
-    case SymbolKind.Interface: return 7;
-    case SymbolKind.Namespace: return 8;
-    case SymbolKind.Field: return 9;
-    default: return 10;
-  }
-}
 
 function fuzzyScore(name: string, query: string): number {
   // subsequence scoring sensible à la casse avec bonus pour débuts de mots et camelCase

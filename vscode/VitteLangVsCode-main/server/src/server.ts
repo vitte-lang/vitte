@@ -11,7 +11,6 @@ import {
   TextDocumentSyncKind,
   TextDocuments,
   TextEdit,
-  Location,
   Position,
   Range,
   DidChangeConfigurationNotification,
@@ -35,6 +34,9 @@ import type {
   WorkspaceSymbolParams,
   WorkspaceSymbol,
   DefinitionParams,
+  DeclarationParams,
+  TypeDefinitionParams,
+  ImplementationParams,
   ReferenceParams,
   RenameParams,
   PrepareRenameParams,
@@ -58,6 +60,7 @@ import type {
   SignatureHelpParams,
   CancellationToken,
   RemoteWorkspace,
+  Location,
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
 
@@ -66,11 +69,13 @@ import { provideCompletions, resolveCompletion, triggerCharacters, configureComp
 import type { CompletionEnvironment } from "./moduleResolver.js";
 import {
   documentSymbols,
-  definitionAtPosition,
-  referencesAtPosition,
+  definitionAtPositionWithImports,
+  declarationAtPositionWithImports,
+  typeDefinitionAtPositionWithImports,
+  implementationAtPositionWithImports,
+  referencesAtPositionWithWorkspace,
   renameSymbol,
   renameIdentifierByName,
-  tokenAtPosition,
   prepareRename,
   workspaceSymbols,
   prepareCallHierarchy,
@@ -81,7 +86,7 @@ import {
   typeHierarchySubtypes,
 } from "./navigation.js";
 import { provideFormattingEdits, provideRangeFormattingEdits } from "./formatting.js";
-import { getSemanticTokensLegend, buildSemanticTokens, provideHover } from "./semantic.js";
+import { getSemanticTokensLegend, buildSemanticTokens, provideHoverWithImports } from "./semantic.js";
 import { provideInlayHints, type InlayHintPrefs } from "./inlay.js";
 import { provideSignatureHelpWithImports } from "./signatureHelp.js";
 import { getIntelliSenseCapabilities, isCapabilityAdvertised, LANGUAGE_SERVER_VERSION } from "./intellisenseCapabilities.js";
@@ -164,6 +169,9 @@ interface ServerSettings {
     completion: boolean;
     hover: boolean;
     definition: boolean;
+    declaration: boolean;
+    typeDefinition: boolean;
+    implementation: boolean;
     references: boolean;
     rename: boolean;
     documentSymbols: boolean;
@@ -205,6 +213,9 @@ const DEFAULT_SETTINGS: ServerSettings = {
     completion: true,
     hover: true,
     definition: true,
+    declaration: true,
+    typeDefinition: true,
+    implementation: true,
     references: true,
     rename: true,
     documentSymbols: true,
@@ -249,11 +260,15 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     serverCapabilities.signatureHelpProvider = { triggerCharacters: ["(", ",", "{", ":"], retriggerCharacters: [",", ":"] };
   }
   if (isCapabilityAdvertised("document-symbols")) serverCapabilities.documentSymbolProvider = true;
+  if (isCapabilityAdvertised("workspace-symbols")) serverCapabilities.workspaceSymbolProvider = true;
   if (isCapabilityAdvertised("formatting")) {
     serverCapabilities.documentFormattingProvider = true;
     serverCapabilities.documentRangeFormattingProvider = true;
   }
   if (isCapabilityAdvertised("definition")) serverCapabilities.definitionProvider = true;
+  if (isCapabilityAdvertised("declaration")) serverCapabilities.declarationProvider = true;
+  if (isCapabilityAdvertised("type-definition")) serverCapabilities.typeDefinitionProvider = true;
+  if (isCapabilityAdvertised("implementation")) serverCapabilities.implementationProvider = true;
   if (isCapabilityAdvertised("references")) serverCapabilities.referencesProvider = true;
   if (isCapabilityAdvertised("rename")) serverCapabilities.renameProvider = { prepareProvider: true };
   if (isCapabilityAdvertised("code-actions")) {
@@ -726,6 +741,8 @@ function withHierarchyBackpressure<T>(
   token: CancellationToken | undefined,
   compute: (doc: TextDocument) => T,
 ): Promise<T | null> {
+  if (contextName.startsWith("callHierarchy") && !isCapabilityAdvertised("call-hierarchy")) return Promise.resolve(null);
+  if (contextName.startsWith("typeHierarchy") && !isCapabilityAdvertised("type-hierarchy")) return Promise.resolve(null);
   if (isBreakerActive()) return Promise.resolve(null);
   return withBackpressure(() => {
     if (!uri) return Promise.resolve(null);
@@ -792,7 +809,8 @@ connection.onHover(async (params: HoverParams, token?: CancellationToken): Promi
     const doc = documents.get(params.textDocument.uri);
     if (!doc || cancelled(token)) return null;
     try {
-      const hover = await withTimeout(Promise.resolve(provideHover(doc, params.position)), timeoutFor("hover"));
+      const environment = await resolveCompletionEnvironment(doc.uri);
+      const hover = await withTimeout(provideHoverWithImports(doc, params.position, environment), timeoutFor("hover"));
       metric("hover", start, doc.uri);
       recordSuccess();
       return hover;
@@ -922,19 +940,71 @@ connection.onDefinition(async (params: DefinitionParams, token?: CancellationTok
     const doc = documents.get(params.textDocument.uri);
     if (!doc || cancelled(token)) return [];
     try {
-      const defs = await withTimeout(Promise.resolve(definitionAtPosition(doc, params.position, params.textDocument.uri)), timeoutFor("definition"));
-      const tok = tokenAtPosition(doc, params.position);
-      const merged = tok ? dedupeLocations([
-        ...defs,
-        ...collectOpenDocumentDefinitions(tok, params.textDocument.uri),
-      ]) : defs;
-      metric("definition", start, doc.uri, merged.length);
+      const environment = await resolveCompletionEnvironment(doc.uri);
+      const outcome = await withTimeout(definitionAtPositionWithImports(doc, params.position, environment), timeoutFor("definition"));
+      if (outcome.locations.length === 0 && outcome.unavailableReason) explainUnavailable("definition", outcome.unavailableReason);
+      metric("definition", start, doc.uri, outcome.locations.length);
       recordSuccess();
-      return merged;
+      return outcome.locations;
     } catch (e) {
       metric("definition", start, doc?.uri ?? "unknown", undefined, e);
       recordFailure();
       logErr("definition", e);
+      return [];
+    }
+  });
+});
+
+connection.onDeclaration(async (params: DeclarationParams, token?: CancellationToken): Promise<Location[]> => {
+  if (failFast("declaration")) return [];
+  if (isBreakerActive()) return [];
+  return withBackpressure(async () => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || cancelled(token)) return [];
+    try {
+      const environment = await resolveCompletionEnvironment(doc.uri);
+      const outcome = await withTimeout(declarationAtPositionWithImports(doc, params.position, environment), timeoutFor("definition"));
+      if (!outcome.locations.length && outcome.unavailableReason) explainUnavailable("declaration", outcome.unavailableReason);
+      return outcome.locations;
+    } catch (error) {
+      logErr("declaration", error);
+      return [];
+    }
+  });
+});
+
+connection.onTypeDefinition(async (params: TypeDefinitionParams, token?: CancellationToken): Promise<Location[]> => {
+  if (failFast("typeDefinition")) return [];
+  if (isBreakerActive()) return [];
+  return withBackpressure(async () => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || cancelled(token)) return [];
+    try {
+      const environment = await resolveCompletionEnvironment(doc.uri);
+      const outcome = await withTimeout(typeDefinitionAtPositionWithImports(doc, params.position, environment), timeoutFor("definition"));
+      if (!outcome.locations.length && outcome.unavailableReason) explainUnavailable("type definition", outcome.unavailableReason);
+      return outcome.locations;
+    } catch (error) {
+      logErr("typeDefinition", error);
+      return [];
+    }
+  });
+});
+
+connection.onImplementation(async (params: ImplementationParams, token?: CancellationToken): Promise<Location[]> => {
+  if (failFast("implementation")) return [];
+  if (isBreakerActive()) return [];
+  return withBackpressure(async () => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || cancelled(token)) return [];
+    try {
+      const environment = await resolveCompletionEnvironment(doc.uri);
+      const workspaceDocs = await collectWorkspaceSourceDocuments(environment);
+      const outcome = await withTimeout(implementationAtPositionWithImports(doc, params.position, environment, workspaceDocs), timeoutFor("definition"));
+      if (!outcome.locations.length && outcome.unavailableReason) explainUnavailable("implementation", outcome.unavailableReason);
+      return outcome.locations;
+    } catch (error) {
+      logErr("implementation", error);
       return [];
     }
   });
@@ -948,15 +1018,13 @@ connection.onReferences(async (params: ReferenceParams, token?: CancellationToke
     const doc = documents.get(params.textDocument.uri);
     if (!doc || cancelled(token)) return [];
     try {
-      const refs = await withTimeout(Promise.resolve(referencesAtPosition(doc, params.position, params.textDocument.uri)), timeoutFor("references"));
-      const tok = tokenAtPosition(doc, params.position);
-      const merged = tok ? dedupeLocations([
-        ...refs,
-        ...collectOpenDocumentReferences(tok, params.textDocument.uri),
-      ]) : refs;
-      metric("references", start, doc.uri, merged.length);
+      const environment = await resolveCompletionEnvironment(doc.uri);
+      const workspaceDocs = await collectWorkspaceSourceDocuments(environment);
+      const outcome = await withTimeout(referencesAtPositionWithWorkspace(doc, params.position, environment, workspaceDocs, params.context.includeDeclaration), timeoutFor("references"));
+      if (!outcome.locations.length && outcome.unavailableReason) explainUnavailable("references", outcome.unavailableReason);
+      metric("references", start, doc.uri, outcome.locations.length);
       recordSuccess();
-      return merged;
+      return outcome.locations;
     } catch (e) {
       metric("references", start, doc?.uri ?? "unknown", undefined, e);
       recordFailure();
@@ -1114,8 +1182,10 @@ connection.onWorkspaceSymbol(async (params: WorkspaceSymbolParams, token?: Cance
     const start = now();
     if (cancelled(token)) return [];
     try {
-      const openDocs = documents.all().map(d => ({ uri: d.uri, doc: d }));
-      const symbols = await withTimeout(Promise.resolve(workspaceSymbols(params.query ?? "", openDocs, 200)), timeoutFor("workspaceSymbols"));
+      const activeDocument = documents.all()[0];
+      const environment = await resolveCompletionEnvironment(activeDocument?.uri ?? (workspaceRoot ? pathToFileURL(workspaceRoot).toString() : ""));
+      const sourceDocs = await collectWorkspaceSourceDocuments(environment);
+      const symbols = await withTimeout(Promise.resolve(workspaceSymbols(params.query ?? "", sourceDocs, 200)), timeoutFor("workspaceSymbols"));
       metric("workspaceSymbols", start, params.query ?? "", symbols.length);
       recordSuccess();
       return symbols;
@@ -1377,69 +1447,6 @@ function lineRangeAt(doc: TextDocument, lineNo: number): Range {
   return Range.create(Position.create(line, 0), Position.create(line, lineText.length));
 }
 
-function dedupeLocations(locations: Location[]): Location[] {
-  const seen = new Set<string>();
-  const out: Location[] = [];
-  for (const l of locations) {
-    const k = `${l.uri}:${l.range.start.line}:${l.range.start.character}:${l.range.end.line}:${l.range.end.character}`;
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(l);
-  }
-  return out;
-}
-
-function isPathLikeToken(token: string): boolean {
-  return /[./:-]/.test(token);
-}
-
-function collectOpenDocumentDefinitions(token: string, currentUri: string): Location[] {
-  const out: Location[] = [];
-  const pathLike = isPathLikeToken(token);
-  for (const d of documents.all()) {
-    if (d.uri === currentUri) continue;
-    const text = d.getText();
-    const rx = pathLike
-      ? new RegExp(`\\b(?:space|use|pull|entry\\s+[A-Za-z_][A-Za-z0-9_]*\\s+at)\\s+${escapeForRegex(token)}\\b`, "g")
-      : new RegExp(`\\b(?:proc|form|pick|trait|type|const|let|make|field|case|share)\\s+${escapeForRegex(token)}\\b`, "g");
-    let m: RegExpExecArray | null;
-    while ((m = rx.exec(text))) {
-      const idx = (m.index ?? 0) + m[0].lastIndexOf(token);
-      const start = d.positionAt(idx);
-      const end = d.positionAt(idx + token.length);
-      out.push(Location.create(d.uri, Range.create(start, end)));
-      if (m[0].length === 0) rx.lastIndex++;
-    }
-  }
-  return out;
-}
-
-function collectOpenDocumentReferences(token: string, currentUri: string): Location[] {
-  const out: Location[] = [];
-  const pathLike = isPathLikeToken(token);
-  const rx = pathLike
-    ? new RegExp(`(?<![A-Za-z0-9_./:-])${escapeForRegex(token)}(?![A-Za-z0-9_./:-])`, "g")
-    : new RegExp(`(?<![A-Za-z0-9_])${escapeForRegex(token)}(?![A-Za-z0-9_])`, "g");
-  for (const d of documents.all()) {
-    if (d.uri === currentUri) continue;
-    const text = d.getText();
-    let m: RegExpExecArray | null;
-    while ((m = rx.exec(text))) {
-      const idx = m.index ?? 0;
-      const start = d.positionAt(idx);
-      const end = d.positionAt(idx + token.length);
-      out.push(Location.create(d.uri, Range.create(start, end)));
-      if (m[0].length === 0) rx.lastIndex++;
-    }
-    rx.lastIndex = 0;
-  }
-  return out;
-}
-
-function escapeForRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 async function collectWorkspaceRenameCandidates(primaryUri: string, symbolName: string): Promise<TextDocument[]> {
   const out = new Map<string, TextDocument>();
   for (const d of documents.all()) out.set(d.uri, d);
@@ -1500,4 +1507,46 @@ async function walkVitteFiles(root: string, limit: number, deadline: number): Pr
     }
   }
   return out;
+}
+
+const workspaceSourceCache = new Map<string, { mtimeMs: number; size: number; doc: TextDocument }>();
+
+async function collectWorkspaceSourceDocuments(environment: CompletionEnvironment): Promise<{ uri: string; doc: TextDocument }[]> {
+  const out = new Map<string, TextDocument>();
+  for (const document of documents.all()) out.set(document.uri, document);
+  const roots = Array.from(new Set([...(environment.workspaceRoots ?? []), environment.projectRoot, ...(environment.modulePaths ?? [])].filter((root): root is string => Boolean(root))));
+  const deadline = Date.now() + 450;
+  const fileLimit = 256;
+  const totalByteLimit = 16 * 1024 * 1024;
+  let totalBytes = 0;
+  for (const root of roots) {
+    if (Date.now() >= deadline || out.size >= fileLimit) break;
+    const paths = await walkVitteFiles(root, fileLimit - out.size, deadline);
+    for (const file of paths) {
+      if (Date.now() >= deadline || out.size >= fileLimit || totalBytes >= totalByteLimit) break;
+      const uri = pathToFileURL(file).toString();
+      if (out.has(uri)) continue;
+      try {
+        const stats = await fs.stat(file);
+        if (!stats.isFile() || stats.size > 1024 * 1024 || totalBytes + stats.size > totalByteLimit) continue;
+        totalBytes += stats.size;
+        const cached = workspaceSourceCache.get(uri);
+        if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+          out.set(uri, cached.doc);
+          continue;
+        }
+        const source = await fs.readFile(file, "utf8");
+        const doc = TextDocument.create(uri, file.endsWith(".vitte") ? "vitte" : "vit", 0, source);
+        if (workspaceSourceCache.size >= 512) {
+          const oldest = workspaceSourceCache.keys().next().value;
+          if (oldest) workspaceSourceCache.delete(oldest);
+        }
+        workspaceSourceCache.set(uri, { mtimeMs: stats.mtimeMs, size: stats.size, doc });
+        out.set(uri, doc);
+      } catch {
+        // Files can disappear between traversal and indexing.
+      }
+    }
+  }
+  return Array.from(out, ([uri, doc]) => ({ uri, doc }));
 }

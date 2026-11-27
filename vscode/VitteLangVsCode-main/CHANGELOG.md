@@ -5,6 +5,16 @@ and adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.3] — 2026-11-27
+### Added
+- Source-derived hover details for signatures, docs, visibility, parameters, fields, variants, modules, builtins, and simple annotated/literal types.
+- Scoped definition/declaration, type definition, trait implementation, references, workspace symbols, and nested document outlines for breadcrumbs.
+- Explicit unavailable messages for unresolved and intrinsic-only navigation targets; bounded source scans and identity checks avoid misleading locations.
+
+### Changed
+- Keep call and type hierarchy unadvertised until the compiler provides verified relationship data; document this exclusion under CAP-LSP-001.
+- Bump the extension and language server to 2.3.3 and the capability matrix to 1.0.4.
+
 ## [2.3.2] — 2026-11-27
 ### Added
 - Context-aware language-server completion for visible local bindings, generic parameters, declarations, form fields, pick variants, supported attributes, callable values, imports and module paths found on disk.

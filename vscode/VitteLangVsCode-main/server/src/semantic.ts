@@ -1,4 +1,4 @@
-import { scanLexical } from "./lexical.js";
+import { lexicalContextAt, maskNonCode, scanLexical } from "./lexical.js";
 // semantic.ts — simple, robuste, et plus complet
 // Améliorations clés:
 // - Lexer en un seul passage: collecte des plages commentaires et chaînes + masque code
@@ -20,7 +20,11 @@ import type {
   SemanticTokens,
 } from "vscode-languageserver/node";
 import type { TextDocument } from "vscode-languageserver-textdocument";
+import type { SourceSymbol } from "./sourceSymbols.js";
 import { RESERVED_WORDS, PRIMITIVE_TYPE_SET, BOOL_LITERAL_SET, NIL_LITERAL_SET, NUMBER_PATTERN } from "./languageFacts.js";
+import { resolveAliasType, resolveSourceSymbol, sourceIndex, visibleBindingsAt } from "./sourceSymbols.js";
+import { COMPILER_BUILTINS } from "./callableFacts.js";
+import { importedCompletionModel, readModuleExports, type CompletionEnvironment, type ImportedCompletionSymbol } from "./moduleResolver.js";
 
 /* ------------------------------ Legend stable ----------------------------- */
 // Garder l’ordre en phase avec server.ts
@@ -93,9 +97,14 @@ const HOVER_DOC: Record<string, string> = {
   false: "Booléen faux.",
 };
 
-export function provideHover(doc: TextDocument, position: Position): Hover | null {
+export function provideHover(doc: TextDocument, position: Position, importedSymbols: readonly ImportedCompletionSymbol[] = []): Hover | null {
+  if (lexicalContextAt(doc.getText(), doc.offsetAt(position)) !== "code") return null;
   const w = wordAt(doc, position);
   if (!w) return null;
+  const resolved = resolveSourceSymbol(doc, position)?.symbol;
+  if (resolved) return hoverForSourceSymbol(resolved);
+  const imported = importedSymbols.find((symbol) => symbol.name === w);
+  if (imported) return hoverForImportedSymbol(imported);
   const info = HOVER_DOC[w];
   if (info) {
     return { contents: { kind: MarkupKind.Markdown, value: `**${w}** — ${info}` } };
@@ -109,7 +118,124 @@ export function provideHover(doc: TextDocument, position: Position): Hover | nul
   if (NIL_LITERAL_SET.has(w)) {
     return { contents: { kind: MarkupKind.Markdown, value: `**${w}** — Littéral nul.` } };
   }
-  return null;
+  const builtin = COMPILER_BUILTINS.find((candidate) => candidate.name === w);
+  if (builtin) return hoverMarkdown(`**proc ${builtin.name}(${builtin.parameters.join(", ")}) -> ${builtin.returnType}**\n\n${builtin.documentation}\n\nDéclaration intrinsèque du compilateur; aucune définition source navigable n’est fournie par Vitte 0.1.1.`);
+  return hoverMarkdown(`**${w}**\n\nType ou déclaration indisponible : aucune information sémantique fiable n’est fournie par le frontend actif pour cet identifiant.`);
+}
+
+export async function provideHoverWithImports(doc: TextDocument, position: Position, environment: CompletionEnvironment): Promise<Hover | null> {
+  if (lexicalContextAt(doc.getText(), doc.offsetAt(position)) !== "code") return null;
+  const span = wordAt(doc, position);
+  if (!span) return null;
+  const imports = await importedCompletionModel(doc, environment);
+  const index = sourceIndex(doc);
+  const offset = doc.offsetAt(position);
+  const prefix = maskNonCode(doc.getText().slice(0, offset));
+  const memberPrefix = /([A-Za-z_]\w*)\s*\.\s*$/.exec(prefix);
+  if (memberPrefix?.[1]) {
+    const receiver = visibleBindingsAt(index.symbols, memberPrefix[1], offset)[0];
+    const receiverName = receiver?.type?.match(/[A-Za-z_]\w*/)?.[0];
+    const resolvedType = resolveAliasType(index.model.types, receiverName) ?? receiverName;
+    const localField = index.symbols.find((symbol) => symbol.role === "field" && symbol.ownerType === resolvedType && symbol.name === span);
+    if (localField) return hoverForSourceSymbol(localField);
+    const importedType = imports.symbols.find((symbol) => symbol.name === receiverName && symbol.type);
+    const field = importedType?.type?.fields.find((candidate) => candidate.name === span);
+    if (importedType?.type && field) {
+      const sections = [`**${field.name}: ${field.type}**`, `Champ public de \`${importedType.name}\` dans \`${importedType.modulePath}\`.`];
+      if (field.documentation) sections.push(field.documentation);
+      return hoverMarkdown(sections.join("\n\n"));
+    }
+    const importedMethod = imports.symbols.find((symbol) => symbol.name === span && symbol.procedure?.ownerType === resolvedType);
+    if (importedMethod) return hoverForImportedSymbol(importedMethod);
+  }
+  const qualifiedPrefix = /([A-Za-z_]\w*)\s*::\s*$/.exec(prefix);
+  if (qualifiedPrefix?.[1]) {
+    const localVariant = index.symbols.find((symbol) => symbol.role === "variant" && symbol.ownerType === qualifiedPrefix[1] && symbol.name === span);
+    if (localVariant) return hoverForSourceSymbol(localVariant);
+    const importedType = imports.symbols.find((symbol) => symbol.name === qualifiedPrefix[1] && symbol.type);
+    const variant = importedType?.type?.variants.find((candidate) => candidate.name === span);
+    if (importedType?.type && variant) {
+      const payload = variant.payload.length ? `(${variant.payload.join(", ")})` : "";
+      const sections = [`**${variant.name}${payload}**`, `Variante publique de \`${importedType.name}\` dans \`${importedType.modulePath}\`.`];
+      if (variant.documentation) sections.push(variant.documentation);
+      return hoverMarkdown(sections.join("\n\n"));
+    }
+  }
+  const imported = imports.symbols.find((symbol) => symbol.name === span);
+  if (imported) return hoverForImportedSymbol(imported);
+  const module = imports.modules.find((candidate) => candidate.alias === span);
+  if (module) return hoverMarkdown(`**module ${module.alias}**\n\nChemin : \`${module.modulePath}\`\n\n${module.uri ? `Fichier : \`${module.uri}\`` : "Le fichier du module n’a pas été résolu."}`);
+  const code = maskNonCode(doc.getText());
+  const cursorOffset = doc.offsetAt(position);
+  const lineStart = code.lastIndexOf("\n", cursorOffset) + 1;
+  const linePrefix = code.slice(lineStart, cursorOffset);
+  const path = /\b(?:use|pull)\s+([A-Za-z_]\w*(?:(?:::|\/)[A-Za-z_]\w*)*)/.exec(linePrefix)?.[1];
+  if (path?.split(/::|\//).includes(span)) {
+    const moduleExports = await readModuleExports(path, doc.uri, environment);
+    if (moduleExports.moduleUri) return hoverMarkdown(`**module ${span}**\n\nChemin : \`${path}\`\n\nFichier : \`${moduleExports.moduleUri}\``);
+    return hoverMarkdown(`**${span}**\n\nModule indisponible : le fichier correspondant n’a pas été trouvé dans les racines configurées.`);
+  }
+  return provideHover(doc, position, imports.symbols);
+}
+
+function hoverForSourceSymbol(symbol: SourceSymbol): Hover {
+  const sections: string[] = [];
+  if (symbol.role === "procedure") {
+    sections.push(`**${symbol.signature ?? "proc " + symbol.name}**`);
+    sections.push(symbol.isPublic ? "Visibilité : publique." : "Visibilité : privée au module.");
+    if (symbol.ownerType || symbol.traitOwner) sections.push(`Méthode dans la portée de \`${symbol.ownerType ?? symbol.traitOwner}\`.`);
+  } else if (symbol.role === "type") {
+    sections.push(`**${symbol.detail ?? symbol.name}**`);
+    sections.push(symbol.isPublic ? "Visibilité : publique." : "Visibilité : privée au module.");
+  } else if (symbol.role === "field") {
+    sections.push(`**${symbol.name}: ${symbol.type ?? "type inconnu"}**`);
+    if (symbol.ownerType) sections.push(`Champ de \`${symbol.ownerType}\`.`);
+    sections.push(symbol.isPublic ? "Visibilité : publique avec son type." : "Visibilité : privée au module.");
+  } else if (symbol.role === "variant") {
+    sections.push(`**${symbol.name}${symbol.detail && symbol.detail !== symbol.type ? `(${symbol.detail})` : ""}**`);
+    if (symbol.type) sections.push(`Variante de \`${symbol.type}\`.`);
+    sections.push(symbol.isPublic ? "Visibilité : publique avec son type." : "Visibilité : privée au module.");
+  } else if (symbol.role === "parameter") {
+    sections.push(`**paramètre ${symbol.name}${symbol.type ? ": " + symbol.type : ""}**`);
+    if (!symbol.type) sections.push("Type du paramètre indisponible dans la déclaration.");
+  } else if (symbol.role === "binding") {
+    sections.push(`**${symbol.detail ?? symbol.name}**`);
+    sections.push(symbol.type ? `Type annoté ou déduit de l’initialiseur : \`${symbol.type}\`.` : "Type non déduit par le frontend actif.");
+  } else if (symbol.role === "module") {
+    sections.push(`**module ${symbol.name}**`);
+    if (symbol.detail) sections.push(`Chemin : \`${symbol.detail}\`.`);
+  } else if (symbol.role === "implementation") {
+    sections.push(`**${symbol.detail ?? symbol.name}**`);
+  }
+  if (symbol.documentation) sections.push(symbol.documentation);
+  return hoverMarkdown(sections.join("\n\n"));
+}
+
+function hoverForImportedSymbol(symbol: ImportedCompletionSymbol): Hover {
+  const sections: string[] = [];
+  if (symbol.procedure) {
+    const procedure = symbol.procedure;
+    const generics = procedure.generics.length ? `<${procedure.generics.join(", ")}>` : "";
+    const parameters = procedure.parameters.map((parameter) => (parameter.mode ? parameter.mode + " " : "") + parameter.name + (parameter.type ? ": " + parameter.type : "")).join(", ");
+    sections.push(`**proc ${symbol.name}${generics}(${parameters})${procedure.returnType ? " -> " + procedure.returnType : ""}**`);
+    sections.push("Visibilité : publique via l’import explicite.");
+  } else if (symbol.type) {
+    const type = symbol.type;
+    const generics = type.generics.length ? `<${type.generics.join(", ")}>` : "";
+    sections.push(`**${type.kind} ${symbol.name}${generics}${type.aliasTarget ? " = " + type.aliasTarget : ""}**`);
+    sections.push("Visibilité : publique via l’import explicite.");
+  } else {
+    sections.push(`**const ${symbol.name}${symbol.constantType ? ": " + symbol.constantType : ""}**`);
+    sections.push("Visibilité : publique via l’import explicite.");
+  }
+  if (symbol.originalName !== symbol.name) sections.push(`Alias de \`${symbol.originalName}\`.`);
+  if (symbol.documentation) sections.push(symbol.documentation);
+  sections.push(`Module : \`${symbol.modulePath}\`.`);
+  return hoverMarkdown(sections.join("\n\n"));
+}
+
+function hoverMarkdown(value: string): Hover {
+  return { contents: { kind: MarkupKind.Markdown, value } };
 }
 
 /* --------------------------- Semantic tokeniser --------------------------- */

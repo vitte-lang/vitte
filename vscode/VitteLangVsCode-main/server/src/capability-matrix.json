@@ -1,10 +1,10 @@
 {
   "schema": "vitte-capabilities@1",
-  "matrixVersion": "1.0.3",
+  "matrixVersion": "1.0.4",
   "updated": "2026-11-27",
   "versions": {
-    "extension": "2.3.2",
-    "languageServer": "2.3.2",
+    "extension": "2.3.3",
+    "languageServer": "2.3.3",
     "compilerEvidence": "0.1.1"
   },
   "statusDefinitions": {
@@ -65,9 +65,9 @@
       "advertised": true,
       "setting": "hover",
       "provider": "Vitte language server",
-      "description": "Provides short documentation for known keywords and primitive types.",
-      "limitation": "User symbols and compiler-derived type information do not have hover documentation.",
-      "evidence": ["test/language.test.cjs: hover documents known keywords and primitive types"]
+      "description": "Shows source signatures, annotations, literal-inferred types, docs, module/import paths, fields, variants, parameters and compiler builtin signatures where the source index can identify them.",
+      "limitation": "The active compiler exposes no editor semantic-query API. Inference is limited to explicit annotations and simple literals/constructors; unknown or intrinsic-only targets display an explicit unavailable explanation.",
+      "evidence": ["test/language.test.cjs: source hover resolves declarations, signatures, types, docs, fields, variants and simple inference", "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
     },
     {
       "id": "diagnostics",
@@ -86,21 +86,21 @@
       "status": "implemented",
       "advertised": true,
       "setting": "documentSymbols",
-      "provider": "Vitte language server indexer",
-      "description": "Lists declarations found in the current document.",
-      "limitation": "Names are indexed from source structure and are not compiler symbol-table identities.",
-      "evidence": ["test/language.test.cjs: bundled server serves document symbols over stdio LSP", "src/test/suite/extension.test.ts: LSP E2E document symbols"]
+      "provider": "Vitte language server source indexer",
+      "description": "Provides a nested outline for modules, types, traits, procedures, implementation blocks, fields and variants; VS Code uses this tree for outline and breadcrumbs.",
+      "limitation": "The hierarchy is reconstructed from source braces and declarations, not compiler AST scope identities.",
+      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "src/test/suite/extension.test.ts: LSP E2E: completion, symboles, définition, références et renommage"]
     },
     {
       "id": "workspace-symbols",
       "label": "Workspace symbols",
       "status": "partial",
-      "advertised": false,
+      "advertised": true,
       "setting": "workspaceSymbols",
       "provider": "Vitte language server indexer",
-      "description": "The implementation currently searches open documents.",
-      "limitation": "It does not guarantee a complete or current result for unopened workspace files and has no end-to-end capability test.",
-      "evidence": []
+      "description": "Searches declarations in open documents and a bounded scan of Vitte source files under workspace, configured project and module roots; groups nested results by their container.",
+      "limitation": "This is a source index, not a compiler symbol table. It scans at most 256 files and 16 MiB of source per request and may omit results in larger workspaces.",
+      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
     },
     {
       "id": "definition",
@@ -108,10 +108,43 @@
       "status": "partial",
       "advertised": true,
       "setting": "definition",
-      "provider": "Vitte language server indexer",
-      "description": "Resolves tested declarations and references within indexed source documents.",
-      "limitation": "Resolution is source-index based, not a compiler symbol query; complex imports and shadowing are not guaranteed.",
-      "evidence": ["src/test/suite/extension.test.ts: LSP E2E definition resolves the tested declaration"]
+      "provider": "Vitte language server source indexer",
+      "description": "Resolves local declarations and explicit imported exports, including aliases, fields, variants and supported trait methods.",
+      "limitation": "Resolution is source-index based, not a compiler symbol query. Inferred receiver types and generated declarations without a source location return an explicit unavailable message.",
+      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP", "src/test/suite/extension.test.ts: LSP E2E: completion, symboles, définition, références et renommage"]
+    },
+    {
+      "id": "declaration",
+      "label": "Go to declaration",
+      "status": "partial",
+      "advertised": true,
+      "setting": "declaration",
+      "provider": "Vitte language server source indexer",
+      "description": "Navigates to the source declaration for local and explicitly imported symbols.",
+      "limitation": "Vitte 0.1.1 does not distinguish declaration and definition targets through an editor API; both use the best verified source location.",
+      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
+    },
+    {
+      "id": "type-definition",
+      "label": "Go to type definition",
+      "status": "partial",
+      "advertised": true,
+      "setting": "typeDefinition",
+      "provider": "Vitte language server source indexer",
+      "description": "Resolves annotated parameter, binding, field and alias types to local or explicitly imported declarations.",
+      "limitation": "Only explicit types and simple source-inferred types are available; generic substitutions and compiler-inferred expression types return an explicit unavailable message.",
+      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
+    },
+    {
+      "id": "implementation",
+      "label": "Go to implementation",
+      "status": "partial",
+      "advertised": true,
+      "setting": "implementation",
+      "provider": "Vitte language server source indexer",
+      "description": "Finds source implementations for visible trait declarations and trait methods in the current file, open workspace files and explicit imports.",
+      "limitation": "The active compiler has no editor query for generated or monomorphized implementations; only source-detected trait impl blocks are returned.",
+      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
     },
     {
       "id": "references",
@@ -119,10 +152,10 @@
       "status": "partial",
       "advertised": true,
       "setting": "references",
-      "provider": "Vitte language server indexer",
-      "description": "Finds the tested declaration and use sites in indexed documents.",
-      "limitation": "Results are lexical/index based and are not a complete compiler reference graph.",
-      "evidence": ["src/test/suite/extension.test.ts: LSP E2E references return the declaration and call"]
+      "provider": "Vitte language server source indexer",
+      "description": "Finds a local symbol’s references in its lexical scope and public imported symbols in files that explicitly import the same source declaration.",
+      "limitation": "Results use bounded source scanning and identifier identity checks, not a compiler reference graph; files beyond the workspace scan limits may be omitted.",
+      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP", "src/test/suite/extension.test.ts: LSP E2E: completion, symboles, définition, références et renommage"]
     },
     {
       "id": "rename",

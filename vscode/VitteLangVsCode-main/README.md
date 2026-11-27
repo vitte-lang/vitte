@@ -41,24 +41,21 @@ Open a .vit file  →  Detect the toolchain  →  Edit with live feedback
 - `.vit` — Vitte source
 - `.vitl` — library and standard-library source
 - `.vitte` — legacy compatibility
-- TextMate highlighting, snippets, context-aware language-server completion and signature help, hover, diagnostics, semantic tokens, and formatting
-- Tested document symbols, definition, references, rename, and code actions
-- Workspace symbols, inlay hints, and call/type hierarchies are experimental prototypes and are not advertised to VS Code
+- TextMate highlighting, snippets, context-aware completion and signature help, source-based hover/navigation, diagnostics, semantic tokens, and formatting
+- Document outline and breadcrumbs, local/imported definitions and declarations, type definitions, trait implementations, references, and rename within the documented source-index scope
+- Bounded workspace symbol search is enabled; inlay hints and call/type hierarchies remain experimental and are not advertised because the compiler cannot provide verified relationships
 - Native DAP launch for `.vit` sources, with external DAP stdio and TCP attach retained for advanced/native targets
 
 ### Capability scope
 
-Editor capabilities use the bundled language server. Completion reads the open
-file, explicit imports and configured module roots; it parses source declarations
-for scopes and types, so it does not resolve compiler overloads or inferred types.
+Editor capabilities use the bundled language server. Completion, hover and navigation read source declarations, explicit imports and configured module roots; they do not query compiler symbol tables because Vitte 0.1.1 exposes no editor semantic API. Simple literal inference and explicit annotations are shown; overloads, generic substitutions and inferred receiver types remain unavailable.
 Trait methods are offered only when a visible trait bound or implementation is
 present in source. Direct inherent `impl` methods and type-qualified associated
 functions are not offered because the active frontend does not validate them.
 Signature help includes procedure declarations, callable values, supported trait
 methods and named form fields. Named procedure-call arguments are not in the active
 grammar. These are bounded source results, not compiler symbol or type-resolution
-results. The server advertises only the LSP providers with
-automated evidence for their stated scope. Use **Vitte: Show Capabilities** for
+results. Navigation follows lexical scopes for local bindings and explicit imports for public symbols. References and workspace symbols scan at most 256 files and 16 MiB per request; larger workspaces may be incomplete. Unresolved and intrinsic-only targets produce an explicit information message or hover explanation. The server advertises only the LSP providers with automated evidence for their stated scope. Use **Vitte: Show Capabilities** for
 live enablement, evidence, limitations, compiler frontend status, CLI commands,
 platforms, and planned follow-up work. That view uses the bundled matrix when
 the language server is offline and marks the data as a packaged baseline.
@@ -75,7 +72,7 @@ logpoints, and `setVariable` are resolved from the native debug information;
 there is no compiler probe channel in this path. External adapters remain
 supported through `adapter` or `vitte.debug.program`.
 
-The 2.3 release synchronizes editor support with the current parser grammar, including `return` / `give`, procedure contracts (`requires` / `ensures`), `pick` variants, `match` arms, and external procedures. Shared lexical scanning keeps completion, navigation, indexing, and semantic highlighting consistent inside nested comments and strings. Version 2.3.2 adds source-scoped completions, actual filesystem module/import candidates, public export filtering, supported trait-method completion, constructor snippets, and signature help for local/imported procedures, supported methods and callable values.
+The 2.3 release synchronizes editor support with the current parser grammar, including `return` / `give`, procedure contracts (`requires` / `ensures`), `pick` variants, `match` arms, and external procedures. Shared lexical scanning keeps completion, navigation, indexing, and semantic highlighting consistent inside nested comments and strings. Version 2.3.2 adds source-scoped completions, actual filesystem module/import candidates, public export filtering, supported trait-method completion, constructor snippets, and signature help for local/imported procedures, supported methods and callable values. Version 2.3.3 adds source-derived hover details, scoped local and imported navigation, type and implementation navigation, bounded workspace symbols/references, and nested outlines for breadcrumbs. Call/type hierarchy remain unavailable until the compiler exposes verified relationship data.
 
 ```vit
 space hello
@@ -191,7 +188,7 @@ Open **Preferences: Open Settings (UI)** and search for `vitte`.
 
 ## Project
 
-- Extension: `VitteStudio.vitte-studio` · version `2.3.2`
+- Extension: `VitteStudio.vitte-studio` · version `2.3.3`
 - Requires VS Code `1.105` or later
 - License: [MIT](LICENSE)
 - Release notes: [CHANGELOG.md](CHANGELOG.md)

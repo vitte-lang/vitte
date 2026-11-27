@@ -4,17 +4,27 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { test, before } = require('node:test');
 const { TextDocument } = require('vscode-languageserver-textdocument');
-const { CompletionItemKind } = require('vscode-languageserver/node');
+const { CompletionItemKind, SymbolKind } = require('vscode-languageserver/node');
 const { Registry } = require('vscode-textmate');
 const oniguruma = require('vscode-oniguruma');
 const { scanLexical, maskNonCode, lexicalContextAt } = require('../server/out/src/lexical');
 const facts = require('../server/out/src/languageFacts');
 const { buildSemanticTokens, getSemanticTokensLegend } = require('../server/out/src/semantic');
-const { buildCodeMask } = require('../server/out/src/navigation');
+const {
+  buildCodeMask,
+  documentSymbols,
+  workspaceSymbols,
+  definitionAtPosition,
+  definitionAtPositionWithImports,
+  declarationAtPositionWithImports,
+  typeDefinitionAtPositionWithImports,
+  implementationAtPositionWithImports,
+  referencesAtPositionWithWorkspace,
+} = require('../server/out/src/navigation');
 const { provideCompletions, configureCompletions } = require('../server/out/src/completion');
 const { indexDocument, getDocumentIndex, clearIndex } = require('../server/out/src/indexer');
 const { provideSignatureHelp, provideSignatureHelpWithImports } = require('../server/out/src/signatureHelp');
-const { provideHover } = require('../server/out/src/semantic');
+const { provideHover, provideHoverWithImports } = require('../server/out/src/semantic');
 const { provideFormattingEdits, provideRangeFormattingEdits } = require('../server/out/src/formatting');
 const { isCapabilityAdvertised } = require('../server/out/src/intellisenseCapabilities');
 const root = path.resolve(__dirname, '..');
@@ -319,14 +329,114 @@ test('form initializer signature help follows named fields and documentation', (
   assert.equal(help.signatures[0].parameters[0].documentation.value, 'Horizontal axis.');
 });
 
-test('hover documents known language elements and leaves unknown user symbols empty', () => {
+test('hover explains builtins, keywords and unresolved user symbols', () => {
   const source = 'proc main() -> i32 { return missing_value; }';
   const document = doc(source);
   const returnHover = provideHover(document, document.positionAt(source.indexOf('return')));
   assert.match(returnHover.contents.value, /Retourne depuis une fonction/);
   const typeHover = provideHover(document, document.positionAt(source.indexOf('i32')));
   assert.match(typeHover.contents.value, /Type primitif/);
-  assert.equal(provideHover(document, document.positionAt(source.indexOf('missing_value') + 2)), null);
+  const missingHover = provideHover(document, document.positionAt(source.indexOf('missing_value') + 2));
+  assert.match(missingHover.contents.value, /indisponible/i);
+  assert.equal(provideHover(doc('// print is only a comment'), { line: 0, character: 5 }), null);
+  const builtinHover = provideHover(doc('proc main() { print("x"); }'), { line: 0, character: 16 });
+  assert.match(builtinHover.contents.value, /proc print\(value: string\) -> void/);
+});
+
+test('source hover resolves declarations, signatures, types, docs, fields, variants and simple inference', () => {
+  const source = [
+    '/// Coordinates in the plane.',
+    'form Point {',
+    ' /// Horizontal axis.',
+    ' x: i32,',
+    '}',
+    'pick State { Ready, Failed(string) }',
+    '/// Adds a value.',
+    '/// left: The input amount.',
+    'proc add(left: i32, point: Point) -> i32 { return left; }',
+    'proc run(point: Point) { let count = 7; point.x; State::Ready; add(count, point); }',
+  ].join('\n');
+  const document = doc(source);
+  const hover = (needle, offset = 1) => provideHover(document, document.positionAt(source.indexOf(needle) + offset)).contents.value;
+  assert.match(hover('add(left', 1), /proc add\(left: i32, point: Point\) -> i32/);
+  assert.match(hover('left: i32', 1), /paramètre left: i32/);
+  assert.match(hover('return left', 8), /input amount/);
+  assert.match(hover('point.x', 6), /x: i32/);
+  assert.match(hover('State::Ready', 7), /Ready/);
+  assert.match(hover('count = 7', 1), /Type annoté ou déduit.*int/);
+  assert.match(hover('Point {', 1), /form Point/);
+});
+
+test('navigation resolves local scopes, trait implementations, imports, aliases and workspace references', async (t) => {
+  const project = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-navigation-'));
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  const packageSource = [
+    'export form Point { x: i32 }',
+    'export type Place = Point;',
+    'export trait Readable { proc read() -> i32; }',
+    'impl Readable for Point { proc read(receiver: Point) -> i32 { return 1; } }',
+    'export proc compute(value: i32) -> i32 { return value; }',
+  ].join('\n');
+  fs.writeFileSync(path.join(project, 'pkg.vit'), packageSource);
+  const environment = { projectRoot: project, workspaceRoots: [project] };
+  const source = [
+    'use pkg::{Point as P, Place as PlaceAlias, Readable, compute as run};',
+    'proc inspect(point: P, place: PlaceAlias) { let value: i32 = 0; { let value: string = ""; value; } value; point.x; point.read(); run(value); }',
+    'proc other(point: P) { run(1); }',
+  ].join('\n');
+  const uri = require('node:url').pathToFileURL(path.join(project, 'main.vit')).toString();
+  const document = TextDocument.create(uri, 'vit', 1, source);
+  const at = (needle, delta = 0) => document.positionAt(source.indexOf(needle) + delta);
+  const innerValueDefinition = definitionAtPosition(document, at('value;', 1));
+  assert.deepEqual(innerValueDefinition[0].range.start, document.positionAt(source.indexOf('value: string')));
+  const outerValuePosition = document.positionAt(source.lastIndexOf('value;') + 1);
+  const outerDefinition = definitionAtPosition(document, outerValuePosition);
+  assert.deepEqual(outerDefinition[0].range.start, document.positionAt(source.indexOf('value: i32')));
+  const refs = await referencesAtPositionWithWorkspace(document, outerValuePosition, environment, [], true);
+  assert.equal(refs.locations.length, 3, 'the inner shadowed binding is excluded');
+
+  const importedHover = await provideHoverWithImports(document, at('run(value', 1), environment);
+  assert.match(importedHover.contents.value, /proc run\(value: i32\) -> i32/);
+  assert.match(importedHover.contents.value, /Alias de `compute`/);
+  const importedDefinition = await definitionAtPositionWithImports(document, at('run(value', 1), environment);
+  assert.equal(importedDefinition.locations[0].uri, require('node:url').pathToFileURL(path.join(project, 'pkg.vit')).toString());
+  const importedDeclaration = await declarationAtPositionWithImports(document, at('run(value', 1), environment);
+  assert.equal(importedDeclaration.locations[0].uri, importedDefinition.locations[0].uri);
+  const typeDefinition = await typeDefinitionAtPositionWithImports(document, at('point.x', 1), environment);
+  assert.equal(typeDefinition.locations[0].uri, require('node:url').pathToFileURL(path.join(project, 'pkg.vit')).toString());
+  const aliasTypeDefinition = await typeDefinitionAtPositionWithImports(document, at('PlaceAlias)', 2), environment);
+  assert.equal(aliasTypeDefinition.locations[0].range.start.character, packageSource.indexOf('Point {'));
+  const fieldDefinition = await definitionAtPositionWithImports(document, at('point.x', 6), environment);
+  assert.equal(fieldDefinition.locations[0].range.start.line, 0);
+  assert.equal(fieldDefinition.locations[0].range.start.character, packageSource.indexOf('x: i32'));
+
+  const traitPosition = document.positionAt(source.indexOf('Readable') + 2);
+  const implementations = await implementationAtPositionWithImports(document, traitPosition, environment, []);
+  assert.ok(implementations.locations.some(location => location.uri.endsWith('/pkg.vit')));
+  const methodImplementations = await implementationAtPositionWithImports(document, at('point.read', 8), environment, []);
+  assert.ok(methodImplementations.locations.some(location => location.uri.endsWith('/pkg.vit')));
+  const workspaceRefs = await referencesAtPositionWithWorkspace(document, at('run(value', 1), environment, [
+    { uri: require('node:url').pathToFileURL(path.join(project, 'other.vit')).toString(), doc: TextDocument.create(require('node:url').pathToFileURL(path.join(project, 'other.vit')).toString(), 'vit', 1, 'use pkg::{compute as run}; proc main() { run(2); }') },
+  ], true);
+  assert.ok(workspaceRefs.locations.some(location => location.uri.endsWith('/other.vit')));
+
+  const outline = documentSymbols(doc('space editor;\nform Point { x: i32 }\npick State { Ready, Failed(string) }\ntrait Readable { proc read() -> i32; }\nimpl Readable for Point { proc read(receiver: Point) {} }\nproc run(point: Point) { let value = 1; }'));
+  const flatten = items => items.flatMap(item => [item, ...flatten(item.children ?? [])]);
+  const outlineItems = flatten(outline);
+  assert.ok(outlineItems.some(item => item.name === 'x' && item.kind === SymbolKind.Field));
+  assert.ok(outlineItems.some(item => item.name === 'Ready' && item.kind === SymbolKind.EnumMember));
+  assert.ok(outlineItems.some(item => item.name === 'impl Readable for Point'));
+  assert.ok(outlineItems.some(item => item.name === 'editor' && item.kind === SymbolKind.Module));
+  assert.ok(outlineItems.some(item => item.name === 'value'));
+  const grouped = workspaceSymbols('read', [{ uri, doc: outline.length ? TextDocument.create(uri, 'vit', 1, 'trait Readable { proc read() {} }\nproc caller() {}') : document }], 20);
+  assert.ok(grouped.some(item => item.name === 'read' && item.containerName === 'Readable'));
+  const unresolved = await definitionAtPositionWithImports(doc('proc main() { mystery(); }'), { line: 0, character: 17 }, {});
+  assert.equal(unresolved.locations.length, 0);
+  assert.match(unresolved.unavailableReason, /n’est pas résolue/i);
+  const overloaded = doc('proc choose(value: i32) {}\nproc choose(value: string) {}\nproc main() { choose(1); }');
+  const ambiguous = await definitionAtPositionWithImports(overloaded, overloaded.positionAt(overloaded.getText().indexOf('choose(1)') + 1), {});
+  assert.equal(ambiguous.locations.length, 0);
+  assert.match(ambiguous.unavailableReason, /n’est pas résolue/i);
 });
 
 test('formatter normalizes whitespace and is idempotent', () => {
@@ -417,7 +527,7 @@ test('extension manifest exposes the matrix and keeps heuristic defaults off', (
   const settings = manifest.contributes.configuration.properties;
   assert.equal(settings['vitte.suggestions.localEngine.enabled'].default, false);
   assert.equal(settings['vitte.suggestions.ghostTextTop1Stable'].default, false);
-  assert.equal(settings['vitte.features.workspaceSymbols'].default, false);
+  assert.equal(settings['vitte.features.workspaceSymbols'].default, true);
   assert.equal(settings['vitte.features.inlayHints'].default, false);
   assert.match(settings['vitte.features.inlayHints'].description, /not advertised/i);
   assert.equal(manifest.main, './out/extension.js');
@@ -446,24 +556,34 @@ test('extension manifest exposes the matrix and keeps heuristic defaults off', (
   assert.ok(!manifest.files, 'package uses .vscodeignore so VSCE includes runtime dependencies by default');
 });
 
-test('bundled server serves completion, semantic tokens and symbols over stdio LSP', { timeout: 15000 }, async (t) => {
+test('bundled server serves editor features, navigation and workspace symbols over stdio LSP', { timeout: 15000 }, async (t) => {
   const { spawn } = require('node:child_process');
   const { createMessageConnection, StreamMessageReader, StreamMessageWriter } = require('vscode-jsonrpc/node');
+  const workspace = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-lsp-workspace-'));
+  const workspaceUri = require('node:url').pathToFileURL(workspace).toString();
+  fs.writeFileSync(path.join(workspace, 'workspace-indexed.vit'), 'proc workspaceOnly() {}\n');
+  fs.writeFileSync(path.join(workspace, 'diskapi.vit'), 'export proc workspaceApi(value: i32) -> i32 { return value; }\n');
   const child = spawn(process.execPath, [path.join(root, 'server/out/src/server.js'), '--stdio'], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });
   const connection = createMessageConnection(new StreamMessageReader(child.stdout), new StreamMessageWriter(child.stdin));
   t.after(() => { connection.dispose(); child.kill(); });
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
   child.stderr.resume();
   connection.listen();
-  const initialized = await connection.sendRequest('initialize', { processId: process.pid, rootUri: null, capabilities: {} });
+  const initialized = await connection.sendRequest('initialize', {
+    processId: process.pid,
+    rootUri: workspaceUri,
+    workspaceFolders: [{ uri: workspaceUri, name: 'vitte-lsp-workspace' }],
+    capabilities: {},
+  });
   const capabilityMatrix = JSON.parse(fs.readFileSync(path.join(root, 'server/src/capability-matrix.json'), 'utf8'));
   assert.equal(initialized.serverInfo?.version, capabilityMatrix.versions.languageServer);
   assert.ok(initialized.capabilities.completionProvider);
   assert.ok(initialized.capabilities.completionProvider.triggerCharacters.length > 0);
   assert.equal(initialized.capabilities.completionProvider.resolveProvider, true);
-  for (const capability of ['hoverProvider', 'signatureHelpProvider', 'documentSymbolProvider', 'documentFormattingProvider', 'documentRangeFormattingProvider', 'definitionProvider', 'referencesProvider', 'renameProvider', 'codeActionProvider', 'semanticTokensProvider']) {
+  for (const capability of ['hoverProvider', 'signatureHelpProvider', 'documentSymbolProvider', 'workspaceSymbolProvider', 'documentFormattingProvider', 'documentRangeFormattingProvider', 'definitionProvider', 'declarationProvider', 'typeDefinitionProvider', 'implementationProvider', 'referencesProvider', 'renameProvider', 'codeActionProvider', 'semanticTokensProvider']) {
     assert.ok(initialized.capabilities[capability], `missing tested LSP capability ${capability}`);
   }
-  for (const capability of ['workspaceSymbolProvider', 'inlayHintProvider', 'callHierarchyProvider', 'typeHierarchyProvider']) {
+  for (const capability of ['inlayHintProvider', 'callHierarchyProvider', 'typeHierarchyProvider']) {
     assert.equal(initialized.capabilities[capability], undefined, `unverified capability ${capability} must not be advertised`);
   }
   await connection.sendNotification('initialized', {});
@@ -480,6 +600,45 @@ test('bundled server serves completion, semantic tokens and symbols over stdio L
   assert.ok(tokens.data.length > 0);
   const symbols = await connection.sendRequest('textDocument/documentSymbol', { textDocument: { uri } });
   assert.ok(symbols.some(symbol => symbol.name === 'editorTarget' || symbol.children?.some(child => child.name === 'editorTarget')));
+  const workspaceResults = await connection.sendRequest('workspace/symbol', { query: 'editorTarget' });
+  assert.ok(workspaceResults.some(symbol => symbol.name === 'editorTarget'));
+  const diskSymbols = await connection.sendRequest('workspace/symbol', { query: 'workspaceOnly' });
+  assert.ok(diskSymbols.some(symbol => symbol.name === 'workspaceOnly' && symbol.location.uri.endsWith('/workspace-indexed.vit')));
+
+  const navigationUri = 'file:///vitte-protocol-navigation.vit';
+  const navigationText = [
+    'form EditorPoint { x: i32 }',
+    'trait EditorReadable { proc read() -> i32; }',
+    'impl EditorReadable for EditorPoint { proc read(receiver: EditorPoint) -> i32 { return 1; } }',
+    'proc editorUse(point: EditorPoint) -> i32 { point.x; return point.read(); }',
+  ].join('\n');
+  await connection.sendNotification('textDocument/didOpen', { textDocument: { uri: navigationUri, languageId: 'vit', version: 1, text: navigationText } });
+  const navDoc = TextDocument.create(navigationUri, 'vit', 1, navigationText);
+  const navAt = (needle, delta = 0) => navDoc.positionAt(navigationText.indexOf(needle) + delta);
+  const hover = await connection.sendRequest('textDocument/hover', { textDocument: { uri: navigationUri }, position: navAt('point.x', 1) });
+  assert.match(hover.contents.value, /EditorPoint/);
+  const definition = await connection.sendRequest('textDocument/definition', { textDocument: { uri: navigationUri }, position: navAt('point.x', 6) });
+  assert.deepEqual(definition[0].range.start, navDoc.positionAt(navigationText.indexOf('x: i32')));
+  const declaration = await connection.sendRequest('textDocument/declaration', { textDocument: { uri: navigationUri }, position: navAt('point.x', 6) });
+  assert.deepEqual(declaration[0].range.start, definition[0].range.start);
+  const typeDefinition = await connection.sendRequest('textDocument/typeDefinition', { textDocument: { uri: navigationUri }, position: navAt('point.x', 1) });
+  assert.deepEqual(typeDefinition[0].range.start, navDoc.positionAt(navigationText.indexOf('EditorPoint')));
+  const implementations = await connection.sendRequest('textDocument/implementation', { textDocument: { uri: navigationUri }, position: navAt('EditorReadable', 2) });
+  assert.ok(implementations.some(location => location.range.start.line === 2));
+  const references = await connection.sendRequest('textDocument/references', { textDocument: { uri: navigationUri }, position: navAt('editorUse', 2), context: { includeDeclaration: true } });
+  assert.ok(references.some(location => location.range.start.line === 3));
+
+  const importerPath = path.join(workspace, 'disk-use.vit');
+  const importerUri = require('node:url').pathToFileURL(importerPath).toString();
+  const importerText = 'use diskapi::{workspaceApi as api};\nproc useApi() { api(1); }';
+  await connection.sendNotification('textDocument/didOpen', { textDocument: { uri: importerUri, languageId: 'vit', version: 1, text: importerText } });
+  const crossFileReferences = await connection.sendRequest('textDocument/references', {
+    textDocument: { uri: importerUri },
+    position: { line: 1, character: importerText.split('\n')[1].indexOf('api') + 1 },
+    context: { includeDeclaration: true },
+  });
+  assert.ok(crossFileReferences.some(location => location.uri.endsWith('/diskapi.vit')));
+  assert.ok(crossFileReferences.some(location => location.uri === importerUri));
 
   const actionUri = 'file:///vitte-protocol-code-action.vit';
   const actionText = 'space editor_test;\nproc main() {   \n}\n';

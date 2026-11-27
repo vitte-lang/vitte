@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import type { Dir, Dirent } from "node:fs";
+import type { Location } from "vscode-languageserver/node";
 import * as path from "node:path";
 import * as os from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -33,16 +34,20 @@ export interface ImportedCompletionSymbol {
   kind: "procedure" | "form" | "pick" | "trait" | "type" | "opaque" | "constant";
   documentation?: string;
   constantType?: string;
+  location?: Location;
+  memberLocations?: Record<string, Location>;
 }
 
 export interface ImportedModuleAlias {
   alias: string;
   modulePath: string;
+  uri?: string;
 }
 
 export interface ImportedCompletionModel {
   symbols: ImportedCompletionSymbol[];
   modules: ImportedModuleAlias[];
+  moduleUri?: string;
 }
 
 interface ModuleFileSnapshot {
@@ -50,6 +55,7 @@ interface ModuleFileSnapshot {
   ctimeMs: number;
   size: number;
   uri: string;
+  document: TextDocument;
   procedures: ProcedureSymbol[];
   types: TypeSymbol[];
   constants: ModuleConstant[];
@@ -57,6 +63,7 @@ interface ModuleFileSnapshot {
 
 interface ModuleConstant {
   name: string;
+  nameStart: number;
   type?: string;
   documentation?: string;
 }
@@ -128,7 +135,7 @@ export async function importedCompletionModel(
     if (!snapshot) continue;
     const aliasMatch = /^\s*as\s+([A-Za-z_]\w*)/.exec(imported.suffix);
     if (aliasMatch?.[1]) {
-      modules.set(aliasMatch[1], { alias: aliasMatch[1], modulePath: imported.modulePath });
+      modules.set(aliasMatch[1], { alias: aliasMatch[1], modulePath: imported.modulePath, uri: snapshot.uri });
       continue;
     }
     const glob = /^\s*::\s*\*/.test(imported.suffix);
@@ -151,7 +158,7 @@ export async function importedCompletionModel(
       continue;
     }
     const namespaceName = imported.modulePath.split(/::|\//).pop();
-    if (namespaceName) modules.set(namespaceName, { alias: namespaceName, modulePath: imported.modulePath });
+    if (namespaceName) modules.set(namespaceName, { alias: namespaceName, modulePath: imported.modulePath, uri: snapshot.uri });
   }
 
   return { symbols: Array.from(symbols.values()), modules: Array.from(modules.values()) };
@@ -166,7 +173,7 @@ export async function readModuleExports(
   if (!snapshot) return { symbols: [], modules: [] };
   const symbols = new Map<string, ImportedCompletionSymbol>();
   addModuleExports(symbols, snapshot, modulePath);
-  return { symbols: Array.from(symbols.values()), modules: [] };
+  return { symbols: Array.from(symbols.values()), modules: [], moduleUri: snapshot.uri };
 }
 
 export function importPosition(text: string, offset: number): { parentPath: string; partialName: string; segmentStart: number; segmentEnd: number } | undefined {
@@ -274,11 +281,12 @@ async function readModule(modulePath: string, importerUri: string, environment: 
       const offset = match.index + match[0].indexOf(name);
       return {
         name,
+        nameStart: offset,
         type: match[2]?.trim(),
         documentation: getDocstringAtLine(document, document.positionAt(offset).line) ?? undefined,
       };
     }).filter(isPresent);
-    const snapshot: ModuleFileSnapshot = { mtimeMs: stats.mtimeMs, ctimeMs: stats.ctimeMs, size: stats.size, uri, procedures: model.procedures, types: model.types, constants };
+    const snapshot: ModuleFileSnapshot = { mtimeMs: stats.mtimeMs, ctimeMs: stats.ctimeMs, size: stats.size, uri, document, procedures: model.procedures, types: model.types, constants };
     if (!cached && MODULE_FILE_CACHE.size >= MAX_MODULE_CACHE_ENTRIES) {
       const oldest = MODULE_FILE_CACHE.keys().next().value;
       if (oldest) MODULE_FILE_CACHE.delete(oldest);
@@ -344,12 +352,37 @@ function addModuleExports(
     const publicTraitMethod = Boolean(procedure.implementedTrait && module.types.some((type) => type.kind === "trait" && type.name === procedure.implementedTrait && type.isPublic));
     if ((!procedure.isPublic && !publicTraitMethod) || (wanted && !wanted.has(procedure.name) && !importedWithOwnerType)) continue;
     const name = wanted?.get(procedure.name) ?? procedure.name;
-    target.set(`${name}:${module.uri}`, { name, originalName: procedure.name, modulePath, uri: module.uri, procedure, kind: "procedure", documentation: procedure.documentation });
+    const nameStart = procedure.nameStart ?? procedure.start;
+    target.set(`${name}:${module.uri}`, {
+      name,
+      originalName: procedure.name,
+      modulePath,
+      uri: module.uri,
+      procedure,
+      kind: "procedure",
+      documentation: procedure.documentation,
+      location: moduleLocation(module, nameStart, nameStart + procedure.name.length),
+    });
   }
   for (const type of module.types) {
     if (!type.isPublic || (wanted && !wanted.has(type.name))) continue;
     const name = wanted?.get(type.name) ?? type.name;
-    target.set(`${name}:${module.uri}`, { name, originalName: type.name, modulePath, uri: module.uri, type, kind: type.kind, documentation: type.documentation });
+    const nameStart = type.nameStart ?? type.start;
+    target.set(`${name}:${module.uri}`, {
+      name,
+      originalName: type.name,
+      modulePath,
+      uri: module.uri,
+      type,
+      kind: type.kind,
+      documentation: type.documentation,
+      location: moduleLocation(module, nameStart, nameStart + type.name.length),
+      memberLocations: Object.fromEntries([
+        ...type.fields.filter((field) => field.nameStart !== undefined).map((field) => [field.name, moduleLocation(module, field.nameStart ?? 0, (field.nameStart ?? 0) + field.name.length)] as const),
+        ...type.variants.filter((variant) => variant.nameStart !== undefined).map((variant) => [variant.name, moduleLocation(module, variant.nameStart ?? 0, (variant.nameStart ?? 0) + variant.name.length)] as const),
+        ...type.methods.filter((method) => method.nameStart !== undefined).map((method) => [method.name, moduleLocation(module, method.nameStart ?? 0, (method.nameStart ?? 0) + method.name.length)] as const),
+      ]),
+    });
   }
   for (const constant of module.constants) {
     if (wanted && !wanted.has(constant.name)) continue;
@@ -362,6 +395,7 @@ function addModuleExports(
       kind: "constant",
       constantType: constant.type,
       documentation: constant.documentation,
+      location: moduleLocation(module, constant.nameStart, constant.nameStart + constant.name.length),
     });
   }
 }
@@ -425,6 +459,19 @@ function modulePathToFilePath(modulePath: string): string {
 
 function pathToFileUri(file: string): string {
   return pathToFileURL(path.resolve(file)).toString();
+}
+
+function moduleLocation(module: ModuleFileSnapshot, start: number, end: number): Location {
+  const textLength = module.document.getText().length;
+  const safeStart = Math.max(0, Math.min(start, textLength));
+  const safeEnd = Math.max(safeStart, Math.min(end, textLength));
+  return {
+    uri: module.uri,
+    range: {
+      start: module.document.positionAt(safeStart),
+      end: module.document.positionAt(safeEnd),
+    },
+  };
 }
 
 function filePathFromUri(uri: string): string | undefined {

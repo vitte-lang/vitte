@@ -8,6 +8,8 @@ export interface ProcedureParameter {
   type?: string;
   mode?: string;
   documentation?: string;
+  nameStart?: number;
+  nameEnd?: number;
 }
 
 export interface ProcedureSymbol {
@@ -18,6 +20,8 @@ export interface ProcedureSymbol {
   documentation?: string;
   isPublic: boolean;
   start: number;
+  nameStart?: number;
+  nameEnd?: number;
   bodyStart?: number;
   bodyEnd?: number;
   declarationEnd: number;
@@ -33,12 +37,16 @@ export interface FormFieldSymbol {
   name: string;
   type: string;
   documentation?: string;
+  nameStart?: number;
+  nameEnd?: number;
 }
 
 export interface PickVariantSymbol {
   name: string;
   payload: string[];
   documentation?: string;
+  nameStart?: number;
+  nameEnd?: number;
 }
 
 export interface TypeSymbol {
@@ -52,6 +60,8 @@ export interface TypeSymbol {
   documentation?: string;
   isPublic: boolean;
   start: number;
+  nameStart?: number;
+  nameEnd?: number;
   bodyStart?: number;
   bodyEnd?: number;
   declarationEnd: number;
@@ -63,6 +73,10 @@ export interface LocalBinding {
   kind: CompletionItemKind;
   detail: string;
   start: number;
+  nameStart?: number;
+  nameEnd?: number;
+  scopeStart?: number;
+  scopeEnd?: number;
 }
 
 export interface DocumentCompletionModel {
@@ -116,7 +130,11 @@ function parseProcedures(doc: TextDocument, text: string, code: string): Procedu
     const open = cursor;
     const close = findClosing(code, open, "(", ")");
     if (close === undefined) continue;
-    const parameters = splitTopLevel(text.slice(open + 1, close)).map(parseParameter).filter(isPresent);
+    const parameterText = text.slice(open + 1, close);
+    const parameterCode = code.slice(open + 1, close);
+    const parameters = splitTopLevelFields(parameterText, parameterCode)
+      .map((segment) => parseParameter(segment.text, open + 1 + segment.start))
+      .filter(isPresent);
     const post = close + 1;
     const body = findDeclarationBody(code, post);
     const end = body ? findClosing(code, body.open, "{", "}") : undefined;
@@ -132,6 +150,8 @@ function parseProcedures(doc: TextDocument, text: string, code: string): Procedu
       documentation: getDocstringAtLine(doc, line) ?? undefined,
       isPublic: isPublicDeclaration(code, match.index),
       start: match.index,
+      nameStart: match.index + match[0].lastIndexOf(name),
+      nameEnd: match.index + match[0].lastIndexOf(name) + name.length,
       bodyStart: body?.open,
       bodyEnd: end,
       declarationEnd,
@@ -175,6 +195,8 @@ function parseTypes(doc: TextDocument, text: string, code: string): TypeSymbol[]
       documentation: getDocstringAtLine(doc, line) ?? undefined,
       isPublic: isPublicDeclaration(code, match.index),
       start: match.index,
+      nameStart: match.index + match[0].lastIndexOf(name),
+      nameEnd: match.index + match[0].lastIndexOf(name) + name.length,
       bodyStart: body?.open,
       bodyEnd,
       declarationEnd,
@@ -205,6 +227,8 @@ function parseFields(doc: TextDocument, text: string, code: string, start: numbe
       name,
       type,
       documentation: getDocstringAtLine(doc, doc.positionAt(offset).line) ?? undefined,
+      nameStart: offset,
+      nameEnd: offset + name.length,
     });
   }
   return dedupeByName(fields);
@@ -223,7 +247,13 @@ function parseVariants(doc: TextDocument, text: string, code: string, start: num
       ? splitTopLevel(payloadText).map((item) => item.trim()).filter(Boolean)
       : [];
     const offset = start + segment.start + segment.text.indexOf(name);
-    variants.push({ name, payload, documentation: getDocstringAtLine(doc, doc.positionAt(offset).line) ?? undefined });
+    variants.push({
+      name,
+      payload,
+      documentation: getDocstringAtLine(doc, doc.positionAt(offset).line) ?? undefined,
+      nameStart: offset,
+      nameEnd: offset + name.length,
+    });
   }
   return dedupeByName(variants);
 }
@@ -258,6 +288,10 @@ function parseVisibleBindings(
       kind,
       detail: `${kind === CompletionItemKind.Constant ? "constante" : "liaison locale"}${annotatedType ? `: ${annotatedType}` : initializerType ? `: ${initializerType}` : ""}`,
       start: match.index,
+      nameStart: match.index + match[0].indexOf(name),
+      nameEnd: match.index + match[0].indexOf(name) + name.length,
+      scopeStart: block?.open,
+      scopeEnd: block?.close,
     });
   }
 
@@ -271,6 +305,10 @@ function parseVisibleBindings(
         kind: CompletionItemKind.Variable,
         detail: `paramètre${type ? `: ${type}` : ""}`,
         start: procedure.bodyStart + 1,
+        nameStart: parameter.nameStart,
+        nameEnd: parameter.nameEnd,
+        scopeStart: procedure.bodyStart,
+        scopeEnd: procedure.bodyEnd,
       });
     }
   }
@@ -350,7 +388,7 @@ function attachTraitMethods(types: TypeSymbol[], procedures: ProcedureSymbol[]):
   }
 }
 
-function parseParameter(raw: string): ProcedureParameter | undefined {
+function parseParameter(raw: string, startOffset = 0): ProcedureParameter | undefined {
   const value = raw.trim();
   if (!value) return undefined;
   const modeMatch = /^(mut|move|owned|borrow)\s+/.exec(value);
@@ -358,7 +396,14 @@ function parseParameter(raw: string): ProcedureParameter | undefined {
   const colon = findTopLevelCharacter(withoutMode, ":");
   const name = /[A-Za-z_]\w*$/.exec((colon < 0 ? withoutMode : withoutMode.slice(0, colon)).trim())?.[0];
   if (!name) return undefined;
-  return { name, type: colon >= 0 ? withoutMode.slice(colon + 1).trim() : undefined, mode: modeMatch?.[1] };
+  const nameStart = startOffset + raw.indexOf(name);
+  return {
+    name,
+    type: colon >= 0 ? withoutMode.slice(colon + 1).trim() : undefined,
+    mode: modeMatch?.[1],
+    nameStart,
+    nameEnd: nameStart + name.length,
+  };
 }
 
 function parseGenericNames(value: string): string[] {
