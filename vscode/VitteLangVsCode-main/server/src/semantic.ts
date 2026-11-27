@@ -36,6 +36,7 @@ const TOKEN_TYPES = [
   "number",    // 8
   "string",    // 9
   "comment",   // 10
+  "operator",  // 11
 ] as const;
 
 const TOKEN_MODIFIERS: string[] = [];
@@ -52,6 +53,7 @@ const TYPE_INDEX = {
   number: 8,
   string: 9,
   comment: 10,
+  operator: 11,
 } as const;
 
 export function getSemanticTokensLegend(): SemanticTokensLegend {
@@ -113,6 +115,7 @@ export function provideHover(doc: TextDocument, position: Position): Hover | nul
 /* --------------------------- Semantic tokeniser --------------------------- */
 
 const KW = RESERVED_WORDS;
+const WORD_OPERATORS = new Set(["and", "or", "not", "is"]);
 
 // Cache basique par document/version
 const semCache = new WeakMap<TextDocument, { version: number; tokens: SemanticTokens }>();
@@ -148,7 +151,10 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
   for (const m of matchAll(/\b[A-Za-z_]\w*\b/g, text)) {
     if (!lex.mask[m.index]) continue;
     if (!KW.has(m[0])) continue;
-    insertSpan(spans, m.index, m.index + m[0].length, PRIMITIVE_TYPE_SET.has(m[0]) ? TYPE_INDEX.type : TYPE_INDEX.keyword);
+    const type = WORD_OPERATORS.has(m[0])
+      ? TYPE_INDEX.operator
+      : PRIMITIVE_TYPE_SET.has(m[0]) ? TYPE_INDEX.type : TYPE_INDEX.keyword;
+    insertSpan(spans, m.index, m.index + m[0].length, type);
   }
 
   // 5) déclarations: colorer uniquement le nom
@@ -189,6 +195,10 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
     }
   }
 
+  // 8) identifiants ordinaires : évite qu’ils restent tous au scope par défaut
+  // (souvent blanc), tout en laissant les déclarations et mots-clés prioritaires.
+  addIdentifierSpans(text, lex.mask, spans);
+
   // Tri global et émission
   spans.sort((a, b) => a.start - b.start || a.end - b.end);
   const builder = new SemanticTokensBuilder();
@@ -197,6 +207,32 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
   const tokens = builder.build();
   semCache.set(doc, { version: doc.version, tokens });
   return tokens;
+}
+
+function addIdentifierSpans(
+  text: string,
+  mask: Uint8Array,
+  spans: { start: number; end: number; type: number }[],
+) {
+  for (const m of matchAll(/[A-Za-z_]\w*/g, text)) {
+    const start = m.index;
+    const end = start + m[0].length;
+    const name = m[0];
+    if (!mask[start] || KW.has(name) || PRIMITIVE_TYPE_SET.has(name)) continue;
+
+    let beforeOffset = start - 1;
+    while (beforeOffset >= 0 && /\s/.test(text[beforeOffset])) beforeOffset--;
+    let afterOffset = end;
+    while (afterOffset < text.length && /\s/.test(text[afterOffset])) afterOffset++;
+    const previousPair = text.slice(Math.max(0, beforeOffset - 1), beforeOffset + 1);
+    const after = text[afterOffset] ?? "";
+    let type: number;
+    if (/^[A-Z]/.test(name)) type = TYPE_INDEX.type;
+    else if (after === "(") type = TYPE_INDEX.function;
+    else if (text[beforeOffset] === "." || previousPair === "::") type = TYPE_INDEX.property;
+    else type = TYPE_INDEX.variable;
+    insertSpan(spans, start, end, type);
+  }
 }
 
 /* --------------------------------- utils ---------------------------------- */
