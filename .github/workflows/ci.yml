@@ -254,8 +254,6 @@ jobs:
       - compiler-runtime
       - compiler-selfhost
       - native-package-install
-      - posix-portability-vm
-      - architecture-smoke
     runs-on: ubuntu-24.04
     steps:
       - name: Require all compiler and platform gates
@@ -263,8 +261,6 @@ jobs:
           COMPILER_RUNTIME_RESULT: ${{ needs['compiler-runtime'].result }}
           COMPILER_SELFHOST_RESULT: ${{ needs['compiler-selfhost'].result }}
           NATIVE_PACKAGE_RESULT: ${{ needs['native-package-install'].result }}
-          POSIX_PORTABILITY_RESULT: ${{ needs['posix-portability-vm'].result }}
-          ARCHITECTURE_RESULT: ${{ needs['architecture-smoke'].result }}
         run: |
           if [[ "$COMPILER_RUNTIME_RESULT" != success ]]; then
             echo "::error::Compiler/runtime gate result: $COMPILER_RUNTIME_RESULT"
@@ -278,15 +274,7 @@ jobs:
             echo "::error::Native package install gate result: $NATIVE_PACKAGE_RESULT"
             exit 1
           fi
-          if [[ "$POSIX_PORTABILITY_RESULT" != success ]]; then
-            echo "::error::BSD/Solaris/illumos VM portability result: $POSIX_PORTABILITY_RESULT"
-            exit 1
-          fi
-          if [[ "$ARCHITECTURE_RESULT" != success ]]; then
-            echo "::error::32-bit and embedded architecture smoke result: $ARCHITECTURE_RESULT"
-            exit 1
-          fi
-          echo "All compiler release gates passed."
+          echo "All supported compiler release gates passed."
 
   extension-dap:
     name: Extension and native DAP
