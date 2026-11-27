@@ -5,6 +5,16 @@ and adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.2] — 2026-11-27
+### Added
+- Context-aware language-server completion for visible local bindings, generic parameters, declarations, form fields, pick variants, supported attributes, callable values, imports and module paths found on disk.
+- Public export filtering, local/import aliases, supported trait methods, form-field and pick-variant completion, constructor and procedure snippets, and lazy completion documentation.
+- Signature help for nested/incomplete calls, generic procedures, imported aliases, callable values and named form initializer fields, including parameter docs.
+- Scoped `vitte.modulePaths` roots for filesystem-based imports and module discovery.
+
+### Changed
+- Keep completion and signature help explicitly partial in the capability matrix until the compiler exposes editor semantic queries; document that named procedure-call arguments are not in the active grammar.
+
 ## [2.3.1] — 2026-11-27
 ### Added
 - Lazy language-server startup for Vitte files and marked project workspaces, with Workspace Trust gates for project tools and debug sessions.

@@ -1,10 +1,10 @@
 {
   "schema": "vitte-capabilities@1",
-  "matrixVersion": "1.0.2",
+  "matrixVersion": "1.0.3",
   "updated": "2026-11-27",
   "versions": {
-    "extension": "2.3.1",
-    "languageServer": "2.3.0",
+    "extension": "2.3.2",
+    "languageServer": "2.3.2",
     "compilerEvidence": "0.1.1"
   },
   "statusDefinitions": {
@@ -41,9 +41,10 @@
       "advertised": true,
       "setting": "completion",
       "provider": "Vitte language server",
-      "description": "Keyword, builtin and indexed local-symbol completion.",
-      "limitation": "The list is not a compiler overload/type-resolution result; imported visibility and inferred types are limited.",
-      "evidence": ["test/language.test.cjs: completion is suppressed inside comments and strings and offers keywords", "test/language.test.cjs: bundled server serves completion over stdio LSP", "src/test/suite/extension.test.ts: LSP E2E completion and navigation"]
+      "description": "Contextual completions for lexical bindings, keywords, declared types, form fields, pick variants, callable declarations and values, attributes, filesystem module/import paths, explicitly imported exports, and trait methods with a visible implementation or generic trait bound.",
+      "limitation": "The active compiler has no editor semantic-query API. Results are parsed from a bounded source subset, so overload resolution and inferred receiver types are unavailable; direct inherent impl methods and type-qualified associated functions are not advertised because the active frontend does not validate them. Trait method suggestions require a visible trait plus a source-detected implementation or bound. Named procedure-call arguments are not in the active grammar. Missing module roots and unresolved typed receivers show a non-inserting status item. Files over 512 KiB use a lightweight keyword/builtin fallback; disk enumeration and module reads are bounded.",
+      "followUp": "CAP-LSP-002",
+      "evidence": ["test/language.test.cjs: completion is suppressed inside comments and strings and offers keywords", "test/language.test.cjs: completion follows local types, fields, variants, generic trait bounds, shadowing and nested lexical scopes", "test/language.test.cjs: completion resolves real module paths, public exports, aliases and imported trait members", "test/language.test.cjs: unsupported inherent methods and trait declarations are not advertised as callable members", "test/language.test.cjs: bundled server serves completion over stdio LSP", "Vitte 0.1.1 parse --stop-after-parser accepted the tested forms, pick variants, generic procedure and constructor fixture"]
     },
     {
       "id": "signature-help",
@@ -52,9 +53,10 @@
       "advertised": true,
       "setting": "signatureHelp",
       "provider": "Vitte language server",
-      "description": "Shows signatures for declarations indexed in the open source context.",
-      "limitation": "Nested calls and UTF-16 positions are covered; compiler-resolved imported overloads are not.",
-      "evidence": ["test/language.test.cjs: signature help counts arguments after strings containing surrogate pairs", "src/test/suite/extension.test.ts: LSP E2E nested signature help"]
+      "description": "Shows parameter names, types and available documentation for local and imported procedures, callable values, supported trait methods, and named form fields; tracks nested calls and incomplete argument lists.",
+      "limitation": "The active compiler has no editor semantic-query API. Imported and overloaded signatures are source-derived; named procedure-call arguments are unavailable in the active grammar, while named form fields are supported.",
+      "followUp": "CAP-LSP-002",
+      "evidence": ["test/language.test.cjs: signature help counts arguments after strings containing surrogate pairs", "test/language.test.cjs: signature help tracks nested incomplete calls, generics, aliases and parameter docs", "test/language.test.cjs: form initializer signature help follows named fields and documentation", "grammar/vitte.ebnf: procedure calls accept positional expression lists; form initializers accept named fields"]
     },
     {
       "id": "hover",
@@ -239,6 +241,13 @@
       "status": "partial",
       "description": "The dated audit records earlier local macOS arm64 verification, but this checkout's make -j2 currently fails in the bootstrap parser before reproducing those stages.",
       "evidence": ["make -j2 on 2026-11-27: bootstrap parser failed in src/compiler/backend/c17/ast_emitter.vitte and src/compiler/ir/ir.vitte", "make bootstrap-selfhost", "src/docs/compiler_0.1.1_audit.md"]
+    },
+    {
+      "id": "editor-semantic-api",
+      "label": "Compiler editor semantic API",
+      "status": "unavailable",
+      "description": "Compiler 0.1.1 exposes shell-script completion through the CLI but no editor query for scope, overload, type, import or signature semantics. The language server therefore reports only its tested source-derived subset.",
+      "evidence": ["vitte --help on compiler 0.1.1: completion command generates shell scripts", "grammar/vitte.ebnf: procedure calls use positional expression lists and form initializers use named fields"]
     }
   ],
   "cliCommands": [
@@ -247,6 +256,7 @@
     {"id": "run", "label": "vitte run", "status": "partial", "description": "Compiles and runs programs in the tested language subset using the host C17 toolchain.", "evidence": ["make test-runtime", "make test-compiler-integration"]},
     {"id": "install", "label": "vitte install", "status": "partial", "description": "Installer verifies registry metadata and archive hashes; the public JSON package archive currently has a compatibility blocker.", "evidence": ["src/docs/compiler_0.1.1_audit.md: C-20"]},
     {"id": "lex-parse-explain", "label": "vitte lex / parse / explain / version / help", "status": "implemented", "description": "CLI inspection and diagnostic commands implemented by the native driver.", "evidence": ["src/compiler/cli/process.vitte", "src/bootstrap/cli/command_spec.def"]},
+    {"id": "shell-completion", "label": "vitte completion", "status": "implemented", "description": "Generates shell completion scripts; this CLI command does not provide editor symbol or signature queries.", "evidence": ["vitte --help on compiler 0.1.1: completion command generates shell scripts", "src/compiler/cli/process.vitte"]},
     {"id": "test", "label": "vitte test", "status": "unavailable", "description": "Recognized by the argument parser but rejected by the native driver in compiler 0.1.1.", "followUp": "CAP-CLI-001", "evidence": ["src/docs/compiler_0.1.1_audit.md: C-09"]},
     {"id": "format", "label": "vitte fmt", "status": "unavailable", "description": "No formatter command is implemented in the native driver in compiler 0.1.1.", "followUp": "CAP-CLI-001", "evidence": ["src/docs/compiler_0.1.1_audit.md: C-09"]},
     {"id": "cross-target", "label": "Cross-target compile", "status": "unavailable", "description": "The native C17 host-tools path does not forward --target to a verified cross C toolchain.", "followUp": "CAP-PLATFORM-001", "evidence": ["src/compiler/driver/README.md", "docs/reference/support.html"]}
@@ -265,6 +275,7 @@
     {"id": "CAP-EXT-002", "label": "Implement or remove placeholder enterprise report plugins", "status": "planned", "description": "Do not map dead-code, documentation coverage or API-breakage reports to generic compiler checks. Add real tested providers or keep these plugin actions explicitly unavailable."},
     {"id": "CAP-EXT-001", "label": "Verify the minimum VS Code engine and offline VSIX contents", "status": "planned", "description": "Run the extension integration suite on VS Code 1.105, and retain release evidence that the packaged server, runtime dependencies, grammar, snippets and icon install and work from a local VSIX without a repository checkout."},
     {"id": "CAP-LSP-001", "label": "Use compiler symbol/type APIs for semantic editor features", "status": "planned", "description": "Replace text-index approximations for workspace symbols, cross-module navigation, inlay hints and hierarchies with compiler/LSP semantic data; add parity tests before advertising them."},
+    {"id": "CAP-LSP-002", "label": "Add compiler-backed completion and signature queries", "status": "planned", "description": "Expose scope, type, visibility, overload and signature data from the active compiler frontend before expanding beyond the tested source-derived completion subset; decide whether named procedure-call arguments belong to the language grammar."},
     {"id": "CAP-CLI-001", "label": "Implement or remove v0.1.1 test and formatter CLI commands", "status": "planned", "description": "The parser accepts these names but the native driver rejects them. Keep editor actions explicitly unavailable until command behavior and tests exist."},
     {"id": "CAP-PLATFORM-001", "label": "Close compiler platform and cross-target gates", "status": "planned", "description": "Resolve and rerun Linux x86_64, macOS arm64 and Windows x86_64 release gates; publish no wider platform claim until toolchain jobs pass."},
     {"id": "CAP-SUGGEST-001", "label": "Move inline suggestions behind verified language-server results", "status": "planned", "description": "Keep local n-gram/template and AI suggestion engines opt-in and experimental until outputs are validated against compiler/LSP semantics and stale candidates are rejected."},

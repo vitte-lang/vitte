@@ -4,6 +4,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { test, before } = require('node:test');
 const { TextDocument } = require('vscode-languageserver-textdocument');
+const { CompletionItemKind } = require('vscode-languageserver/node');
 const { Registry } = require('vscode-textmate');
 const oniguruma = require('vscode-oniguruma');
 const { scanLexical, maskNonCode, lexicalContextAt } = require('../server/out/src/lexical');
@@ -12,7 +13,7 @@ const { buildSemanticTokens, getSemanticTokensLegend } = require('../server/out/
 const { buildCodeMask } = require('../server/out/src/navigation');
 const { provideCompletions, configureCompletions } = require('../server/out/src/completion');
 const { indexDocument, getDocumentIndex, clearIndex } = require('../server/out/src/indexer');
-const { provideSignatureHelp } = require('../server/out/src/signatureHelp');
+const { provideSignatureHelp, provideSignatureHelpWithImports } = require('../server/out/src/signatureHelp');
 const { provideHover } = require('../server/out/src/semantic');
 const { provideFormattingEdits, provideRangeFormattingEdits } = require('../server/out/src/formatting');
 const { isCapabilityAdvertised } = require('../server/out/src/intellisenseCapabilities');
@@ -91,17 +92,164 @@ test('shared lexical masking handles nesting, attributes, raw/triple strings and
   for (let i = 0; i < source.length; i++) if (source[i] === '\r' || source[i] === '\n') assert.equal(masked[i], source[i]);
 });
 
-test('completion is suppressed inside every comment and string form, including EOF', () => {
+test('completion is suppressed inside every comment and string form, including EOF', async () => {
   configureCompletions();
   assert.equal(lexicalContextAt('// pro\n', 6), 'comment');
   for (const source of ['// pro', '# pro', '/* outer /* inner */ pro', '<<< pro', 'r##"pro', '"""pro', '"pro', "'pro"]) {
     const document = doc(source);
     assert.notEqual(lexicalContextAt(source, source.length), 'code', source);
-    assert.deepEqual(provideCompletions(document, document.positionAt(source.length)), [], source);
+    assert.deepEqual(await provideCompletions(document, document.positionAt(source.length)), [], source);
   }
   for (const source of ['/* done */', 'r#"done"#', '"""done"""', '<<< done >>>']) assert.equal(lexicalContextAt(source, source.length), 'code', source);
   const document = doc('ret');
-  assert.ok(provideCompletions(document, document.positionAt(3)).some(item => item.label === 'return'));
+  assert.ok((await provideCompletions(document, document.positionAt(3))).some(item => item.label === 'return'));
+});
+
+test('completion follows local types, fields, variants, generics and nested lexical scopes', async () => {
+  configureCompletions();
+  const source = [
+    'form Point { x: i32, y: string }',
+    'pick Result<T> { Ok(T), Err(Map<string, T>) }',
+    'proc inspect<T>(point: Point, value: T) { point. }',
+  ].join('\n');
+  const document = doc(source);
+  const memberOffset = source.indexOf('point.') + 'point.'.length;
+  const members = await provideCompletions(document, document.positionAt(memberOffset));
+  assert.deepEqual(members.map(item => item.label).sort(), ['x', 'y']);
+
+  const variantSource = source.replace('point. }', 'Result:: }');
+  const variantDocument = doc(variantSource);
+  const variants = await provideCompletions(variantDocument, variantDocument.positionAt(variantSource.indexOf('Result::') + 'Result::'.length));
+  assert.deepEqual(variants.map(item => item.label).sort(), ['Err', 'Ok']);
+  assert.match(variants.find(item => item.label === 'Err').textEdit.newText, /\$\{1:value1\}/);
+
+  const constructorSource = 'form Point { x: i32, y: string }\nproc make() { let point = Poi; }';
+  const constructorDocument = doc(constructorSource);
+  const constructorOffset = constructorSource.indexOf('Poi') + 3;
+  const constructor = (await provideCompletions(constructorDocument, constructorDocument.positionAt(constructorOffset))).find(item => item.label === 'Point');
+  assert.ok(constructor);
+  assert.match(constructor.textEdit.newText, /Point \{ x: \$\{1:x\}, y: \$\{2:y\} \}/);
+
+  const scopes = 'proc scope() {\n let outer: i32 = 0;\n {\n  let inner: i32 = 1;\n  inn\n }\n out\n}';
+  const scopeDocument = doc(scopes);
+  const innerItems = await provideCompletions(scopeDocument, scopeDocument.positionAt(scopes.indexOf('inn') + 3));
+  assert.ok(innerItems.some(item => item.label === 'inner'));
+  const outerItems = await provideCompletions(scopeDocument, scopeDocument.positionAt(scopes.lastIndexOf('out') + 3));
+  assert.ok(outerItems.some(item => item.label === 'outer'));
+  assert.ok(!outerItems.some(item => item.label === 'inner'));
+
+  const shadowSource = 'proc shadow() { let value: i32 = 0; { let value: string = ""; val } }';
+  const shadowDocument = doc(shadowSource);
+  const shadowItems = await provideCompletions(shadowDocument, shadowDocument.positionAt(shadowSource.lastIndexOf('val') + 3));
+  assert.equal(shadowItems.find(item => item.label === 'value').detail, 'liaison locale: string');
+
+  const implSource = 'form Box<T> { value: T }\nimpl<T> Box<T> { proc get(self: Box<T>) { let value: T; } }';
+  const implDocument = doc(implSource);
+  const genericOffset = implSource.lastIndexOf('T;') + 1;
+  const genericItems = await provideCompletions(implDocument, implDocument.positionAt(genericOffset));
+  assert.ok(genericItems.some(item => item.label === 'T' && item.detail === 'Paramètre générique en portée'));
+
+  const genericTraitSource = 'trait Readable { proc read() -> i32; }\nproc inspect<T: Readable>(value: T) { value.re }';
+  const genericTraitDocument = doc(genericTraitSource);
+  const genericTraitOffset = genericTraitSource.indexOf('value.re') + 'value.re'.length;
+  const genericTraitItems = await provideCompletions(genericTraitDocument, genericTraitDocument.positionAt(genericTraitOffset));
+  assert.ok(genericTraitItems.some(item => item.label === 'read' && item.kind === CompletionItemKind.Method));
+  const globalTraitSource = 'trait Readable { proc read() -> i32; }\nproc other() { re }';
+  const globalTraitItems = await provideCompletions(doc(globalTraitSource), doc(globalTraitSource).positionAt(globalTraitSource.indexOf('re }') + 2));
+  assert.ok(!globalTraitItems.some(item => item.label === 'read'), 'trait declarations are not offered as global functions');
+
+  const unsupportedImplSource = 'form Box { value: i32 }\nimpl Box { proc get(self: Box) {} }\nproc inspect(box: Box) { box.ge }';
+  const unsupportedImplDocument = doc(unsupportedImplSource);
+  const unsupportedImplOffset = unsupportedImplSource.indexOf('box.ge') + 'box.ge'.length;
+  const unsupportedImplItems = await provideCompletions(unsupportedImplDocument, unsupportedImplDocument.positionAt(unsupportedImplOffset));
+  assert.equal(unsupportedImplItems[0].data.source, 'unavailable');
+  assert.match(unsupportedImplItems[0].label, /méthode n’est pas résolue/);
+
+  const aliasSource = 'form Point { x: i32 }\ntype Alias = Point;\nproc make() { let p = Ali; }';
+  const aliasDocument = doc(aliasSource);
+  const aliasItems = await provideCompletions(aliasDocument, aliasDocument.positionAt(aliasSource.indexOf('Ali;') + 3));
+  assert.match(aliasItems.find(item => item.label === 'Alias').textEdit.newText, /Alias \{ x: \$\{1:x\} \}/);
+
+  const attributeDocument = doc('#[co');
+  const attributeItems = await provideCompletions(attributeDocument, attributeDocument.positionAt(4));
+  assert.ok(attributeItems.some(item => item.label === 'cold'));
+
+  const unresolvedMemberSource = 'proc inspect(value: MissingType) { value. }';
+  const unresolvedMemberDocument = doc(unresolvedMemberSource);
+  const unresolvedMemberItems = await provideCompletions(unresolvedMemberDocument, unresolvedMemberDocument.positionAt(unresolvedMemberSource.indexOf('value.') + 6));
+  assert.equal(unresolvedMemberItems[0].data.source, 'unavailable');
+  assert.match(unresolvedMemberItems[0].label, /Type du récepteur non résolu/);
+});
+
+test('completion resolves real module paths, public exports, aliases and imported members', async (t) => {
+  const project = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-completion-'));
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(project, 'pkg.vit'), [
+    'export form Point { x: i32, hidden: string }',
+    'export proc compute(value: i32) -> i32 { return value; }',
+    'export trait Readable { proc read() -> i32; }',
+    'impl Readable for Point { proc read() -> i32 { return 1; } }',
+    'proc private_proc() {}',
+    'export const MAX: i32 = 4;',
+    'const SECRET: i32 = 0;',
+  ].join('\n'));
+  const uri = require('node:url').pathToFileURL(path.join(project, 'main.vit')).toString();
+  const environment = { projectRoot: project, workspaceRoots: [project] };
+
+  const pathDocument = TextDocument.create(uri, 'vit', 1, 'use pk');
+  const pathItems = await provideCompletions(pathDocument, pathDocument.positionAt(6), environment);
+  assert.ok(pathItems.some(item => item.label === 'pkg'));
+  const configuredRoot = path.join(project, 'extra-modules');
+  fs.mkdirSync(configuredRoot);
+  fs.writeFileSync(path.join(configuredRoot, 'configured.vit'), 'export proc configured() {}');
+  const configuredSource = 'use conf';
+  const configuredDocument = TextDocument.create(uri, 'vit', 1, configuredSource);
+  const configuredItems = await provideCompletions(configuredDocument, configuredDocument.positionAt(configuredSource.length), { modulePaths: [configuredRoot] });
+  assert.ok(configuredItems.some(item => item.label === 'configured'));
+  const missingPath = TextDocument.create(uri, 'vit', 1, 'use absent::');
+  const missingPathItems = await provideCompletions(missingPath, missingPath.positionAt(missingPath.getText().length), environment);
+  assert.equal(missingPathItems[0].data.source, 'unavailable');
+  assert.equal(missingPathItems[0].textEdit.newText, '', 'unavailable-result selection leaves source unchanged');
+
+  const importDocument = TextDocument.create(uri, 'vit', 1, 'use pkg::{ com');
+  const importItems = await provideCompletions(importDocument, importDocument.positionAt(importDocument.getText().length), environment);
+  assert.ok(importItems.some(item => item.label === 'compute'));
+  assert.ok(!importItems.some(item => item.label === 'private_proc'));
+
+  const importedSource = 'use pkg::{compute as run, Point, MAX};\nru';
+  const importedDocument = TextDocument.create(uri, 'vit', 1, importedSource);
+  const items = await provideCompletions(importedDocument, importedDocument.positionAt(importedSource.length), environment);
+  assert.ok(items.some(item => item.label === 'run' && item.textEdit.newText.startsWith('run(')));
+  assert.ok(!items.some(item => item.label === 'compute' || item.label === 'private_proc' || item.label === 'SECRET'));
+
+  const constantSource = 'use pkg::{MAX};\nMA';
+  const constantDocument = TextDocument.create(uri, 'vit', 1, constantSource);
+  const constantItems = await provideCompletions(constantDocument, constantDocument.positionAt(constantSource.length), environment);
+  assert.equal(constantItems.find(item => item.label === 'MAX').kind, CompletionItemKind.Constant);
+  assert.equal(constantItems.find(item => item.label === 'MAX').detail, 'constante publique: i32');
+
+  const memberSource = 'use pkg::{Point, Readable};\nproc inspect(point: Point) { point. }';
+  const memberDocument = TextDocument.create(uri, 'vit', 1, memberSource);
+  const memberItems = await provideCompletions(memberDocument, memberDocument.positionAt(memberSource.indexOf('point.') + 6), environment);
+  assert.deepEqual(memberItems.map(item => item.label).sort(), ['hidden', 'read', 'x']);
+
+  const staticSource = 'use pkg::{Point, Readable};\nproc make() { Point:: }';
+  const staticDocument = TextDocument.create(uri, 'vit', 1, staticSource);
+  const staticItems = await provideCompletions(staticDocument, staticDocument.positionAt(staticSource.indexOf('Point::') + 'Point::'.length), environment);
+  assert.equal(staticItems[0].data.source, 'unavailable');
+  assert.match(staticItems[0].label, /Fonctions associées non annoncées/);
+
+  const methodSource = 'use pkg::{Point, Readable};\nproc inspect(point: Point) { point.read(';
+  const methodDocument = TextDocument.create(uri, 'vit', 1, methodSource);
+  const methodHelp = await provideSignatureHelpWithImports(methodDocument, methodDocument.positionAt(methodSource.length), environment);
+  assert.ok(methodHelp);
+  assert.match(methodHelp.signatures[0].label, /read\(\) -> i32/);
+
+  const ctorSource = 'use pkg::{Point};\nproc make() { let point = Point {  }; }';
+  const ctorDocument = TextDocument.create(uri, 'vit', 1, ctorSource);
+  const ctorItems = await provideCompletions(ctorDocument, ctorDocument.positionAt(ctorSource.indexOf('{  }') + 2), environment);
+  assert.ok(ctorItems.some(item => item.label === 'x'));
+  assert.ok(ctorItems.some(item => item.label === 'hidden'));
 });
 
 test('indexing ignores declarations in comments/strings and preserves locations after emoji', () => {
@@ -123,6 +271,52 @@ test('signature help counts arguments after strings containing surrogate pairs',
   const help = provideSignatureHelp(document, document.positionAt(source.length));
   assert.ok(help);
   assert.equal(help.activeParameter, 1);
+});
+
+test('signature help tracks nested incomplete calls, generics, aliases and parameter docs', async (t) => {
+  const source = [
+    '/// Combines two values.',
+    '/// Params:',
+    '/// left: first operand',
+    '/// right: second operand',
+    'proc combine<T>(left: T, right: T) -> T { return left; }',
+    'proc wrapper() { combine<int>(unknown(1, ',
+  ].join('\n');
+  const document = doc(source);
+  const help = provideSignatureHelp(document, document.positionAt(source.length));
+  assert.ok(help);
+  assert.match(help.signatures[0].label, /combine<T>\(left: T, right: T\)/);
+  assert.equal(help.activeParameter, 0);
+  assert.equal(help.signatures[0].parameters[0].documentation.value, 'first operand');
+
+  const project = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-signature-'));
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(project, 'pkg.vit'), 'export proc combine(left: i32, right: string) -> i32 { return left; }');
+  const uri = require('node:url').pathToFileURL(path.join(project, 'main.vit')).toString();
+  const importedSource = 'use pkg::{combine as join};\nproc main() { join(1, ';
+  const importedDocument = TextDocument.create(uri, 'vit', 1, importedSource);
+  const importedHelp = await provideSignatureHelpWithImports(importedDocument, importedDocument.positionAt(importedSource.length), { projectRoot: project });
+  assert.ok(importedHelp);
+  assert.match(importedHelp.signatures[0].label, /join\(left: i32, right: string\)/);
+  assert.equal(importedHelp.activeParameter, 1);
+
+  const callableSource = 'proc main() { let callback: proc(value: i32) -> bool = nil; callback(';
+  const callableDocument = doc(callableSource);
+  const callableHelp = provideSignatureHelp(callableDocument, callableDocument.positionAt(callableSource.length));
+  assert.ok(callableHelp);
+  assert.match(callableHelp.signatures[0].label, /callback\(value: i32\) -> bool/);
+  const callableItems = await provideCompletions(callableDocument, callableDocument.positionAt(callableSource.length));
+  assert.match(callableItems.find(item => item.label === 'callback').textEdit.newText, /callback\(\$\{1:value\}\)/);
+});
+
+test('form initializer signature help follows named fields and documentation', () => {
+  const source = '/// A coordinate.\nform Point {\n /// Horizontal axis.\n x: i32,\n y: i32,\n}\nproc make() { let p = Point { x: 1, y: ';
+  const document = doc(source);
+  const help = provideSignatureHelp(document, document.positionAt(source.length));
+  assert.ok(help);
+  assert.equal(help.activeParameter, 1);
+  assert.match(help.signatures[0].label, /Point \{ x: i32, y: i32 \}/);
+  assert.equal(help.signatures[0].parameters[0].documentation.value, 'Horizontal axis.');
 });
 
 test('hover documents known language elements and leaves unknown user symbols empty', () => {
@@ -246,6 +440,9 @@ test('extension manifest exposes the matrix and keeps heuristic defaults off', (
   assert.equal(settings['vitte.lsp.path'].type, 'string');
   assert.equal(settings['vitte.lsp.args'].type, 'array');
   assert.equal(settings['vitte.build.args'].type, 'array');
+  assert.equal(settings['vitte.modulePaths'].type, 'array');
+  assert.equal(settings['vitte.modulePaths'].scope, 'resource');
+  assert.equal(settings['vitte.modulePaths'].default.length, 0);
   assert.ok(!manifest.files, 'package uses .vscodeignore so VSCE includes runtime dependencies by default');
 });
 
@@ -262,7 +459,7 @@ test('bundled server serves completion, semantic tokens and symbols over stdio L
   assert.equal(initialized.serverInfo?.version, capabilityMatrix.versions.languageServer);
   assert.ok(initialized.capabilities.completionProvider);
   assert.ok(initialized.capabilities.completionProvider.triggerCharacters.length > 0);
-  assert.equal(initialized.capabilities.completionProvider.resolveProvider, undefined);
+  assert.equal(initialized.capabilities.completionProvider.resolveProvider, true);
   for (const capability of ['hoverProvider', 'signatureHelpProvider', 'documentSymbolProvider', 'documentFormattingProvider', 'documentRangeFormattingProvider', 'definitionProvider', 'referencesProvider', 'renameProvider', 'codeActionProvider', 'semanticTokensProvider']) {
     assert.ok(initialized.capabilities[capability], `missing tested LSP capability ${capability}`);
   }

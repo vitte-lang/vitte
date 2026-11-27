@@ -63,6 +63,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 
 /* Modules internes */
 import { provideCompletions, resolveCompletion, triggerCharacters, configureCompletions } from "./completion.js";
+import type { CompletionEnvironment } from "./moduleResolver.js";
 import {
   documentSymbols,
   definitionAtPosition,
@@ -82,7 +83,7 @@ import {
 import { provideFormattingEdits, provideRangeFormattingEdits } from "./formatting.js";
 import { getSemanticTokensLegend, buildSemanticTokens, provideHover } from "./semantic.js";
 import { provideInlayHints, type InlayHintPrefs } from "./inlay.js";
-import { provideSignatureHelp } from "./signatureHelp.js";
+import { provideSignatureHelpWithImports } from "./signatureHelp.js";
 import { getIntelliSenseCapabilities, isCapabilityAdvertised, LANGUAGE_SERVER_VERSION } from "./intellisenseCapabilities.js";
 import { lintToPublishable } from "./lint.js";
 import { registerCommands } from "./commands.js";
@@ -241,11 +242,11 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     textDocumentSync: TextDocumentSyncKind.Incremental,
   };
   if (isCapabilityAdvertised("completion")) {
-    serverCapabilities.completionProvider = { triggerCharacters: triggerCharacters() };
+    serverCapabilities.completionProvider = { triggerCharacters: triggerCharacters(), resolveProvider: true };
   }
   if (isCapabilityAdvertised("hover")) serverCapabilities.hoverProvider = true;
   if (isCapabilityAdvertised("signature-help")) {
-    serverCapabilities.signatureHelpProvider = { triggerCharacters: ["(", ","], retriggerCharacters: [","] };
+    serverCapabilities.signatureHelpProvider = { triggerCharacters: ["(", ",", "{", ":"], retriggerCharacters: [",", ":"] };
   }
   if (isCapabilityAdvertised("document-symbols")) serverCapabilities.documentSymbolProvider = true;
   if (isCapabilityAdvertised("formatting")) {
@@ -496,6 +497,42 @@ async function resolveWorkspaceRoots(): Promise<string[]> {
   }
 }
 
+async function resolveCompletionEnvironment(uri: string): Promise<CompletionEnvironment> {
+  const roots = await resolveWorkspaceRoots();
+  const workspace = Reflect.get(connection, "workspace") as RemoteWorkspace | undefined;
+  let config: Record<string, unknown> = {};
+  if (workspace && hasConfigurationCapability) {
+    try {
+      config = await workspace.getConfiguration({ scopeUri: uri, section: "vitte" }) as Record<string, unknown> ?? {};
+    } catch {
+      config = {};
+    }
+  }
+  const readSetting = (key: string): unknown => {
+    if (Object.prototype.hasOwnProperty.call(config, key)) return config[key];
+    let current: unknown = config;
+    for (const segment of key.split(".")) {
+      if (!current || typeof current !== "object") return undefined;
+      current = (current as Record<string, unknown>)[segment];
+    }
+    return current;
+  };
+  const firstRoot = roots[0] ?? process.cwd();
+  const configuredRoot = readSetting("project.root");
+  const projectRoot = typeof configuredRoot === "string" && configuredRoot.trim()
+    ? path.resolve(firstRoot, configuredRoot.trim())
+    : undefined;
+  const configuredPaths = readSetting("modulePaths");
+  const modulePaths = Array.isArray(configuredPaths)
+    ? configuredPaths.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => path.resolve(projectRoot ?? firstRoot, value.trim()))
+    : [];
+  const configuredCompiler = readSetting("compiler.path");
+  const compilerPath = typeof configuredCompiler === "string" && configuredCompiler.trim()
+    ? path.resolve(firstRoot, configuredCompiler.trim())
+    : undefined;
+  return { workspaceRoots: roots, projectRoot, modulePaths, compilerPath };
+}
+
 async function getIndexCachePath(): Promise<string | undefined> {
   const root = await resolveWorkspaceRoot();
   if (!root) return undefined;
@@ -711,7 +748,10 @@ connection.onCompletion(async (params: CompletionParams, token?: CancellationTok
     const doc = documents.get(params.textDocument.uri);
     if (!doc || cancelled(token)) return [];
     try {
-      const result = await withTimeout(Promise.resolve(provideCompletions(doc, params.position)), timeoutFor("completion"));
+      const result = await withTimeout((async () => {
+        const environment = await resolveCompletionEnvironment(doc.uri);
+        return provideCompletions(doc, params.position, environment);
+      })(), timeoutFor("completion"));
       metric("completion", start, doc.uri, result.length);
       recordSuccess();
       return result;
@@ -776,10 +816,10 @@ connection.onSignatureHelp(async (
     const doc = documents.get(params.textDocument.uri);
     if (!doc || cancelled(token) || tooLarge(doc)) return null;
     try {
-      const help = await withTimeout(
-        Promise.resolve(provideSignatureHelp(doc, params.position)),
-        timeoutFor("signatureHelp"),
-      );
+      const help = await withTimeout((async () => {
+        const environment = await resolveCompletionEnvironment(doc.uri);
+        return provideSignatureHelpWithImports(doc, params.position, environment);
+      })(), timeoutFor("signatureHelp"));
       metric("signatureHelp", start, doc.uri, help?.signatures.length ?? 0);
       recordSuccess();
       return help ?? null;

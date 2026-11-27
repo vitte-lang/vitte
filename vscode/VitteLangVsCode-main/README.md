@@ -41,20 +41,29 @@ Open a .vit file  →  Detect the toolchain  →  Edit with live feedback
 - `.vit` — Vitte source
 - `.vitl` — library and standard-library source
 - `.vitte` — legacy compatibility
-- TextMate highlighting, snippets, language-server completion and signature help, hover, diagnostics, semantic tokens, and formatting
+- TextMate highlighting, snippets, context-aware language-server completion and signature help, hover, diagnostics, semantic tokens, and formatting
 - Tested document symbols, definition, references, rename, and code actions
 - Workspace symbols, inlay hints, and call/type hierarchies are experimental prototypes and are not advertised to VS Code
 - Native DAP launch for `.vit` sources, with external DAP stdio and TCP attach retained for advanced/native targets
 
 ### Capability scope
 
-Editor capabilities use the bundled language server. Source-indexed navigation,
-completion, and diagnostics have documented limits; they are not compiler symbol
-or type-resolution results. The server advertises only the LSP providers with
+Editor capabilities use the bundled language server. Completion reads the open
+file, explicit imports and configured module roots; it parses source declarations
+for scopes and types, so it does not resolve compiler overloads or inferred types.
+Trait methods are offered only when a visible trait bound or implementation is
+present in source. Direct inherent `impl` methods and type-qualified associated
+functions are not offered because the active frontend does not validate them.
+Signature help includes procedure declarations, callable values, supported trait
+methods and named form fields. Named procedure-call arguments are not in the active
+grammar. These are bounded source results, not compiler symbol or type-resolution
+results. The server advertises only the LSP providers with
 automated evidence for their stated scope. Use **Vitte: Show Capabilities** for
 live enablement, evidence, limitations, compiler frontend status, CLI commands,
 platforms, and planned follow-up work. That view uses the bundled matrix when
 the language server is offline and marks the data as a packaged baseline.
+When an import root or explicitly typed receiver cannot be resolved, completion
+shows a non-inserting explanation instead of inventing members.
 Enterprise dead-code, documentation-coverage, and API-breakage reports are not
 implemented; the plugin picker does not offer them. Follow-up: `CAP-EXT-002`.
 
@@ -66,7 +75,7 @@ logpoints, and `setVariable` are resolved from the native debug information;
 there is no compiler probe channel in this path. External adapters remain
 supported through `adapter` or `vitte.debug.program`.
 
-The 2.3 release synchronizes editor support with the current parser grammar, including `return` / `give`, procedure contracts (`requires` / `ensures`), `pick` variants, `match` arms, and external procedures. Shared lexical scanning keeps completion, navigation, indexing, and semantic highlighting consistent inside nested comments and strings.
+The 2.3 release synchronizes editor support with the current parser grammar, including `return` / `give`, procedure contracts (`requires` / `ensures`), `pick` variants, `match` arms, and external procedures. Shared lexical scanning keeps completion, navigation, indexing, and semantic highlighting consistent inside nested comments and strings. Version 2.3.2 adds source-scoped completions, actual filesystem module/import candidates, public export filtering, supported trait-method completion, constructor snippets, and signature help for local/imported procedures, supported methods and callable values.
 
 ```vit
 space hello
@@ -154,6 +163,7 @@ Open **Preferences: Open Settings (UI)** and search for `vitte`.
 | `vitte.toolchain.root` | Toolchain installation root |
 | `vitte.compiler.path` | Compiler binary used for live diagnostics, standalone build/run, and native debugging |
 | `vitte.project.root` | Project-root override for local binary discovery and build/run tasks |
+| `vitte.modulePaths` | Additional filesystem roots searched for module and import completions; relative paths start at the project/workspace root and the setting is scoped to workspace/folder |
 | `vitte.lsp.path` | Optional external language-server binary |
 | `vitte.lsp.args` | Arguments for the external language-server executable |
 | `vitte.serverPath` | Optional custom JavaScript language-server module |
@@ -181,7 +191,7 @@ Open **Preferences: Open Settings (UI)** and search for `vitte`.
 
 ## Project
 
-- Extension: `VitteStudio.vitte-studio` · version `2.3.1`
+- Extension: `VitteStudio.vitte-studio` · version `2.3.2`
 - Requires VS Code `1.105` or later
 - License: [MIT](LICENSE)
 - Release notes: [CHANGELOG.md](CHANGELOG.md)
