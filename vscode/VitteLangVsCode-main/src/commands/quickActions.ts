@@ -84,14 +84,14 @@ const BUILTIN_ACTION_DEFS: QuickActionDefinition[] = [
   {
     id: 'tests',
     label: '🧪 Tests',
-    description: 'Execute the toolchain test suite (vitte.test)',
+    description: 'Available only inside the Vitte compiler repository; standalone test is not implemented',
     command: 'vitte.test',
     highlightLastRun: true,
   },
   {
     id: 'testFile',
     label: '🧪 Test file',
-    description: 'Run vitte.testCurrent for *_test.vit/.vitl/.vitte files',
+    description: 'Unavailable: the CLI does not implement current-file tests',
     command: 'vitte.testCurrent',
     isSuggested: (ctx) => ctx.activeIsTestFile,
     highlightLastRun: true,

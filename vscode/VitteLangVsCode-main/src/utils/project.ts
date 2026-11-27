@@ -57,8 +57,12 @@ export function projectCommand(options: {
     return { bin: 'make', args: [action === 'build' ? 'all' : action, `MODE=${mode}`], cwd: repository };
   }
   if (action === 'clean') return { bin: '', args: [], cwd: root, outputDir: path.join(root, 'build', 'vscode') };
+  if (action === 'test') {
+    const scope = options.currentFileOnly ? 'current-file tests are unavailable' : 'vitte test is unavailable for standalone projects';
+    throw new Error(`${scope} in compiler 0.1.1. Use Vitte: Show Capabilities for the current support matrix.`);
+  }
   if (!input) throw new Error('Aucun fichier Vitte actif ou src/main.vit trouvé.');
-  const args = [action === 'build' ? 'compile' : action === 'test' ? 'check' : 'run', input];
+  const args = [action === 'build' ? 'compile' : 'run', input];
   if (options.profile && options.profile !== 'default') args.push(`--profile=${compilerProfile(options.profile)}`);
   if (options.incremental) args.push('--incremental');
   if (action === 'build') {

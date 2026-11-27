@@ -1,65 +1,55 @@
-/**
- * Public capability contract for the Vitte IntelliSense surface.
- *
- * This deliberately describes editor capabilities separately from the native
- * compiler/DAP slice. The Microsoft C/C++ extension exposes both through one
- * product; Vitte exposes the same contract and keeps external DAP fallback.
- */
+import matrix from "./capability-matrix.json";
 
-export interface VitteIntelliSenseCapabilities {
-  schemaVersion: 1;
-  provider: "vitte-lsp";
-  paritySurface: "microsoft-cpp-intellisense";
-  lsp: {
-    completion: true;
-    signatureHelp: true;
-    hover: true;
-    diagnostics: true;
-    documentSymbols: true;
-    workspaceSymbols: true;
-    definition: true;
-    references: true;
-    rename: true;
-    codeActions: true;
-    formatting: true;
-    semanticTokens: true;
-    inlayHints: true;
-    callHierarchy: true;
-    typeHierarchy: true;
-  };
-  debugging: {
-    dap: "native-process" | "external-adapter";
-    nativeBackend: true;
-    compilerDebugInfo: true;
+type CapabilityStatus = "implemented" | "partial" | "planned" | "unavailable";
+type EditorFeature = (typeof matrix.editorFeatures)[number];
+
+export interface VitteCapabilityMatrix {
+  schema: string;
+  matrixVersion: string;
+  updated: string;
+  versions: typeof matrix.versions;
+  advertisingRule: string;
+  statusDefinitions: typeof matrix.statusDefinitions;
+  editorFeatures: (EditorFeature & { enabled?: boolean })[];
+  compilerFrontends: typeof matrix.compilerFrontends;
+  cliCommands: typeof matrix.cliCommands;
+  platforms: typeof matrix.platforms;
+  followUps: typeof matrix.followUps;
+}
+
+const matrixFeatures = new Map(matrix.editorFeatures.map((feature) => [feature.id, feature]));
+
+/** Only tested features may be included in LSP initialize capabilities. */
+export function isCapabilityAdvertised(id: string): boolean {
+  const feature = matrixFeatures.get(id);
+  return Boolean(
+    feature?.advertised &&
+    feature.status !== "planned" &&
+    feature.status !== "unavailable" &&
+    feature.evidence.length > 0,
+  );
+}
+
+export function getIntelliSenseCapabilities(
+  enabledFeatures: Partial<Record<string, boolean>> = {},
+): VitteCapabilityMatrix {
+  return {
+    ...matrix,
+    editorFeatures: matrix.editorFeatures.map((feature) => ({
+      ...feature,
+      advertised: isCapabilityAdvertised(feature.id),
+      enabled: feature.setting
+        ? isCapabilityAdvertised(feature.id) && (enabledFeatures[feature.setting] ?? true)
+        : undefined,
+    })),
   };
 }
 
-export function getIntelliSenseCapabilities(): VitteIntelliSenseCapabilities {
-  return {
-    schemaVersion: 1,
-    provider: "vitte-lsp",
-    paritySurface: "microsoft-cpp-intellisense",
-    lsp: {
-      completion: true,
-      signatureHelp: true,
-      hover: true,
-      diagnostics: true,
-      documentSymbols: true,
-      workspaceSymbols: true,
-      definition: true,
-      references: true,
-      rename: true,
-      codeActions: true,
-      formatting: true,
-      semanticTokens: true,
-      inlayHints: true,
-      callHierarchy: true,
-      typeHierarchy: true,
-    },
-    debugging: {
-      dap: "native-process",
-      nativeBackend: true,
-      compilerDebugInfo: true,
-    },
-  };
+export function capabilityStatusLabel(status: CapabilityStatus): string {
+  switch (status) {
+    case "implemented": return "Implemented and tested";
+    case "partial": return "Partial; see scope";
+    case "planned": return "Planned; not advertised";
+    case "unavailable": return "Unavailable in compiler 0.1.1";
+  }
 }

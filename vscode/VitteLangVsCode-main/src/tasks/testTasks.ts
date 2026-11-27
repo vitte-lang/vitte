@@ -2,14 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
-// Tiny helpers (strict/optional-safe)
-function ensureString(x: string | undefined, fallback: string): string {
-  return (typeof x === 'string' && x.length > 0) ? x : fallback;
-}
-function sanitizeArgs(args: (string | undefined)[]): string[] {
-  return args.filter((a): a is string => typeof a === 'string' && a.length > 0);
-}
-
 // Compat: Uri.joinPath may not exist on older @types/vscode
 function joinPathCompat(base: vscode.Uri, ...parts: string[]): vscode.Uri {
   const anyUri = vscode.Uri as unknown as { joinPath?: (base: vscode.Uri, ...pathSegments: string[]) => vscode.Uri };
@@ -17,25 +9,10 @@ function joinPathCompat(base: vscode.Uri, ...parts: string[]): vscode.Uri {
   return vscode.Uri.file(path.join(base.fsPath, ...parts));
 }
 
-/** Build the shell command to run tests. */
+/** The native 0.1.1 driver does not implement this legacy command builder. */
 export function testCommandLine(withReport: boolean): string {
-  const cfg = vscode.workspace.getConfiguration('vitte');
-
-  // Prefer explicit runtime if configured (string), else fallback to 'vitte'
-  const runtime = ensureString(cfg.get<string>('runtime.path') ?? cfg.get<string>('debug.program'), 'vitte');
-
-  // Optional args from settings
-  const extra = sanitizeArgs([
-    cfg.get<string>('test.args'),
-  ]);
-
-  // Compose: `vitte test [--report] ...extra`
-  const parts = [runtime, 'test'];
-  if (withReport) parts.push('--report');
-  parts.push(...extra);
-
-  // Return a single shell string (ShellExecution will pass it to the shell)
-  return parts.join(' ');
+  void withReport;
+  throw new Error('vitte test is unavailable in compiler 0.1.1; use the compiler repository Make target when working on Vitte itself.');
 }
 
 /** Directory where test reports are written (best-effort). */

@@ -1,7 +1,7 @@
 {
   "name": "vitte-studio",
   "displayName": "Vitte Language Support",
-  "description": "Editor support for the official Vitte C17 compiler: completion, diagnostics, navigation, Make workflows and native debugging.",
+  "description": "Editor support and project workflows for Vitte. See the versioned capability matrix for tested scope and platform limits.",
   "version": "2.3.0",
   "publisher": "VitteStudio",
   "license": "MIT",
@@ -26,20 +26,6 @@
     "ui"
   ],
   "main": "./out/extension.js",
-  "files": [
-    "out/**",
-    "server/out/**",
-    "syntaxes/**",
-    "snippets/**",
-    "media/**",
-    "icons/**",
-    "assets/**",
-    "schemas/**",
-    "language-configuration.json",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE"
-  ],
   "contributes": {
     "languages": [
       {
@@ -119,7 +105,7 @@
               "nativeBackend": {
                 "type": "boolean",
                 "default": true,
-                "description": "Use the bundled native Vitte DAP backend when no external adapter is configured."
+                "description": "Experimental: use the bundled native DAP backend when no external adapter is configured. The repository DAP job targets Ubuntu 24.04; configure an external adapter for other environments."
               },
               "adapter": {
                 "type": "string",
@@ -226,6 +212,10 @@
       {
         "command": "vitte.showServerMetrics",
         "title": "Vitte: Show Server Metrics"
+      },
+      {
+        "command": "vitte.showCapabilities",
+        "title": "Vitte: Show Capabilities"
       },
       {
         "command": "vitte.metrics.refresh",
@@ -453,12 +443,12 @@
       },
       {
         "command": "vitte.test",
-        "title": "Vitte: Test",
+        "title": "Vitte: Test (compiler repository only)",
         "category": "Vitte"
       },
       {
         "command": "vitte.testCurrent",
-        "title": "Vitte: Test Current File",
+        "title": "Vitte: Test Current File (unavailable)",
         "category": "Vitte"
       },
       {
@@ -478,7 +468,7 @@
       },
       {
         "command": "vitte.runTests",
-        "title": "Vitte: Run All Tests",
+        "title": "Vitte: Run Compiler Repository Tests",
         "category": "Vitte"
       },
       {
@@ -599,11 +589,6 @@
       {
         "command": "vitte.codelens.runProc",
         "title": "Vitte: CodeLens Run Proc",
-        "category": "Vitte"
-      },
-      {
-        "command": "vitte.codelens.runTest",
-        "title": "Vitte: CodeLens Run Test",
         "category": "Vitte"
       },
       {
@@ -1461,28 +1446,14 @@
         "vitte.suggestions.streaming": {
           "type": "boolean",
           "default": true,
-          "description": "Enable streaming completion (local first paint + progressive LSP enrichment)."
+          "description": "Enable time-bounded language-server completion; only language-server results are displayed."
         },
         "vitte.suggestions.streamingFirstPaintMs": {
           "type": "number",
           "default": 75,
           "minimum": 10,
           "maximum": 2000,
-          "description": "First paint timeout budget (ms) before returning local streaming suggestions."
-        },
-        "vitte.suggestions.streamingLocalBatchSize": {
-          "type": "number",
-          "default": 40,
-          "minimum": 5,
-          "maximum": 400,
-          "description": "Maximum number of immediate local suggestions in streaming mode."
-        },
-        "vitte.suggestions.streamingCacheTtlMs": {
-          "type": "number",
-          "default": 1500,
-          "minimum": 100,
-          "maximum": 10000,
-          "description": "TTL (ms) for progressive completion cache used between suggest refreshes."
+          "description": "Wait budget (ms) before reporting an LSP timeout; local or cached candidates are not substituted."
         },
         "vitte.suggestions.streamingAutoRefresh": {
           "type": "boolean",
@@ -1508,28 +1479,7 @@
           "default": 120,
           "minimum": 50,
           "maximum": 1000,
-          "description": "Hard timeout (ms) for LSP completion call before local/cache fallback is kept."
-        },
-        "vitte.suggestions.negativeCacheTimeoutThreshold": {
-          "type": "number",
-          "default": 3,
-          "minimum": 1,
-          "maximum": 12,
-          "description": "Number of consecutive LSP completion timeouts before temporary negative cache activation."
-        },
-        "vitte.suggestions.negativeCacheHoldMs": {
-          "type": "number",
-          "default": 2500,
-          "minimum": 300,
-          "maximum": 15000,
-          "description": "Duration (ms) for negative cache hold after repeated LSP completion timeouts."
-        },
-        "vitte.suggestions.highLoadThreshold": {
-          "type": "number",
-          "default": 6,
-          "minimum": 1,
-          "maximum": 16,
-          "description": "System load threshold triggering ultra-fast prefix-only local fallback."
+          "description": "Hard timeout (ms) for a language-server completion response before an explicit timeout warning is shown."
         },
         "vitte.suggestions.lintGuard": {
           "type": "boolean",
@@ -1608,67 +1558,6 @@
           "maximum": 32,
           "description": "Number of recently accepted labels (per document) considered for sticky-top boosting."
         },
-        "vitte.suggestions.cachePrefixTtlMs": {
-          "type": "number",
-          "default": 1500,
-          "minimum": 100,
-          "maximum": 15000,
-          "description": "TTL (ms) for exact prefix-level completion cache."
-        },
-        "vitte.suggestions.cacheContextTtlMs": {
-          "type": "number",
-          "default": 4000,
-          "minimum": 100,
-          "maximum": 30000,
-          "description": "TTL (ms) for line-context completion cache."
-        },
-        "vitte.suggestions.cacheDocumentTtlMs": {
-          "type": "number",
-          "default": 12000,
-          "minimum": 500,
-          "maximum": 120000,
-          "description": "TTL (ms) for document-level completion cache."
-        },
-        "vitte.suggestions.cacheMaxEntries": {
-          "type": "number",
-          "default": 1200,
-          "minimum": 32,
-          "maximum": 5000,
-          "description": "Maximum number of entries per completion cache map (LRU)."
-        },
-        "vitte.suggestions.cacheSoftMemoryMb": {
-          "type": "number",
-          "default": 1536,
-          "minimum": 128,
-          "maximum": 8192,
-          "description": "Soft memory threshold (MB). When exceeded, caches are trimmed progressively."
-        },
-        "vitte.suggestions.idlePrefetch": {
-          "type": "boolean",
-          "default": true,
-          "description": "Prefetch completions around the cursor while idle to warm caches."
-        },
-        "vitte.suggestions.prefetchDirectional": {
-          "type": "boolean",
-          "default": true,
-          "description": "Prioritize directional prefetch around cursor instead of symmetric line scan."
-        },
-        "vitte.suggestions.prefetchDirection": {
-          "type": "string",
-          "enum": [
-            "forward",
-            "backward"
-          ],
-          "default": "forward",
-          "description": "Direction preference for directional idle prefetch."
-        },
-        "vitte.suggestions.prefetchLineRadius": {
-          "type": "number",
-          "default": 1,
-          "minimum": 0,
-          "maximum": 6,
-          "description": "Idle prefetch radius around active line (line +/- N)."
-        },
         "vitte.suggestions.pagination": {
           "type": "boolean",
           "default": true,
@@ -1697,8 +1586,8 @@
         },
         "vitte.suggestions.ghostTextTop1Stable": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable ghost text preview from top-1 suggestion when it remains stable across refreshes."
+          "default": false,
+          "description": "Experimental: enable inline suggestions from heuristic templates and optional local/AI engines. Disabled by default; candidates are not compiler-checked."
         },
         "vitte.suggestions.ghostTextStableThreshold": {
           "type": "number",
@@ -1723,8 +1612,8 @@
         },
         "vitte.suggestions.localEngine.enabled": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable local repo-only n-gram/pattern inline engine (no external backend)."
+          "default": false,
+          "description": "Experimental: enable local n-gram/pattern inline suggestions. Disabled by default because candidates are not compiler-resolved."
         },
         "vitte.suggestions.localEngine.maxFiles": {
           "type": "number",
@@ -1998,8 +1887,8 @@
         },
         "vitte.features.workspaceSymbols": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable workspace symbols."
+          "default": false,
+          "description": "Experimental prototype searches open documents only; disabled and not advertised until workspace indexing is complete and tested."
         },
         "vitte.features.semanticTokens": {
           "type": "boolean",
@@ -2018,8 +1907,8 @@
         },
         "vitte.features.inlayHints": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable inlay hints (inferred types, parameters, aliases)."
+          "default": false,
+          "description": "Experimental source heuristics can be inaccurate; disabled and not advertised until hints use compiler-resolved types."
         },
         "vitte.requestTimeouts.inlayHints": {
           "type": "number",
@@ -2161,7 +2050,7 @@
         "vitte.debug.nativeBackend": {
           "type": "boolean",
           "default": true,
-          "description": "Enable the bundled native Vitte DAP process backend when no external adapter is configured."
+          "description": "Experimental: enable the bundled native Vitte DAP backend when no external adapter is configured. The repository DAP job targets Ubuntu 24.04; configure an external adapter for other environments."
         },
         "vitte.debug.adapterArgs": {
           "type": "array",

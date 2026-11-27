@@ -16,7 +16,7 @@ import * as vscode from "vscode";
 import { PlaygroundPanel } from "./providers/playgroundPanel";
 import { registerBuildTasks } from "./tasks/buildTasks";
 import { registerBenchTasks } from "./tasks/benchTasks";
-import { registerRuntimeLocatorCommand } from "./debug/runtimeLocator";
+import { locateVitteRuntime, registerRuntimeLocatorCommand } from "./debug/runtimeLocator";
 import { registerDebugFactory } from "./debug/adapterFactory";
 import { registerDebugConfigurationProvider } from "./debug/configurationProvider";
 import { registerTelemetry } from "./utils/telemetry";
@@ -58,18 +58,78 @@ import {
   resetSuggestionLearningState,
   getSuggestionLearningSnapshot,
   type SuggestionTuning,
-  buildLocalCompletionBatch,
-  buildPrefixOnlyLocalBatch,
   getCompletionRequestKey,
-  getCompletionContextKey,
-  getCompletionDocumentKey,
 } from "./utils/suggestions";
 import { LocalInlineEngine, type LocalInlineEngineOptions } from "./utils/localInlineEngine";
 import { AiInlinePipeline, type AiInlinePipelineOptions } from "./utils/aiInlinePipeline";
 
+interface CapabilityRow {
+  id: string;
+  label: string;
+  status: string;
+  description?: string;
+  limitation?: string;
+  evidence?: string[];
+  followUp?: string;
+  setting?: string;
+  advertised?: boolean;
+  enabled?: boolean;
+  product?: string;
+  platform?: string;
+}
+
+interface CapabilityMatrixPayload {
+  matrixVersion: string;
+  versions: { compilerEvidence: string };
+  editorFeatures: CapabilityRow[];
+  compilerFrontends: CapabilityRow[];
+  cliCommands: CapabilityRow[];
+  platforms: CapabilityRow[];
+  followUps: CapabilityRow[];
+}
+
+async function readBundledCapabilityMatrix(context: vscode.ExtensionContext): Promise<CapabilityMatrixPayload> {
+  const matrixPath = path.join(context.extensionPath, "server", "out", "src", "capability-matrix.json");
+  const parsed = JSON.parse(await fs.promises.readFile(matrixPath, "utf8")) as CapabilityMatrixPayload;
+  if (!parsed.matrixVersion || !parsed.versions?.compilerEvidence || !Array.isArray(parsed.editorFeatures)) {
+    throw new Error("the packaged capability matrix is invalid");
+  }
+  return parsed;
+}
+
+function capabilityRows(title: string, entries: CapabilityRow[]): vscode.QuickPickItem[] {
+  const statusLabels: Record<string, string> = {
+    implemented: "Implemented and tested",
+    partial: "Partial / experimental",
+    planned: "Planned",
+    unavailable: "Unavailable",
+  };
+  return [
+    { label: title, kind: vscode.QuickPickItemKind.Separator },
+    ...entries.map((entry) => {
+      const status = statusLabels[entry.status] ?? entry.status;
+      const enabled = entry.enabled === undefined ? "" : entry.enabled ? " · enabled" : " · disabled";
+      const advertised = entry.advertised === false ? " · not advertised" : "";
+      const detail = [
+        entry.description,
+        entry.limitation ? `Limitation: ${entry.limitation}` : undefined,
+        entry.product || entry.platform ? `Platform: ${[entry.product, entry.platform].filter(Boolean).join(" — ")}` : undefined,
+        entry.followUp ? `Follow-up: ${entry.followUp}` : undefined,
+        entry.evidence?.length ? `Evidence: ${entry.evidence.join("; ")}` : "No automated evidence recorded.",
+      ].filter(Boolean).join("\n");
+      return {
+        label: `${entry.label}  ·  ${status}`,
+        description: `${entry.id}${enabled}${advertised}`,
+        detail,
+      };
+    }),
+  ];
+}
+
 let client: LanguageClient | undefined;
 let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
+let completionTimeoutNoticeShown = false;
 
 let statusBaseIcon = "$(rocket)";
 const STATUS_LABEL = "Vitte";
@@ -107,9 +167,6 @@ let configRestartTimer: NodeJS.Timeout | undefined;
 let extensionShuttingDown = false;
 let activationStartedAt = Date.now();
 const completionLatencyWindowMs: number[] = [];
-const completionStreamingCachePrefix = new Map<string, { items: vscode.CompletionItem[]; ts: number }>();
-const completionStreamingCacheContext = new Map<string, { items: vscode.CompletionItem[]; ts: number }>();
-const completionStreamingCacheDocument = new Map<string, { items: vscode.CompletionItem[]; ts: number }>();
 const completionStreamingInFlight = new Map<string, Promise<void>>();
 const completionPagingState = new Map<string, { page: number; ts: number }>();
 const completionAstFingerprintByDoc = new Map<string, string>();
@@ -128,14 +185,10 @@ let localInlineEngine: LocalInlineEngine | undefined;
 let aiInlinePipeline: AiInlinePipeline | undefined;
 const localInlineReindexTimers = new Map<string, NodeJS.Timeout>();
 let suggestionEngineModeSuffix = "local";
-let completionIdlePrefetchTimer: NodeJS.Timeout | undefined;
-let completionPrefetchInFlight = false;
-let completionPrefetchExpectedKey: string | undefined;
 const typingSpeedByDoc = new Map<string, { lastEditAt: number; intervalEwmaMs: number }>();
 const completionRequestStartedAt = new Map<string, number>();
 const completionRequestRefreshed = new Map<string, boolean>();
 const completionFirstUsableMarked = new Set<string>();
-const completionLspNegativeCache = new Map<string, { timeouts: number; until: number }>();
 const completionStreamingFirstPaintMs: number[] = [];
 const completionStreamingEnrichMs: number[] = [];
 const completionFirstUsableMs: number[] = [];
@@ -153,10 +206,6 @@ let completionPendingRejectedItems: vscode.CompletionItem[] = [];
 const completionShownBySource = new Map<string, number>();
 const completionAcceptedBySource = new Map<string, number>();
 const completionStickyAcceptedByDoc = new Map<string, string[]>();
-let completionCacheRequestCount = 0;
-let completionCacheHitCount = 0;
-let completionPrefetchRequestCount = 0;
-let completionPrefetchHitCount = 0;
 let completionColdStartCount = 0;
 const completionColdStartMs: number[] = [];
 const completionStableListMs: number[] = [];
@@ -164,11 +213,7 @@ const completionNoRefreshStrictMs: number[] = [];
 const completionShadowAgreement: number[] = [];
 const completionShadowDrift: number[] = [];
 const completionOpenedAtByDoc = new Map<string, number>();
-let completionCacheEvictionCount = 0;
-let completionCachePressureEvents = 0;
-let lastCachePressureLogAt = 0;
 let completionFallbackTimeoutCount = 0;
-let completionFallbackNegativeCacheCount = 0;
 let completionFallbackOfflineCount = 0;
 let completionFallbackCancelCount = 0;
 let lastDiagSchemaSignature = "";
@@ -390,95 +435,6 @@ function shouldKeepSuggestionWithDiagnosticContext(
   return false;
 }
 
-function mapEstimatedMb(map: Map<string, { items: vscode.CompletionItem[]; ts: number }>): number {
-  let bytes = 0;
-  for (const [k, v] of map) {
-    bytes += k.length * 2;
-    bytes += 16;
-    for (const it of v.items) {
-      const lbl = typeof it.label === "string" ? it.label : it.label.label;
-      bytes += lbl.length * 2 + 64;
-    }
-  }
-  return bytes / (1024 * 1024);
-}
-
-function touchMapEntry<K, V>(map: Map<K, V>, key: K, value: V): void {
-  if (map.has(key)) map.delete(key);
-  map.set(key, value);
-}
-
-function evictLruEntries<K, V>(map: Map<K, V>, maxEntries: number): number {
-  let evicted = 0;
-  while (map.size > maxEntries) {
-    const oldest = map.keys().next().value;
-    if (oldest === undefined) break;
-    map.delete(oldest);
-    evicted += 1;
-  }
-  return evicted;
-}
-
-function trimCompletionCaches(maxEntries: number, softMemoryMb: number): void {
-  const beforePrefix = completionStreamingCachePrefix.size;
-  const beforeContext = completionStreamingCacheContext.size;
-  const beforeDocument = completionStreamingCacheDocument.size;
-  completionCacheEvictionCount += evictLruEntries(completionStreamingCachePrefix, maxEntries);
-  completionCacheEvictionCount += evictLruEntries(completionStreamingCacheContext, maxEntries);
-  completionCacheEvictionCount += evictLruEntries(completionStreamingCacheDocument, maxEntries);
-
-  const rssMb = process.memoryUsage().rss / (1024 * 1024);
-  const cacheMb = mapEstimatedMb(completionStreamingCachePrefix)
-    + mapEstimatedMb(completionStreamingCacheContext)
-    + mapEstimatedMb(completionStreamingCacheDocument);
-  if (rssMb <= softMemoryMb && cacheMb <= Math.max(8, softMemoryMb * 0.25)) return;
-
-  completionCachePressureEvents += 1;
-  let target = Math.max(32, Math.floor(maxEntries * 0.8));
-  if (rssMb > softMemoryMb * 1.5) {
-    target = Math.max(32, Math.floor(maxEntries * 0.6));
-  }
-  if (rssMb > softMemoryMb * 2.0) {
-    target = Math.max(16, Math.floor(maxEntries * 0.35));
-  }
-  completionCacheEvictionCount += evictLruEntries(completionStreamingCachePrefix, target);
-  completionCacheEvictionCount += evictLruEntries(completionStreamingCacheContext, target);
-  completionCacheEvictionCount += evictLruEntries(completionStreamingCacheDocument, target);
-
-  const evictedTotal = (beforePrefix - completionStreamingCachePrefix.size)
-    + (beforeContext - completionStreamingCacheContext.size)
-    + (beforeDocument - completionStreamingCacheDocument.size);
-  if (evictedTotal > 0 && (Date.now() - lastCachePressureLogAt) > 30000) {
-    lastCachePressureLogAt = Date.now();
-    obsLog("completion.cache.pressure.trim", "warn", {
-      rssMb: Number(rssMb.toFixed(1)),
-      cacheMb: Number(cacheMb.toFixed(1)),
-      maxEntries,
-      target,
-      evictedTotal,
-      pressureEvents: completionCachePressureEvents,
-    });
-  }
-}
-
-function getValidCacheItems(
-  map: Map<string, { items: vscode.CompletionItem[]; ts: number }>,
-  key: string,
-  ttlMs: number,
-): vscode.CompletionItem[] {
-  const now = Date.now();
-  const entry = map.get(key);
-  if (!entry) return [];
-  if ((now - entry.ts) > ttlMs) {
-    map.delete(key);
-    return [];
-  }
-  // touch for LRU behavior
-  map.delete(key);
-  map.set(key, entry);
-  return entry.items;
-}
-
 function clearCacheMapByUriPrefix(
   map: Map<string, unknown>,
   uriPrefix: string,
@@ -500,9 +456,6 @@ function clearSetByUriPrefix(
 function invalidateCompletionCachesForDocument(document: vscode.TextDocument): void {
   const uriPrefix = `${document.uri.toString()}#`;
   const inlinePrefix = `${document.uri.toString()}::`;
-  clearCacheMapByUriPrefix(completionStreamingCachePrefix, uriPrefix);
-  clearCacheMapByUriPrefix(completionStreamingCacheContext, uriPrefix);
-  clearCacheMapByUriPrefix(completionStreamingCacheDocument, uriPrefix);
   clearCacheMapByUriPrefix(completionStreamingInFlight, uriPrefix);
   clearCacheMapByUriPrefix(completionPagingState, uriPrefix);
   clearCacheMapByUriPrefix(completionTop1StableByKey, uriPrefix);
@@ -516,9 +469,6 @@ function invalidateCompletionCachesForDocument(document: vscode.TextDocument): v
 }
 
 function resetSuggestionRuntimeState(): void {
-  completionStreamingCachePrefix.clear();
-  completionStreamingCacheContext.clear();
-  completionStreamingCacheDocument.clear();
   completionStreamingInFlight.clear();
   completionPagingState.clear();
   completionLoadNextPageKey = undefined;
@@ -528,7 +478,6 @@ function resetSuggestionRuntimeState(): void {
   inlineSuggestionCycleByKey.clear();
   inlineNextEditBoostByDoc.clear();
   completionStickyAcceptedByDoc.clear();
-  completionLspNegativeCache.clear();
   completionRequestStartedAt.clear();
   completionRequestRefreshed.clear();
   completionFirstUsableMarked.clear();
@@ -554,16 +503,8 @@ function resetSuggestionRuntimeState(): void {
   completionPendingRejectedItems = [];
   completionShownBySource.clear();
   completionAcceptedBySource.clear();
-  completionCacheRequestCount = 0;
-  completionCacheHitCount = 0;
-  completionPrefetchRequestCount = 0;
-  completionPrefetchHitCount = 0;
   completionColdStartCount = 0;
-  completionCacheEvictionCount = 0;
-  completionCachePressureEvents = 0;
-  lastCachePressureLogAt = 0;
   completionFallbackTimeoutCount = 0;
-  completionFallbackNegativeCacheCount = 0;
   completionFallbackOfflineCount = 0;
   completionFallbackCancelCount = 0;
   completionTraceActiveByKey.clear();
@@ -625,76 +566,6 @@ function scheduleAstCacheInvalidation(document: vscode.TextDocument, invalidateO
     completionAstRefreshTimers.delete(key);
   }, invalidateOnChange ? 220 : 60);
   completionAstRefreshTimers.set(key, timer);
-}
-
-function scheduleCompletionIdlePrefetch(editor: vscode.TextEditor | undefined): void {
-  if (!editor) return;
-  const cfg = vscode.workspace.getConfiguration("vitte");
-  const enabled = cfg.get<boolean>("suggestions.idlePrefetch", true);
-  if (!enabled) return;
-  const radius = Math.max(0, Math.min(6, cfg.get<number>("suggestions.prefetchLineRadius", 1)));
-  const directional = cfg.get<boolean>("suggestions.prefetchDirectional", true);
-  if (completionIdlePrefetchTimer) clearTimeout(completionIdlePrefetchTimer);
-  completionIdlePrefetchTimer = setTimeout(() => {
-    void (async () => {
-      if (completionPrefetchInFlight) return;
-      completionPrefetchInFlight = true;
-      try {
-        const doc = editor.document;
-        const base = editor.selection.active;
-        const positions: vscode.Position[] = [];
-        const direction = cfg.get<"forward" | "backward">("suggestions.prefetchDirection", "forward");
-        const deltas = directional
-          ? (direction === "forward"
-            ? [0, 1, 2, -1, 3, -2]
-            : [0, -1, -2, 1, -3, 2])
-          : [];
-        if (directional) {
-          for (const d of deltas) {
-            if (Math.abs(d) > radius) continue;
-            const line = base.line + d;
-            if (line < 0 || line >= doc.lineCount) continue;
-            const lineLen = doc.lineAt(line).text.length;
-            const character = Math.min(base.character, lineLen);
-            positions.push(new vscode.Position(line, character));
-          }
-        } else {
-          for (let delta = -radius; delta <= radius; delta += 1) {
-            const line = base.line + delta;
-            if (line < 0 || line >= doc.lineCount) continue;
-            const lineLen = doc.lineAt(line).text.length;
-            const character = Math.min(base.character, lineLen);
-            positions.push(new vscode.Position(line, character));
-          }
-        }
-        completionPrefetchRequestCount += positions.length;
-        for (const pos of positions) {
-          completionPrefetchExpectedKey = getCompletionRequestKey(doc, pos);
-          await vscode.commands.executeCommand<vscode.CompletionList | vscode.CompletionItem[]>(
-            "vscode.executeCompletionItemProvider",
-            doc.uri,
-            pos,
-          );
-        }
-      } catch {
-        // Best-effort prefetch.
-      } finally {
-        completionPrefetchExpectedKey = undefined;
-        completionPrefetchInFlight = false;
-      }
-    })();
-  }, 180);
-}
-
-function seedDedupKey(item: vscode.CompletionItem): string {
-  const label = (typeof item.label === "string" ? item.label : item.label.label).trim().toLowerCase();
-  const kind = String(item.kind ?? 0);
-  const insert = typeof item.insertText === "string"
-    ? item.insertText
-    : item.insertText instanceof vscode.SnippetString
-      ? item.insertText.value
-      : "";
-  return `${label}|${kind}|${insert.replace(/\s+/g, " ").trim().toLowerCase()}`;
 }
 
 function pushWindowSample(target: number[], value: number, max = 256): void {
@@ -968,7 +839,7 @@ function inlineNextEditCandidate(document: vscode.TextDocument, position: vscode
 function readLocalInlineEngineOptions(): LocalInlineEngineOptions {
   const cfg = vscode.workspace.getConfiguration("vitte");
   return {
-    enabled: cfg.get<boolean>("suggestions.localEngine.enabled", true),
+    enabled: cfg.get<boolean>("suggestions.localEngine.enabled", false),
     maxFiles: Math.max(50, Math.min(50000, cfg.get<number>("suggestions.localEngine.maxFiles", 6000))),
     maxFileSizeKB: Math.max(16, Math.min(8192, cfg.get<number>("suggestions.localEngine.maxFileSizeKB", 256))),
     maxSuggestions: Math.max(1, Math.min(24, cfg.get<number>("suggestions.localEngine.inlineTopK", 8))),
@@ -1019,7 +890,7 @@ function readAiInlinePipelineOptions(): AiInlinePipelineOptions {
 
 function updateSuggestionEngineModeSuffix(): void {
   const cfg = vscode.workspace.getConfiguration("vitte");
-  const inline = cfg.get<boolean>("suggestions.ghostTextTop1Stable", true);
+  const inline = cfg.get<boolean>("suggestions.ghostTextTop1Stable", false);
   const ai = cfg.get<boolean>("suggestions.aiPipeline.enabled", false);
   const backend = cfg.get<boolean>("suggestions.aiPipeline.backendEnabled", false);
   const localOnly = cfg.get<boolean>("suggestions.aiPipeline.localOnly", true);
@@ -1106,21 +977,16 @@ function getStreamingCompletionStats(): {
   acceptanceRate: number;
   cancelRate: number;
   acceptanceBySource: string;
-  cacheHitRate: number;
-  prefetchHitRate: number;
   coldStartCount: number;
   coldStartP50Ms: number;
   coldStartP95Ms: number;
   stableListP50Ms: number;
   stableListP95Ms: number;
-  cacheEvictions: number;
-  cachePressureEvents: number;
   firstUsableP50Ms: number;
   firstUsableP95Ms: number;
   noRefreshStrictP50Ms: number;
   noRefreshStrictP95Ms: number;
   fallbackTimeoutCount: number;
-  fallbackNegativeCacheCount: number;
   fallbackOfflineCount: number;
   fallbackCancelCount: number;
   shadowAgreementP50: number;
@@ -1130,8 +996,6 @@ function getStreamingCompletionStats(): {
 } {
   const total = Math.max(1, completionStreamingTotalCount);
   const totalShown = Math.max(1, completionSuggestionShownCount);
-  const cacheReq = Math.max(1, completionCacheRequestCount);
-  const prefetchReq = Math.max(1, completionPrefetchRequestCount);
   const acceptanceBySource = ["local", "cache", "lsp", "plugin", "unknown"]
     .map((src) => {
       const shown = completionShownBySource.get(src) ?? 0;
@@ -1159,21 +1023,16 @@ function getStreamingCompletionStats(): {
     acceptanceRate: completionSuggestionAcceptedCount / totalShown,
     cancelRate: completionSuggestionCanceledCount / totalShown,
     acceptanceBySource,
-    cacheHitRate: completionCacheHitCount / cacheReq,
-    prefetchHitRate: completionPrefetchHitCount / prefetchReq,
     coldStartCount: completionColdStartCount,
     coldStartP50Ms: percentileLocal(completionColdStartMs, 0.5),
     coldStartP95Ms: percentileLocal(completionColdStartMs, 0.95),
     stableListP50Ms: percentileLocal(completionStableListMs, 0.5),
     stableListP95Ms: percentileLocal(completionStableListMs, 0.95),
-    cacheEvictions: completionCacheEvictionCount,
-    cachePressureEvents: completionCachePressureEvents,
     firstUsableP50Ms: percentileLocal(completionFirstUsableMs, 0.5),
     firstUsableP95Ms: percentileLocal(completionFirstUsableMs, 0.95),
     noRefreshStrictP50Ms: percentileLocal(completionNoRefreshStrictMs, 0.5),
     noRefreshStrictP95Ms: percentileLocal(completionNoRefreshStrictMs, 0.95),
     fallbackTimeoutCount: completionFallbackTimeoutCount,
-    fallbackNegativeCacheCount: completionFallbackNegativeCacheCount,
     fallbackOfflineCount: completionFallbackOfflineCount,
     fallbackCancelCount: completionFallbackCancelCount,
     shadowAgreementP50: percentileLocal(completionShadowAgreement, 0.5),
@@ -1374,7 +1233,6 @@ interface CommandMessageItem extends vscode.MessageItem {
 const DEFAULT_COMMAND_SHORTCUTS: readonly CommandShortcutConfig[] = [
   { label: "Build", command: "vitte.build", icon: "$(tools)", tooltip: "Build the workspace (vitte.build)", statusBar: true, startup: true },
   { label: "Run", command: "vitte.run", icon: "$(debug-start)", tooltip: "Build and run the entry point (vitte.run)", statusBar: true, startup: true },
-  { label: "Test", command: "vitte.test", icon: "$(beaker)", tooltip: "Execute the test suite (vitte.test)", statusBar: true, startup: true },
 ] as const;
 
 const COMMAND_MENU_ENTRIES: readonly CommandMenuEntry[] = [
@@ -1383,7 +1241,8 @@ const COMMAND_MENU_ENTRIES: readonly CommandMenuEntry[] = [
   { label: "New Module", description: "Scaffold a new module file", command: "vitte.newModule" },
   { label: "New Package", description: "Scaffold a new package", command: "vitte.newPackage" },
   { label: "Generate VS Code Config", description: "Create .vscode/tasks.json + launch.json", command: "vitte.generateWorkspaceConfig" },
-  { label: "Doctor", description: "check + lint + fmt + test + perf", command: "vitte.doctor" },
+  { label: "Doctor", description: "Run the compiler check supported by this workspace", command: "vitte.doctor" },
+  { label: "Capabilities and support", description: "Show tested editor, compiler, CLI and platform support", command: "vitte.showCapabilities" },
   { label: "Clean workspace", description: "Remove build outputs", command: "vitte.clean" },
   { label: "Bench workspace", description: "Run vitte.bench", command: "vitte.bench" },
   { label: "Bench extension CI", description: "Activation/memory/completion latency snapshot", command: "vitte.benchExtensionCi" },
@@ -1741,9 +1600,6 @@ async function showStartupCommandPrompt(context: vscode.ExtensionContext): Promi
   const diagSummary = summarizeWorkspaceDiagnostics();
   const diagState = readDiagnosticsRefreshState(context);
   const recommendedCommands = new Set<string>();
-  if (diagSummary.errors > 0) {
-    recommendedCommands.add("vitte.test");
-  }
   if (diagState.stale || diagSummary.warnings > 0) {
     recommendedCommands.add("vitte.diagnostics.refresh");
   }
@@ -1970,6 +1826,65 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     vscode.commands.registerCommand("vitte.showServerLog", () => {
       output.show(true);
     }),
+    vscode.commands.registerCommand("vitte.showCapabilities", async () => {
+      const requestId = nextRequestId("capabilities");
+      let matrix: CapabilityMatrixPayload;
+      let fromLanguageServer = false;
+      try {
+        if (client?.state === ClientState.Running) {
+          matrix = await client.sendRequest<CapabilityMatrixPayload>("vitte/capabilityMatrix");
+          fromLanguageServer = true;
+        } else {
+          matrix = await readBundledCapabilityMatrix(context);
+        }
+      } catch (error) {
+        try {
+          matrix = await readBundledCapabilityMatrix(context);
+        } catch (fallbackError) {
+          const message = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+          void vscode.window.showErrorMessage(`Vitte: capability matrix is unavailable (${message}).`);
+          obsLog("command.showCapabilities.failed", "error", { message }, requestId);
+          return;
+        }
+        const detail = error instanceof Error ? error.message : String(error);
+        void vscode.window.showWarningMessage(`Vitte language server is unavailable; showing packaged capability baseline. (${detail})`);
+      }
+
+      const runtime = await locateVitteRuntime();
+      const cfg = vscode.workspace.getConfiguration("vitte");
+      matrix.editorFeatures = matrix.editorFeatures.map((feature) => feature.id === "inline-suggestions"
+        ? { ...feature, enabled: cfg.get<boolean>("suggestions.ghostTextTop1Stable", false) }
+        : feature);
+      const evidenceVersion = matrix.versions.compilerEvidence;
+      const activeVersion = runtime.versions?.cli;
+      const toolchainNotice = !runtime.found
+        ? "No Vitte CLI detected; compiler-specific behavior is unavailable in this workspace."
+        : activeVersion
+          ? activeVersion.includes(evidenceVersion)
+            ? `Detected CLI ${activeVersion}; its version matches matrix ${evidenceVersion}, but the CLI exposes no build fingerprint, so only the listed tests confirm behavior.`
+            : `Detected CLI ${activeVersion}; evidence targets ${evidenceVersion}, so compiler behavior for this CLI has not been confirmed.`
+          : `Vitte CLI detected, but its version could not be read; evidence targets ${evidenceVersion}.`;
+      const sourceNotice = fromLanguageServer
+        ? "Live language-server capability data"
+        : "Packaged baseline; live settings were not available";
+      const rows: vscode.QuickPickItem[] = [
+        { label: `Matrix ${matrix.matrixVersion}`, description: `${sourceNotice} · ${toolchainNotice}`, kind: vscode.QuickPickItemKind.Separator },
+        ...capabilityRows("Editor features", matrix.editorFeatures),
+        ...capabilityRows("Compiler frontends", matrix.compilerFrontends),
+        ...capabilityRows("CLI commands", matrix.cliCommands),
+        ...capabilityRows("Platforms", matrix.platforms),
+        ...capabilityRows("Follow-up work", matrix.followUps),
+      ];
+      const selected = await vscode.window.showQuickPick(rows, {
+        placeHolder: `${sourceNotice} · ${toolchainNotice} Select a row for its scope and evidence.`,
+        matchOnDescription: true,
+        matchOnDetail: true,
+      });
+      if (selected && "detail" in selected && selected.detail) {
+        void vscode.window.showInformationMessage(selected.detail);
+      }
+      obsLog("command.showCapabilities.done", "info", { matrixVersion: matrix.matrixVersion, fromLanguageServer }, requestId);
+    }),
     vscode.commands.registerCommand("vitte.showServerMetrics", async () => {
       const requestId = nextRequestId("metrics");
       obsLog("command.showServerMetrics.start", "info", undefined, requestId);
@@ -2170,10 +2085,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     }),
     vscode.commands.registerCommand("vitte.inline.toggle", async () => {
       const cfg = vscode.workspace.getConfiguration("vitte");
-      const current = cfg.get<boolean>("suggestions.ghostTextTop1Stable", true);
+      const current = cfg.get<boolean>("suggestions.ghostTextTop1Stable", false);
       await cfg.update("suggestions.ghostTextTop1Stable", !current, vscode.ConfigurationTarget.Workspace);
       updateSuggestionEngineModeSuffix();
-      void vscode.window.showInformationMessage(`Vitte inline suggestions: ${!current ? "enabled" : "disabled"}.`);
+      if (!current) {
+        const choice = await vscode.window.showWarningMessage(
+          "Vitte inline suggestions are experimental and may propose heuristic code that has not been checked by the compiler.",
+          "Show Capabilities",
+        );
+        if (choice === "Show Capabilities") await vscode.commands.executeCommand("vitte.showCapabilities");
+      } else {
+        void vscode.window.showInformationMessage("Vitte inline suggestions disabled.");
+      }
     }),
     vscode.commands.registerCommand("vitte.suggestions.refreshContext", async () => {
       await aiInlinePipeline?.refreshWorkspaceContext();
@@ -2584,7 +2507,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       ): Promise<vscode.InlineCompletionItem[] | vscode.InlineCompletionList> {
         const started = Date.now();
         const cfg = vscode.workspace.getConfiguration("vitte");
-        const enabled = cfg.get<boolean>("suggestions.ghostTextTop1Stable", true);
+        const enabled = cfg.get<boolean>("suggestions.ghostTextTop1Stable", false);
         if (!enabled) return [];
         const cacheTtlMs = Math.max(50, Math.min(1000, cfg.get<number>("suggestions.inlineCacheTtlMs", INLINE_CACHE_TTL_MS)));
         const key = `${document.uri.toString()}::${position.line}:${position.character}`;
@@ -2655,10 +2578,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       },
     },
   ));
-  context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection((e) => {
-    scheduleCompletionIdlePrefetch(e.textEditor);
-  }));
-  scheduleCompletionIdlePrefetch(vscode.window.activeTextEditor ?? undefined);
   updateStatusText(vscode.window.activeTextEditor ?? undefined);
 
   // Relance si config Vitte change
@@ -2807,10 +2726,6 @@ export async function deactivate(): Promise<void> {
     clearTimeout(configRestartTimer);
     configRestartTimer = undefined;
   }
-  if (completionIdlePrefetchTimer) {
-    clearTimeout(completionIdlePrefetchTimer);
-    completionIdlePrefetchTimer = undefined;
-  }
   for (const timer of localInlineReindexTimers.values()) {
     try { clearTimeout(timer); } catch { /* noop */ }
   }
@@ -2954,9 +2869,7 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
         ) => vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList>,
       ) => {
         const key = getCompletionRequestKey(document, position);
-        const contextKey = getCompletionContextKey(document, position);
-        const documentKey = getCompletionDocumentKey(document);
-        const isPrefetch = completionPrefetchExpectedKey === key;
+        const isPrefetch = false;
         if (completionLoadNextPageKey && (Date.now() - completionLoadNextPageIssuedAt) > 5000) {
           completionLoadNextPageKey = undefined;
           completionLoadNextPageIssuedAt = 0;
@@ -3023,12 +2936,6 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
         const pageResetMs = Math.max(500, Math.min(30000, cfg.get<number>("suggestions.pageResetMs", 5000)));
         const streamingEnabled = cfg.get<boolean>("suggestions.streaming", true);
         const firstPaintMs = cfg.get<number>("suggestions.streamingFirstPaintMs", 75);
-        const localBatchSize = cfg.get<number>("suggestions.streamingLocalBatchSize", 40);
-        const cachePrefixTtlMs = cfg.get<number>("suggestions.cachePrefixTtlMs", 1500);
-        const cacheContextTtlMs = cfg.get<number>("suggestions.cacheContextTtlMs", 4000);
-        const cacheDocumentTtlMs = cfg.get<number>("suggestions.cacheDocumentTtlMs", 12000);
-        const cacheMaxEntries = Math.max(32, Math.min(5000, cfg.get<number>("suggestions.cacheMaxEntries", 1200)));
-        const cacheSoftMemoryMb = Math.max(128, Math.min(8192, cfg.get<number>("suggestions.cacheSoftMemoryMb", 1536)));
         const shadowRankingEnabled = cfg.get<boolean>("suggestions.shadowRankingEnabled", false);
         const shadowRankingVariant = cfg.get<"default" | "prefix_heavy" | "scope_heavy">("suggestions.shadowRankingVariant", "scope_heavy");
         const autoRefresh = cfg.get<boolean>("suggestions.streamingAutoRefresh", true);
@@ -3050,9 +2957,6 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
         const workspaceBlacklistPatterns = cfg.get<string[]>("suggestions.workspaceBlacklistPatterns", []) ?? [];
         const stickyTopEnabled = cfg.get<boolean>("suggestions.stickyTopEnabled", true);
         const stickyTopCount = Math.max(1, Math.min(32, cfg.get<number>("suggestions.stickyTopCount", 8)));
-        const negativeCacheTimeoutThreshold = Math.max(1, Math.min(12, cfg.get<number>("suggestions.negativeCacheTimeoutThreshold", 3)));
-        const negativeCacheHoldMs = Math.max(300, Math.min(15000, cfg.get<number>("suggestions.negativeCacheHoldMs", 2500)));
-        const highLoadThreshold = Math.max(1, Math.min(16, cfg.get<number>("suggestions.highLoadThreshold", 6)));
 
         const toItems = (out: vscode.CompletionItem[] | vscode.CompletionList | null | undefined): vscode.CompletionItem[] => {
           if (!out) return [];
@@ -3172,75 +3076,47 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
             shownCount: 0,
           });
         }
-        if (!isPrefetch) completionCacheRequestCount += 1;
-        const cachedItemsPrefix = getValidCacheItems(completionStreamingCachePrefix, key, cachePrefixTtlMs).map((item) => withSourceBadge(item, "cache", true));
-        const cachedItemsContext = getValidCacheItems(completionStreamingCacheContext, contextKey, cacheContextTtlMs).map((item) => withSourceBadge(item, "cache", true));
-        const cachedItemsDocument = getValidCacheItems(completionStreamingCacheDocument, documentKey, cacheDocumentTtlMs).map((item) => withSourceBadge(item, "cache", true));
-        if (!isPrefetch && (cachedItemsPrefix.length > 0 || cachedItemsContext.length > 0 || cachedItemsDocument.length > 0)) {
-          completionCacheHitCount += 1;
-        }
-        if (!isPrefetch && cachedItemsPrefix.length > 0 && completionPrefetchRequestCount > 0) {
-          completionPrefetchHitCount += 1;
-        }
-        const load = os.loadavg()[0] ?? 0;
-        const highLoad = load >= highLoadThreshold;
-        const localItems = highLoad
-          ? buildPrefixOnlyLocalBatch(document, position, Math.max(8, Math.min(localBatchSize, 20)))
-          : buildLocalCompletionBatch(document, position, localBatchSize);
-        const negativeCacheKey = `${document.languageId}`;
-        const neg = completionLspNegativeCache.get(negativeCacheKey);
-        const negativeCacheActive = !!neg && neg.until > Date.now();
-        const seedMap = new Map<string, vscode.CompletionItem>();
-        for (const item of [...cachedItemsPrefix, ...cachedItemsContext, ...cachedItemsDocument, ...localItems]) {
-          seedMap.set(seedDedupKey(item), item);
-        }
-        const seeded = [...seedMap.values()];
-
         const requestPromise = (async () => {
           if (token.isCancellationRequested) {
             markRequestCancelled();
             return { out: null, items: [] as vscode.CompletionItem[] };
           }
-          if (negativeCacheActive) {
-            if (!isPrefetch) completionFallbackNegativeCacheCount += 1;
-            if (!isPrefetch) {
-              const trace = completionTraceActiveByKey.get(key);
-              if (trace) trace.fallbackCause = "negative_cache";
+          const t0 = Date.now();
+          let out: vscode.CompletionItem[] | vscode.CompletionList | null | undefined;
+          try {
+            out = await Promise.race([
+              Promise.resolve(next(document, position, completionContext, token)),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), lspHardTimeoutMs)),
+            ]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            output.appendLine(`[completion] language-server request failed: ${message}`);
+            if (!completionTimeoutNoticeShown) {
+              completionTimeoutNoticeShown = true;
+              void vscode.window.showWarningMessage("Vitte completion failed. No local or cached suggestions were substituted; check Vitte: Show Capabilities and Show Server Log.");
             }
             return { out: null, items: [] as vscode.CompletionItem[] };
           }
-          const t0 = Date.now();
-          const out = await Promise.race([
-            Promise.resolve(next(document, position, completionContext, token)),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), lspHardTimeoutMs)),
-          ]);
           const dt = Date.now() - t0;
           completionLatencyWindowMs.push(dt);
           if (completionLatencyWindowMs.length > 128) completionLatencyWindowMs.shift();
           if (!out && !isPrefetch) {
             completionStreamingTimeoutCount += 1;
             completionFallbackTimeoutCount += 1;
+            if (!completionTimeoutNoticeShown) {
+              completionTimeoutNoticeShown = true;
+              void vscode.window.showWarningMessage("Vitte completion timed out. No local or cached suggestions were substituted; check Vitte: Show Capabilities and Show Server Log.");
+            }
             const trace = completionTraceActiveByKey.get(key);
             if (trace) trace.fallbackCause = "timeout";
-            const prev = completionLspNegativeCache.get(negativeCacheKey);
-            const timeouts = (prev?.timeouts ?? 0) + 1;
-            const until = timeouts >= negativeCacheTimeoutThreshold ? Date.now() + negativeCacheHoldMs : 0;
-            completionLspNegativeCache.set(negativeCacheKey, { timeouts, until });
-          } else if (!isPrefetch) {
-            completionLspNegativeCache.delete(negativeCacheKey);
           }
           const items = toItems(out).map((item) => withSourceBadge(item, "lsp"));
-          const ts = Date.now();
-          touchMapEntry(completionStreamingCachePrefix, key, { items, ts });
-          touchMapEntry(completionStreamingCacheContext, contextKey, { items, ts });
-          touchMapEntry(completionStreamingCacheDocument, documentKey, { items, ts });
-          trimCompletionCaches(cacheMaxEntries, cacheSoftMemoryMb);
           return { out, items };
         })();
 
         if (!streamingEnabled) {
           const { out, items } = await requestPromise;
-          const result = finalize(items.length > 0 ? items : seeded, !out || Array.isArray(out) ? false : Boolean(out.isIncomplete));
+          const result = finalize(items, !out || Array.isArray(out) ? false : Boolean(out.isIncomplete));
           if (!isPrefetch) completeCompletionRequestMetrics(key, Date.now(), requestStartedAt);
           return result;
         }
@@ -3258,7 +3134,8 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
               }
             }
             const isIncomplete = !out || Array.isArray(out) ? false : out.isIncomplete;
-            if (isPrefetch || !autoRefresh || items.length === 0) return;
+            const timedOutBeforePaint = completionTraceActiveByKey.get(key)?.fallbackCause === "timeout";
+            if (isPrefetch || !autoRefresh || items.length === 0 || (!isIncomplete && !timedOutBeforePaint)) return;
             const editor = vscode.window.activeTextEditor;
             if (!editor || editor.document.uri.toString() !== requestUri) return;
             if (editor.selection.active.line !== position.line) return;
@@ -3266,7 +3143,7 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
             if (completionStreamingRefreshGuard) return;
             completionStreamingRefreshGuard = true;
             try {
-              if (isIncomplete || items.length > seeded.length) {
+              if (isIncomplete) {
                 completionStreamingRefreshCount += 1;
                 if (isIncomplete) {
                   completionStreamingIncompleteRefreshCount += 1;
@@ -3345,8 +3222,12 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
             trace.fallbackCause = "timeout";
           }
           pushWindowSample(completionStreamingFirstPaintMs, Date.now() - now);
+          if (!completionTimeoutNoticeShown) {
+            completionTimeoutNoticeShown = true;
+            void vscode.window.showWarningMessage("Vitte completion is taking longer than the response budget. No cached or heuristic results are shown; a late language-server response will trigger a refresh.");
+          }
         }
-        return finalize(seeded, true);
+        return finalize([], false);
       },
       resolveCompletionItem: async (
         item: vscode.CompletionItem,

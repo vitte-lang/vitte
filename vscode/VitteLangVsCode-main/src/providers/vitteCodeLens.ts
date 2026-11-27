@@ -30,11 +30,6 @@ export function registerVitteCodeLens(context: vscode.ExtensionContext): void {
               arguments: [document.uri],
             }),
             new vscode.CodeLens(range, {
-              command: "vitte.codelens.runTest",
-              title: `Run tests`,
-              arguments: [document.uri],
-            }),
-            new vscode.CodeLens(range, {
               command: "vitte.codelens.openRefs",
               title: "Open refs",
               arguments: [document.uri, new vscode.Position(i, Math.max(0, idx))],
@@ -68,11 +63,6 @@ export function registerVitteCodeLens(context: vscode.ExtensionContext): void {
       const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri?.toString());
       if (editor) await vscode.window.showTextDocument(editor.document, { preview: false, preserveFocus: true });
       await vscode.commands.executeCommand("vitte.debug.runFile");
-    }),
-    vscode.commands.registerCommand("vitte.codelens.runTest", async (uri: vscode.Uri) => {
-      const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri?.toString());
-      if (editor) await vscode.window.showTextDocument(editor.document, { preview: false, preserveFocus: true });
-      await vscode.commands.executeCommand("vitte.testCurrent");
     }),
     vscode.commands.registerCommand("vitte.codelens.openRefs", async (uri: vscode.Uri, pos: vscode.Position) => {
       const refs = await vscode.commands.executeCommand<vscode.Location[]>("vscode.executeReferenceProvider", uri, pos);

@@ -862,7 +862,10 @@
         "E1504"
       ],
       "phase": "constant-eval",
-      "marked": "const VALUE: int = VALUE;"
+      "marked": [
+        "VALUE",
+        1
+      ]
     },
     {
       "name": "match-pattern-type",
@@ -1026,6 +1029,26 @@
       ],
       "phase": "parser",
       "marked": ";"
+    },
+    {
+      "name": "parser-unsupported-feature-keyword",
+      "command": "parse",
+      "source": "class Widget {}",
+      "codes": [
+        "E0210"
+      ],
+      "phase": "parser",
+      "marked": "class"
+    },
+    {
+      "name": "parser-unsupported-operator",
+      "command": "parse",
+      "source": "proc main() { @; }",
+      "codes": [
+        "E0210"
+      ],
+      "phase": "parser",
+      "marked": "@"
     },
     {
       "name": "parser-return-outside-procedure",
@@ -1835,12 +1858,12 @@
     {
       "name": "parser-malformed-assert",
       "command": "parse",
-      "source": "proc bad() { assert true; }",
+      "source": "proc bad() { assert(true; }",
       "codes": [
         "E0278"
       ],
       "phase": "parser",
-      "marked": "true"
+      "marked": ";"
     },
     {
       "name": "parser-malformed-unsafe",
@@ -1855,9 +1878,19 @@
     {
       "name": "parser-malformed-assembly",
       "command": "parse",
-      "source": "proc bad() { asm(,); }",
+      "source": "proc bad() { asm; }",
       "codes": [
         "E0280"
+      ],
+      "phase": "parser",
+      "marked": ";"
+    },
+    {
+      "name": "parser-malformed-assembly-operands",
+      "command": "parse",
+      "source": "proc bad() { asm(,); }",
+      "codes": [
+        "E0311"
       ],
       "phase": "parser",
       "marked": ","
@@ -2038,7 +2071,7 @@
       "phase": "parser",
       "marked": [
         "}",
-        3
+        0
       ]
     },
     {
@@ -2051,7 +2084,7 @@
       "phase": "parser",
       "marked": [
         "}",
-        3
+        0
       ]
     },
     {
@@ -2309,7 +2342,8 @@
       "command": "parse",
       "source": "const VALUES = [1",
       "codes": [
-        "E0299"
+        "E0299",
+        "E0224"
       ],
       "phase": "parser",
       "marked": "<EOF>"
@@ -2322,7 +2356,10 @@
         "E0308"
       ],
       "phase": "parser",
-      "marked": ")"
+      "marked": [
+        ")",
+        1
+      ]
     },
     {
       "name": "parser-alignof-malformed",
@@ -2332,7 +2369,10 @@
         "E0309"
       ],
       "phase": "parser",
-      "marked": ")"
+      "marked": [
+        ")",
+        1
+      ]
     },
     {
       "name": "parser-null-construction-missing-closer",
@@ -2531,7 +2571,7 @@
       "command": "compile",
       "source": "proc main() -> i64 { let x = 1; let x = 2; return x; }",
       "codes": [
-        "E0406"
+        "E0402"
       ],
       "phase": "name-resolution",
       "marked": [
@@ -2542,7 +2582,7 @@
     {
       "name": "duplicate-pattern-binding",
       "command": "compile",
-      "source": "proc main() -> i64 { let (x, x) = (1, 2); return x; }",
+      "source": "form Point { a: i64, b: i64 } proc main(point: Point) { let Point { a: x, b: x } = point; }",
       "codes": [
         "E0406"
       ],
@@ -2565,12 +2605,12 @@
     {
       "name": "export-outside-module-scope",
       "command": "compile",
-      "source": "space contract::main;\ntrait Hidden { export item; }\nproc main() -> i64 { return 0; }\n",
+      "source": "space contract::main;\nform Hidden {}\nimpl Hidden { pub use core; }\nproc main() -> i64 { return 0; }\n",
       "codes": [
         "E0405"
       ],
       "phase": "name-resolution",
-      "marked": "export item;"
+      "marked": "use core;"
     },
     {
       "name": "shadowed-global",
@@ -2807,7 +2847,10 @@
         "E0504"
       ],
       "phase": "type-check",
-      "marked": "x"
+      "marked": [
+        "x",
+        1
+      ]
     },
     {
       "name": "not-indexable",

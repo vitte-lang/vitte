@@ -47,12 +47,21 @@ function trackedVsixArtifacts() {
     file.endsWith(".vsix") && (!packageRoot || file.startsWith(`${packageRoot}/`)));
 }
 
-function filesAllow(files, relativePath) {
-  const normalized = stripRelativePrefix(relativePath);
-  return files.some((entry) => {
-    const pattern = stripRelativePrefix(entry);
-    if (pattern.endsWith("/**")) return normalized.startsWith(pattern.slice(0, -2));
-    return normalized === pattern;
+function ignoreMatcher(pattern) {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, ".*")
+    .replace(/\*/g, "[^/]*");
+  return new RegExp(`^${escaped}$`);
+}
+
+function isIgnored(rules, relativePath) {
+  const normalized = stripRelativePrefix(relativePath).replace(/\/$/, "");
+  return rules.some((rule) => {
+    if (rule.startsWith("!")) return false;
+    const pattern = stripRelativePrefix(rule).replace(/\/$/, "");
+    if (ignoreMatcher(pattern).test(normalized)) return true;
+    return pattern.endsWith("/**") && normalized.startsWith(pattern.slice(0, -3) + "/");
   });
 }
 
@@ -84,11 +93,32 @@ function contributionPaths(pkg) {
 
 async function main() {
   const pkg = JSON.parse(await fs.readFile(packagePath, "utf8"));
-  const packageFiles = asArray(pkg.files);
+  const ignorePath = path.join(root, ".vscodeignore");
+  const ignoreText = await fs.readFile(ignorePath, "utf8").catch(() => "");
+  const ignoreRules = ignoreText.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
   const errors = [];
 
-  if (!filesAllow(packageFiles, "snippets/vitte.json")) {
-    errors.push('package.json "files" must include snippets/** because snippets are contributed.');
+  if (Array.isArray(pkg.files)) {
+    errors.push('Use .vscodeignore as the sole package filter; VSCE rejects a simultaneous package.json "files" field.');
+  }
+  if (ignoreRules.length === 0) {
+    errors.push(".vscodeignore must define the files shipped in the extension package.");
+  }
+
+  const requiredArtifacts = [
+    "out/extension.js",
+    "server/out/src/server.js",
+    "server/out/src/capability-matrix.json",
+    "syntaxes/vitte.tmLanguage.json",
+    "snippets/vitte.json",
+  ];
+  for (const relativePath of requiredArtifacts) {
+    if (!(await exists(relativePath))) {
+      errors.push(`Missing required runtime asset: ${relativePath}`);
+    }
+    if (isIgnored(ignoreRules, relativePath)) {
+      errors.push(`Required runtime asset is excluded by .vscodeignore: ${relativePath}`);
+    }
   }
 
   for (const relativePath of contributionPaths(pkg)) {
@@ -96,8 +126,8 @@ async function main() {
       errors.push(`Missing contributed file: ${relativePath}`);
       continue;
     }
-    if (!filesAllow(packageFiles, relativePath)) {
-      errors.push(`Contributed file is not included in package files: ${relativePath}`);
+    if (isIgnored(ignoreRules, relativePath)) {
+      errors.push(`Contributed file is excluded by .vscodeignore: ${relativePath}`);
     }
   }
 

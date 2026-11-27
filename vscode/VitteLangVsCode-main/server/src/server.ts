@@ -83,7 +83,7 @@ import { provideFormattingEdits, provideRangeFormattingEdits } from "./formattin
 import { getSemanticTokensLegend, buildSemanticTokens, provideHover } from "./semantic.js";
 import { provideInlayHints, type InlayHintPrefs } from "./inlay.js";
 import { provideSignatureHelp } from "./signatureHelp.js";
-import { getIntelliSenseCapabilities } from "./intellisenseCapabilities.js";
+import { getIntelliSenseCapabilities, isCapabilityAdvertised } from "./intellisenseCapabilities.js";
 import { lintToPublishable } from "./lint.js";
 import { registerCommands } from "./commands.js";
 import { indexDocument as indexWorkspaceDocument, removeDocument as removeWorkspaceDocument, clearIndex, exportIndexSnapshot, loadIndexSnapshot, getIndex, type IndexSnapshot } from "./indexer.js";
@@ -197,7 +197,7 @@ const DEFAULT_SETTINGS: ServerSettings = {
     enabledInComments: false,
     enabledInStrings: false,
     includeSnippets: true,
-    workspaceSymbols: true,
+    workspaceSymbols: false,
     maxItems: 200,
   },
   features: {
@@ -211,21 +211,19 @@ const DEFAULT_SETTINGS: ServerSettings = {
     semanticTokens: true,
     formatting: true,
     lint: true,
-    inlayHints: true,
+    inlayHints: false,
     signatureHelp: true,
   },
 };
 
 let globalSettings: ServerSettings = { ...DEFAULT_SETTINGS };
 let hasConfigurationCapability = false;
-let hasWorkspaceFoldersCapability = false;
 let workspaceRoot: string | undefined;
 let workspaceRoots: string[] | undefined;
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const capabilities = params.capabilities;
   hasConfigurationCapability = !!capabilities.workspace?.configuration;
-  hasWorkspaceFoldersCapability = !!capabilities.workspace?.workspaceFolders;
   const initialRoots = (params.workspaceFolders ?? [])
     .map((folder) => folder.uri.startsWith("file://") ? fileURLToPath(folder.uri) : "")
     .filter((root): root is string => root.length > 0);
@@ -239,33 +237,33 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 
   const legend: SemanticTokensLegend = getSemanticTokensLegend();
 
-  const result: InitializeResult = {
-    capabilities: {
-      textDocumentSync: TextDocumentSyncKind.Incremental,
-      // Enable resolve to enrich completion items lazily and use centralized trigger characters
-      completionProvider: { resolveProvider: true, triggerCharacters: triggerCharacters() },
-      hoverProvider: true,
-      signatureHelpProvider: { triggerCharacters: ["(", ","], retriggerCharacters: [","] },
-      documentSymbolProvider: true,
-      documentFormattingProvider: true,
-      documentRangeFormattingProvider: true,
-      definitionProvider: true,
-      referencesProvider: true,
-      renameProvider: { prepareProvider: true },
-      workspaceSymbolProvider: true,
-      codeActionProvider: {
-        codeActionKinds: ["quickfix", "source.fixAll", "source.organizeImports", "refactor.rewrite"],
-      },
-      semanticTokensProvider: { legend, full: true, range: false },
-      inlayHintProvider: true,
-      callHierarchyProvider: true,
-      typeHierarchyProvider: true,
-    },
+  const serverCapabilities: NonNullable<InitializeResult["capabilities"]> = {
+    textDocumentSync: TextDocumentSyncKind.Incremental,
   };
-
-  if (hasWorkspaceFoldersCapability) {
-    result.capabilities.workspace = { workspaceFolders: { supported: true } };
+  if (isCapabilityAdvertised("completion")) {
+    serverCapabilities.completionProvider = { triggerCharacters: triggerCharacters() };
   }
+  if (isCapabilityAdvertised("hover")) serverCapabilities.hoverProvider = true;
+  if (isCapabilityAdvertised("signature-help")) {
+    serverCapabilities.signatureHelpProvider = { triggerCharacters: ["(", ","], retriggerCharacters: [","] };
+  }
+  if (isCapabilityAdvertised("document-symbols")) serverCapabilities.documentSymbolProvider = true;
+  if (isCapabilityAdvertised("formatting")) {
+    serverCapabilities.documentFormattingProvider = true;
+    serverCapabilities.documentRangeFormattingProvider = true;
+  }
+  if (isCapabilityAdvertised("definition")) serverCapabilities.definitionProvider = true;
+  if (isCapabilityAdvertised("references")) serverCapabilities.referencesProvider = true;
+  if (isCapabilityAdvertised("rename")) serverCapabilities.renameProvider = { prepareProvider: true };
+  if (isCapabilityAdvertised("code-actions")) {
+    serverCapabilities.codeActionProvider = { codeActionKinds: ["quickfix"] };
+  }
+  if (isCapabilityAdvertised("semantic-tokens")) {
+    serverCapabilities.semanticTokensProvider = { legend, full: true, range: false };
+  }
+
+  const result: InitializeResult = { capabilities: serverCapabilities };
+
   return result;
 });
 
@@ -314,7 +312,11 @@ connection.onRequest("vitte/ping", () => {
 });
 
 connection.onRequest("vitte/intellisenseCapabilities", () => {
-  return getIntelliSenseCapabilities();
+  return getIntelliSenseCapabilities(globalSettings.features);
+});
+
+connection.onRequest("vitte/capabilityMatrix", () => {
+  return getIntelliSenseCapabilities(globalSettings.features);
 });
 
 interface SymbolGraphNode {
@@ -637,10 +639,27 @@ async function withBackpressure<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+const unavailableNotices = new Set<string>();
+
+function explainUnavailable(feature: string, reason: string): void {
+  const key = `${feature}:${reason}`;
+  if (unavailableNotices.has(key)) return;
+  unavailableNotices.add(key);
+  const message = `Vitte ${feature} did not return a result: ${reason}. See “Vitte: Show Capabilities” for scope and status.`;
+  connection.console.warn(`[capability] ${message}`);
+  void connection.sendNotification("window/showMessage", { type: 2, message });
+}
+
 function failFast(feature: keyof ServerSettings["features"]): boolean {
-  if (featureEnabled(feature)) return false;
-  connection.console.warn(`[disabled] ${feature} is disabled by configuration`);
-  return true;
+  if (!featureEnabled(feature)) {
+    explainUnavailable(feature, `disabled by vitte.features.${feature}`);
+    return true;
+  }
+  if (isBreakerActive()) {
+    explainUnavailable(feature, "language server is paused after repeated request failures");
+    return true;
+  }
+  return false;
 }
 
 function memoryExceeded(): boolean {
@@ -841,51 +860,7 @@ connection.onDocumentRangeFormatting(async (params: DocumentRangeFormattingParam
 connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) return [];
-  const text = doc.getText();
   const actions: CodeAction[] = [];
-
-  const mkAction = (title: string, kind: string, edit: WorkspaceEdit): CodeAction => ({
-    title,
-    kind,
-    edit,
-    diagnostics: params.context.diagnostics,
-  });
-
-  const organizeEdit = computeOrganizeImportsEdit(doc, text);
-  if (organizeEdit) {
-    actions.push(
-      mkAction("Vitte: Fix imports (dedupe + sort)", "source.fixAll", organizeEdit),
-      mkAction("Vitte: Organize imports", "source.organizeImports", organizeEdit)
-    );
-  }
-
-  const lineNo = params.range.start.line;
-  const lineRange = lineRangeAt(doc, lineNo);
-  const lineText = doc.getText(lineRange);
-
-  const convertedLine = convertUsePullLine(lineText);
-  if (convertedLine && convertedLine !== lineText) {
-    actions.push(mkAction("Vitte: Convert use/pull", "refactor.rewrite", {
-      changes: { [doc.uri]: [TextEdit.replace(lineRange, convertedLine)] },
-    }));
-  }
-
-  const aliasLine = addPkgAliasLine(lineText);
-  if (aliasLine && aliasLine !== lineText) {
-    actions.push(mkAction("Vitte: Add alias *_pkg", "quickfix", {
-      changes: { [doc.uri]: [TextEdit.replace(lineRange, aliasLine)] },
-    }));
-  }
-
-  if (!/^\s*<<<\s+ROLE-CONTRACT\b/m.test(text)) {
-    const insertion = buildRoleContractTemplate(text);
-    if (insertion) {
-      const insertAt = doc.positionAt(text.length);
-      actions.push(mkAction("Vitte: Add ROLE-CONTRACT block", "refactor.rewrite", {
-        changes: { [doc.uri]: [TextEdit.insert(insertAt, insertion)] },
-      }));
-    }
-  }
 
   // Diagnostic-driven quick fixes
   for (const d of params.context.diagnostics ?? []) {
@@ -1321,64 +1296,6 @@ function percentile(samples: number[], p: number): number {
   return sorted[idx];
 }
 
-function computeOrganizeImportsEdit(doc: TextDocument, text: string): WorkspaceEdit | null {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
-  const importIdx: number[] = [];
-  const imports: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i] ?? "";
-    if (/^\s*(use|pull)\b/.test(l)) {
-      importIdx.push(i);
-      imports.push(l.trim());
-    }
-  }
-  if (importIdx.length === 0) return null;
-  const sorted = Array.from(new Set(imports)).sort((a, b) => a.localeCompare(b));
-  const first = importIdx[0];
-  const last = importIdx[importIdx.length - 1];
-  const before = lines.slice(0, first);
-  const after = lines.slice(last + 1);
-  const body = [...before, ...sorted, ...after].join("\n");
-  const newText = text.endsWith("\n") && !body.endsWith("\n") ? `${body}\n` : body;
-  if (newText === text) return null;
-  const lastLine = Math.max(0, doc.lineCount - 1);
-  const endText = doc.getText(Range.create(Position.create(lastLine, 0), Position.create(lastLine, Number.MAX_SAFE_INTEGER)));
-  const full = Range.create(Position.create(0, 0), Position.create(lastLine, endText.length));
-  return { changes: { [doc.uri]: [TextEdit.replace(full, newText)] } };
-}
-
-function convertUsePullLine(line: string): string | null {
-  if (/^\s*use\b/.test(line)) return line.replace(/^(\s*)use\b/, "$1pull");
-  if (/^\s*pull\b/.test(line)) return line.replace(/^(\s*)pull\b/, "$1use");
-  return null;
-}
-
-function addPkgAliasLine(line: string): string | null {
-  const m = /^(\s*use\s+)([A-Za-z0-9_./:-]+)(\s*)$/.exec(line);
-  if (!m) return null;
-  if (/\sas\s+[A-Za-z_][A-Za-z0-9_]*\s*$/.test(line)) return null;
-  const pathPart = m[2];
-  const raw = pathPart.split(/[/.:-]/).filter(Boolean).pop() ?? "pkg";
-  const base = raw.replace(/[^A-Za-z0-9_]/g, "").toLowerCase();
-  const alias = `${base || "pkg"}_pkg`;
-  return `${m[1]}${pathPart} as ${alias}${m[3]}`;
-}
-
-function buildRoleContractTemplate(text: string): string {
-  const m = /^\s*space\s+([A-Za-z0-9_./-]+)/m.exec(text);
-  const pkg = m?.[1] ?? "my/package";
-  const prefix = text.endsWith("\n") ? "\n" : "\n\n";
-  return (
-    `${prefix}<<< ROLE-CONTRACT\n` +
-    `package: ${pkg}\n` +
-    `role: Responsibility\n` +
-    `input_contract: Explicit normalized inputs\n` +
-    `output_contract: Stable explicit outputs\n` +
-    `boundary: No business policy decisions\n` +
-    `>>>\n`
-  );
-}
-
 function quickFixForDiagnostic(doc: TextDocument, d: Diagnostic): CodeAction | null {
   const code = String(d.code ?? "");
   const lineNo = d.range.start.line;
@@ -1401,17 +1318,6 @@ function quickFixForDiagnostic(doc: TextDocument, d: Diagnostic): CodeAction | n
     if (fixed === lineText) return null;
     return {
       title: "Vitte: Convert tabs to spaces",
-      kind: "quickfix",
-      diagnostics: [d],
-      edit: { changes: { [doc.uri]: [TextEdit.replace(lineRange, fixed)] } },
-    };
-  }
-
-  if (code === "style.usePath") {
-    const fixed = lineText.replace(/::/g, "/").replace(/\s*\/\s*/g, "/").replace(/\s*\.\s*/g, ".");
-    if (fixed === lineText) return null;
-    return {
-      title: "Vitte: Normalize use/pull path",
       kind: "quickfix",
       diagnostics: [d],
       edit: { changes: { [doc.uri]: [TextEdit.replace(lineRange, fixed)] } },

@@ -37,9 +37,10 @@ test('compiler repository builds and tests use Make, current-file checks use the
     assert.equal(command.args[0], target);
     assert.equal(command.cwd, repo);
   }
-  const command = projectCommand({ root: repo, compiler: nativeCompiler, action: 'test', currentFileOnly: true, input: '/tmp/main.vit' });
-  assert.deepEqual(command.args, ['check', '/tmp/main.vit']);
-  assert.equal(command.bin, nativeCompiler);
+  assert.throws(
+    () => projectCommand({ root: repo, compiler: nativeCompiler, action: 'test', currentFileOnly: true, input: '/tmp/main.vit' }),
+    /current-file tests are unavailable/,
+  );
 });
 
 test('application commands use canonical CLI options and isolate editor output', (t) => {
@@ -52,6 +53,7 @@ test('application commands use canonical CLI options and isolate editor output',
   assert.equal(projectCommand({ root, compiler: 'vitte', action: 'run', input }).args[0], 'run');
   assert.equal(compilerProfile('bench'), 'release');
   assert.throws(() => projectCommand({ root, compiler: 'vitte', action: 'build' }), /fichier Vitte/);
+  assert.throws(() => projectCommand({ root, compiler: 'vitte', action: 'test', input }), /vitte test is unavailable/);
 });
 
 test('workspace scaffolding uses process tasks and source debuggees', (t) => {

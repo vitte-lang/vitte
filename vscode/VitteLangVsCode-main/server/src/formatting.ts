@@ -454,11 +454,9 @@ function joinWithEOL(lines: string[], mode: "lf" | "crlf"): string {
 }
 
 function fullRange(doc: TextDocument): Range {
-  const lastLine = Math.max(0, doc.lineCount - 1);
-  const lastText = doc.getText(Range.create(
-    Position.create(lastLine, 0),
-    Position.create(lastLine, Number.MAX_SAFE_INTEGER)
-  ));
+  const lines = doc.getText().split(/\r\n|\r|\n/);
+  const lastLine = Math.max(0, lines.length - 1);
+  const lastText = lines[lastLine] ?? "";
   return Range.create(Position.create(0, 0), Position.create(lastLine, lastText.length));
 }
 

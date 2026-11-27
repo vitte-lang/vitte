@@ -1,0 +1,81 @@
+---
+title: Capacités de l’extension et de la toolchain
+permalink: /reference/capabilities/
+section: Outils
+lead: Matrice versionnée des capacités effectivement implémentées, testées, expérimentales et indisponibles.
+source: vscode/VitteLangVsCode-main/server/src/capability-matrix.json · tests d’extension et du compilateur
+updated: "27 novembre 2026"
+vitte_version: "0.1.1"
+reference_order: 10
+summary: "Portée de l’extension, du serveur, des frontends, de la CLI et des plateformes vérifiées."
+keywords: "capacités extension VS Code LSP CLI compiler frontend plateformes support expérimental indisponible"
+---
+<div class="reference-callout warning"><strong>Portée des preuves</strong><p>Cette matrice décrit le code et les tests présents dans le dépôt, pas une promesse de compatibilité complète. Le compilateur 0.1.1 n’est pas prêt à être publié : ses gates de release restent ouverts. Le CLI n’expose pas d’identifiant de build ; une version 0.1.1 détectée ne suffit donc pas à certifier un binaire local. Le fichier JSON versionné est la source utilisée par la commande VS Code <strong>Vitte: Show Capabilities</strong> ; il contient les preuves par ligne et les références de suivi.</p></div>
+
+<h2>Statuts</h2>
+<ul>
+  <li><strong>Implémenté</strong> : comportement présent et test automatisé pour le périmètre indiqué.</li>
+  <li><strong>Partiel / expérimental</strong> : comportement limité ou dépendant du contexte ; la limitation est précisée.</li>
+  <li><strong>Planifié</strong> : non annoncé comme capacité active ; le travail est enregistré ci-dessous.</li>
+  <li><strong>Indisponible</strong> : le toolchain 0.1.1 n’exécute pas ce comportement.</li>
+</ul>
+<p>Un fournisseur LSP n’est annoncé à VS Code que si la ligne correspondante est annoncée dans le manifeste et possède une preuve automatisée. Les réponses de complétion viennent du serveur de langage : l’extension ne remplace plus un délai ou un échec par des candidats heuristiques ou mis en cache.</p>
+
+<h2>Fonctionnalités de l’éditeur</h2>
+<table><thead><tr><th>Fonctionnalité</th><th>Statut</th><th>Portée et limite</th></tr></thead><tbody>
+<tr><td>Coloration syntaxique</td><td>Implémenté</td><td>Grammaire TextMate et tokens sémantiques lexicaux ; aucune résolution de types par le compilateur.</td></tr>
+<tr><td>Snippets</td><td>Implémenté</td><td>Modèles courants vérifiés pour leur compatibilité avec le parseur.</td></tr>
+<tr><td>Complétion</td><td>Partiel</td><td>Mots-clés, builtins et symboles indexés ; pas de résolution d’overloads ni de types par le compilateur.</td></tr>
+<tr><td>Aide à la signature</td><td>Partiel</td><td>Déclarations indexées dans les sources ouvertes ; les overloads importés ne sont pas résolus par le compilateur.</td></tr>
+<tr><td>Hover</td><td>Partiel</td><td>Documentation des mots-clés et types primitifs seulement ; pas de types inférés pour les symboles utilisateur.</td></tr>
+<tr><td>Diagnostics</td><td>Partiel</td><td>Lint léger et diagnostics structurés du CLI sélectionné ; leur portée dépend de la version et du frontend actif.</td></tr>
+<tr><td>Symboles du document</td><td>Implémenté</td><td>Index structurel du fichier courant, non relié à une table de symboles du compilateur.</td></tr>
+<tr><td>Symboles de l’espace de travail</td><td>Partiel, non annoncé</td><td>Le prototype ne parcourt que les documents ouverts ; les résultats ne sont pas complets pour le workspace.</td></tr>
+<tr><td>Aller à la définition</td><td>Partiel</td><td>Index source ; imports complexes et masquage de noms ne sont pas garantis.</td></tr>
+<tr><td>Références</td><td>Partiel</td><td>Recherche dans l’index lexical, pas un graphe de références sémantique complet.</td></tr>
+<tr><td>Renommage</td><td>Partiel</td><td>Déclaration et usages testés ; relire les modifications inter-modules avant de les accepter.</td></tr>
+<tr><td>Actions de code</td><td>Partiel</td><td>Explications et modifications explicitement marquées comme sûres par le compilateur ; pas de correction devinée.</td></tr>
+<tr><td>Formatage</td><td>Partiel</td><td>Règles déterministes d’espacement et de disposition ; pas de transformation fondée sur l’AST du compilateur.</td></tr>
+<tr><td>Tokens sémantiques</td><td>Implémenté</td><td>Classification lexicale et contextuelle des noms, pas d’information de type issue du compilateur.</td></tr>
+<tr><td>Inlay hints</td><td>Partiel, non annoncé</td><td>Prototype basé sur des heuristiques de texte, désactivé car ses types peuvent être faux.</td></tr>
+<tr><td>Hiérarchie d’appels</td><td>Partiel, non annoncé</td><td>Prototype fondé sur l’index source ; pas de graphe résolu par le compilateur ni de test de capacité.</td></tr>
+<tr><td>Hiérarchie de types</td><td>Partiel, non annoncé</td><td>Prototype fondé sur l’index source ; pas de graphe résolu par le compilateur ni de test de capacité.</td></tr>
+<tr><td>Suggestions inline</td><td>Expérimental, désactivé par défaut</td><td>Les moteurs n-grammes, modèles et IA restent opt-in ; leurs candidats ne sont pas des résultats sémantiques du LSP.</td></tr>
+<tr><td>Débogage natif</td><td>Partiel, expérimental, non annoncé</td><td>Le job DAP du dépôt cible Ubuntu 24.04. Le test local macOS arm64 avec le compilateur 0.1.1 échoue sur les frames DWARF, variables et breakpoints ; Windows n’a pas de gate. Les adaptateurs DAP externes restent configurables. Suivi : CAP-DBG-001.</td></tr>
+</tbody></table>
+
+<h2>Frontends et commandes CLI</h2>
+<table><thead><tr><th>Entrée</th><th>Statut</th><th>Portée observée</th></tr></thead><tbody>
+<tr><td>Bootstrap C17</td><td>Partiel</td><td>Compilateur seed et voie de compatibilité ; ne définit pas à lui seul le contrat complet du langage.</td></tr>
+<tr><td>Frontend natif HIR / IR / C17</td><td>Partiel</td><td>Lexer, parser, sema et backends testés sur un sous-ensemble ; le CLI natif ne retombe pas sur le pilote bootstrap.</td></tr>
+<tr><td>Étapes self-host 0 à 3</td><td>Partiel</td><td>L’audit rapporte une vérification locale antérieure, mais le <code>make -j2</code> courant échoue dans le parser bootstrap avant de reproduire ces étapes.</td></tr>
+<tr><td><code>vitte compile</code> / <code>build</code></td><td>Partiel</td><td>Compile le sous-ensemble natif via C17 et le compilateur C hôte.</td></tr>
+<tr><td><code>vitte check</code></td><td>Partiel</td><td>Vérifie le sous-ensemble du frontend actif ; d’autres sources peuvent utiliser la voie de compatibilité.</td></tr>
+<tr><td><code>vitte run</code></td><td>Partiel</td><td>Compile puis exécute les cas testés avec la toolchain C17 hôte.</td></tr>
+<tr><td><code>vitte install</code></td><td>Partiel</td><td>Vérifie les métadonnées et hashes ; une incompatibilité bloque l’archive JSON publique.</td></tr>
+<tr><td><code>lex</code>, <code>parse</code>, <code>explain</code>, <code>version</code>, <code>help</code></td><td>Implémenté</td><td>Commandes d’inspection et de diagnostic du pilote natif.</td></tr>
+<tr><td><code>vitte test</code></td><td>Indisponible</td><td>Reconnu par le parseur d’arguments, mais rejeté par le pilote natif 0.1.1. Dans le dépôt du compilateur seulement, l’action VS Code appelle le target Make vérifié.</td></tr>
+<tr><td><code>vitte fmt</code></td><td>Indisponible</td><td>Aucune commande native 0.1.1 ; le serveur LSP fournit un formateur léger et un binaire externe peut être configuré.</td></tr>
+<tr><td>Compilation cross-target</td><td>Indisponible</td><td><code>--target</code> ne sélectionne pas un toolchain C cross vérifié.</td></tr>
+</tbody></table>
+
+<h2>Plateformes</h2>
+<table><thead><tr><th>Produit</th><th>Plateforme</th><th>Statut</th><th>Preuve ou limite</th></tr></thead><tbody>
+<tr><td>Extension et LSP</td><td>Linux x86_64, Ubuntu 24.04</td><td>Implémenté</td><td>CI d’intégration VS Code et DAP.</td></tr>
+<tr><td>Extension et LSP</td><td>macOS arm64</td><td>Partiel</td><td>Sur VS Code 1.148.0, 39 tests d’intégration passent et 5 tests DAP/DWARF échouent avec le compilateur 0.1.1 ; pas de gate CI macOS.</td></tr>
+<tr><td>Extension et LSP</td><td>Windows x86_64</td><td>Partiel</td><td>Code portable Node.js ; pas de gate CI d’intégration VS Code/DAP.</td></tr>
+<tr><td>Hôte compilateur</td><td>Linux x86_64, Ubuntu 24.04, GCC/cc</td><td>Partiel</td><td>Cible candidate ; gates de release encore ouverts.</td></tr>
+<tr><td>Hôte compilateur</td><td>macOS arm64, macOS 15, Apple Clang</td><td>Partiel</td><td>L’audit conserve des preuves locales antérieures, mais le <code>make -j2</code> courant échoue au parsing de <code>elif</code> par le bootstrap ; confirmation CI de release ouverte.</td></tr>
+<tr><td>Hôte compilateur</td><td>Windows x86_64, Windows 2025, MSYS2 UCRT64 MinGW-w64</td><td>Partiel</td><td>Cible candidate ; gates compiler, self-host et package ouverts.</td></tr>
+<tr><td>Cibles additionnelles</td><td>Autres OS, architectures et cross-targets</td><td>Partiel, expérimental</td><td>Les smoke jobs ne constituent pas une promesse de support ; cross-target non vérifié.</td></tr>
+</tbody></table>
+
+<h2>Exclusions et suivi</h2>
+<ul>
+  <li><strong>CAP-LSP-001</strong> — Remplacer les index textuels et heuristiques par les API de symboles/types du compilateur, puis tester workspace symbols, navigation inter-modules, inlay hints et hiérarchies.</li>
+  <li><strong>CAP-CLI-001</strong> — Implémenter ou retirer les commandes <code>vitte test</code> et <code>vitte fmt</code> du contrat du pilote natif ; garder les actions éditeur signalées comme indisponibles d’ici là.</li>
+  <li><strong>CAP-PLATFORM-001</strong> — Fermer les gates Linux x86_64, macOS arm64 et Windows x86_64, puis établir un toolchain cross avant toute annonce multi-cible.</li>
+  <li><strong>CAP-SUGGEST-001</strong> — Garder les moteurs inline opt-in jusqu’à validation de leurs sorties via le compilateur/LSP et rejet des résultats périmés.</li>
+  <li><strong>CAP-DBG-001</strong> — Corriger les régressions DAP/DWARF macOS 0.1.1 et ajouter la couverture Windows avant d’annoncer le backend natif sur ces plateformes.</li>
+</ul>
+<p>Références détaillées : <a href="{{ '/reference/support/' | relative_url }}">support du langage par construction</a>, <a href="{{ '/reference/cli/' | relative_url }}">CLI et diagnostics</a>, et <a href="https://github.com/vitte-lang/vitte/blob/main/vscode/VitteLangVsCode-main/server/src/capability-matrix.json">matrice JSON versionnée 1.0.0</a>.</p>

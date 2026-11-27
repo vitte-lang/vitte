@@ -38,11 +38,6 @@ export interface VitteRuntimePaths {
 // -----------------------------
 function isWindows(): boolean { return os.platform() === 'win32'; }
 
-function exists(p: string | undefined): boolean {
-  if (!p) return false;
-  try { fs.accessSync(p, fs.constants.F_OK); return true; } catch { return false; }
-}
-
 function isExecutableSync(p: string | undefined): boolean {
   if (!p) return false;
   try {

@@ -13,6 +13,9 @@ const { buildCodeMask } = require('../server/out/src/navigation');
 const { provideCompletions, configureCompletions } = require('../server/out/src/completion');
 const { indexDocument, getDocumentIndex, clearIndex } = require('../server/out/src/indexer');
 const { provideSignatureHelp } = require('../server/out/src/signatureHelp');
+const { provideHover } = require('../server/out/src/semantic');
+const { provideFormattingEdits, provideRangeFormattingEdits } = require('../server/out/src/formatting');
+const { isCapabilityAdvertised } = require('../server/out/src/intellisenseCapabilities');
 const root = path.resolve(__dirname, '..');
 const doc = (text) => TextDocument.create('file:///vitte-editor-test.vit', 'vit', 1, text);
 let grammar;
@@ -122,12 +125,41 @@ test('signature help counts arguments after strings containing surrogate pairs',
   assert.equal(help.activeParameter, 1);
 });
 
+test('hover documents known language elements and leaves unknown user symbols empty', () => {
+  const source = 'proc main() -> i32 { return missing_value; }';
+  const document = doc(source);
+  const returnHover = provideHover(document, document.positionAt(source.indexOf('return')));
+  assert.match(returnHover.contents.value, /Retourne depuis une fonction/);
+  const typeHover = provideHover(document, document.positionAt(source.indexOf('i32')));
+  assert.match(typeHover.contents.value, /Type primitif/);
+  assert.equal(provideHover(document, document.positionAt(source.indexOf('missing_value') + 2)), null);
+});
+
+test('formatter normalizes whitespace and is idempotent', () => {
+  const original = doc('proc  main()   {  return 0; }   ');
+  const edits = provideFormattingEdits(original);
+  assert.equal(edits.length, 1);
+  assert.match(edits[0].newText, /proc main\(\)/);
+  assert.ok(edits[0].newText.endsWith('\n'));
+  const formatted = doc(edits[0].newText);
+  assert.deepEqual(provideFormattingEdits(formatted), []);
+  const rangeEdits = provideRangeFormattingEdits(original, { start: { line: 0, character: 0 }, end: { line: 0, character: original.getText().length } });
+  assert.equal(rangeEdits.length, 1);
+  assert.match(rangeEdits[0].newText, /proc main\(\)/);
+});
+
 test('semantic tokens classify types, mutable bindings, fields and canonical numbers', () => {
   const text = 'form Point { x: i32 }\r\nproc run() -> i32 {\r\n let mut result: i32 = 0XFF;\r\n /* outer\r\n\r\n /* inner */ tail */\r\n return result;\r\n}\r\n';
   const tokens = semanticTokens(text);
   for (const [value, type] of [['i32', 'type'], ['result', 'variable'], ['x', 'property'], ['return', 'keyword'], ['0XFF', 'number']]) assert.ok(tokens.some(t => t.value === value && t.type === type), `${value}: ${type}`);
   const numbers = '0x1.fp+2 1e3 1. 0B101 0O755 1_000 0..4 0..=4';
   assert.deepEqual(semanticTokens(numbers).filter(t => t.type === 'number').map(t => t.value), ['0x1.fp+2', '1e3', '1.', '0B101', '0O755', '1_000', '0', '4', '0', '4']);
+});
+
+test('semantic tokenization colors logical word operators and ordinary identifiers', () => {
+  const tokens = semanticTokens('proc run(left: bool, right: bool) -> bool { return left and not right or left is true; }');
+  for (const word of ['and', 'not', 'or', 'is']) assert.ok(tokens.some(token => token.value === word && token.type === 'operator'), word);
+  assert.ok(tokens.some(token => token.value === 'left' && token.type === 'parameter'));
 });
 
 test('TextMate highlights current keywords and every canonical numeric form', () => {
@@ -156,6 +188,47 @@ test('snippets use parser-compatible match, pick, import and external declaratio
   for (const name of ['use declaration', 'use alias', 'export symbols', 'type alias', 'constant', 'return value']) assert.ok(snippets[name].body.at(-1).endsWith(';'), name);
 });
 
+test('versioned capability matrix records evidence and gates advertised behavior', () => {
+  const matrix = JSON.parse(fs.readFileSync(path.join(root, 'server/src/capability-matrix.json'), 'utf8'));
+  assert.equal(matrix.schema, 'vitte-capabilities@1');
+  assert.match(matrix.matrixVersion, /^\d+\.\d+\.\d+$/);
+  for (const feature of matrix.editorFeatures) {
+    assert.ok(feature.id && feature.label && feature.status && feature.description, JSON.stringify(feature));
+    if (feature.advertised) {
+      assert.ok(feature.evidence.length > 0, `${feature.id} has no evidence`);
+      assert.ok(!['planned', 'unavailable'].includes(feature.status), feature.id);
+    }
+    assert.equal(isCapabilityAdvertised(feature.id), Boolean(feature.advertised && feature.evidence.length));
+  }
+  const nativeDebug = matrix.editorFeatures.find(feature => feature.id === 'native-debug');
+  assert.equal(nativeDebug.advertised, false, 'native debugging is not advertised without passing evidence for the active toolchain/platform');
+  assert.equal(nativeDebug.followUp, 'CAP-DBG-001');
+  for (const group of [matrix.compilerFrontends, matrix.cliCommands, matrix.platforms]) {
+    for (const entry of group) assert.ok(entry.evidence?.length, `${entry.id} has no evidence`);
+  }
+  assert.ok(matrix.followUps.length > 0);
+  assert.ok(matrix.followUps.every(item => item.status === 'planned' && /^CAP-[A-Z]+-\d+$/.test(item.id)));
+  const docs = fs.readFileSync(path.resolve(root, '../../docs/reference/capabilities.html'), 'utf8');
+  const documentedRows = (docs.match(/<tr><td>/g) ?? []).length;
+  const matrixRows = matrix.editorFeatures.length + matrix.compilerFrontends.length + matrix.cliCommands.length + matrix.platforms.length;
+  assert.equal(documentedRows, matrixRows, 'the reference page must include every matrix row');
+  for (const followUp of matrix.followUps) assert.ok(docs.includes(followUp.id), `documentation is missing ${followUp.id}`);
+  assert.ok(docs.includes(matrix.matrixVersion), 'documentation must identify the same matrix version');
+});
+
+test('extension manifest exposes the matrix and keeps heuristic defaults off', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const commands = manifest.contributes.commands.map(command => command.command);
+  assert.ok(commands.includes('vitte.showCapabilities'));
+  const settings = manifest.contributes.configuration.properties;
+  assert.equal(settings['vitte.suggestions.localEngine.enabled'].default, false);
+  assert.equal(settings['vitte.suggestions.ghostTextTop1Stable'].default, false);
+  assert.equal(settings['vitte.features.workspaceSymbols'].default, false);
+  assert.equal(settings['vitte.features.inlayHints'].default, false);
+  assert.match(settings['vitte.features.inlayHints'].description, /not advertised/i);
+  assert.ok(!manifest.files, 'package uses .vscodeignore so VSCE includes runtime dependencies by default');
+});
+
 test('bundled server serves completion, semantic tokens and symbols over stdio LSP', { timeout: 15000 }, async (t) => {
   const { spawn } = require('node:child_process');
   const { createMessageConnection, StreamMessageReader, StreamMessageWriter } = require('vscode-jsonrpc/node');
@@ -166,7 +239,19 @@ test('bundled server serves completion, semantic tokens and symbols over stdio L
   connection.listen();
   const initialized = await connection.sendRequest('initialize', { processId: process.pid, rootUri: null, capabilities: {} });
   assert.ok(initialized.capabilities.completionProvider);
+  assert.ok(initialized.capabilities.completionProvider.triggerCharacters.length > 0);
+  assert.equal(initialized.capabilities.completionProvider.resolveProvider, undefined);
+  for (const capability of ['hoverProvider', 'signatureHelpProvider', 'documentSymbolProvider', 'documentFormattingProvider', 'documentRangeFormattingProvider', 'definitionProvider', 'referencesProvider', 'renameProvider', 'codeActionProvider', 'semanticTokensProvider']) {
+    assert.ok(initialized.capabilities[capability], `missing tested LSP capability ${capability}`);
+  }
+  for (const capability of ['workspaceSymbolProvider', 'inlayHintProvider', 'callHierarchyProvider', 'typeHierarchyProvider']) {
+    assert.equal(initialized.capabilities[capability], undefined, `unverified capability ${capability} must not be advertised`);
+  }
   await connection.sendNotification('initialized', {});
+  const matrix = await connection.sendRequest('vitte/capabilityMatrix');
+  assert.equal(matrix.schema, 'vitte-capabilities@1');
+  assert.ok(matrix.editorFeatures.some(feature => feature.id === 'inlay-hints' && !feature.advertised && !feature.enabled));
+  assert.ok(matrix.editorFeatures.filter(feature => feature.advertised).every(feature => feature.evidence.length > 0));
   const uri = 'file:///vitte-protocol-test.vit';
   const text = 'space editor_test;\nproc editorTarget() -> i32 { return 0; }\nret';
   await connection.sendNotification('textDocument/didOpen', { textDocument: { uri, languageId: 'vit', version: 1, text } });
@@ -176,6 +261,23 @@ test('bundled server serves completion, semantic tokens and symbols over stdio L
   assert.ok(tokens.data.length > 0);
   const symbols = await connection.sendRequest('textDocument/documentSymbol', { textDocument: { uri } });
   assert.ok(symbols.some(symbol => symbol.name === 'editorTarget' || symbol.children?.some(child => child.name === 'editorTarget')));
+
+  const actionUri = 'file:///vitte-protocol-code-action.vit';
+  const actionText = 'space editor_test;\nproc main() {   \n}\n';
+  await connection.sendNotification('textDocument/didOpen', { textDocument: { uri: actionUri, languageId: 'vit', version: 1, text: actionText } });
+  const actionRange = { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } };
+  const whitespaceActions = await connection.sendRequest('textDocument/codeAction', {
+    textDocument: { uri: actionUri },
+    range: actionRange,
+    context: { diagnostics: [{ range: actionRange, message: 'trailing whitespace', severity: 2, code: 'format.trailingWhitespace' }] },
+  });
+  assert.ok(whitespaceActions.some(action => action.title === 'Vitte: Trim trailing whitespace'));
+  const syntaxActions = await connection.sendRequest('textDocument/codeAction', {
+    textDocument: { uri: actionUri },
+    range: actionRange,
+    context: { diagnostics: [{ range: actionRange, message: 'syntax error', severity: 1, code: 'PARSE:E0007' }] },
+  });
+  assert.deepEqual(syntaxActions, [], 'unverified syntax errors must not receive guessed edits');
   await connection.sendRequest('shutdown');
   await connection.sendNotification('exit');
 });

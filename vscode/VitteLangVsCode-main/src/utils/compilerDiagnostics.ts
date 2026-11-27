@@ -131,7 +131,7 @@ function helpFrom(item: JsonRecord, data: JsonRecord): string | undefined {
   const annotations = Array.isArray(item.annotations) ? item.annotations : Array.isArray(data.annotations) ? data.annotations : [];
   const help = annotations
     .map(record)
-    .filter(annotation => String(annotation.kind ?? '').toLowerCase() === 'help')
+    .filter(annotation => string(annotation.kind)?.toLowerCase() === 'help')
     .map(annotation => string(annotation.message))
     .filter((value): value is string => value !== undefined);
   return help.length > 0 ? Array.from(new Set(help)).join('\n') : undefined;
@@ -224,11 +224,36 @@ export function normalizeCompilerDiagnostics(payload: unknown, text: string, fil
     const source = string(position.source) ?? string(position.uri) ?? string(item.sourcePath);
     if (!sourceMatches(source, file, cwd)) continue;
 
-    const lspSpan = item.range
+    const hasByteSpan = (number(position.start_byte) ?? number(position.startByte)) !== undefined
+      && (number(position.end_byte) ?? number(position.endByte)) !== undefined;
+    let explicitSpan = spanOffsets(position, text, bytes, fallbackSource)
+      ?? spanOffsets(item, text, bytes, fallbackSource);
+    const sourceLines = text.split(/\r\n|\r|\n/);
+    const sourceLineCount = sourceLines.length;
+    const startLine = number(position.startLine) ?? number(position.start_line);
+    const endLine = number(position.endLine) ?? number(position.end_line);
+    const startColumn = number(position.startColumn) ?? number(position.start_column);
+    const endColumn = number(position.endColumn) ?? number(position.end_column);
+    // Some CLI builds serialize an out-of-range, one-based line while the
+    // byte offsets are also one byte late. Recover from the UTF-16 columns
+    // only when that reported line cannot exist in this source document.
+    const startCoordinateOutsideSource = startLine !== undefined && startColumn !== undefined
+      && (startLine >= sourceLineCount || startColumn > (sourceLines[startLine]?.length ?? -1));
+    const endCoordinateOutsideSource = endLine !== undefined && endColumn !== undefined
+      && (endLine >= sourceLineCount || endColumn > (sourceLines[endLine]?.length ?? -1));
+    if (hasByteSpan && startLine !== undefined && endLine !== undefined
+        && startColumn !== undefined && endColumn !== undefined
+        && startCoordinateOutsideSource && endCoordinateOutsideSource) {
+      explicitSpan = {
+        source: string(position.source) ?? fallbackSource,
+        start: offsetAt(text, startLine - 1, startColumn),
+        end: offsetAt(text, endLine - 1, endColumn),
+      };
+    }
+    const lspSpan = !hasByteSpan && item.range
       ? spanOffsets({ source: source ?? fallbackSource, range: item.range }, text, bytes, fallbackSource)
       : undefined;
-    const span = lspSpan ?? spanOffsets(position, text, bytes, fallbackSource)
-      ?? spanOffsets(item, text, bytes, fallbackSource);
+    const span = hasByteSpan ? explicitSpan : lspSpan ?? explicitSpan;
     if (!span) continue;
     const start = Math.max(0, Math.min(span.start, text.length));
     const end = Math.max(start, Math.min(span.end, text.length));
@@ -272,7 +297,7 @@ function canonicalDiagnosticCode(code: string | number | undefined): string {
   return value.includes(':') ? value.slice(value.lastIndexOf(':') + 1) : value;
 }
 
-type SuggestionEntry = { start: number; end: number; code: string; suggestions: CompilerSuggestion[] };
+interface SuggestionEntry { start: number; end: number; code: string; suggestions: CompilerSuggestion[]; }
 const suggestionsByDocument = new Map<string, SuggestionEntry[]>();
 
 /** Retain structured fixes beside VS Code diagnostics (the VS Code API drops LSP `data`). */

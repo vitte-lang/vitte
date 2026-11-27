@@ -24,11 +24,11 @@
 
 ---
 
-Write Vitte with the language server, editor support, and project commands close at hand. The extension supports canonical `.vit` and `.vitl` files, plus `.vitte` for legacy projects.
+Write Vitte with the bundled language server and project commands close at hand. The extension supports canonical `.vit` and `.vitl` files, plus `.vitte` for legacy projects. See the [versioned capability matrix](../../docs/reference/capabilities.html) for the tested scope of each feature, compiler frontend, CLI command, and platform.
 
 | ✍️ **Edit** | 🧭 **Understand** | ⚙️ **Build** | 🧠 **Suggestions** |
 | --- | --- | --- | --- |
-| Syntax highlighting, completion, hover, formatting, and semantic tokens | Diagnostics, navigation, references, rename, and code actions | Build, run, test, clean, profiles, and incremental builds | Local-first inline suggestions with optional, privacy-gated AI |
+| Syntax highlighting, snippets, and language-server completion | Tested diagnostics, navigation, rename, formatting, and code actions | Build and run; tests only in the compiler repository | Optional experimental inline suggestions, off by default |
 
 ```text
 Open a .vit file  →  Detect the toolchain  →  Edit with live feedback
@@ -41,17 +41,20 @@ Open a .vit file  →  Detect the toolchain  →  Edit with live feedback
 - `.vit` — Vitte source
 - `.vitl` — library and standard-library source
 - `.vitte` — legacy compatibility
-- Grammar-aligned highlighting, snippets, completion, signature help, hover, diagnostics, semantic tokens, and formatting
-- Go to definition, find references, document/workspace symbols, and rename
+- TextMate highlighting, snippets, language-server completion and signature help, hover, diagnostics, semantic tokens, and formatting
+- Tested document symbols, definition, references, rename, and code actions
+- Workspace symbols, inlay hints, and call/type hierarchies are experimental prototypes and are not advertised to VS Code
 - Native DAP launch for `.vit` sources, with external DAP stdio and TCP attach retained for advanced/native targets
 
-### IntelliSense parity
+### Capability scope
 
-Vitte follows the same editor-facing IntelliSense surface as the Microsoft
-C/C++ extension where the LSP model applies: completion, signature help,
-hover, diagnostics, symbols, navigation, references, rename, code actions,
-formatting, semantic tokens, inlay hints, and call/type hierarchies are
-exposed by the bundled language server and covered by the extension tests.
+Editor capabilities use the bundled language server. Source-indexed navigation,
+completion, and diagnostics have documented limits; they are not compiler symbol
+or type-resolution results. The server advertises only the LSP providers with
+automated evidence for their stated scope. Use **Vitte: Show Capabilities** for
+live enablement, evidence, limitations, compiler frontend status, CLI commands,
+platforms, and planned follow-up work. That view uses the bundled matrix when
+the language server is offline and marks the data as a packaged baseline.
 
 The native debug path compiles with DWARF symbols and `#line` source mappings,
 then exposes the debuggee lifecycle through a persistent LLDB-backed DAP
@@ -93,8 +96,10 @@ The extension uses its bundled TypeScript language server by default. Toolchain,
 | Command | Use it to… |
 | --- | --- |
 | **Vitte: Quick** | Open the curated action menu and setup flow |
-| **Vitte: Build / Run / Test** | Compile, execute, or validate the workspace |
-| **Vitte: Test Current File** | Focus tests on the active source file |
+| **Vitte: Build / Run** | Compile or execute the workspace/source within the supported frontend subset |
+| **Vitte: Test (compiler repository only)** | Run the compiler repository’s `make test` target; standalone `vitte test` is unavailable in compiler 0.1.1 |
+| **Vitte: Test Current File (unavailable)** | Explain that the CLI has no current-file test command |
+| **Vitte: Show Capabilities** | Inspect tested editor features, compiler frontends, CLI commands, platforms, and exclusions |
 | **Vitte: Open Playground** | Try a small Vitte example in an isolated editor |
 | **Vitte: Project Assistant / Doctor** | Create project files or diagnose setup problems |
 | **Vitte: Show Server Log / Show Server Metrics** | Inspect language-server activity and performance |
@@ -103,12 +108,13 @@ The extension uses its bundled TypeScript language server by default. Toolchain,
 
 ## Suggestions, local first
 
-The local inline engine is enabled by default. It indexes workspace Vitte files and ranks context-aware suggestions without sending code to an external service.
+The local inline engine is experimental and disabled by default. It indexes workspace Vitte files and produces heuristic candidates that are not compiler-resolved. Standard completion comes from the language server; a completion timeout is reported and does not reuse cached or fabricated candidates.
 
 The optional AI pipeline is off by default. Its privacy defaults are deliberately conservative:
 
 | Setting | Default |
 | --- | --- |
+| Local inline suggestion engine | **Off** |
 | Local-only suggestions | **On** |
 | Cloud consent (`cloudOptIn`) | **Off** |
 | AI pipeline and dedicated backend | **Off** |
@@ -117,7 +123,7 @@ The optional AI pipeline is off by default. Its privacy defaults are deliberatel
 | External training | **Off** |
 | Requested data retention | **0 days** |
 
-Use **Vitte: Suggestions Cloud Opt-In** only when you intend to enable a configured backend. **Vitte: Suggestions Cloud Opt-Out (Local-Only)** restores local-only operation. The extension also provides local-engine stats, a profiler, and diagnostics export.
+The suggestion diagnostics and profiling commands remain available for the experimental engines. **Vitte: Suggestions Cloud Opt-In** is required before a configured cloud backend can send requests. **Vitte: Suggestions Cloud Opt-Out (Local-Only)** restores local-only operation.
 
 ## Configure only what you need
 
@@ -168,8 +174,9 @@ npm run vsix
 ```
 
 `test:unit` builds the client and server, then checks lexical boundaries, grammar
-vocabulary, TextMate tokenization, completion, indexing, signatures, semantic
-tokens, and a real stdio LSP session without starting a graphical editor.
+vocabulary, TextMate tokenization, completion, hover, formatting, indexing,
+signatures, semantic tokens, the capability contract, and a real stdio LSP
+session without starting a graphical editor.
 `npm test` additionally runs the VS Code integration suite, which needs a display
 (on Linux CI, use `xvfb-run -a npm test`). Import paths are regenerated from this
 repository's modules during the build; standalone checkouts retain the checked-in
