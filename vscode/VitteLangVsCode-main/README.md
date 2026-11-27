@@ -42,13 +42,13 @@ Open a .vit file  →  Detect the toolchain  →  Edit with live feedback
 - `.vitl` — library and standard-library source
 - `.vitte` — legacy compatibility
 - TextMate highlighting, snippets, context-aware completion and signature help, source-based hover/navigation, diagnostics, semantic tokens, and formatting
-- Document outline and breadcrumbs, local/imported definitions and declarations, type definitions, trait implementations, references, and rename within the documented source-index scope
+- Document outline and breadcrumbs, local/imported navigation, and symbol-aware rename with a multi-file preview, alias/shadowing checks and conservative refusal of incomplete workspace scans
 - Bounded workspace symbol search is enabled; inlay hints and call/type hierarchies remain experimental and are not advertised because the compiler cannot provide verified relationships
 - Native DAP launch for `.vit` sources, with external DAP stdio and TCP attach retained for advanced/native targets
 
 ### Capability scope
 
-Editor capabilities use the bundled language server. Completion, hover and navigation read source declarations, explicit imports and configured module roots; they do not query compiler symbol tables because Vitte 0.1.1 exposes no editor semantic API. Simple literal inference and explicit annotations are shown; overloads, generic substitutions and inferred receiver types remain unavailable.
+Editor capabilities use the bundled language server. Completion, hover, navigation and rename read source declarations, explicit imports and configured module roots; they do not query compiler symbol tables because Vitte 0.1.1 exposes no editor semantic API. Rename previews each affected file, validates the edits against current buffers, and refuses unresolved symbols, collisions, incomplete scans or ambiguous file-to-module mappings. Simple literal inference and explicit annotations are shown; overloads, generic substitutions and inferred receiver types remain unavailable.
 Trait methods are offered only when a visible trait bound or implementation is
 present in source. Direct inherent `impl` methods and type-qualified associated
 functions are not offered because the active frontend does not validate them.
@@ -72,7 +72,7 @@ logpoints, and `setVariable` are resolved from the native debug information;
 there is no compiler probe channel in this path. External adapters remain
 supported through `adapter` or `vitte.debug.program`.
 
-The 2.3 release synchronizes editor support with the current parser grammar, including `return` / `give`, procedure contracts (`requires` / `ensures`), `pick` variants, `match` arms, and external procedures. Shared lexical scanning keeps completion, navigation, indexing, and semantic highlighting consistent inside nested comments and strings. Version 2.3.2 adds source-scoped completions, actual filesystem module/import candidates, public export filtering, supported trait-method completion, constructor snippets, and signature help for local/imported procedures, supported methods and callable values. Version 2.3.3 adds source-derived hover details, scoped local and imported navigation, type and implementation navigation, bounded workspace symbols/references, and nested outlines for breadcrumbs. Call/type hierarchy remain unavailable until the compiler exposes verified relationship data.
+The 2.3 release synchronizes editor support with the current parser grammar, including `return` / `give`, procedure contracts (`requires` / `ensures`), `pick` variants, `match` arms, and external procedures. Shared lexical scanning keeps completion, navigation, indexing, and semantic highlighting consistent inside nested comments and strings. Version 2.3.2 adds source-scoped completions, actual filesystem module/import candidates, public export filtering, supported trait-method completion, constructor snippets, and signature help for local/imported procedures, supported methods and callable values. Version 2.3.3 adds source-derived hover details, scoped local and imported navigation, type and implementation navigation, bounded workspace symbols/references, and nested outlines for breadcrumbs. Version 2.3.4 adds conservative symbol-aware rename, checked multi-file previews, and unique module-path updates on file moves. Call/type hierarchy remain unavailable until the compiler exposes verified relationship data.
 
 ```vit
 space hello
@@ -188,7 +188,7 @@ Open **Preferences: Open Settings (UI)** and search for `vitte`.
 
 ## Project
 
-- Extension: `VitteStudio.vitte-studio` · version `2.3.3`
+- Extension: `VitteStudio.vitte-studio` · version `2.3.4`
 - Requires VS Code `1.105` or later
 - License: [MIT](LICENSE)
 - Release notes: [CHANGELOG.md](CHANGELOG.md)

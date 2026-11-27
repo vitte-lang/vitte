@@ -5,6 +5,16 @@ and adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.4] — 2026-11-27
+### Added
+- Symbol-aware rename for scoped source declarations, explicit imports, imported aliases and module aliases; comments, strings and shadowed bindings are excluded.
+- Multi-file rename preview with checks against unsaved buffer contents and versions, plus stale workspace detection before edits are returned or applied.
+- VS Code file rename handling that updates module declarations and imports only when one project-root mapping is proven; unsafe or incomplete cases explain why they were refused.
+
+### Changed
+- Remove the server's old `vitte.renameSymbol` demo command, which inserted a comment instead of renaming a symbol.
+- Bump the extension and language server to 2.3.4 and the capability matrix to 1.0.5.
+
 ## [2.3.3] — 2026-11-27
 ### Added
 - Source-derived hover details for signatures, docs, visibility, parameters, fields, variants, modules, builtins, and simple annotated/literal types.

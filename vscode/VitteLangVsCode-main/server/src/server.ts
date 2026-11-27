@@ -39,6 +39,7 @@ import type {
   ImplementationParams,
   ReferenceParams,
   RenameParams,
+  RenameFilesParams,
   PrepareRenameParams,
   WorkspaceEdit,
   CodeActionParams,
@@ -66,7 +67,8 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 
 /* Modules internes */
 import { provideCompletions, resolveCompletion, triggerCharacters, configureCompletions } from "./completion.js";
-import type { CompletionEnvironment } from "./moduleResolver.js";
+import { findUniqueModulePathFileMove, resolveModuleFiles, type CompletionEnvironment } from "./moduleResolver.js";
+import { maskNonCode } from "./lexical.js";
 import {
   documentSymbols,
   definitionAtPositionWithImports,
@@ -74,9 +76,11 @@ import {
   typeDefinitionAtPositionWithImports,
   implementationAtPositionWithImports,
   referencesAtPositionWithWorkspace,
-  renameSymbol,
-  renameIdentifierByName,
-  prepareRename,
+  resolveRenameTarget,
+  renameReferencesForTarget,
+  validateRenameName,
+  validateRenameLocations,
+  type RenameTarget,
   workspaceSymbols,
   prepareCallHierarchy,
   callHierarchyIncoming,
@@ -94,6 +98,7 @@ import { lintToPublishable } from "./lint.js";
 import { registerCommands } from "./commands.js";
 import { indexDocument as indexWorkspaceDocument, removeDocument as removeWorkspaceDocument, clearIndex, exportIndexSnapshot, loadIndexSnapshot, getIndex, type IndexSnapshot } from "./indexer.js";
 import * as fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Dirent } from "node:fs";
@@ -232,10 +237,12 @@ let globalSettings: ServerSettings = { ...DEFAULT_SETTINGS };
 let hasConfigurationCapability = false;
 let workspaceRoot: string | undefined;
 let workspaceRoots: string[] | undefined;
+let clientSupportsDocumentChanges = false;
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const capabilities = params.capabilities;
   hasConfigurationCapability = !!capabilities.workspace?.configuration;
+  clientSupportsDocumentChanges = Boolean(capabilities.workspace?.workspaceEdit?.documentChanges);
   const initialRoots = (params.workspaceFolders ?? [])
     .map((folder) => folder.uri.startsWith("file://") ? fileURLToPath(folder.uri) : "")
     .filter((root): root is string => root.length > 0);
@@ -252,6 +259,18 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   const serverCapabilities: NonNullable<InitializeResult["capabilities"]> = {
     textDocumentSync: TextDocumentSyncKind.Incremental,
   };
+  if (capabilities.workspace?.fileOperations?.willRename) {
+    serverCapabilities.workspace = {
+      fileOperations: {
+        willRename: {
+          filters: [".vit", ".vitl", ".vitte"].map((extension) => ({
+            scheme: "file",
+            pattern: { glob: `**/*${extension}`, matches: "file" as const },
+          })),
+        },
+      },
+    };
+  }
   if (isCapabilityAdvertised("completion")) {
     serverCapabilities.completionProvider = { triggerCharacters: triggerCharacters(), resolveProvider: true };
   }
@@ -1098,10 +1117,12 @@ connection.onPrepareRename(async (params: PrepareRenameParams, token?: Cancellat
     const doc = documents.get(params.textDocument.uri);
     if (!doc || cancelled(token)) return null;
     try {
-      const result = await withTimeout(Promise.resolve(prepareRename(doc, params.position)), timeoutFor("rename"));
-      if (result) metric("prepareRename", start, doc.uri);
+      const environment = await resolveCompletionEnvironment(doc.uri);
+      const result = await withTimeout(resolveRenameTarget(doc, params.position, environment), timeoutFor("rename"));
+      if (!result.target && result.unavailableReason) explainUnavailable("rename", result.unavailableReason);
+      if (result.target) metric("prepareRename", start, doc.uri);
       recordSuccess();
-      return result;
+      return result.target ? { range: result.target.range, placeholder: result.target.name } : null;
     } catch (e) {
       metric("prepareRename", start, doc?.uri ?? "unknown", undefined, e);
       recordFailure();
@@ -1122,21 +1143,61 @@ connection.onRenameRequest(async (params: RenameParams, token?: CancellationToke
     const doc = documents.get(params.textDocument.uri);
     if (!doc || cancelled(token)) return null;
     try {
-      const edits = await withTimeout(Promise.resolve(renameSymbol(doc, params.position, params.newName)), timeoutFor("rename"));
-      const prepared = prepareRename(doc, params.position);
-      const oldName = prepared?.placeholder;
-      const changes: Record<string, TextEdit[]> = { [doc.uri]: edits.map(e => TextEdit.replace(e.range, e.newText)) };
-      if (oldName) {
-        const workspaceDocs = await collectWorkspaceRenameCandidates(doc.uri, oldName);
-        for (const d of workspaceDocs) {
-          if (d.uri === doc.uri) continue;
-          const otherEdits = renameIdentifierByName(d, oldName, params.newName)
-            .map(e => TextEdit.replace(e.range, e.newText));
-          if (otherEdits.length > 0) changes[d.uri] = otherEdits;
-        }
+      const environment = await resolveCompletionEnvironment(doc.uri);
+      const resolution = await withTimeout(resolveRenameTarget(doc, params.position, environment), timeoutFor("rename"));
+      const target = resolution.target;
+      if (!target) {
+        explainUnavailable("rename", resolution.unavailableReason ?? "Le symbole sous le curseur n’est pas renommable.");
+        return null;
       }
-      const total = Object.values(changes).reduce((acc, arr) => acc + arr.length, 0);
-      const we: WorkspaceEdit = { changes };
+      const invalidName = validateRenameName(params.newName);
+      if (invalidName) {
+        explainUnavailable("rename", invalidName);
+        return null;
+      }
+      if (!clientSupportsDocumentChanges) {
+        explainUnavailable("rename", "Le client ne prend pas en charge les edits versionnés; le renommage est refusé pour protéger les buffers modifiés.");
+        return null;
+      }
+
+      const scan = requiresWorkspaceRenameScan(target)
+        ? await collectWorkspaceRenameDocuments(environment, renameTargetUri(target))
+        : openDocumentRenameSnapshot(doc.uri);
+      if (requiresWorkspaceRenameScan(target) && !scan.complete) {
+        explainUnavailable("rename", scan.reason ?? "Le workspace n’a pas pu être indexé entièrement; aucun edit partiel ne sera proposé.");
+        return null;
+      }
+      const referenceOutcome = await withTimeout(
+        renameReferencesForTarget(doc, params.position, target, environment, scan.documents),
+        Math.max(timeoutFor("rename"), 2500),
+      );
+      if (referenceOutcome.unavailableReason || referenceOutcome.locations.length === 0) {
+        explainUnavailable("rename", referenceOutcome.unavailableReason ?? "Aucune référence fiable n’a été trouvée.");
+        return null;
+      }
+      const validation = validateRenameLocations(target.name, params.newName, referenceOutcome.locations, scan.documents);
+      if (validation) {
+        explainUnavailable("rename", validation);
+        return null;
+      }
+      const snapshotError = await validateRenameSnapshot(scan);
+      if (snapshotError) {
+        explainUnavailable("rename", snapshotError);
+        return null;
+      }
+
+      const grouped = new Map<string, TextEdit[]>();
+      for (const location of referenceOutcome.locations) {
+        const edits = grouped.get(location.uri) ?? [];
+        edits.push(TextEdit.replace(location.range, params.newName));
+        grouped.set(location.uri, edits);
+      }
+      const documentChanges = Array.from(grouped, ([uri, edits]) => ({
+        textDocument: { uri, version: documents.get(uri)?.version ?? null },
+        edits: edits.sort((left, right) => right.range.start.line - left.range.start.line || right.range.start.character - left.range.start.character),
+      }));
+      const total = documentChanges.reduce((count, change) => count + change.edits.length, 0);
+      const we: WorkspaceEdit = { documentChanges };
       metric("rename", start, doc.uri, total);
       recordSuccess();
       return we;
@@ -1147,6 +1208,27 @@ connection.onRenameRequest(async (params: RenameParams, token?: CancellationToke
       return null;
     }
   })();
+});
+
+connection.workspace.onWillRenameFiles(async (params: RenameFilesParams): Promise<WorkspaceEdit | null> => {
+  if (!clientSupportsDocumentChanges) {
+    explainUnavailable("file rename", "Le client ne prend pas en charge les edits versionnés; les imports ne peuvent pas être modifiés en sécurité.");
+    return null;
+  }
+  if (params.files.length === 0) return null;
+  try {
+    const environment = await resolveCompletionEnvironment(params.files[0]?.oldUri ?? "");
+    const edit = await prepareModulePathFileRename(params, environment);
+    if (edit.reason) {
+      explainUnavailable("file rename", edit.reason);
+      return null;
+    }
+    return edit.workspaceEdit ?? null;
+  } catch (error) {
+    logErr("willRenameFiles", error);
+    explainUnavailable("file rename", "La correspondance du fichier avec les chemins de modules n’a pas pu être vérifiée.");
+    return null;
+  }
 });
 
 connection.languages.inlayHint.on(async (params: InlayHintParams, token?: CancellationToken): Promise<InlayHint[]> => {
@@ -1447,38 +1529,313 @@ function lineRangeAt(doc: TextDocument, lineNo: number): Range {
   return Range.create(Position.create(line, 0), Position.create(line, lineText.length));
 }
 
-async function collectWorkspaceRenameCandidates(primaryUri: string, symbolName: string): Promise<TextDocument[]> {
-  const out = new Map<string, TextDocument>();
-  for (const d of documents.all()) out.set(d.uri, d);
+interface RenameWorkspaceSnapshot {
+  documents: { uri: string; doc: TextDocument }[];
+  complete: boolean;
+  reason?: string;
+  diskFiles: Map<string, { path: string; mtimeMs: number; size: number; contentHash: string }>;
+  openVersions: Map<string, number>;
+  roots?: string[];
+  directories?: Map<string, { mtimeMs: number; ctimeMs: number }>;
+}
 
-  // Initialization normally populates this cache. If the client did not send
-  // workspace roots, keep rename responsive instead of issuing a workspace
-  // request from inside the rename handler.
-  const roots = workspaceRoots ?? [];
-  if (roots.length === 0) return Array.from(out.values());
+function requiresWorkspaceRenameScan(target: RenameTarget): boolean {
+  return target.kind === "imported-symbol" || (target.kind === "source" && target.symbol.isPublic === true);
+}
 
-  // Workspace rename is a best-effort extension of the open-document result.
-  // Never let a large repository hold the LSP request queue hostage.
-  const deadline = Date.now() + 350;
-  const fileLimit = 256;
+function renameTargetUri(target: RenameTarget): string | undefined {
+  if (target.kind === "source") return target.symbol.location.uri;
+  if (target.kind === "imported-symbol" || target.kind === "import-alias") return target.symbol.location?.uri;
+  return target.module.uri;
+}
 
-  for (const root of roots) {
-    if (Date.now() >= deadline || out.size >= fileLimit) break;
-    const files = await walkVitteFiles(root, fileLimit - out.size, deadline);
-    for (const file of files) {
-      if (Date.now() >= deadline || out.size >= fileLimit) break;
-      const uri = pathToFileURL(file).toString();
-      if (uri === primaryUri || out.has(uri)) continue;
-      try {
-        const raw = await fs.readFile(file, "utf8");
-        if (!raw.includes(symbolName)) continue;
-        out.set(uri, TextDocument.create(uri, file.endsWith(".vitte") ? "vitte" : "vit", 0, raw));
-      } catch {
-        // ignore unreadable files
+function openDocumentRenameSnapshot(primaryUri?: string): RenameWorkspaceSnapshot {
+  const openDocuments = primaryUri ? [documents.get(primaryUri)].filter((doc): doc is TextDocument => Boolean(doc)) : documents.all();
+  const docs = openDocuments.map((doc) => ({ uri: doc.uri, doc }));
+  return {
+    documents: docs,
+    complete: true,
+    diskFiles: new Map(),
+    openVersions: new Map(docs.map(({ uri, doc }) => [uri, doc.version])),
+  };
+}
+
+async function collectWorkspaceRenameDocuments(
+  environment: CompletionEnvironment,
+  targetUri?: string,
+): Promise<RenameWorkspaceSnapshot> {
+  const roots = Array.from(new Set([...(environment.workspaceRoots ?? []), environment.projectRoot, ...(environment.modulePaths ?? [])]
+    .filter((root): root is string => Boolean(root)).map((root) => path.resolve(root))));
+  const inRoots = (uri: string): boolean => {
+    if (!uri.startsWith("file:")) return false;
+    let file: string;
+    try { file = path.resolve(fileURLToPath(uri)); } catch { return false; }
+    return roots.some((root) => {
+      const relative = path.relative(root, file);
+      return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+    });
+  };
+  const openDocuments = documents.all().filter((doc) => inRoots(doc.uri) || doc.uri === targetUri);
+  const open: RenameWorkspaceSnapshot = {
+    documents: openDocuments.map((doc) => ({ uri: doc.uri, doc })),
+    complete: true,
+    diskFiles: new Map(),
+    openVersions: new Map(openDocuments.map((doc) => [doc.uri, doc.version])),
+    roots,
+    directories: new Map(),
+  };
+  const out = new Map(open.documents.map((entry) => [entry.uri, entry.doc]));
+  const diskFiles = new Map<string, { path: string; mtimeMs: number; size: number; contentHash: string }>();
+  if (roots.length === 0) {
+    return { ...open, complete: false, reason: "Aucune racine de workspace n’est définie pour rechercher toutes les références.", diskFiles };
+  }
+  if (targetUri && !inRoots(targetUri)) {
+    return { ...open, complete: false, reason: "La déclaration ciblée se trouve hors des racines indexées; les références du projet ne peuvent pas être vérifiées.", diskFiles };
+  }
+
+  const deadline = Date.now() + 2000;
+  const fileLimit = 1024;
+  const totalByteLimit = 64 * 1024 * 1024;
+  const filePaths = new Set<string>();
+  const visitedDirectories = new Set<string>();
+  const directorySnapshots = new Map<string, { mtimeMs: number; ctimeMs: number }>();
+  const queue = [...roots];
+  const skip = new Set([".git", "node_modules", ".vscode", "out", "dist", "build", "target", ".next"]);
+  let totalBytes = 0;
+  let complete = true;
+  let reason: string | undefined;
+
+  while (queue.length > 0) {
+    if (Date.now() >= deadline) {
+      complete = false;
+      reason = "Le scan de renommage a atteint sa limite de temps; aucun résultat partiel ne sera appliqué.";
+      break;
+    }
+    const directory = queue.shift()!;
+    const normalizedDirectory = path.resolve(directory);
+    if (visitedDirectories.has(normalizedDirectory)) continue;
+    visitedDirectories.add(normalizedDirectory);
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(normalizedDirectory, { withFileTypes: true });
+      const stats = await fs.stat(normalizedDirectory);
+      directorySnapshots.set(normalizedDirectory, { mtimeMs: stats.mtimeMs, ctimeMs: stats.ctimeMs });
+    } catch {
+      complete = false;
+      reason = `Le dossier « ${normalizedDirectory} » ne peut pas être lu; l’ensemble des références est inconnu.`;
+      continue;
+    }
+    for (const entry of entries) {
+      if (Date.now() >= deadline) {
+        complete = false;
+        reason = "Le scan de renommage a atteint sa limite de temps; aucun résultat partiel ne sera appliqué.";
+        break;
+      }
+      const absolute = path.join(normalizedDirectory, entry.name);
+      if (entry.isDirectory()) {
+        if (!skip.has(entry.name)) queue.push(absolute);
+        continue;
+      }
+      if (!entry.isFile() || !/\.(?:vit|vitl|vitte)$/i.test(entry.name)) continue;
+      filePaths.add(path.resolve(absolute));
+      if (filePaths.size > fileLimit) {
+        complete = false;
+        reason = `Le workspace dépasse la limite sûre de ${fileLimit} fichiers Vitte pour le renommage.`;
+        break;
+      }
+    }
+    if (!complete && reason?.includes("limite de temps")) break;
+  }
+
+  for (const file of filePaths) {
+    if (Date.now() >= deadline) {
+      complete = false;
+      reason = "Le scan de renommage a atteint sa limite de temps; aucun résultat partiel ne sera appliqué.";
+      break;
+    }
+    const uri = pathToFileURL(file).toString();
+    if (out.has(uri)) continue;
+    try {
+      const stats = await fs.stat(file);
+      if (!stats.isFile() || stats.size > 1024 * 1024 || totalBytes + stats.size > totalByteLimit) {
+        complete = false;
+        reason = `Le fichier « ${file} » dépasse la limite de lecture sûre pour le renommage.`;
+        continue;
+      }
+      totalBytes += stats.size;
+      const source = await fs.readFile(file, "utf8");
+      out.set(uri, TextDocument.create(uri, file.endsWith(".vitte") ? "vitte" : "vit", 0, source));
+      diskFiles.set(uri, { path: file, mtimeMs: stats.mtimeMs, size: stats.size, contentHash: hashRenameText(source) });
+    } catch {
+      complete = false;
+      reason = `Le fichier « ${file} » a changé ou n’est pas lisible pendant le scan de renommage.`;
+    }
+  }
+
+  if (targetUri && !out.has(targetUri)) {
+    try {
+      const file = fileURLToPath(targetUri);
+      if (!inRoots(targetUri)) {
+        complete = false;
+        reason = "La déclaration ciblée se trouve hors des racines indexées; les références du projet ne peuvent pas être vérifiées.";
+      }
+      const stats = await fs.stat(file);
+      if (stats.size > 1024 * 1024) throw new Error("source exceeds safe file size");
+      const source = await fs.readFile(file, "utf8");
+      out.set(targetUri, TextDocument.create(targetUri, file.endsWith(".vitte") ? "vitte" : "vit", 0, source));
+      diskFiles.set(targetUri, { path: file, mtimeMs: stats.mtimeMs, size: stats.size, contentHash: hashRenameText(source) });
+    } catch {
+      complete = false;
+      reason ??= "La déclaration source n’a pas pu être lue pour vérifier le renommage.";
+    }
+  }
+
+  return {
+    documents: Array.from(out, ([uri, doc]) => ({ uri, doc })),
+    complete,
+    reason,
+    diskFiles,
+    openVersions: open.openVersions,
+    roots,
+    directories: directorySnapshots,
+  };
+}
+
+async function validateRenameSnapshot(snapshot: RenameWorkspaceSnapshot): Promise<string | undefined> {
+  if (snapshot.roots) {
+    for (const doc of documents.all()) {
+      if (!doc.uri.startsWith("file:") || snapshot.openVersions.has(doc.uri)) continue;
+      let file: string;
+      try { file = path.resolve(fileURLToPath(doc.uri)); } catch { continue; }
+      if (snapshot.roots.some((root) => {
+        const relative = path.relative(root, file);
+        return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+      })) return "Un nouveau buffer Vitte du workspace a été ouvert pendant l’analyse; relancez le renommage.";
+    }
+  }
+  for (const [uri, version] of snapshot.openVersions) {
+    const current = documents.get(uri);
+    if (current?.version !== version) return "Un buffer ouvert a changé pendant l’analyse; relancez le renommage.";
+  }
+  for (const file of snapshot.diskFiles.values()) {
+    try {
+      const current = await fs.stat(file.path);
+      if (current.mtimeMs !== file.mtimeMs || current.size !== file.size) return `Le fichier « ${file.path} » a changé pendant l’analyse; relancez le renommage.`;
+      const content = await fs.readFile(file.path, "utf8");
+      if (hashRenameText(content) !== file.contentHash) return `Le contenu de « ${file.path} » a changé pendant l’analyse; relancez le renommage.`;
+    } catch {
+      return `Le fichier « ${file.path} » a disparu pendant l’analyse; relancez le renommage.`;
+    }
+  }
+  for (const [directory, before] of snapshot.directories ?? []) {
+    try {
+      const current = await fs.stat(directory);
+      if (current.mtimeMs !== before.mtimeMs || current.ctimeMs !== before.ctimeMs) {
+        return `Le dossier « ${directory} » a changé pendant l’analyse; relancez le renommage.`;
+      }
+    } catch {
+      return `Le dossier « ${directory} » a changé pendant l’analyse; relancez le renommage.`;
+    }
+  }
+  return undefined;
+}
+
+function hashRenameText(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+interface FileModuleMapping {
+  oldUri: string;
+  oldPath: string;
+  newPath: string;
+  oldModule: string;
+  newModule: string;
+}
+
+async function prepareModulePathFileRename(
+  params: RenameFilesParams,
+  environment: CompletionEnvironment,
+): Promise<{ workspaceEdit?: WorkspaceEdit; reason?: string }> {
+  const roots = Array.from(new Set([...(environment.workspaceRoots ?? []), environment.projectRoot, ...(environment.modulePaths ?? [])]
+    .filter((root): root is string => Boolean(root)).map((root) => path.resolve(root))));
+  const mappings: FileModuleMapping[] = [];
+  for (const file of params.files) {
+    if (!file.oldUri.startsWith("file:") || !file.newUri.startsWith("file:")) continue;
+    const oldPath = fileURLToPath(file.oldUri);
+    const newPath = fileURLToPath(file.newUri);
+    if (!/\.(?:vit|vitl|vitte)$/i.test(oldPath) || !/\.(?:vit|vitl|vitte)$/i.test(newPath)) continue;
+    const result = findUniqueModulePathFileMove(oldPath, newPath, roots);
+    if (!result.mapping) {
+      return { reason: `Le fichier « ${oldPath} » correspond à ${result.candidateCount} mappings de projet; les chemins de modules ne seront pas devinés.` };
+    }
+    const mapping = result.mapping;
+    const resolvedOld = await resolveModuleFiles(mapping.oldModule, file.oldUri, environment);
+    if (resolvedOld.length !== 1 || path.resolve(resolvedOld[0] ?? "") !== path.resolve(oldPath)) {
+      return { reason: `Le chemin « ${mapping.oldModule} » ne désigne pas uniquement « ${oldPath} » dans les racines Vitte.` };
+    }
+    if (mapping.newModule !== mapping.oldModule) {
+      const resolvedNew = await resolveModuleFiles(mapping.newModule, file.oldUri, environment);
+      if (resolvedNew.some((candidate) => path.resolve(candidate) !== path.resolve(oldPath))) {
+        return { reason: `Le nouveau chemin « ${mapping.newModule} » existe déjà ou se résout vers plusieurs fichiers.` };
+      }
+    }
+    mappings.push({ oldUri: file.oldUri, oldPath, newPath, oldModule: mapping.oldModule, newModule: mapping.newModule });
+  }
+  if (mappings.length === 0) return {};
+
+  const scan = await collectWorkspaceRenameDocuments(environment, mappings[0]?.oldUri);
+  if (!scan.complete) return { reason: scan.reason ?? "Le workspace n’a pas pu être indexé entièrement avant le renommage du fichier." };
+  const grouped = new Map<string, TextEdit[]>();
+  const imports = /\b(?:use|pull)\s+([A-Za-z_]\w*(?:\s*(?:::|\/)\s*[A-Za-z_]\w*)*)/g;
+  for (const { uri, doc } of scan.documents) {
+    const code = maskNonCode(doc.getText());
+    for (const mapping of mappings) {
+      if (uri === mapping.oldUri && mapping.newModule !== mapping.oldModule) {
+        const namespace = /\bspace\s+([A-Za-z_]\w*(?:(?:::|\/)\s*[A-Za-z_]\w*)*)/g;
+        let spaceMatch: RegExpExecArray | null;
+        while ((spaceMatch = namespace.exec(code))) {
+          const name = spaceMatch[1]?.replace(/\s+/g, "").replace(/\//g, "::");
+          if (name !== mapping.oldModule) continue;
+          const start = spaceMatch.index + spaceMatch[0].indexOf(spaceMatch[1] ?? "");
+          addFileRenameEdit(grouped, uri, doc, start, (spaceMatch[1] ?? "").length, mapping.newModule);
+        }
+      }
+      imports.lastIndex = 0;
+      let importMatch: RegExpExecArray | null;
+      while ((importMatch = imports.exec(code))) {
+        const rawPath = importMatch[1] ?? "";
+        const normalized = rawPath.replace(/\s+/g, "").replace(/\//g, "::");
+        if (normalized !== mapping.oldModule) continue;
+        const resolved = await resolveModuleFiles(normalized, uri, environment);
+        if (resolved.length > 1) {
+          return { reason: `L’import « ${mapping.oldModule} » se résout vers plusieurs modules depuis « ${uri} »; le renommage du fichier est refusé.` };
+        }
+        if (resolved.length !== 1 || path.resolve(resolved[0] ?? "") !== path.resolve(mapping.oldPath)) continue;
+        const oldSegments = mapping.oldModule.split("::");
+        const prefixPattern = new RegExp(`^[A-Za-z_]\\w*(?:\\s*(?:::|\\/)\\s*[A-Za-z_]\\w*){${Math.max(0, oldSegments.length - 1)}}`);
+        const rawPrefix = prefixPattern.exec(rawPath)?.[0];
+        if (!rawPrefix || rawPrefix.replace(/\s+/g, "").replace(/\//g, "::") !== mapping.oldModule) continue;
+        const separator = rawPrefix.includes("/") && !rawPrefix.includes("::") ? "/" : "::";
+        const replacement = mapping.newModule.replace(/::/g, separator);
+        const pathStart = importMatch.index + importMatch[0].indexOf(rawPath);
+        addFileRenameEdit(grouped, uri, doc, pathStart, rawPrefix.length, replacement);
       }
     }
   }
-  return Array.from(out.values());
+  const snapshotError = await validateRenameSnapshot(scan);
+  if (snapshotError) return { reason: snapshotError };
+  if (grouped.size === 0) return {};
+  const documentChanges = Array.from(grouped, ([uri, edits]) => ({
+    textDocument: { uri, version: documents.get(uri)?.version ?? null },
+    edits: edits.sort((left, right) => right.range.start.line - left.range.start.line || right.range.start.character - left.range.start.character),
+  }));
+  return { workspaceEdit: { documentChanges } };
+}
+
+function addFileRenameEdit(grouped: Map<string, TextEdit[]>, uri: string, doc: TextDocument, start: number, length: number, replacement: string): void {
+  const edits = grouped.get(uri) ?? [];
+  edits.push(TextEdit.replace(Range.create(doc.positionAt(start), doc.positionAt(start + length)), replacement));
+  grouped.set(uri, edits);
 }
 
 async function walkVitteFiles(root: string, limit: number, deadline: number): Promise<string[]> {

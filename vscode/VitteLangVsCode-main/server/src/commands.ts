@@ -26,7 +26,6 @@ export const VITTE_COMMANDS = {
   FORMAT_DOC: "vitte.formatDocument",
   ORGANIZE_IMPORTS: "vitte.organizeImports",
   FIX_ALL: "vitte.fixAll",
-  RENAME_SYMBOL: "vitte.renameSymbol",
   APPLY_EDIT_SAMPLE: "vitte.applyEditSample",
   PROGRESS_SAMPLE: "vitte.progressSample",
   SHOW_INFO: "vitte.showInfo"
@@ -42,11 +41,6 @@ interface DebugAttachArgs {
   host?: string;     // default 127.0.0.1
   port?: number;     // default 6009
   timeoutMs?: number; // default 10000
-}
-
-interface RenameArgs {
-  uri: string;
-  newName: string;
 }
 
 interface PosLike { line: number; character: number; }
@@ -145,14 +139,6 @@ async function handleCommand(connection: Connection, params: ExecuteCommandParam
       return fixAllProblems(connection, uri);
     }
 
-    case VITTE_COMMANDS.RENAME_SYMBOL: {
-      const a = readObjectArg<RenameArgs>(args, 0);
-      if (!a?.uri || !a?.newName) {
-        throw new Error("renameSymbol: args invalides. Attendu { uri, newName }.");
-      }
-      return renameSymbol(connection, a.uri, a.newName);
-    }
-
     case VITTE_COMMANDS.APPLY_EDIT_SAMPLE: {
       const a = readObjectArg<ApplyEditSampleArgs>(args, 0);
       if (!a?.uri) throw new Error("applyEditSample: uri manquant.");
@@ -236,17 +222,6 @@ async function fixAllProblems(connection: Connection, uri?: string): Promise<Com
 
   const edit: WorkspaceEdit = {
     changes: { [uri]: [TextEdit.insert(Position.create(0, 0), "// fix-all applied\n")] }
-  };
-  await connection.workspace.applyEdit(edit);
-  return ok();
-}
-
-/** Rename: démo — remplacer par une indexation et documentChanges réels */
-async function renameSymbol(connection: Connection, uri: string, newName: string): Promise<CommandResult> {
-  connection.console.log(`✏️ Rename dans ${uri} → ${newName}`);
-
-  const edit: WorkspaceEdit = {
-    changes: { [uri]: [TextEdit.insert(Position.create(0, 0), `// rename to: ${newName}\n`)] }
   };
   await connection.workspace.applyEdit(edit);
   return ok();

@@ -1,4 +1,5 @@
 import { maskNonCode, scanLexical } from "./lexical.js";
+import { RESERVED_WORDS } from "./languageFacts.js";
 // navigation.ts — symboles, définitions, références, rename, workspace symbols
 // Version enrichie :
 // - Parsing tolérant qui ignore commentaires/chaînes
@@ -35,7 +36,7 @@ import {
   type SourceIndex,
   type SourceSymbol,
 } from "./sourceSymbols.js";
-import { importedCompletionModel, readModuleExports, type CompletionEnvironment } from "./moduleResolver.js";
+import { importedCompletionModel, readModuleExports, type CompletionEnvironment, type ImportedCompletionSymbol, type ImportedModuleAlias } from "./moduleResolver.js";
 
 /* --------------------------------- Types ---------------------------------- */
 
@@ -605,37 +606,244 @@ function only<T>(items: readonly T[]): T | undefined {
 
 /* --------------------------------- Rename ---------------------------------- */
 
-export function prepareRename(doc: TextDocument, pos: Position): { range: Range; placeholder: string } | null {
-  const name = wordAt(doc, pos);
-  if (!name || !isValidIdent(name)) return null;
-  const off = doc.offsetAt(pos);
-  const start = doc.positionAt(off - (name.length - (name.lastIndexOf(name) + 1)));
-  const end = doc.positionAt(doc.offsetAt(start) + name.length);
-  return { range: Range.create(start, end), placeholder: name };
+export type RenameTarget =
+  | { kind: "source"; name: string; range: Range; symbol: SourceSymbol }
+  | { kind: "imported-symbol"; name: string; range: Range; symbol: ImportedCompletionSymbol }
+  | { kind: "import-alias"; name: string; range: Range; symbol: ImportedCompletionSymbol }
+  | { kind: "module-alias"; name: string; range: Range; module: ImportedModuleAlias };
+
+export interface RenameTargetOutcome {
+  target?: RenameTarget;
+  unavailableReason?: string;
 }
 
-export function renameSymbol(doc: TextDocument, pos: Position, newName: string): { range: Range; newText: string }[] {
-  const old = wordAt(doc, pos);
-  if (!old || !isValidIdent(newName)) return [];
-  return renameIdentifierByName(doc, old, newName);
-}
-
-export function renameIdentifierByName(doc: TextDocument, oldName: string, newName: string): { range: Range; newText: string }[] {
-  if (!isValidIdent(oldName) || !isValidIdent(newName)) return [];
-  const text = doc.getText();
-  const mask = buildCodeMask(text);
-  const edits: { range: Range; newText: string }[] = [];
-  const re = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(oldName)}(?![A-Za-z0-9_])`, "g");
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
-    const idx = m.index ?? 0;
-    if (!mask[idx]) { if (m[0].length === 0) re.lastIndex++; continue; }
-    const start = doc.positionAt(idx);
-    const end = doc.positionAt(idx + m[0].length);
-    edits.push({ range: Range.create(start, end), newText: newName });
-    if (m[0].length === 0) re.lastIndex++;
+export async function resolveRenameTarget(
+  doc: TextDocument,
+  pos: Position,
+  environment: CompletionEnvironment,
+): Promise<RenameTargetOutcome> {
+  const span = sourceTokenAt(doc, pos);
+  if (!span) return { unavailableReason: "Placez le curseur sur un identifiant Vitte dans du code." };
+  const range = Range.create(doc.positionAt(span.start), doc.positionAt(span.end));
+  const resolved = resolveSourceSymbol(doc, pos);
+  if (resolved?.symbol) {
+    const symbol = resolved.symbol;
+    if (["procedure", "type", "binding", "global", "parameter", "field", "variant"].includes(symbol.role)) {
+      return { target: { kind: "source", name: span.name, range, symbol } };
+    }
+    if (symbol.role === "module") {
+      return { unavailableReason: "Les chemins de module sont modifiés par le renommage du fichier uniquement lorsque leur mapping de projet est unique." };
+    }
+    return { unavailableReason: `La déclaration « ${span.name} » n’est pas une cible renommable.` };
   }
-  return edits;
+
+  const imports = await importedCompletionModel(doc, environment);
+  const matchingSymbols = imports.symbols.filter((symbol) => symbol.name === span.name && symbol.location);
+  if (matchingSymbols.length > 1) return { unavailableReason: `Plusieurs imports portent le nom « ${span.name} »; choisissez une déclaration non ambiguë.` };
+  const imported = matchingSymbols[0];
+  const importedDeclaration = imports.symbols.filter((symbol) => symbol.originalName === span.name && symbol.name !== span.name && symbol.location);
+  if (!imported && importedDeclaration.length === 1) {
+    const symbol = importedDeclaration[0];
+    if (!symbol) return { unavailableReason: `L’import « ${span.name} » ne peut pas être résolu.` };
+    return { target: { kind: "imported-symbol", name: span.name, range, symbol } };
+  }
+  if (!imported && importedDeclaration.length > 1) {
+    return { unavailableReason: `Plusieurs imports aliasés déclarent le nom source « ${span.name} »; le renommage est ambigu.` };
+  }
+  if (imported) {
+    return {
+      target: {
+        kind: imported.name === imported.originalName ? "imported-symbol" : "import-alias",
+        name: span.name,
+        range,
+        symbol: imported,
+      },
+    };
+  }
+  const matchingModules = imports.modules.filter((module) => module.alias === span.name);
+  if (matchingModules.length > 1) return { unavailableReason: `Plusieurs modules utilisent l’alias « ${span.name} ».` };
+  const module = matchingModules[0];
+  if (module) return { target: { kind: "module-alias", name: span.name, range, module } };
+  return { unavailableReason: `« ${span.name} » n’est pas relié à une déclaration renommable; mots-clés, builtins et cibles non résolues sont exclus.` };
+}
+
+export async function renameReferencesForTarget(
+  doc: TextDocument,
+  pos: Position,
+  target: RenameTarget,
+  environment: CompletionEnvironment,
+  workspaceDocs: readonly { uri: string; doc: TextDocument }[],
+): Promise<NavigationOutcome> {
+  if (target.kind === "import-alias") return importedAliasReferences(doc, target, environment);
+  if (target.kind === "module-alias") return moduleAliasReferences(doc, target);
+
+  let references: NavigationOutcome;
+  if (target.kind === "imported-symbol") {
+    const sourceDoc = workspaceDocs.find((candidate) => candidate.uri === target.symbol.uri)?.doc;
+    const sourceLocation = target.symbol.location;
+    if (!sourceDoc || !sourceLocation) return { locations: [], unavailableReason: "La déclaration importée n’est pas incluse dans le scan vérifié du workspace." };
+    references = await referencesAtPositionWithWorkspace(
+      sourceDoc,
+      sourceLocation.range.start,
+      environment,
+      workspaceDocs,
+      true,
+    );
+  } else {
+    references = await referencesAtPositionWithWorkspace(doc, pos, environment, workspaceDocs, true);
+  }
+  if (references.unavailableReason) return references;
+  if (target.kind !== "imported-symbol" && !(target.kind === "source" && target.symbol.isPublic)) return references;
+
+  const sourceUri = target.symbol.location?.uri;
+  if (!sourceUri) return { locations: [], unavailableReason: "La déclaration importée ne possède pas de position source." };
+  const originalName = target.kind === "source" ? target.symbol.name : target.symbol.originalName;
+  const locations = new Map(references.locations.map((location) => [locationKey(location), location]));
+  for (const { uri, doc: candidateDoc } of workspaceDocs) {
+    const importModel = await importedCompletionModel(candidateDoc, environment);
+    const aliases = importModel.symbols.filter((symbol) => symbol.uri === sourceUri
+      && symbol.originalName === originalName && symbol.name !== symbol.originalName);
+    for (const alias of aliases) {
+      const sameAliasOtherTargets = importModel.symbols.filter((symbol) => symbol.name === alias.name && symbol.uri !== sourceUri);
+      if (sameAliasOtherTargets.length > 0) {
+        return { locations: [], unavailableReason: `L’alias « ${alias.name} » masque plusieurs imports dans ${uri}; le renommage est refusé.` };
+      }
+      for (const [key, location] of locations) {
+        if (location.uri === uri && locationText(candidateDoc, location) === alias.name) locations.delete(key);
+      }
+      const importNameLocations = findAliasedImportNameLocations(candidateDoc, alias);
+      if (importNameLocations.length !== 1) {
+        return { locations: [], unavailableReason: `L’import aliasé « ${alias.originalName} as ${alias.name} » ne peut pas être relié à une position unique.` };
+      }
+      const location = importNameLocations[0];
+      locations.set(locationKey(location), location);
+    }
+  }
+  return { locations: Array.from(locations.values()) };
+}
+
+export function validateRenameName(newName: string): string | undefined {
+  if (!isValidIdent(newName)) return "Le nouveau nom doit être un identifiant Vitte valide.";
+  if (RESERVED_WORDS.has(newName)) return `« ${newName} » est un mot réservé et ne peut pas être un nom de déclaration.`;
+  return undefined;
+}
+
+export function validateRenameLocations(
+  oldName: string,
+  newName: string,
+  locations: readonly Location[],
+  docs: readonly { uri: string; doc: TextDocument }[],
+): string | undefined {
+  const byUri = new Map(docs.map((entry) => [entry.uri, entry.doc]));
+  const edited = new Map<string, Set<number>>();
+  for (const location of locations) {
+    const doc = byUri.get(location.uri);
+    if (!doc || locationText(doc, location).length === 0) return "Une position de renommage ne correspond plus à un buffer disponible.";
+    const start = doc.offsetAt(location.range.start);
+    if (locationText(doc, location) !== oldName) {
+      return "Le contenu du buffer a changé depuis la résolution du symbole; relancez le renommage.";
+    }
+    const starts = edited.get(location.uri) ?? new Set<number>();
+    starts.add(start);
+    edited.set(location.uri, starts);
+  }
+  for (const [uri, starts] of edited) {
+    const doc = byUri.get(uri);
+    if (!doc) continue;
+    const code = maskNonCode(doc.getText());
+    const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(newName)}(?![A-Za-z0-9_])`, "g");
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(code))) {
+      if (!starts.has(match.index)) return `« ${newName} » existe déjà dans ${uri}; un conflit ou une capture de portée est possible.`;
+    }
+  }
+  return undefined;
+}
+
+function importedAliasReferences(
+  doc: TextDocument,
+  target: Extract<RenameTarget, { kind: "import-alias" }>,
+  environment: CompletionEnvironment,
+): Promise<NavigationOutcome> {
+  return importedAliasReferencesAsync(doc, target, environment);
+}
+
+async function importedAliasReferencesAsync(
+  doc: TextDocument,
+  target: Extract<RenameTarget, { kind: "import-alias" }>,
+  environment: CompletionEnvironment,
+): Promise<NavigationOutcome> {
+  const model = await importedCompletionModel(doc, environment);
+  const identities = model.symbols.filter((symbol) => symbol.name === target.name
+    && symbol.uri === target.symbol.uri && symbol.originalName === target.symbol.originalName);
+  if (identities.length !== 1) return { locations: [], unavailableReason: `L’alias « ${target.name} » ne correspond pas à un import unique.` };
+  const code = maskNonCode(doc.getText());
+  const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(target.name)}(?![A-Za-z0-9_])`, "g");
+  const locations: Location[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(code))) {
+    const occurrence = doc.positionAt(match.index);
+    if (resolveSourceSymbol(doc, occurrence)?.symbol) continue;
+    locations.push(Location.create(doc.uri, Range.create(occurrence, doc.positionAt(match.index + target.name.length))));
+  }
+  if (!locations.some((location) => location.range.start.line === target.range.start.line && location.range.start.character === target.range.start.character)) {
+    return { locations: [], unavailableReason: `Aucune référence fiable à l’alias « ${target.name} » n’a été trouvée.` };
+  }
+  return { locations: dedupeBy(locations, locationKey) };
+}
+
+function moduleAliasReferences(doc: TextDocument, target: Extract<RenameTarget, { kind: "module-alias" }>): NavigationOutcome {
+  const code = maskNonCode(doc.getText());
+  const locations = new Map<string, Location>();
+  const declaration = /\b(?:use|pull)\s+([A-Za-z_]\w*(?:(?:::|\/)[A-Za-z_]\w*)*)\s+as\s+([A-Za-z_]\w*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = declaration.exec(code))) {
+    if (match[1] !== target.module.modulePath || match[2] !== target.name) continue;
+    const start = match.index + match[0].lastIndexOf(target.name);
+    const location = Location.create(doc.uri, Range.create(doc.positionAt(start), doc.positionAt(start + target.name.length)));
+    locations.set(locationKey(location), location);
+  }
+  const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(target.name)}(?![A-Za-z0-9_])`, "g");
+  while ((match = pattern.exec(code))) {
+    const start = match.index;
+    if (resolveSourceSymbol(doc, doc.positionAt(start))?.symbol) continue;
+    let after = start + target.name.length;
+    while (/\s/.test(code[after] ?? "")) after++;
+    if (!code.startsWith("::", after) && code[after] !== ".") continue;
+    const location = Location.create(doc.uri, Range.create(doc.positionAt(start), doc.positionAt(start + target.name.length)));
+    locations.set(locationKey(location), location);
+  }
+  return locations.size > 0
+    ? { locations: Array.from(locations.values()) }
+    : { locations: [], unavailableReason: `Aucune utilisation fiable de l’alias de module « ${target.name} » n’a été trouvée.` };
+}
+
+function findAliasedImportNameLocations(doc: TextDocument, imported: ImportedCompletionSymbol): Location[] {
+  const code = maskNonCode(doc.getText());
+  const use = /\buse\s+([A-Za-z_]\w*(?:(?:::|\/)[A-Za-z_]\w*)*)/g;
+  const expectedPath = imported.modulePath.replace(/\//g, "::");
+  const aliasPattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRx(imported.originalName)}(?![A-Za-z0-9_])\\s+as\\s+${escapeRx(imported.name)}(?![A-Za-z0-9_])`, "g");
+  const locations: Location[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = use.exec(code))) {
+    if ((match[1] ?? "").replace(/\//g, "::") !== expectedPath) continue;
+    const semicolon = code.indexOf(";", use.lastIndex);
+    if (semicolon < 0) continue;
+    const suffixStart = use.lastIndex;
+    const suffix = code.slice(suffixStart, semicolon);
+    let aliasMatch: RegExpExecArray | null;
+    while ((aliasMatch = aliasPattern.exec(suffix))) {
+      const start = suffixStart + aliasMatch.index;
+      locations.push(Location.create(doc.uri, Range.create(doc.positionAt(start), doc.positionAt(start + imported.originalName.length))));
+    }
+    aliasPattern.lastIndex = 0;
+    use.lastIndex = semicolon + 1;
+  }
+  return dedupeBy(locations, locationKey);
+}
+
+function locationText(doc: TextDocument, location: Location): string {
+  return doc.getText(location.range);
 }
 
 export function tokenAtPosition(doc: TextDocument, pos: Position): string | null {

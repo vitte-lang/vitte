@@ -1,10 +1,10 @@
 {
   "schema": "vitte-capabilities@1",
-  "matrixVersion": "1.0.4",
+  "matrixVersion": "1.0.5",
   "updated": "2026-11-27",
   "versions": {
-    "extension": "2.3.3",
-    "languageServer": "2.3.3",
+    "extension": "2.3.4",
+    "languageServer": "2.3.4",
     "compilerEvidence": "0.1.1"
   },
   "statusDefinitions": {
@@ -163,10 +163,11 @@
       "status": "partial",
       "advertised": true,
       "setting": "rename",
-      "provider": "Vitte language server indexer",
-      "description": "Renames tested declaration and use sites.",
-      "limitation": "The operation is not backed by compiler symbol identities; review cross-module edits before accepting them.",
-      "evidence": ["src/test/suite/extension.test.ts: LSP E2E rename updates declaration and call"]
+      "provider": "Vitte language server source indexer with versioned workspace edits",
+      "description": "Prepares and renames tested local declarations, scoped references, explicit imports and aliases. VS Code file moves also update module declarations and imports when a unique project-root mapping is proven.",
+      "limitation": "The active compiler exposes no symbol graph. Public rename scans are bounded to 1024 files, 64 MiB and two seconds; incomplete or changed scans, collisions, unresolved tokens and ambiguous file mappings are refused. The extension previews affected files and rechecks unsaved buffers before applying.",
+      "followUp": "CAP-LSP-001",
+      "evidence": ["test/language.test.cjs: rename resolves symbol identity, preserves import aliases and ignores comments, strings and shadowed bindings", "test/language.test.cjs: file moves refuse overlapping project and module-root mappings", "test/language.test.cjs: bundled server validates unsaved document versions, imported rename edits and unique module-path file renames", "src/test/suite/extension.test.ts: LSP E2E rename updates declaration and call"]
     },
     {
       "id": "code-actions",

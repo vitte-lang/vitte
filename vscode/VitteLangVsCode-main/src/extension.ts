@@ -11,6 +11,7 @@ import { clearCompilerSuggestions, normalizeCompilerDiagnostics, storeCompilerSu
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as os from "node:os";
+import { createHash } from "node:crypto";
 import * as cp from "node:child_process";
 import * as vscode from "vscode";
 import { PlaygroundPanel } from "./providers/playgroundPanel";
@@ -2596,6 +2597,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       });
       if (!newName || newName === oldName) return;
 
+      let workspaceSnapshot: RenameWorkspaceSnapshot;
+      try {
+        workspaceSnapshot = await captureRenameWorkspaceSnapshot(doc.uri);
+      } catch (error) {
+        void vscode.window.showErrorMessage(`Vitte rename refused: ${String(error)}`);
+        return;
+      }
+
       const renameEdit = await vscode.commands.executeCommand<vscode.WorkspaceEdit>(
         "vscode.executeDocumentRenameProvider",
         doc.uri,
@@ -2604,29 +2613,51 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       );
       if (!renameEdit) return;
 
-      const conflicts = await detectRenameConflicts(renameEdit, newName);
-      if (conflicts.length > 0) {
-        const preview = conflicts.slice(0, 8).join(", ");
-        void vscode.window.showErrorMessage(
-          `Rename blocked: symbol '${newName}' already exists in ${conflicts.length} file(s): ${preview}${conflicts.length > 8 ? "…" : ""}`
-        );
+      const changedDuringResolve = await validateRenameWorkspaceSnapshot(workspaceSnapshot, doc.uri);
+      if (changedDuringResolve) {
+        void vscode.window.showErrorMessage(`Vitte rename cancelled: ${changedDuringResolve}`);
         return;
       }
 
       const preview = summarizeWorkspaceEditDetailed(renameEdit);
+      let snapshots: Map<string, RenameDocumentSnapshot>;
+      try {
+        snapshots = await captureWorkspaceEditSnapshots(renameEdit);
+      } catch (error) {
+        void vscode.window.showErrorMessage(`Vitte rename refused: ${String(error)}`);
+        return;
+      }
+      const staleEdit = await validateWorkspaceEditSnapshot(renameEdit, oldName, newName, snapshots);
+      if (staleEdit) {
+        void vscode.window.showErrorMessage(`Vitte rename refused: ${staleEdit}`);
+        return;
+      }
+      const previewItems = await buildRenamePreviewItems(renameEdit, oldName, newName);
+      const selection = await vscode.window.showQuickPick<RenamePreviewItem>(previewItems, {
+        title: `Vitte rename preview · ${preview.fileCount} file(s), ${preview.editCount} edit(s)`,
+        placeHolder: "Review every affected file and edit; choose Apply all to continue",
+        matchOnDescription: true,
+        matchOnDetail: true,
+      });
+      if (selection?.action !== "apply") return;
       const choice = await vscode.window.showInformationMessage(
-        `Rename preview: ${preview.fileCount} file(s), ${preview.editCount} edit(s). ${preview.details.join(" | ")}`,
+        `Apply rename '${oldName}' → '${newName}' in ${preview.fileCount} file(s)?`,
+        { modal: true },
         "Apply",
         "Cancel"
       );
       if (choice !== "Apply") return;
 
-      const snapshots = await captureWorkspaceEditSnapshots(renameEdit);
+      const changedDuringPreview = await validateRenameWorkspaceSnapshot(workspaceSnapshot, doc.uri)
+        ?? await validateWorkspaceEditSnapshot(renameEdit, oldName, newName, snapshots);
+      if (changedDuringPreview) {
+        void vscode.window.showErrorMessage(`Vitte rename cancelled: ${changedDuringPreview}`);
+        return;
+      }
       try {
         const ok = await vscode.workspace.applyEdit(renameEdit);
-        if (!ok) throw new Error("applyEdit returned false");
+        if (!ok) throw new Error("VS Code rejected the workspace edit");
       } catch (err) {
-        await rollbackWorkspaceEditSnapshots(snapshots);
         await writeRenameReport({
           ts: new Date().toISOString(),
           oldName,
@@ -2637,7 +2668,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
           error: String(err),
           files: preview.details,
         });
-        void vscode.window.showErrorMessage(`Vitte rename rollback: ${String(err)}`);
+        void vscode.window.showErrorMessage(`Vitte rename was not applied: ${String(err)}`);
         return;
       }
       await writeRenameReport({
@@ -4994,23 +5025,6 @@ function summarizeWorkspaceEditDetailed(edit: vscode.WorkspaceEdit): { fileCount
   return { ...base, details };
 }
 
-async function detectRenameConflicts(edit: vscode.WorkspaceEdit, newName: string): Promise<string[]> {
-  const conflictFiles: string[] = [];
-  const declRx = new RegExp(`\\b(?:proc|fn|entry|let|const|static|type|struct|form|trait|enum|union)\\s+${newName}\\b`);
-  for (const [uri] of edit.entries()) {
-    try {
-      const doc = await vscode.workspace.openTextDocument(uri);
-      if (!["vitte", "vit"].includes(doc.languageId)) continue;
-      if (declRx.test(doc.getText())) {
-        conflictFiles.push(vscode.workspace.asRelativePath(uri, false));
-      }
-    } catch {
-      // ignore unreadable file
-    }
-  }
-  return conflictFiles;
-}
-
 async function writeRenameReport(data: {
   ts: string;
   oldName: string;
@@ -5032,33 +5046,167 @@ async function writeRenameReport(data: {
   }
 }
 
-async function captureWorkspaceEditSnapshots(edit: vscode.WorkspaceEdit): Promise<Map<string, string>> {
-  const snapshots = new Map<string, string>();
+interface RenameDocumentSnapshot {
+  text: string;
+  version: number;
+}
+
+interface RenameWorkspaceSnapshot {
+  roots: string[];
+  files: Map<string, { hash: string; version?: number }>;
+}
+
+async function captureWorkspaceEditSnapshots(edit: vscode.WorkspaceEdit): Promise<Map<string, RenameDocumentSnapshot>> {
+  const snapshots = new Map<string, RenameDocumentSnapshot>();
   for (const [uri] of edit.entries()) {
     try {
       const doc = await vscode.workspace.openTextDocument(uri);
-      snapshots.set(uri.toString(), doc.getText());
+      snapshots.set(uri.toString(), { text: doc.getText(), version: doc.version });
     } catch {
-      // ignore unreadable files
+      throw new Error(`Could not read ${vscode.workspace.asRelativePath(uri, false)} for rename preview`);
     }
   }
   return snapshots;
 }
 
-async function rollbackWorkspaceEditSnapshots(snapshots: Map<string, string>): Promise<void> {
-  if (snapshots.size === 0) return;
-  const rollback = new vscode.WorkspaceEdit();
-  for (const [uriText, original] of snapshots) {
+async function captureRenameWorkspaceSnapshot(documentUri: vscode.Uri): Promise<RenameWorkspaceSnapshot> {
+  const settings = vscode.workspace.getConfiguration("vitte", documentUri);
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const firstRoot = folders[0]?.uri.fsPath ?? process.cwd();
+  const configuredProject = settings.get<string>("project.root", "").trim();
+  const projectRoot = configuredProject ? path.resolve(firstRoot, configuredProject) : undefined;
+  const configuredModulePaths = settings.get<string[]>("modulePaths", []);
+  const roots = Array.from(new Set([
+    ...folders.map((folder) => path.resolve(folder.uri.fsPath)),
+    ...(projectRoot ? [projectRoot] : []),
+    ...configuredModulePaths.map((root) => path.resolve(projectRoot ?? firstRoot, root.trim())).filter(Boolean),
+  ]));
+  const files = new Map<string, { hash: string; version?: number }>();
+  if (roots.length === 0) return { roots, files };
+
+  const exclude = "**/{.git,node_modules,.vscode,out,dist,build,target,.next}/**";
+  for (const root of roots) {
+    const found = await vscode.workspace.findFiles(
+      new vscode.RelativePattern(vscode.Uri.file(root), "**/*.{vit,vitl,vitte}"),
+      exclude,
+      1025,
+    );
+    for (const uri of found) files.set(uri.toString(), { hash: "" });
+    if (files.size > 1024) throw new Error("The Vitte workspace exceeds the safe rename preview limit of 1024 files.");
+  }
+
+  let totalBytes = 0;
+  for (const [uriText] of files) {
     const uri = vscode.Uri.parse(uriText);
+    const open = vscode.workspace.textDocuments.find((candidate) => candidate.uri.toString() === uriText);
+    const source = open ? open.getText() : await fs.promises.readFile(uri.fsPath, "utf8");
+    const bytes = Buffer.byteLength(source, "utf8");
+    if (bytes > 1024 * 1024 || totalBytes + bytes > 64 * 1024 * 1024) {
+      throw new Error(`The Vitte workspace exceeds the safe rename preview size limit at ${vscode.workspace.asRelativePath(uri, false)}.`);
+    }
+    totalBytes += bytes;
+    files.set(uriText, {
+      hash: createHash("sha256").update(source, "utf8").digest("hex"),
+      ...(open ? { version: open.version } : {}),
+    });
+  }
+  return { roots, files };
+}
+
+async function validateRenameWorkspaceSnapshot(
+  before: RenameWorkspaceSnapshot,
+  documentUri: vscode.Uri,
+): Promise<string | undefined> {
+  try {
+    const current = await captureRenameWorkspaceSnapshot(documentUri);
+    if (current.roots.join("\n") !== before.roots.join("\n")) return "The project roots changed during the preview; request a new rename.";
+    if (current.files.size !== before.files.size) return "The set of Vitte files changed during the preview; request a new rename.";
+    for (const [uri, oldFile] of before.files) {
+      const newFile = current.files.get(uri);
+      if (!newFile || newFile.hash !== oldFile.hash || newFile.version !== oldFile.version) {
+        return `${vscode.workspace.asRelativePath(vscode.Uri.parse(uri), false)} changed during the preview; request a new rename.`;
+      }
+    }
+    return undefined;
+  } catch (error) {
+    return `The workspace could not be revalidated before applying the rename: ${String(error)}`;
+  }
+}
+
+async function validateWorkspaceEditSnapshot(
+  edit: vscode.WorkspaceEdit,
+  oldName: string,
+  newName: string,
+  snapshots: Map<string, RenameDocumentSnapshot>,
+): Promise<string | undefined> {
+  for (const [uri, edits] of edit.entries()) {
+    const snapshot = snapshots.get(uri.toString());
+    if (!snapshot) return `No buffer snapshot exists for ${vscode.workspace.asRelativePath(uri, false)}.`;
     try {
       const doc = await vscode.workspace.openTextDocument(uri);
-      const full = new vscode.Range(0, 0, doc.lineCount, 0);
-      rollback.replace(uri, full, original);
+      if (doc.version !== snapshot.version || doc.getText() !== snapshot.text) {
+        return `${vscode.workspace.asRelativePath(uri, false)} changed during rename; request a new rename.`;
+      }
+      const offsets = edits.map((textEdit) => ({
+        start: doc.offsetAt(textEdit.range.start),
+        end: doc.offsetAt(textEdit.range.end),
+        edit: textEdit,
+      })).sort((left, right) => left.start - right.start || left.end - right.end);
+      for (let index = 0; index < offsets.length; index++) {
+        const current = offsets[index];
+        if (!current) continue;
+        const previous = offsets[index - 1];
+        if (previous && previous.end > current.start) {
+          return `Overlapping edits in ${vscode.workspace.asRelativePath(uri, false)} cannot be previewed safely.`;
+        }
+        if (doc.getText(current.edit.range) !== oldName || current.edit.newText !== newName) {
+          return `An edit in ${vscode.workspace.asRelativePath(uri, false)} no longer matches '${oldName}'.`;
+        }
+      }
     } catch {
-      // ignore unavailable files
+      return `Could not re-read ${vscode.workspace.asRelativePath(uri, false)} before applying the rename.`;
     }
   }
-  await vscode.workspace.applyEdit(rollback);
+  return undefined;
+}
+
+interface RenamePreviewItem extends vscode.QuickPickItem {
+  action: "apply" | "file";
+}
+
+async function buildRenamePreviewItems(
+  edit: vscode.WorkspaceEdit,
+  oldName: string,
+  newName: string,
+): Promise<RenamePreviewItem[]> {
+  const items: RenamePreviewItem[] = [];
+  const entries = edit.entries();
+  const editCount = entries.reduce((total, [, edits]) => total + edits.length, 0);
+  items.push({
+    action: "apply",
+    label: `$(check) Apply all ${editCount} edits`,
+    description: `Update ${entries.length} file(s) after review`,
+    detail: "Select this row, then confirm to apply the version-checked workspace edit.",
+  });
+  for (const [uri, edits] of entries) {
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const relativePath = vscode.workspace.asRelativePath(uri, false);
+      for (const textEdit of edits) {
+        const line = doc.lineAt(textEdit.range.start.line).text.trim();
+        const replacedText = doc.getText(textEdit.range);
+        items.push({
+          action: "file",
+          label: `$(file) ${relativePath}:${textEdit.range.start.line + 1} · ${replacedText} → ${newName}`,
+          description: line,
+          detail: `${oldName} → ${newName}`,
+        });
+      }
+    } catch {
+      return [];
+    }
+  }
+  return items;
 }
 
 function sleep(ms: number): Promise<void> { return new Promise(res => setTimeout(res, ms)); }

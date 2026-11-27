@@ -44,6 +44,12 @@ export interface ImportedModuleAlias {
   uri?: string;
 }
 
+export interface ModulePathFileMove {
+  root: string;
+  oldModule: string;
+  newModule: string;
+}
+
 export interface ImportedCompletionModel {
   symbols: ImportedCompletionSymbol[];
   modules: ImportedModuleAlias[];
@@ -246,20 +252,51 @@ export function getModuleSearchRoots(uri: string, environment: CompletionEnviron
   return roots.slice(0, MAX_ROOTS);
 }
 
+export function findUniqueModulePathFileMove(oldPath: string, newPath: string, roots: readonly string[]): {
+  mapping?: ModulePathFileMove;
+  candidateCount: number;
+} {
+  const candidates = roots.flatMap((root) => {
+    const oldModule = modulePathForFile(oldPath, root);
+    const newModule = modulePathForFile(newPath, root);
+    return oldModule && newModule ? [{ root, oldModule, newModule }] : [];
+  });
+  return candidates.length === 1 ? { mapping: candidates[0], candidateCount: 1 } : { candidateCount: candidates.length };
+}
+
+function modulePathForFile(file: string, root: string): string | undefined {
+  const relative = path.relative(root, file);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return undefined;
+  const parsed = path.parse(relative);
+  const segments = parsed.dir ? parsed.dir.split(path.sep).concat(parsed.name) : [parsed.name];
+  if (segments[segments.length - 1] === "mod") segments.pop();
+  if (segments.length === 0 || segments.some((segment) => !/^[A-Za-z_]\w*$/.test(segment))) return undefined;
+  return segments.join("::");
+}
+
 export async function resolveModuleFile(
   modulePath: string,
   importerUri: string,
   environment: CompletionEnvironment = {},
 ): Promise<string | undefined> {
+  return (await resolveModuleFiles(modulePath, importerUri, environment))[0];
+}
+
+export async function resolveModuleFiles(
+  modulePath: string,
+  importerUri: string,
+  environment: CompletionEnvironment = {},
+): Promise<string[]> {
   const relative = modulePathToFilePath(modulePath);
+  const resolved = new Set<string>();
   for (const root of getModuleSearchRoots(importerUri, environment)) {
     const base = path.join(root, relative);
     for (const candidate of [`${base}.vit`, `${base}.vitl`, `${base}.vitte`, path.join(base, "mod.vit"), path.join(base, "mod.vitte")]) {
-      try { if ((await fs.stat(candidate)).isFile()) return candidate; }
+      try { if ((await fs.stat(candidate)).isFile()) resolved.add(path.resolve(candidate)); }
       catch { /* continue through the compiler-compatible roots */ }
     }
   }
-  return undefined;
+  return Array.from(resolved);
 }
 
 async function readModule(modulePath: string, importerUri: string, environment: CompletionEnvironment): Promise<ModuleFileSnapshot | undefined> {

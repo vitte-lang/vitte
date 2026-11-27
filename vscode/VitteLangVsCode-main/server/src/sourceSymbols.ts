@@ -4,7 +4,7 @@ import type { TextDocument } from "vscode-languageserver-textdocument";
 import { parseCompletionModel, type ProcedureSymbol, type TypeSymbol } from "./completionModel.js";
 import { maskNonCode } from "./lexical.js";
 
-export type SourceSymbolRole = "module" | "procedure" | "type" | "field" | "variant" | "parameter" | "binding" | "implementation";
+export type SourceSymbolRole = "module" | "procedure" | "type" | "field" | "variant" | "parameter" | "binding" | "global" | "implementation";
 
 export interface SourceSymbol {
   name: string;
@@ -153,6 +153,9 @@ export function resolveSourceSymbol(doc: TextDocument, position: Position): { to
     const variant = only(variants);
     if (variant) return { token: span.name, symbol: variant };
     if (variants.length > 1) return { token: span.name };
+    const qualifiedGlobal = only(index.symbols.filter((symbol) => symbol.role === "global"
+      && symbol.name === span.name && symbol.containerName === owner && symbol.start <= offset));
+    if (qualifiedGlobal) return { token: span.name, symbol: qualifiedGlobal };
   }
 
   const local = visibleBindingsAt(index.symbols, span.name, offset)[0];
@@ -177,6 +180,15 @@ export function resolveSourceSymbol(doc: TextDocument, position: Position): { to
   if (type) return { token: span.name, symbol: type };
   const procedure = only(candidates.filter((symbol) => symbol.role === "procedure" && !symbol.ownerType && !symbol.traitOwner));
   if (procedure) return { token: span.name, symbol: procedure };
+  const namespace = index.symbols
+    .filter((symbol) => symbol.role === "module" && symbol.documentation?.startsWith("Espace de noms")
+      && symbol.bodyStart !== undefined && symbol.bodyEnd !== undefined
+      && symbol.bodyStart <= offset && offset <= symbol.bodyEnd)
+    .sort((left, right) => ((left.bodyEnd ?? 0) - (left.bodyStart ?? 0)) - ((right.bodyEnd ?? 0) - (right.bodyStart ?? 0)))[0];
+  const globals = index.symbols.filter((symbol) => symbol.role === "global" && symbol.name === span.name
+    && symbol.start <= offset && symbol.containerName === namespace?.name);
+  const global = only(globals);
+  if (global) return { token: span.name, symbol: global };
   return { token: span.name };
 }
 
@@ -278,10 +290,12 @@ function addBindings(doc: TextDocument, code: string, procedures: readonly Proce
     const declaredType = match[3]?.trim();
     const inferredType = declaredType ?? inferLiteralType(code, pattern.lastIndex);
     const kind = match[1] === "const" ? SymbolKind.Constant : SymbolKind.Variable;
+    const role = proc ? "binding" : "global";
+    const publicPrefix = code.slice(Math.max(0, start - 40), start);
     symbols.push(makeSymbol(doc, {
       name,
       kind,
-      role: "binding",
+      role,
       start,
       nameStart,
       nameEnd: nameStart + name.length,
@@ -290,7 +304,7 @@ function addBindings(doc: TextDocument, code: string, procedures: readonly Proce
       type: inferredType,
       scopeStart: scope?.start ?? proc?.bodyStart,
       scopeEnd: scope?.end ?? proc?.bodyEnd,
-      isPublic: match[1] === "const" || match[1] === "static" || match[1] === "global" ? /\b(?:export|pub)\b/.test(code.slice(Math.max(0, start - 40), start)) : false,
+      isPublic: !proc && /\b(?:export|pub)\s*$/.test(publicPrefix),
     }));
   }
 

@@ -20,8 +20,13 @@ const {
   typeDefinitionAtPositionWithImports,
   implementationAtPositionWithImports,
   referencesAtPositionWithWorkspace,
+  resolveRenameTarget,
+  renameReferencesForTarget,
+  validateRenameName,
+  validateRenameLocations,
 } = require('../server/out/src/navigation');
 const { provideCompletions, configureCompletions } = require('../server/out/src/completion');
+const { findUniqueModulePathFileMove } = require('../server/out/src/moduleResolver');
 const { indexDocument, getDocumentIndex, clearIndex } = require('../server/out/src/indexer');
 const { provideSignatureHelp, provideSignatureHelpWithImports } = require('../server/out/src/signatureHelp');
 const { provideHover, provideHoverWithImports } = require('../server/out/src/semantic');
@@ -439,6 +444,87 @@ test('navigation resolves local scopes, trait implementations, imports, aliases 
   assert.match(ambiguous.unavailableReason, /n’est pas résolue/i);
 });
 
+test('rename resolves symbol identity, keeps aliases scoped, and ignores comments, strings and shadowed bindings', async (t) => {
+  const source = [
+    'export proc compute(value: i32) -> i32 { return value; }',
+    'proc main() { compute(1); { let compute = 2; compute; } let text = "compute"; } // compute',
+  ].join('\n');
+  const project = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-rename-'));
+  t.after(() => fs.rmSync(project, { recursive: true, force: true }));
+  const nestedRoot = path.join(project, 'ambiguous');
+  const ambiguousMove = findUniqueModulePathFileMove(
+    path.join(nestedRoot, 'thing.vit'),
+    path.join(nestedRoot, 'renamed.vit'),
+    [project, nestedRoot],
+  );
+  assert.equal(ambiguousMove.mapping, undefined);
+  assert.equal(ambiguousMove.candidateCount, 2, 'nested workspace and module roots must not guess which module path to update');
+  const sourcePath = path.join(project, 'api.vit');
+  fs.writeFileSync(sourcePath, source);
+  const sourceUri = require('node:url').pathToFileURL(sourcePath).toString();
+  const sourceDoc = TextDocument.create(sourceUri, 'vit', 1, source);
+  const importerText = 'use api::{compute as run};\nproc call() { run(3); }';
+  const importerUri = require('node:url').pathToFileURL(path.join(project, 'main.vit')).toString();
+  const importerDoc = TextDocument.create(importerUri, 'vit', 1, importerText);
+  const environment = { projectRoot: project, workspaceRoots: [project] };
+
+  const localPosition = sourceDoc.positionAt(source.indexOf('compute(1)') + 1);
+  const localTarget = await resolveRenameTarget(sourceDoc, localPosition, environment);
+  assert.equal(localTarget.target?.kind, 'source');
+  const localReferences = await renameReferencesForTarget(sourceDoc, localPosition, localTarget.target, environment, [{ uri: sourceUri, doc: sourceDoc }]);
+  assert.deepEqual(localReferences.locations.map(location => sourceDoc.getText(location.range)), ['compute', 'compute']);
+  assert.equal(validateRenameName('return')?.includes('mot réservé'), true);
+  assert.equal(validateRenameLocations('compute', 'computed', localReferences.locations, [{ uri: sourceUri, doc: sourceDoc }]), undefined);
+  const conflictDoc = doc(`${source}\nconst computed = 0;`);
+  assert.match(validateRenameLocations('compute', 'computed', localReferences.locations, [{ uri: sourceUri, doc: conflictDoc }]) ?? '', /existe déjà/);
+
+  const aliasPosition = importerDoc.positionAt(importerText.indexOf('run(3)') + 1);
+  const aliasTarget = await resolveRenameTarget(importerDoc, aliasPosition, environment);
+  assert.equal(aliasTarget.target?.kind, 'import-alias');
+  const aliasReferences = await renameReferencesForTarget(importerDoc, aliasPosition, aliasTarget.target, environment, [{ uri: importerUri, doc: importerDoc }]);
+  assert.deepEqual(aliasReferences.locations.map(location => importerDoc.getText(location.range)), ['run', 'run']);
+  assert.equal(validateRenameLocations('run', 'invoke', aliasReferences.locations, [{ uri: importerUri, doc: importerDoc }]), undefined);
+
+  const sourceTarget = await resolveRenameTarget(sourceDoc, sourceDoc.positionAt(source.indexOf('export proc compute') + 12), environment);
+  const crossFile = await renameReferencesForTarget(sourceDoc, sourceDoc.positionAt(source.indexOf('export proc compute') + 12), sourceTarget.target, environment, [
+    { uri: sourceUri, doc: sourceDoc },
+    { uri: importerUri, doc: importerDoc },
+  ]);
+  const sourceNames = crossFile.locations.filter(location => location.uri === sourceUri).map(location => sourceDoc.getText(location.range));
+  const importedNames = crossFile.locations.filter(location => location.uri === importerUri).map(location => importerDoc.getText(location.range));
+  assert.deepEqual(sourceNames, ['compute', 'compute']);
+  assert.deepEqual(importedNames, ['compute'], 'renaming the export preserves the local import alias and its uses');
+
+  const commentDoc = doc('// renameMe\nproc main() { let value = "renameMe"; }');
+  const invalid = await resolveRenameTarget(commentDoc, { line: 0, character: 5 }, {});
+  assert.equal(invalid.target, undefined);
+  assert.match(invalid.unavailableReason, /identifiant Vitte/);
+
+  const constantsSource = 'export const limit: i32 = 3;\nproc useLimit() { limit; { let limit = 4; limit; } }';
+  const constantsPath = path.join(project, 'constants.vit');
+  fs.writeFileSync(constantsPath, constantsSource);
+  const constantsUri = require('node:url').pathToFileURL(constantsPath).toString();
+  const constantsDoc = TextDocument.create(constantsUri, 'vit', 1, constantsSource);
+  const constantsImporterUri = require('node:url').pathToFileURL(path.join(project, 'constant-use.vit')).toString();
+  const constantsImporterText = 'use constants::{limit as max};\nproc readLimit() { max; }';
+  const constantsImporter = TextDocument.create(constantsImporterUri, 'vit', 1, constantsImporterText);
+  const globalPosition = constantsDoc.positionAt(constantsSource.indexOf('limit;', constantsSource.indexOf('proc useLimit')));
+  const globalTarget = await resolveRenameTarget(constantsDoc, globalPosition, environment);
+  assert.equal(globalTarget.target?.kind, 'source');
+  const globalReferences = await renameReferencesForTarget(constantsDoc, globalPosition, globalTarget.target, environment, [
+    { uri: constantsUri, doc: constantsDoc },
+    { uri: constantsImporterUri, doc: constantsImporter },
+  ]);
+  assert.equal(globalReferences.locations.filter(location => location.uri === constantsUri).length, 2, 'the local shadow is excluded');
+  const importedConstant = globalReferences.locations.find(location => location.uri === constantsImporterUri);
+  assert.equal(constantsImporter.getText(importedConstant.range), 'limit', 'the exported name changes while its alias and use stay local');
+
+  const namespacedGlobals = doc('space alpha { export const flag: i32 = 1; proc readAlpha() { flag; } }\nspace beta { proc readBeta() { flag; } }');
+  const betaReference = namespacedGlobals.positionAt(namespacedGlobals.getText().lastIndexOf('flag'));
+  const unresolvedNamespaceTarget = await resolveRenameTarget(namespacedGlobals, betaReference, {});
+  assert.equal(unresolvedNamespaceTarget.target, undefined, 'a same-named global in another namespace is not treated as a reference');
+});
+
 test('formatter normalizes whitespace and is idempotent', () => {
   const original = doc('proc  main()   {  return 0; }   ');
   const edits = provideFormattingEdits(original);
@@ -573,7 +659,12 @@ test('bundled server serves editor features, navigation and workspace symbols ov
     processId: process.pid,
     rootUri: workspaceUri,
     workspaceFolders: [{ uri: workspaceUri, name: 'vitte-lsp-workspace' }],
-    capabilities: {},
+    capabilities: {
+      workspace: {
+        workspaceEdit: { documentChanges: true },
+        fileOperations: { willRename: true },
+      },
+    },
   });
   const capabilityMatrix = JSON.parse(fs.readFileSync(path.join(root, 'server/src/capability-matrix.json'), 'utf8'));
   assert.equal(initialized.serverInfo?.version, capabilityMatrix.versions.languageServer);
@@ -586,6 +677,7 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   for (const capability of ['inlayHintProvider', 'callHierarchyProvider', 'typeHierarchyProvider']) {
     assert.equal(initialized.capabilities[capability], undefined, `unverified capability ${capability} must not be advertised`);
   }
+  assert.ok(initialized.capabilities.workspace.fileOperations.willRename);
   await connection.sendNotification('initialized', {});
   const matrix = await connection.sendRequest('vitte/capabilityMatrix');
   assert.equal(matrix.schema, 'vitte-capabilities@1');
@@ -598,6 +690,8 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   assert.ok((Array.isArray(completions) ? completions : completions.items).some(item => item.label === 'return'));
   const tokens = await connection.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri } });
   assert.ok(tokens.data.length > 0);
+  const notRenameable = await connection.sendRequest('textDocument/prepareRename', { textDocument: { uri }, position: { line: 2, character: 1 } });
+  assert.equal(notRenameable, null, 'unsupported and unresolved tokens have an explicit unavailable prepare-rename result');
   const symbols = await connection.sendRequest('textDocument/documentSymbol', { textDocument: { uri } });
   assert.ok(symbols.some(symbol => symbol.name === 'editorTarget' || symbol.children?.some(child => child.name === 'editorTarget')));
   const workspaceResults = await connection.sendRequest('workspace/symbol', { query: 'editorTarget' });
@@ -639,6 +733,80 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   });
   assert.ok(crossFileReferences.some(location => location.uri.endsWith('/diskapi.vit')));
   assert.ok(crossFileReferences.some(location => location.uri === importerUri));
+
+  const workspaceApi = path.join(workspace, 'diskapi.vit');
+  const workspaceApiUri = require('node:url').pathToFileURL(workspaceApi).toString();
+  const unsavedApiText = [
+    'export proc workspaceApi(value: i32) -> i32 { return value; }',
+    '// workspaceApi must remain a comment',
+    'proc localUse() { let text = "workspaceApi"; workspaceApi(2); }',
+  ].join('\n');
+  await connection.sendNotification('textDocument/didOpen', { textDocument: { uri: workspaceApiUri, languageId: 'vit', version: 1, text: 'export proc workspaceApi(value: i32) -> i32 { return value; }\n' } });
+  await connection.sendNotification('textDocument/didChange', {
+    textDocument: { uri: workspaceApiUri, version: 2 },
+    contentChanges: [{ text: unsavedApiText }],
+  });
+  const apiDoc = TextDocument.create(workspaceApiUri, 'vit', 2, unsavedApiText);
+  const apiPrepare = await connection.sendRequest('textDocument/prepareRename', {
+    textDocument: { uri: workspaceApiUri },
+    position: apiDoc.positionAt(unsavedApiText.indexOf('workspaceApi')),
+  });
+  assert.equal(apiPrepare.placeholder, 'workspaceApi');
+  const apiRename = await connection.sendRequest('textDocument/rename', {
+    textDocument: { uri: workspaceApiUri },
+    position: apiDoc.positionAt(unsavedApiText.indexOf('workspaceApi')),
+    newName: 'workspaceRenamed',
+  });
+  assert.ok(Array.isArray(apiRename.documentChanges));
+  const apiChange = apiRename.documentChanges.find(change => change.textDocument.uri === workspaceApiUri);
+  const importerChange = apiRename.documentChanges.find(change => change.textDocument.uri === importerUri);
+  assert.equal(apiChange.textDocument.version, 2, 'rename edit is tied to the unsaved buffer version');
+  assert.equal(apiChange.edits.length, 2, 'only declaration and resolved call are renamed');
+  assert.equal(importerChange.textDocument.version, 1);
+  assert.equal(importerChange.edits.length, 1, 'aliased import source updates while the local alias remains intact');
+  assert.equal(importerChange.edits[0].newText, 'workspaceRenamed');
+
+  const originalImportPosition = importerText.indexOf('workspaceApi');
+  const originalImportPrepare = await connection.sendRequest('textDocument/prepareRename', {
+    textDocument: { uri: importerUri },
+    position: { line: 0, character: originalImportPosition },
+  });
+  assert.equal(originalImportPrepare.placeholder, 'workspaceApi');
+  const originalImportRename = await connection.sendRequest('textDocument/rename', {
+    textDocument: { uri: importerUri },
+    position: { line: 0, character: originalImportPosition },
+    newName: 'renamedFromImport',
+  });
+  const originalImportEdit = originalImportRename.documentChanges.find(change => change.textDocument.uri === importerUri);
+  assert.equal(originalImportEdit.edits.length, 1);
+  assert.equal(originalImportEdit.edits[0].newText, 'renamedFromImport');
+  assert.equal(originalImportEdit.edits[0].range.start.character, importerText.indexOf('workspaceApi'));
+
+  const modulePath = path.join(workspace, 'oldmodule.vit');
+  const moduleUri = require('node:url').pathToFileURL(modulePath).toString();
+  const moduleSource = 'space oldmodule;\nexport proc moduleItem() {}\n';
+  fs.writeFileSync(modulePath, moduleSource);
+  const moduleUsePath = path.join(workspace, 'module-use.vit');
+  const moduleUseUri = require('node:url').pathToFileURL(moduleUsePath).toString();
+  const nestedModuleDirectory = path.join(workspace, 'oldmodule');
+  fs.mkdirSync(nestedModuleDirectory);
+  fs.writeFileSync(path.join(nestedModuleDirectory, 'nested.vit'), 'export proc nestedItem() {}\n');
+  const moduleUse = 'use oldmodule::{moduleItem};\nuse oldmodule::nested::{nestedItem};\nproc useModule() { moduleItem(); nestedItem(); }';
+  fs.writeFileSync(moduleUsePath, moduleUse);
+  await connection.sendNotification('textDocument/didOpen', { textDocument: { uri: moduleUri, languageId: 'vit', version: 1, text: moduleSource } });
+  const fileRename = await connection.sendRequest('workspace/willRenameFiles', {
+    files: [{ oldUri: moduleUri, newUri: require('node:url').pathToFileURL(path.join(workspace, 'renamedmodule.vit')).toString() }],
+  });
+  assert.ok(Array.isArray(fileRename.documentChanges));
+  const moduleChange = fileRename.documentChanges.find(change => change.textDocument.uri === moduleUri);
+  const moduleUseChange = fileRename.documentChanges.find(change => change.textDocument.uri === moduleUseUri);
+  assert.equal(moduleChange.textDocument.version, 1);
+  assert.equal(moduleChange.edits.length, 1);
+  assert.equal(moduleChange.edits[0].newText, 'renamedmodule');
+  assert.equal(moduleUseChange.edits.length, 1);
+  assert.equal(moduleUseChange.edits[0].newText, 'renamedmodule');
+  assert.equal(moduleUseChange.edits[0].range.start.line, 0, 'renaming a module file leaves imports resolved to nested files untouched');
+
 
   const actionUri = 'file:///vitte-protocol-code-action.vit';
   const actionText = 'space editor_test;\nproc main() {   \n}\n';
