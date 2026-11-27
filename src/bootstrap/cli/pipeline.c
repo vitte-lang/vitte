@@ -2766,7 +2766,7 @@ vitte_main_parser_contextual_expectation(
             return true;
         case VITTE_PARSER_ERROR_INVALID_ASSERT_STATEMENT:
             *message = "malformed assert statement";
-            *help = "Write `assert(condition);` with a complete expression between matching parentheses and a final semicolon.";
+            *help = "Write `assert(condition);` or `assert condition;` with a complete expression and a final semicolon.";
             return true;
         case VITTE_PARSER_ERROR_INVALID_UNSAFE_STATEMENT:
             *message = "malformed unsafe statement";

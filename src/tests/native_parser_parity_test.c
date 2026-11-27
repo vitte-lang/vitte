@@ -646,6 +646,12 @@ main(int argc, char **argv)
             false
         },
         {
+            "assert syntax forms",
+            "proc check(value: bool) { assert(value); assert value; }\n",
+            true,
+            false
+        },
+        {
             "form with a fixed-array field",
             "form Packet { values: [3]i64 }\n"
             "proc main() -> i64 {\n"

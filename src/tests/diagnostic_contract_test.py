@@ -343,7 +343,7 @@ CASES = (
     ("parser-malformed-defer", "parse",
      "proc bad() { defer; }", ("E0277",), "parser", ";"),
     ("parser-malformed-assert", "parse",
-     "proc bad() { assert true; }", ("E0278",), "parser", "true"),
+     "proc bad() { assert(true; }", ("E0278",), "parser", ";"),
     ("parser-malformed-unsafe", "parse",
      "proc bad() { unsafe value; }", ("E0279",), "parser", "value"),
     ("parser-malformed-assembly", "parse",

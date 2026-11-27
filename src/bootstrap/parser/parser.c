@@ -7417,19 +7417,24 @@ vitte_parser_parse_assert_statement_inner(
     size_t begin;
     vitte_ast_node_id_t statement;
     vitte_ast_node_id_t condition;
+    bool parenthesized;
 
     begin = parser->position;
 
     (void)vitte_parser_advance(parser);
 
-    if (vitte_parser_expect(
+    parenthesized = vitte_parser_check(
+        parser, VITTE_TOKEN_LEFT_PAREN);
+    if (parenthesized && vitte_parser_expect(
             parser,
             VITTE_TOKEN_LEFT_PAREN) == NULL) {
         return VITTE_AST_INVALID_ID;
     }
     condition = vitte_parser_parse_expression(parser);
-    if (condition == VITTE_AST_INVALID_ID ||
-        vitte_parser_expect(
+    if (condition == VITTE_AST_INVALID_ID) {
+        return VITTE_AST_INVALID_ID;
+    }
+    if (parenthesized && vitte_parser_expect(
             parser,
             VITTE_TOKEN_RIGHT_PAREN) == NULL) {
         return VITTE_AST_INVALID_ID;

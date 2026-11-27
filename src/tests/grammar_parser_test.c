@@ -819,10 +819,10 @@ check_parser_diagnostic_details(void)
             VITTE_TOKEN_SEMICOLON
         },
         {
-            "proc bad() { assert true; }",
+            "proc bad() { assert(true; }",
             VITTE_PARSER_ERROR_INVALID_ASSERT_STATEMENT,
-            VITTE_TOKEN_LEFT_PAREN,
-            VITTE_TOKEN_KW_TRUE
+            VITTE_TOKEN_RIGHT_PAREN,
+            VITTE_TOKEN_SEMICOLON
         },
         {
             "proc bad() { unsafe value; }",

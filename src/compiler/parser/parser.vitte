@@ -4560,14 +4560,21 @@ proc parser_parse_statement(parser: *mut Parser) -> ASTNodeId {
 
 proc parser_parse_assert_statement_inner(parser: *mut Parser) -> ASTNodeId {
     let start: *const ParserToken = parser_current(parser);
-    if start == null or parser_expect(parser, TokenKind.KwAssert) == null or
-       parser_expect(parser, TokenKind.LeftParen) == null {
+    if start == null or parser_expect(parser, TokenKind.KwAssert) == null {
+        return PARSER_INVALID_NODE_ID;
+    }
+    let parenthesized: bool = parser_check(parser, TokenKind.LeftParen);
+    if parenthesized and parser_expect(parser, TokenKind.LeftParen) == null {
         return PARSER_INVALID_NODE_ID;
     }
     let condition = parser_parse_expression(parser);
-    if condition == PARSER_INVALID_NODE_ID or
-       parser_expect(parser, TokenKind.RightParen) == null or
-       parser_expect(parser, TokenKind.Semicolon) == null {
+    if condition == PARSER_INVALID_NODE_ID {
+        return PARSER_INVALID_NODE_ID;
+    }
+    if parenthesized and parser_expect(parser, TokenKind.RightParen) == null {
+        return PARSER_INVALID_NODE_ID;
+    }
+    if parser_expect(parser, TokenKind.Semicolon) == null {
         return PARSER_INVALID_NODE_ID;
     }
     let statement = parser_add_node(parser, ASTNodeKind.AssertStmt, parser_span_from_range(

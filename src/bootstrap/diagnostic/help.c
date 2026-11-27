@@ -302,7 +302,7 @@ static const vitte_diagnostic_help_rule_t vitte_help_rules[] = {
     { "E0275", "Write `return;` or `return expression;`. The final return in a block may omit `;` before `}` or end of file; procedure placement and return type are checked semantically." },
     { "E0276", "Write `break;` or `continue;` with a semicolon. A jump must appear inside a loop within a procedure." },
     { "E0277", "Write `defer { ... }` or `defer expression;`; the expression form requires its terminating semicolon." },
-    { "E0278", "Write `assert(condition);` with a complete expression between matching parentheses and a final semicolon." },
+    { "E0278", "Write `assert(condition);` or `assert condition;` with a complete expression and a final semicolon." },
     { "E0279", "Write `unsafe { ... }` and close the block with `}`." },
     { "E0280", "Write `asm(operand, ...);` or `asm(\"template\");`; close the operand list and terminate the statement with `;`." },
     { "E0281", "Use `if condition { ... } [elif condition { ... }]* [else { ... }]`, `while condition { ... }`, `loop { ... }`, or `for pattern in values { ... }`; put `else` after an if/elif chain and use it only before a block or chained conditional." },

@@ -476,11 +476,12 @@ static int
 run_native_regression_cases(void)
 {
     static const char valid_source[] =
-        "space tests::native_valid; proc valid() { let items = [1, 2, 3]; return; }";
+        "space tests::native_valid; proc valid() { let items = [1, 2, 3]; return; } "
+        "proc check(value: bool) { assert(value); assert value; }";
     static const char malformed_source[] =
         "proc malformed() { let value = ; }";
     static const char malformed_defer[] = "proc bad() { defer; }";
-    static const char malformed_assert[] = "proc bad() { assert true; }";
+    static const char malformed_assert[] = "proc bad() { assert(true; }";
     static const char malformed_unsafe[] = "proc bad() { unsafe value; }";
     static const char malformed_assembly[] = "proc bad() { asm(,); }";
     static const char malformed_if[] = "proc bad() { if; }";

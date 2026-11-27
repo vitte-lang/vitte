@@ -289,7 +289,7 @@ with tempfile.TemporaryDirectory(prefix="vitte-help-") as directory:
     case("proc bad() { return 1 2; }", "E0275", "return expression;")
     case("proc bad() { break value; }", "E0276", "Write `break;` or `continue;`")
     case("proc bad() { defer; }", "E0277", "`defer { ... }` or `defer expression;`")
-    case("proc bad() { assert true; }", "E0278", "`assert(condition);`")
+    case("proc bad() { assert(true; }", "E0278", "`assert(condition);` or `assert condition;`")
     case("proc bad() { unsafe value; }", "E0279", "`unsafe { ... }`")
     case("proc bad() { asm; }", "E0280", "`asm(operand, ...);`")
     case("proc bad() { if; }", "E0281", "if condition { ... }")
