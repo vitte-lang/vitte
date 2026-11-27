@@ -1411,19 +1411,19 @@ def check_private_import(directory: Path):
     module_dir = directory / "imports" / "sample"
     module_dir.mkdir(parents=True)
     library = module_dir / "lib.vit"
-    library.write_text(
+    library_source = (
         "space sample::lib;\n"
         "const private_value: i64 = 1;\n"
-        "export const public_value: i64 = 2;\n",
-        encoding="utf-8",
+        "export const public_value: i64 = 2;\n"
     )
+    library.write_bytes(library_source.encode("utf-8"))
     path = module_dir.parent / "main.vit"
     source = (
         "space sample::main;\n"
         "use sample::lib;\n"
         "proc main() -> i64 { return lib::private_value; }\n"
     )
-    path.write_text(source, encoding="utf-8")
+    path.write_bytes(source.encode("utf-8"))
     result = invoke(path, "compile", "json")
     assert result.returncode == 1, (result.returncode, result.stdout, result.stderr)
     document = json.loads(result.stderr)
