@@ -397,7 +397,7 @@ proc same_range(
         diagnostic_registry_range(right.public_code);
 
     return
-        left_range != DiagnosticRegistryRange.Unknown  and 
+        left_range != DiagnosticRegistryRange::Unknown  and
         left_range == right_range;
 }
 
@@ -969,21 +969,21 @@ export proc diagnostic_explain(
     }
 
     match format {
-        DiagnosticExplainFormat.Text => {
+        DiagnosticExplainFormat::Text => {
             return render_text(
                 &*registry_entry,
                 include_related
             );
         },
 
-        DiagnosticExplainFormat.Markdown => {
+        DiagnosticExplainFormat::Markdown => {
             return render_markdown(
                 &*registry_entry,
                 include_related
             );
         },
 
-        DiagnosticExplainFormat.Json => {
+        DiagnosticExplainFormat::Json => {
             return render_json(
                 &*registry_entry,
                 include_related
@@ -1580,27 +1580,27 @@ export proc diagnostic_explain_summary() -> string {
 
     let errors =
         diagnostic_registry_count_severity(
-            DiagnosticSeverity.Error
+            DiagnosticSeverity::Error
         );
 
     let fatals =
         diagnostic_registry_count_severity(
-            DiagnosticSeverity.Fatal
+            DiagnosticSeverity::Fatal
         );
 
     let warnings =
         diagnostic_registry_count_severity(
-            DiagnosticSeverity.Warning
+            DiagnosticSeverity::Warning
         );
 
     let notes =
         diagnostic_registry_count_severity(
-            DiagnosticSeverity.Note
+            DiagnosticSeverity::Note
         );
 
     let helps =
         diagnostic_registry_count_severity(
-            DiagnosticSeverity.Help
+            DiagnosticSeverity::Help
         );
 
     let mut deprecated: usize = 0;
@@ -1906,7 +1906,7 @@ export proc diagnostic_explain_or_suggest(
         diagnostic_explain_suggest_internal(code);
 
     match format {
-        DiagnosticExplainFormat.Json => {
+        DiagnosticExplainFormat::Json => {
             let mut output =
                 "{"
                 + "\"error\":\"unknown diagnostic code\","
@@ -1940,7 +1940,7 @@ export proc diagnostic_explain_or_suggest(
             return output;
         },
 
-        DiagnosticExplainFormat.Markdown => {
+        DiagnosticExplainFormat::Markdown => {
             let mut output =
                 "# Unknown diagnostic code\n\n"
                 + "No registered Vitte diagnostic matches `";
@@ -1961,7 +1961,7 @@ export proc diagnostic_explain_or_suggest(
             return output;
         },
 
-        DiagnosticExplainFormat.Text => {
+        DiagnosticExplainFormat::Text => {
             let mut output =
                 "unknown diagnostic code: ";
 
@@ -2056,15 +2056,15 @@ export proc diagnostic_explain_format_name(
     format: DiagnosticExplainFormat
 ) -> string {
     match format {
-        DiagnosticExplainFormat.Text => {
+        DiagnosticExplainFormat::Text => {
             return "text";
         },
 
-        DiagnosticExplainFormat.Markdown => {
+        DiagnosticExplainFormat::Markdown => {
             return "markdown";
         },
 
-        DiagnosticExplainFormat.Json => {
+        DiagnosticExplainFormat::Json => {
             return "json";
         }
     }
@@ -2092,7 +2092,7 @@ export proc diagnostic_explain_parse_format(
             normalized,
             "plain"
         ) {
-        return DiagnosticExplainFormat.Text;
+        return DiagnosticExplainFormat::Text;
     }
 
     if ascii_equal_case_insensitive(
@@ -2103,14 +2103,14 @@ export proc diagnostic_explain_parse_format(
             normalized,
             "md"
         ) {
-        return DiagnosticExplainFormat.Markdown;
+        return DiagnosticExplainFormat::Markdown;
     }
 
     if ascii_equal_case_insensitive(
             normalized,
             "json"
         ) {
-        return DiagnosticExplainFormat.Json;
+        return DiagnosticExplainFormat::Json;
     }
 
     return null;
@@ -2126,7 +2126,7 @@ export proc diagnostic_explain_text(
 ) -> string {
     return diagnostic_explain(
         code,
-        DiagnosticExplainFormat.Text,
+        DiagnosticExplainFormat::Text,
         true
     );
 }
@@ -2136,7 +2136,7 @@ export proc diagnostic_explain_markdown(
 ) -> string {
     return diagnostic_explain(
         code,
-        DiagnosticExplainFormat.Markdown,
+        DiagnosticExplainFormat::Markdown,
         true
     );
 }
@@ -2146,7 +2146,7 @@ export proc diagnostic_explain_json(
 ) -> string {
     return diagnostic_explain(
         code,
-        DiagnosticExplainFormat.Json,
+        DiagnosticExplainFormat::Json,
         true
     );
 }
@@ -2156,7 +2156,7 @@ export proc diagnostic_explain_text_only(
 ) -> string {
     return diagnostic_explain(
         code,
-        DiagnosticExplainFormat.Text,
+        DiagnosticExplainFormat::Text,
         false
     );
 }
@@ -2166,7 +2166,7 @@ export proc diagnostic_explain_markdown_only(
 ) -> string {
     return diagnostic_explain(
         code,
-        DiagnosticExplainFormat.Markdown,
+        DiagnosticExplainFormat::Markdown,
         false
     );
 }
@@ -2176,7 +2176,7 @@ export proc diagnostic_explain_json_only(
 ) -> string {
     return diagnostic_explain(
         code,
-        DiagnosticExplainFormat.Json,
+        DiagnosticExplainFormat::Json,
         false
     );
 }
@@ -2193,9 +2193,9 @@ export proc diagnostic_explain_cli(
 ) -> string {
     let format =
         if json {
-            DiagnosticExplainFormat.Json
+            DiagnosticExplainFormat::Json
         } else {
-            DiagnosticExplainFormat.Text
+            DiagnosticExplainFormat::Text
         };
 
     return diagnostic_explain(

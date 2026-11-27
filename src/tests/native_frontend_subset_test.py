@@ -15,9 +15,9 @@ VALID_CASES = {
     "pick constructor through a transparent type alias": """\
 pick Order { Less, Equal, Greater }
 type OrderAlias = Order;
-proc selected_order() -> OrderAlias { return OrderAlias.Less; }
+proc selected_order() -> OrderAlias { return OrderAlias::Less; }
 proc main() -> i64 {
-    if selected_order() == OrderAlias.Less { return 0; }
+    if selected_order() == OrderAlias::Less { return 0; }
     return 1;
 }
 """,
@@ -294,17 +294,17 @@ pick State { Idle, Ready }
 pick Maybe { None, Some(i64) }
 
 proc selected_state() -> State {
-    return State.Ready;
+    return State::Ready;
 }
 
 proc selected_value() -> Maybe {
-    return Maybe.Some(42);
+    return Maybe::Some(42);
 }
 
 proc main() -> i64 {
     let state: State = selected_state();
     let value: Maybe = selected_value();
-    if state == State.Ready { return 0; }
+    if state == State::Ready { return 0; }
     return 1;
 }
 """,

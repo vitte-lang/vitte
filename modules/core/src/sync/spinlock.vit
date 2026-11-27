@@ -20,8 +20,8 @@ export proc spinlock_try_lock<T>(lock: &mut SpinLock[T]) -> bool {
         mut_ptr(&mut lock.locked),
         0 as u8,
         1 as u8,
-        AtomicOrdering.Acquire,
-        AtomicOrdering.Relaxed
+        AtomicOrdering::Acquire,
+        AtomicOrdering::Relaxed
     );
 }
 
@@ -34,8 +34,8 @@ export proc spinlock_unlock<T>(lock: &mut SpinLock[T]) {
         mut_ptr(&mut lock.locked),
         1 as u8,
         0 as u8,
-        AtomicOrdering.Release,
-        AtomicOrdering.Relaxed
+        AtomicOrdering::Release,
+        AtomicOrdering::Relaxed
     );
 }
 
@@ -44,13 +44,13 @@ export proc spinlock_try_unlock<T>(lock: &mut SpinLock[T]) -> bool {
         mut_ptr(&mut lock.locked),
         1 as u8,
         0 as u8,
-        AtomicOrdering.Release,
-        AtomicOrdering.Relaxed
+        AtomicOrdering::Release,
+        AtomicOrdering::Relaxed
     );
 }
 
 export proc spinlock_is_locked<T>(lock: &SpinLock[T]) -> bool {
-    return atomic_load(const_ptr(&lock.locked), AtomicOrdering.Relaxed) != 0;
+    return atomic_load(const_ptr(&lock.locked), AtomicOrdering::Relaxed) != 0;
 }
 
 export proc spinlock_value_mut<T>(lock: &mut SpinLock[T]) -> &mut T {

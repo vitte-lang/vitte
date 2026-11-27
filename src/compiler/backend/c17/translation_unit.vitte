@@ -110,7 +110,7 @@ export form C17TranslationUnit {
 proc tu_fail(unit: &mut C17TranslationUnit, error: C17TranslationUnitError) -> bool {
     if unit.magic == TU_MAGIC {
         set unit.last_error = error;
-        if unit.state != C17TranslationUnitState.Destroyed { set unit.state = C17TranslationUnitState.Failed; }
+        if unit.state != C17TranslationUnitState::Destroyed { set unit.state = C17TranslationUnitState::Failed; }
     }
     return false;
 }
@@ -171,7 +171,7 @@ pub proc vitte_c17_translation_unit_init(unit: &mut C17TranslationUnit, config: 
     let effective = if config == null { vitte_c17_translation_unit_config_default() } else { *config? };
     if not tu_config_valid(&effective) { return false; }
     set *unit = C17TranslationUnit {
-        magic: TU_MAGIC, state: C17TranslationUnitState.Building, last_error: C17TranslationUnitError.None,
+        magic: TU_MAGIC, state: C17TranslationUnitState::Building, last_error: C17TranslationUnitError::None,
         config: effective, program: null, backend: null,
         includes: [], include_capacity: 0, features: [], feature_capacity: 0,
         fragments: [], fragment_capacity: 0, runtime_requirements: 0, fragment_bytes: 0,
@@ -181,8 +181,8 @@ pub proc vitte_c17_translation_unit_init(unit: &mut C17TranslationUnit, config: 
 }
 
 pub proc vitte_c17_translation_unit_is_valid(unit: &C17TranslationUnit) -> bool {
-    return unit.magic == TU_MAGIC and unit.state > C17TranslationUnitState.Uninitialized and
-        unit.state < C17TranslationUnitState.Destroyed and
+    return unit.magic == TU_MAGIC and unit.state > C17TranslationUnitState::Uninitialized and
+        unit.state < C17TranslationUnitState::Destroyed and
         unit.includes.len() <= unit.include_capacity and
         unit.features.len() <= unit.feature_capacity and
         unit.fragments.len() <= unit.fragment_capacity;
@@ -191,16 +191,16 @@ pub proc vitte_c17_translation_unit_is_valid(unit: &C17TranslationUnit) -> bool 
 pub proc vitte_c17_translation_unit_reset(unit: &mut C17TranslationUnit) {
     if not vitte_c17_translation_unit_is_valid(unit) { return; }
     unit.includes.clear(); unit.features.clear(); unit.fragments.clear(); set unit.runtime_requirements = 0; set unit.fragment_bytes = 0;
-    set unit.program = null; set unit.backend = null; set unit.state = C17TranslationUnitState.Building;
-    set unit.last_error = C17TranslationUnitError.None; set unit.stats = tu_empty_stats();
+    set unit.program = null; set unit.backend = null; set unit.state = C17TranslationUnitState::Building;
+    set unit.last_error = C17TranslationUnitError::None; set unit.stats = tu_empty_stats();
     if unit.generation != 18446744073709551615 { set unit.generation += 1; }
 }
 
 pub proc vitte_c17_translation_unit_destroy(unit: &mut C17TranslationUnit) {
     if not vitte_c17_translation_unit_is_valid(unit) { return; }
     set *unit = C17TranslationUnit {
-        magic: TU_DEAD_MAGIC, state: C17TranslationUnitState.Destroyed,
-        last_error: C17TranslationUnitError.None,
+        magic: TU_DEAD_MAGIC, state: C17TranslationUnitState::Destroyed,
+        last_error: C17TranslationUnitError::None,
         config: C17TranslationUnitConfig {
             deterministic: false, finalize_program: false, validate_program: false, validate_modules: false,
             aggregate_includes: false, aggregate_features: false, aggregate_fragments: false,
@@ -217,23 +217,23 @@ pub proc vitte_c17_translation_unit_destroy(unit: &mut C17TranslationUnit) {
 
 pub proc vitte_c17_translation_unit_set_program(unit: &mut C17TranslationUnit, program: &mut C17Program) -> bool {
     if not vitte_c17_translation_unit_is_valid(unit) { return false; }
-    if unit.state != C17TranslationUnitState.Building { return tu_fail(unit, C17TranslationUnitError.InvalidState); }
-    if not vitte_c17_program_is_valid(program) { return tu_fail(unit, C17TranslationUnitError.InvalidProgram); }
-    set unit.program = program as *mut C17Program; set unit.last_error = C17TranslationUnitError.None; return true;
+    if unit.state != C17TranslationUnitState::Building { return tu_fail(unit, C17TranslationUnitError::InvalidState); }
+    if not vitte_c17_program_is_valid(program) { return tu_fail(unit, C17TranslationUnitError::InvalidProgram); }
+    set unit.program = program as *mut C17Program; set unit.last_error = C17TranslationUnitError::None; return true;
 }
 
 pub proc vitte_c17_translation_unit_set_backend(unit: &mut C17TranslationUnit, backend: &mut C17Backend) -> bool {
     if not vitte_c17_translation_unit_is_valid(unit) { return false; }
-    if unit.state != C17TranslationUnitState.Building { return tu_fail(unit, C17TranslationUnitError.InvalidState); }
-    if not vitte_c17_backend_is_valid(backend) { return tu_fail(unit, C17TranslationUnitError.InvalidBackend); }
-    set unit.backend = backend as *mut C17Backend; set unit.last_error = C17TranslationUnitError.None; return true;
+    if unit.state != C17TranslationUnitState::Building { return tu_fail(unit, C17TranslationUnitError::InvalidState); }
+    if not vitte_c17_backend_is_valid(backend) { return tu_fail(unit, C17TranslationUnitError::InvalidBackend); }
+    set unit.backend = backend as *mut C17Backend; set unit.last_error = C17TranslationUnitError::None; return true;
 }
 
 proc tu_add_include(unit: &mut C17TranslationUnit, include: &C17ModuleInclude, module_id: u64) -> bool {
-    if include.kind <= C17IncludeKind.Invalid or include.kind >= C17IncludeKind.Count or include.path_length == 0 {
-        return tu_fail(unit, C17TranslationUnitError.InvalidArgument);
+    if include.kind <= C17IncludeKind::Invalid or include.kind >= C17IncludeKind::Count or include.path_length == 0 {
+        return tu_fail(unit, C17TranslationUnitError::InvalidArgument);
     }
-    if include.path_length > include.path.len() { return tu_fail(unit, C17TranslationUnitError.InvalidModule); }
+    if include.path_length > include.path.len() { return tu_fail(unit, C17TranslationUnitError::InvalidModule); }
     let path = include.path.slice(0, include.path_length);
     let mut i: usize = 0;
     if unit.config.deduplicate_includes {
@@ -242,15 +242,15 @@ proc tu_add_include(unit: &mut C17TranslationUnit, include: &C17ModuleInclude, m
             set i += 1;
         }
     }
-    if unit.includes.len() >= unit.config.max_includes { return tu_fail(unit, C17TranslationUnitError.LimitExceeded); }
+    if unit.includes.len() >= unit.config.max_includes { return tu_fail(unit, C17TranslationUnitError::LimitExceeded); }
     if not vitte_c17_translation_unit_reserve_includes(unit, unit.includes.len() + 1) { return false; }
-    if not unit.includes.push(C17TranslationUnitInclude { kind: include.kind, path: path.to_string(), path_length: include.path_length, module_id: module_id }) { return tu_fail(unit, C17TranslationUnitError.OutOfMemory); }
+    if not unit.includes.push(C17TranslationUnitInclude { kind: include.kind, path: path.to_string(), path_length: include.path_length, module_id: module_id }) { return tu_fail(unit, C17TranslationUnitError::OutOfMemory); }
     return true;
 }
 
 proc tu_add_feature(unit: &mut C17TranslationUnit, feature: &C17ModuleFeature, module_id: u64) -> bool {
-    if feature.name_length == 0 { return tu_fail(unit, C17TranslationUnitError.InvalidArgument); }
-    if feature.name_length > feature.name.len() { return tu_fail(unit, C17TranslationUnitError.InvalidModule); }
+    if feature.name_length == 0 { return tu_fail(unit, C17TranslationUnitError::InvalidArgument); }
+    if feature.name_length > feature.name.len() { return tu_fail(unit, C17TranslationUnitError::InvalidModule); }
     let name = feature.name.slice(0, feature.name_length);
     let mut i: usize = 0;
     if unit.config.deduplicate_features {
@@ -259,23 +259,23 @@ proc tu_add_feature(unit: &mut C17TranslationUnit, feature: &C17ModuleFeature, m
             set i += 1;
         }
     }
-    if unit.features.len() >= unit.config.max_features { return tu_fail(unit, C17TranslationUnitError.LimitExceeded); }
+    if unit.features.len() >= unit.config.max_features { return tu_fail(unit, C17TranslationUnitError::LimitExceeded); }
     if not vitte_c17_translation_unit_reserve_features(unit, unit.features.len() + 1) { return false; }
-    if not unit.features.push(C17TranslationUnitFeature { name: name.to_string(), name_length: feature.name_length, module_id: module_id }) { return tu_fail(unit, C17TranslationUnitError.OutOfMemory); }
+    if not unit.features.push(C17TranslationUnitFeature { name: name.to_string(), name_length: feature.name_length, module_id: module_id }) { return tu_fail(unit, C17TranslationUnitError::OutOfMemory); }
     return true;
 }
 
 proc tu_add_fragment(unit: &mut C17TranslationUnit, fragment: &C17ModuleFragment, module_id: u64) -> bool {
-    if fragment.section <= C17Section.None or fragment.section >= C17Section.Count  {
-        return tu_fail(unit, C17TranslationUnitError.InvalidArgument);
+    if fragment.section <= C17Section::None or fragment.section >= C17Section::Count  {
+        return tu_fail(unit, C17TranslationUnitError::InvalidArgument);
     }
-    if fragment.length > fragment.text.len() { return tu_fail(unit, C17TranslationUnitError.InvalidModule); }
+    if fragment.length > fragment.text.len() { return tu_fail(unit, C17TranslationUnitError::InvalidModule); }
     let text = fragment.text.slice(0, fragment.length);
     if unit.config.deduplicate_fragments { let mut i: usize = 0; while i < unit.fragments.len() { if unit.fragments[i].section == fragment.section and unit.fragments[i].length == fragment.length and unit.fragments[i].text == text { return true; } set i += 1; } }
-    if unit.fragments.len() >= unit.config.max_fragments { return tu_fail(unit, C17TranslationUnitError.LimitExceeded); }
+    if unit.fragments.len() >= unit.config.max_fragments { return tu_fail(unit, C17TranslationUnitError::LimitExceeded); }
     if not vitte_c17_translation_unit_reserve_fragments(unit, unit.fragments.len() + 1) { return false; }
     let global_sequence = unit.fragments.len() as u64;
-    if not unit.fragments.push(C17TranslationUnitFragment { module_id: module_id, section: fragment.section, text: text.to_string(), length: fragment.length, source_id: fragment.source_id, module_sequence: fragment.sequence, global_sequence: global_sequence }) { return tu_fail(unit, C17TranslationUnitError.OutOfMemory); }
+    if not unit.fragments.push(C17TranslationUnitFragment { module_id: module_id, section: fragment.section, text: text.to_string(), length: fragment.length, source_id: fragment.source_id, module_sequence: fragment.sequence, global_sequence: global_sequence }) { return tu_fail(unit, C17TranslationUnitError::OutOfMemory); }
     set unit.fragment_bytes = tu_saturating_add(unit.fragment_bytes, fragment.length);
     return true;
 }
@@ -296,9 +296,9 @@ pub proc vitte_c17_translation_unit_reserve_includes(unit: &mut C17TranslationUn
     if not vitte_c17_translation_unit_is_valid(unit) { return false; }
     if capacity <= unit.include_capacity { return true; }
     let next = tu_growth(unit.include_capacity, TU_INITIAL_INCLUDE_CAPACITY, capacity, unit.config.max_includes);
-    if next == 0 { return tu_fail(unit, C17TranslationUnitError.LimitExceeded); }
-    if next > usize.MAX / sizeof(C17TranslationUnitInclude) { return tu_fail(unit, C17TranslationUnitError.Overflow); }
-    if not unit.includes.reserve(next) { return tu_fail(unit, C17TranslationUnitError.OutOfMemory); }
+    if next == 0 { return tu_fail(unit, C17TranslationUnitError::LimitExceeded); }
+    if next > usize.MAX / sizeof(C17TranslationUnitInclude) { return tu_fail(unit, C17TranslationUnitError::Overflow); }
+    if not unit.includes.reserve(next) { return tu_fail(unit, C17TranslationUnitError::OutOfMemory); }
     set unit.include_capacity = next;
     return true;
 }
@@ -307,9 +307,9 @@ pub proc vitte_c17_translation_unit_reserve_features(unit: &mut C17TranslationUn
     if not vitte_c17_translation_unit_is_valid(unit) { return false; }
     if capacity <= unit.feature_capacity { return true; }
     let next = tu_growth(unit.feature_capacity, TU_INITIAL_FEATURE_CAPACITY, capacity, unit.config.max_features);
-    if next == 0 { return tu_fail(unit, C17TranslationUnitError.LimitExceeded); }
-    if next > usize.MAX / sizeof(C17TranslationUnitFeature) { return tu_fail(unit, C17TranslationUnitError.Overflow); }
-    if not unit.features.reserve(next) { return tu_fail(unit, C17TranslationUnitError.OutOfMemory); }
+    if next == 0 { return tu_fail(unit, C17TranslationUnitError::LimitExceeded); }
+    if next > usize.MAX / sizeof(C17TranslationUnitFeature) { return tu_fail(unit, C17TranslationUnitError::Overflow); }
+    if not unit.features.reserve(next) { return tu_fail(unit, C17TranslationUnitError::OutOfMemory); }
     set unit.feature_capacity = next;
     return true;
 }
@@ -318,18 +318,18 @@ pub proc vitte_c17_translation_unit_reserve_fragments(unit: &mut C17TranslationU
     if not vitte_c17_translation_unit_is_valid(unit) { return false; }
     if capacity <= unit.fragment_capacity { return true; }
     let next = tu_growth(unit.fragment_capacity, TU_INITIAL_FRAGMENT_CAPACITY, capacity, unit.config.max_fragments);
-    if next == 0 { return tu_fail(unit, C17TranslationUnitError.LimitExceeded); }
-    if next > usize.MAX / sizeof(C17TranslationUnitFragment) { return tu_fail(unit, C17TranslationUnitError.Overflow); }
-    if not unit.fragments.reserve(next) { return tu_fail(unit, C17TranslationUnitError.OutOfMemory); }
+    if next == 0 { return tu_fail(unit, C17TranslationUnitError::LimitExceeded); }
+    if next > usize.MAX / sizeof(C17TranslationUnitFragment) { return tu_fail(unit, C17TranslationUnitError::Overflow); }
+    if not unit.fragments.reserve(next) { return tu_fail(unit, C17TranslationUnitError::OutOfMemory); }
     set unit.fragment_capacity = next;
     return true;
 }
 
 proc tu_aggregate_module(unit: &mut C17TranslationUnit, registered: &C17ProgramModule) -> bool {
-    if registered.module == null { return tu_fail(unit, C17TranslationUnitError.InvalidModule); }
+    if registered.module == null { return tu_fail(unit, C17TranslationUnitError::InvalidModule); }
     let module = &*registered.module;
     if unit.config.validate_modules and not vitte_c17_module_validate(module) {
-        return tu_fail(unit, C17TranslationUnitError.InvalidModule);
+        return tu_fail(unit, C17TranslationUnitError::InvalidModule);
     }
     if unit.config.aggregate_includes {
         let mut i: usize = 0;
@@ -430,7 +430,7 @@ proc tu_refresh_stats(unit: &mut C17TranslationUnit) {
     let mut i: usize = 0;
     while i < unit.fragments.len() {
         let fragment = &unit.fragments[i];
-        if fragment.section > C17Section.None and fragment.section < C17Section.Count {
+        if fragment.section > C17Section::None and fragment.section < C17Section::Count {
             let section = fragment.section as usize;
             set unit.stats.fragments_by_section[section] += 1;
             set unit.stats.bytes_by_section[section] = tu_saturating_add(unit.stats.bytes_by_section[section], fragment.length);
@@ -441,20 +441,20 @@ proc tu_refresh_stats(unit: &mut C17TranslationUnit) {
 
 pub proc vitte_c17_translation_unit_prepare(unit: &mut C17TranslationUnit) -> bool {
     if not vitte_c17_translation_unit_is_valid(unit) { return false; }
-    if unit.state != C17TranslationUnitState.Building and unit.state != C17TranslationUnitState.Prepared {
-        return tu_fail(unit, C17TranslationUnitError.InvalidState);
+    if unit.state != C17TranslationUnitState::Building and unit.state != C17TranslationUnitState::Prepared {
+        return tu_fail(unit, C17TranslationUnitError::InvalidState);
     }
     if unit.program == null or not vitte_c17_program_is_valid(&*unit.program) {
-        return tu_fail(unit, C17TranslationUnitError.InvalidProgram);
+        return tu_fail(unit, C17TranslationUnitError::InvalidProgram);
     }
     let program = &mut *unit.program;
     if unit.config.finalize_program {
-        if not vitte_c17_program_finalize(program) { return tu_fail(unit, C17TranslationUnitError.ProgramFinalization); }
+        if not vitte_c17_program_finalize(program) { return tu_fail(unit, C17TranslationUnitError::ProgramFinalization); }
     } elif program.order.len() == 0 and program.modules.len() != 0 {
-        if not vitte_c17_program_compute_order(program) { return tu_fail(unit, C17TranslationUnitError.ProgramFinalization); }
+        if not vitte_c17_program_compute_order(program) { return tu_fail(unit, C17TranslationUnitError::ProgramFinalization); }
     }
     if unit.config.validate_program and not vitte_c17_program_validate(program) {
-        return tu_fail(unit, C17TranslationUnitError.InvalidProgram);
+        return tu_fail(unit, C17TranslationUnitError::InvalidProgram);
     }
     unit.includes.clear(); unit.features.clear(); unit.fragments.clear();
     set unit.fragment_bytes = 0; set unit.runtime_requirements = 0; set unit.stats = tu_empty_stats();
@@ -462,7 +462,7 @@ pub proc vitte_c17_translation_unit_prepare(unit: &mut C17TranslationUnit) -> bo
     if program.order.len() != 0 {
         while i < program.order.len() {
             let registered = vitte_c17_program_ordered_module_at(program, i);
-            if registered == null { return tu_fail(unit, C17TranslationUnitError.Corruption); }
+            if registered == null { return tu_fail(unit, C17TranslationUnitError::Corruption); }
             let registered_module = registered?;
             if not tu_aggregate_module(unit, &registered_module) { return false; }
             set i += 1;
@@ -478,14 +478,14 @@ pub proc vitte_c17_translation_unit_prepare(unit: &mut C17TranslationUnit) -> bo
     }
     tu_sort(unit);
     tu_refresh_stats(unit);
-    set unit.state = C17TranslationUnitState.Prepared;
-    set unit.last_error = C17TranslationUnitError.None;
+    set unit.state = C17TranslationUnitState::Prepared;
+    set unit.last_error = C17TranslationUnitError::None;
     return true;
 }
 
 proc tu_emit_features(unit: &C17TranslationUnit, backend: &mut C17Backend) -> bool {
     if unit.features.len() == 0 and not unit.config.emit_empty_sections { return true; }
-    if not vitte_c17_backend_begin_section(backend, C17Section.FeatureMacros) { return false; }
+    if not vitte_c17_backend_begin_section(backend, C17Section::FeatureMacros) { return false; }
     let mut i: usize = 0;
     while i < unit.features.len() {
         if not vitte_c17_backend_write(backend, "#define VITTE_FEATURE_") { return false; }
@@ -506,16 +506,16 @@ proc tu_emit_features(unit: &C17TranslationUnit, backend: &mut C17Backend) -> bo
 
 proc tu_emit_includes(unit: &C17TranslationUnit, backend: &mut C17Backend) -> bool {
     if unit.includes.len() == 0 and not unit.config.emit_empty_sections { return true; }
-    if not vitte_c17_backend_begin_section(backend, C17Section.Includes) { return false; }
+    if not vitte_c17_backend_begin_section(backend, C17Section::Includes) { return false; }
     let mut i: usize = 0;
     while i < unit.includes.len() {
         let include = &unit.includes[i];
         if not vitte_c17_backend_write(backend, "#include ") { return false; }
-        if include.kind == C17IncludeKind.System {
+        if include.kind == C17IncludeKind::System {
             if not vitte_c17_backend_write_char(backend, '<') or
                 not vitte_c17_backend_write_n(backend, include.path, include.path_length) or
                 not vitte_c17_backend_write_char(backend, '>') { return false; }
-        } elif include.kind == C17IncludeKind.Local {
+        } elif include.kind == C17IncludeKind::Local {
             if not vitte_c17_backend_write_char(backend, '"') or
                 not vitte_c17_backend_write_n(backend, include.path, include.path_length) or
                 not vitte_c17_backend_write_char(backend, '"') { return false; }
@@ -568,32 +568,32 @@ proc tu_emit_fragment_section(unit: &mut C17TranslationUnit, backend: &mut C17Ba
 
 pub proc vitte_c17_translation_unit_emit(unit: &mut C17TranslationUnit) -> bool {
     if not vitte_c17_translation_unit_is_valid(unit) { return false; }
-    if unit.state == C17TranslationUnitState.Building and not vitte_c17_translation_unit_prepare(unit) { return false; }
-    if unit.state != C17TranslationUnitState.Prepared { return tu_fail(unit, C17TranslationUnitError.InvalidState); }
+    if unit.state == C17TranslationUnitState::Building and not vitte_c17_translation_unit_prepare(unit) { return false; }
+    if unit.state != C17TranslationUnitState::Prepared { return tu_fail(unit, C17TranslationUnitError::InvalidState); }
     if unit.backend == null or not vitte_c17_backend_is_valid(&*unit.backend) {
-        return tu_fail(unit, C17TranslationUnitError.InvalidBackend);
+        return tu_fail(unit, C17TranslationUnitError::InvalidBackend);
     }
-    set unit.state = C17TranslationUnitState.Emitting;
+    set unit.state = C17TranslationUnitState::Emitting;
     set unit.stats.emitted_fragment_count = 0;
     set unit.stats.emitted_fragment_bytes = 0;
     let backend: *mut C17Backend = &mut *unit.backend;
     if not tu_emit_features(unit, backend) or not tu_emit_includes(unit, backend) {
-        return tu_fail(unit, C17TranslationUnitError.Backend);
+        return tu_fail(unit, C17TranslationUnitError::Backend);
     }
     if unit.runtime_requirements != 0 and backend.config.emit_comments {
         if not vitte_c17_backend_comment(backend, "Vitte runtime requirements aggregated for this translation unit") {
-            return tu_fail(unit, C17TranslationUnitError.Backend);
+            return tu_fail(unit, C17TranslationUnitError::Backend);
         }
     }
-    let mut section_index = C17Section.ForwardDeclarations as usize;
-    while section_index < C17Section.Count as usize {
+    let mut section_index = C17Section::ForwardDeclarations as usize;
+    while section_index < C17Section::Count as usize {
         if not tu_emit_fragment_section(unit, backend, section_index as C17Section) {
-            return tu_fail(unit, C17TranslationUnitError.ModuleEmission);
+            return tu_fail(unit, C17TranslationUnitError::ModuleEmission);
         }
         set section_index += 1;
     }
-    set unit.state = C17TranslationUnitState.Emitted;
-    set unit.last_error = C17TranslationUnitError.None;
+    set unit.state = C17TranslationUnitState::Emitted;
+    set unit.last_error = C17TranslationUnitError::None;
     return true;
 }
 
@@ -607,14 +607,14 @@ pub proc vitte_c17_translation_unit_emit_adapter(backend: &mut C17Backend, trans
 
 pub proc vitte_c17_translation_unit_generate(unit: &mut C17TranslationUnit, backend: &mut C17Backend) -> bool {
     if not vitte_c17_translation_unit_is_valid(unit) or not vitte_c17_backend_is_valid(backend) { return false; }
-    if unit.state == C17TranslationUnitState.Building and not vitte_c17_translation_unit_prepare(unit) { return false; }
-    if unit.state != C17TranslationUnitState.Prepared { return tu_fail(unit, C17TranslationUnitError.InvalidState); }
+    if unit.state == C17TranslationUnitState::Building and not vitte_c17_translation_unit_prepare(unit) { return false; }
+    if unit.state != C17TranslationUnitState::Prepared { return tu_fail(unit, C17TranslationUnitError::InvalidState); }
     set unit.backend = backend as *mut C17Backend;
     if not vitte_c17_backend_generate(backend, unit as *mut C17TranslationUnit as *const u8, vitte_c17_translation_unit_emit_adapter, null) {
-        return tu_fail(unit, C17TranslationUnitError.Backend);
+        return tu_fail(unit, C17TranslationUnitError::Backend);
     }
-    if unit.state != C17TranslationUnitState.Emitted { return tu_fail(unit, C17TranslationUnitError.Corruption); }
-    set unit.last_error = C17TranslationUnitError.None;
+    if unit.state != C17TranslationUnitState::Emitted { return tu_fail(unit, C17TranslationUnitError::Corruption); }
+    set unit.last_error = C17TranslationUnitError::None;
     return true;
 }
 
@@ -693,12 +693,12 @@ pub proc vitte_c17_translation_unit_validate(unit: &C17TranslationUnit) -> bool 
         unit.fragments.len() > unit.config.max_fragments { return false; }
     if unit.program != null and not vitte_c17_program_is_valid(&*unit.program) { return false; }
     if unit.backend != null and not vitte_c17_backend_is_valid(&*unit.backend) { return false; }
-    if (unit.state == C17TranslationUnitState.Prepared or unit.state == C17TranslationUnitState.Emitting or
-        unit.state == C17TranslationUnitState.Emitted) and unit.program == null { return false; }
+    if (unit.state == C17TranslationUnitState::Prepared or unit.state == C17TranslationUnitState::Emitting or
+        unit.state == C17TranslationUnitState::Emitted) and unit.program == null { return false; }
     let mut i: usize = 0;
     while i < unit.includes.len() {
         let include = &unit.includes[i];
-        if include.kind <= C17IncludeKind.Invalid or include.kind >= C17IncludeKind.Count or
+        if include.kind <= C17IncludeKind::Invalid or include.kind >= C17IncludeKind::Count or
             include.path_length == 0 or include.path_length != include.path.len() { return false; }
         if unit.config.deduplicate_includes {
             let mut j = i + 1;
@@ -726,7 +726,7 @@ pub proc vitte_c17_translation_unit_validate(unit: &C17TranslationUnit) -> bool 
     i = 0;
     while i < unit.fragments.len() {
         let fragment = &unit.fragments[i];
-        if fragment.section <= C17Section.None or fragment.section >= C17Section.Count or
+        if fragment.section <= C17Section::None or fragment.section >= C17Section::Count or
             fragment.length != fragment.text.len() { return false; }
         set computed_bytes = tu_saturating_add(computed_bytes, fragment.length);
         if unit.program != null and fragment.module_id != 0 and
@@ -742,9 +742,9 @@ pub proc vitte_c17_translation_unit_validate(unit: &C17TranslationUnit) -> bool 
     }
     return computed_bytes == unit.fragment_bytes;
 }
-pub proc vitte_c17_translation_unit_state(unit: &C17TranslationUnit) -> C17TranslationUnitState { if unit.magic != TU_MAGIC { return C17TranslationUnitState.Uninitialized; } return unit.state; }
-pub proc vitte_c17_translation_unit_last_error(unit: &C17TranslationUnit) -> C17TranslationUnitError { if unit.magic != TU_MAGIC { return C17TranslationUnitError.InvalidUnit; } return unit.last_error; }
-pub proc vitte_c17_translation_unit_clear_error(unit: &mut C17TranslationUnit) { if unit.magic == TU_MAGIC { set unit.last_error = C17TranslationUnitError.None; } }
+pub proc vitte_c17_translation_unit_state(unit: &C17TranslationUnit) -> C17TranslationUnitState { if unit.magic != TU_MAGIC { return C17TranslationUnitState::Uninitialized; } return unit.state; }
+pub proc vitte_c17_translation_unit_last_error(unit: &C17TranslationUnit) -> C17TranslationUnitError { if unit.magic != TU_MAGIC { return C17TranslationUnitError::InvalidUnit; } return unit.last_error; }
+pub proc vitte_c17_translation_unit_clear_error(unit: &mut C17TranslationUnit) { if unit.magic == TU_MAGIC { set unit.last_error = C17TranslationUnitError::None; } }
 pub proc vitte_c17_translation_unit_include_count(unit: &C17TranslationUnit) -> usize { if not vitte_c17_translation_unit_is_valid(unit) { return 0; } return unit.includes.len(); }
 pub proc vitte_c17_translation_unit_feature_count(unit: &C17TranslationUnit) -> usize { if not vitte_c17_translation_unit_is_valid(unit) { return 0; } return unit.features.len(); }
 pub proc vitte_c17_translation_unit_fragment_count(unit: &C17TranslationUnit) -> usize { if not vitte_c17_translation_unit_is_valid(unit) { return 0; } return unit.fragments.len(); }
@@ -763,13 +763,13 @@ pub proc vitte_c17_translation_unit_requires_runtime(unit: &C17TranslationUnit) 
 pub proc vitte_c17_translation_unit_requires_runtime_feature(unit: &C17TranslationUnit, requirement: C17RuntimeRequirement) -> bool { let value = requirement as u32; if unit.magic != TU_MAGIC or value == 0 or value >= 64 { return false; } return (unit.runtime_requirements & ((1 as u64) << value)) != 0; }
 pub proc vitte_c17_translation_unit_fragment_bytes(unit: &C17TranslationUnit) -> usize { if unit.magic != TU_MAGIC { return 0; } return unit.fragment_bytes; }
 pub proc vitte_c17_translation_unit_generation(unit: &C17TranslationUnit) -> u64 { if unit.magic != TU_MAGIC { return 0; } return unit.generation; }
-pub proc vitte_c17_translation_unit_section_fragment_count(unit: &C17TranslationUnit, section: C17Section) -> usize { if unit.magic != TU_MAGIC or section <= C17Section.None or section >= C17Section.Count { return 0; } return unit.stats.fragments_by_section[section as usize]; }
-pub proc vitte_c17_translation_unit_section_bytes(unit: &C17TranslationUnit, section: C17Section) -> usize { if unit.magic != TU_MAGIC or section <= C17Section.None or section >= C17Section.Count { return 0; } return unit.stats.bytes_by_section[section as usize]; }
+pub proc vitte_c17_translation_unit_section_fragment_count(unit: &C17TranslationUnit, section: C17Section) -> usize { if unit.magic != TU_MAGIC or section <= C17Section::None or section >= C17Section::Count { return 0; } return unit.stats.fragments_by_section[section as usize]; }
+pub proc vitte_c17_translation_unit_section_bytes(unit: &C17TranslationUnit, section: C17Section) -> usize { if unit.magic != TU_MAGIC or section <= C17Section::None or section >= C17Section::Count { return 0; } return unit.stats.bytes_by_section[section as usize]; }
 pub proc vitte_c17_translation_unit_has_program(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.program != null; }
 pub proc vitte_c17_translation_unit_has_backend(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.backend != null; }
-pub proc vitte_c17_translation_unit_is_building(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState.Building; }
-pub proc vitte_c17_translation_unit_is_prepared(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState.Prepared; }
-pub proc vitte_c17_translation_unit_is_emitting(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState.Emitting; }
-pub proc vitte_c17_translation_unit_is_emitted(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState.Emitted; }
-pub proc vitte_c17_translation_unit_has_failed(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState.Failed; }
-pub proc vitte_c17_translation_unit_has_error(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.last_error != C17TranslationUnitError.None; }
+pub proc vitte_c17_translation_unit_is_building(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState::Building; }
+pub proc vitte_c17_translation_unit_is_prepared(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState::Prepared; }
+pub proc vitte_c17_translation_unit_is_emitting(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState::Emitting; }
+pub proc vitte_c17_translation_unit_is_emitted(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState::Emitted; }
+pub proc vitte_c17_translation_unit_has_failed(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.state == C17TranslationUnitState::Failed; }
+pub proc vitte_c17_translation_unit_has_error(unit: &C17TranslationUnit) -> bool { return unit.magic == TU_MAGIC and unit.last_error != C17TranslationUnitError::None; }

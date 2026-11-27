@@ -2572,7 +2572,7 @@ test "public JSON resource profiles can be created and validated" {
             100,
             100,
             100,
-            JsonParserDuplicateKeyPolicy.Allow);
+            JsonParserDuplicateKeyPolicy::Allow);
 
     assert lexer_limits_valid(
         &lexer_limits);
@@ -2602,9 +2602,9 @@ test "default JSON resource profiles match their documented values" {
     assert parser_limits.max_object_members == 1048576;
     assert parser_limits.max_key_length == 16777216;
     assert parser_limits.duplicate_keys ==
-        JsonParserDuplicateKeyPolicy.Allow;
+        JsonParserDuplicateKeyPolicy::Allow;
     assert strict_limits.duplicate_keys ==
-        JsonParserDuplicateKeyPolicy.Reject;
+        JsonParserDuplicateKeyPolicy::Reject;
 }
 
 test "custom lexer limits reject overlong source tokens strings and numbers" {
@@ -2694,19 +2694,19 @@ test "custom lexer limits reject overlong source tokens strings and numbers" {
 
     assert not token_result.ok;
     assert token_result.error.error ==
-        JsonLexerError.TooManyTokens;
+        JsonLexerError::TooManyTokens;
 
     assert not string_result.ok;
     assert string_result.error.error ==
-        JsonLexerError.StringTooLong;
+        JsonLexerError::StringTooLong;
 
     assert not number_result.ok;
     assert number_result.error.error ==
-        JsonLexerError.NumberTooLong;
+        JsonLexerError::NumberTooLong;
 
     assert not source_result.ok;
     assert source_result.error.error ==
-        JsonLexerError.SourceTooLarge;
+        JsonLexerError::SourceTooLarge;
 
     assert token_boundary.ok;
     assert string_boundary.ok;
@@ -2732,7 +2732,7 @@ test "invalid lexer limits are rejected and reported" {
 
     assert not result.ok;
     assert result.error.error ==
-        JsonLexerError.Internal;
+        JsonLexerError::Internal;
 }
 
 test "source parsing preserves lexical diagnostics explicitly" {
@@ -2751,7 +2751,7 @@ test "source parsing preserves lexical diagnostics explicitly" {
 
     assert not result.ok;
     assert result.report.error ==
-        JsonParserError.InvalidTokenStream;
+        JsonParserError::InvalidTokenStream;
     assert result.report.message ==
         "invalid JSON lexer limits";
     assert result.report.detail ==
@@ -2769,7 +2769,7 @@ test "parser container key and nesting limits have exact boundaries" {
             100,
             100,
             100,
-            JsonParserDuplicateKeyPolicy.Allow);
+            JsonParserDuplicateKeyPolicy::Allow);
 
     let array_limits: JsonParserLimits =
         new_parser_limits(
@@ -2778,7 +2778,7 @@ test "parser container key and nesting limits have exact boundaries" {
             1,
             100,
             100,
-            JsonParserDuplicateKeyPolicy.Allow);
+            JsonParserDuplicateKeyPolicy::Allow);
 
     let object_limits: JsonParserLimits =
         new_parser_limits(
@@ -2787,7 +2787,7 @@ test "parser container key and nesting limits have exact boundaries" {
             100,
             1,
             100,
-            JsonParserDuplicateKeyPolicy.Allow);
+            JsonParserDuplicateKeyPolicy::Allow);
 
     let key_limits: JsonParserLimits =
         new_parser_limits(
@@ -2796,7 +2796,7 @@ test "parser container key and nesting limits have exact boundaries" {
             100,
             100,
             1,
-            JsonParserDuplicateKeyPolicy.Allow);
+            JsonParserDuplicateKeyPolicy::Allow);
 
     let at_depth: JsonParseResult =
         parse_with_limits(
@@ -2853,19 +2853,19 @@ test "parser container key and nesting limits have exact boundaries" {
 
     assert not over_depth.ok;
     assert over_depth.report.error ==
-        JsonParserError.DepthExceeded;
+        JsonParserError::DepthExceeded;
 
     assert not over_array.ok;
     assert over_array.report.error ==
-        JsonParserError.TooManyArrayElements;
+        JsonParserError::TooManyArrayElements;
 
     assert not over_object.ok;
     assert over_object.report.error ==
-        JsonParserError.TooManyObjectMembers;
+        JsonParserError::TooManyObjectMembers;
 
     assert not over_key.ok;
     assert over_key.report.error ==
-        JsonParserError.ObjectKeyTooLong;
+        JsonParserError::ObjectKeyTooLong;
 }
 
 test "token parser enforces its custom total value budget" {
@@ -2881,7 +2881,7 @@ test "token parser enforces its custom total value budget" {
             100,
             100,
             100,
-            JsonParserDuplicateKeyPolicy.Allow);
+            JsonParserDuplicateKeyPolicy::Allow);
 
     assert lexical.ok;
 
@@ -2892,7 +2892,7 @@ test "token parser enforces its custom total value budget" {
 
     assert not result.ok;
     assert result.report.error ==
-        JsonParserError.TooManyValues;
+        JsonParserError::TooManyValues;
     assert result.statistics.value_count == 3;
 }
 
@@ -2911,7 +2911,7 @@ test "invalid parser profile is rejected before lexing source" {
             100,
             100,
             100,
-            JsonParserDuplicateKeyPolicy.Allow);
+            JsonParserDuplicateKeyPolicy::Allow);
 
     assert not parser_limits_valid(
         &parser_limits);
@@ -2924,7 +2924,7 @@ test "invalid parser profile is rejected before lexing source" {
 
     assert not result.ok;
     assert result.report.error ==
-        JsonParserError.Internal;
+        JsonParserError::Internal;
     assert result.report.detail ==
         "all parser limits must be greater than zero";
 }
@@ -2944,7 +2944,7 @@ test "custom JSON value limit rejects before a document is built" {
             100,
             100,
             100,
-            JsonParserDuplicateKeyPolicy.Allow);
+            JsonParserDuplicateKeyPolicy::Allow);
 
     let at_limit: JsonParseResult =
         parse_with_limits(
@@ -2963,7 +2963,7 @@ test "custom JSON value limit rejects before a document is built" {
 
     assert not over_limit.ok;
     assert over_limit.report.error ==
-        JsonParserError.TooManyValues;
+        JsonParserError::TooManyValues;
     assert over_limit.statistics.value_count == 3;
 }
 
@@ -2982,7 +2982,7 @@ test "strict parsing with custom limits rejects duplicate keys" {
             100,
             100,
             100,
-            JsonParserDuplicateKeyPolicy.Allow);
+            JsonParserDuplicateKeyPolicy::Allow);
 
     let reject_limits: JsonParserLimits =
         new_parser_limits(
@@ -2991,7 +2991,7 @@ test "strict parsing with custom limits rejects duplicate keys" {
             100,
             100,
             100,
-            JsonParserDuplicateKeyPolicy.Reject);
+            JsonParserDuplicateKeyPolicy::Reject);
 
     let result: JsonParseResult =
         parse_strict_with_limits(
@@ -3007,11 +3007,11 @@ test "strict parsing with custom limits rejects duplicate keys" {
 
     assert not result.ok;
     assert result.report.error ==
-        JsonParserError.DuplicateObjectKey;
+        JsonParserError::DuplicateObjectKey;
     assert result.report.detail ==
         "duplicate JSON object member name";
 
     assert not configured_result.ok;
     assert configured_result.report.error ==
-        JsonParserError.DuplicateObjectKey;
+        JsonParserError::DuplicateObjectKey;
 }

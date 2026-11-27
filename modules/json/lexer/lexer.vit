@@ -226,7 +226,7 @@ proc token(
 
 proc invalid_token() -> JsonToken {
     return token(
-        JsonTokenKind.Invalid,
+        JsonTokenKind::Invalid,
         "",
         "",
         empty_span());
@@ -236,7 +236,7 @@ proc end_token(
     location: JsonPosition
 ) -> JsonToken {
     return token(
-        JsonTokenKind.End,
+        JsonTokenKind::End,
         "",
         "",
         point(location));
@@ -246,62 +246,62 @@ proc token_kind_name(
     kind: JsonTokenKind
 ) -> string {
     if kind ==
-       JsonTokenKind.Invalid {
+       JsonTokenKind::Invalid {
         return "invalid";
     }
 
     if kind ==
-       JsonTokenKind.End {
+       JsonTokenKind::End {
         return "end";
     }
 
     if kind ==
-       JsonTokenKind.LeftBrace {
+       JsonTokenKind::LeftBrace {
         return "{";
     }
 
     if kind ==
-       JsonTokenKind.RightBrace {
+       JsonTokenKind::RightBrace {
         return "}";
     }
 
     if kind ==
-       JsonTokenKind.LeftBracket {
+       JsonTokenKind::LeftBracket {
         return "[";
     }
 
     if kind ==
-       JsonTokenKind.RightBracket {
+       JsonTokenKind::RightBracket {
         return "]";
     }
 
     if kind ==
-       JsonTokenKind.Colon {
+       JsonTokenKind::Colon {
         return ":";
     }
 
     if kind ==
-       JsonTokenKind.Comma {
+       JsonTokenKind::Comma {
         return ",";
     }
 
     if kind ==
-       JsonTokenKind.Null {
+       JsonTokenKind::Null {
         return "null";
     }
 
     if kind ==
-       JsonTokenKind.True {
+       JsonTokenKind::True {
         return "true";
     }
 
     if kind ==
-       JsonTokenKind.False {
+       JsonTokenKind::False {
         return "false";
     }
 
     if kind ==
-       JsonTokenKind.Number {
+       JsonTokenKind::Number {
         return "number";
     }
 
@@ -312,32 +312,32 @@ proc token_is_punctuation(
     kind: JsonTokenKind
 ) -> bool {
     return kind ==
-             JsonTokenKind.LeftBrace ||
+             JsonTokenKind::LeftBrace ||
          kind ==
-             JsonTokenKind.RightBrace ||
+             JsonTokenKind::RightBrace ||
          kind ==
-             JsonTokenKind.LeftBracket ||
+             JsonTokenKind::LeftBracket ||
          kind ==
-             JsonTokenKind.RightBracket ||
+             JsonTokenKind::RightBracket ||
          kind ==
-             JsonTokenKind.Colon ||
+             JsonTokenKind::Colon ||
          kind ==
-             JsonTokenKind.Comma;
+             JsonTokenKind::Comma;
 }
 
 proc token_is_literal(
     kind: JsonTokenKind
 ) -> bool {
     return kind ==
-             JsonTokenKind.Null ||
+             JsonTokenKind::Null ||
          kind ==
-             JsonTokenKind.True ||
+             JsonTokenKind::True ||
          kind ==
-             JsonTokenKind.False ||
+             JsonTokenKind::False ||
          kind ==
-             JsonTokenKind.Number ||
+             JsonTokenKind::Number ||
          kind ==
-             JsonTokenKind.String;
+             JsonTokenKind::String;
 }
 
 proc token_is_value(
@@ -345,9 +345,9 @@ proc token_is_value(
 ) -> bool {
     return token_is_literal(kind) ||
          kind ==
-             JsonTokenKind.LeftBrace ||
+             JsonTokenKind::LeftBrace ||
          kind ==
-             JsonTokenKind.LeftBracket;
+             JsonTokenKind::LeftBracket;
 }
 
 /// -------------------------------------------------------------------------
@@ -356,7 +356,7 @@ proc token_is_value(
 
 proc no_diagnostic() -> JsonLexerDiagnostic {
     return JsonLexerDiagnostic {
-        error: JsonLexerError.None,
+        error: JsonLexerError::None,
 
         message: "",
 
@@ -398,42 +398,42 @@ proc report(
 proc suggestion_for(
     error: JsonLexerError
 ) -> string {
-    if error == JsonLexerError.UnexpectedCharacter {
+    if error == JsonLexerError::UnexpectedCharacter {
         return "JSON accepte uniquement des chaînes entre guillemets doubles, des nombres, true, false, null et les signes {}, [], :, et ,";
     }
 
-    if error == JsonLexerError.InvalidLiteral ||
-       error == JsonLexerError.InvalidNullLiteral ||
-       error == JsonLexerError.InvalidTrueLiteral ||
-       error == JsonLexerError.InvalidFalseLiteral {
+    if error == JsonLexerError::InvalidLiteral ||
+       error == JsonLexerError::InvalidNullLiteral ||
+       error == JsonLexerError::InvalidTrueLiteral ||
+       error == JsonLexerError::InvalidFalseLiteral {
         return "Vérifiez l'orthographe de true, false ou null. Ces mots s'écrivent en minuscules, sans guillemets";
     }
 
-    if error == JsonLexerError.InvalidNumberLeadingZero {
+    if error == JsonLexerError::InvalidNumberLeadingZero {
         return "Supprimez le zéro en trop : écrivez 0 ou un nombre qui commence par 1 à 9, par exemple 0.5 ou 12";
     }
 
-    if error == JsonLexerError.InvalidNumberFraction {
+    if error == JsonLexerError::InvalidNumberFraction {
         return "Après le point, ajoutez au moins un chiffre, par exemple 1.5";
     }
 
-    if error == JsonLexerError.InvalidNumberExponent {
+    if error == JsonLexerError::InvalidNumberExponent {
         return "Après e ou E, ajoutez un exposant complet, par exemple 1e3 ou 1e-3";
     }
 
-    if error == JsonLexerError.UnterminatedString {
+    if error == JsonLexerError::UnterminatedString {
         return "Ajoutez le guillemet double manquant à la fin de la chaîne";
     }
 
-    if error == JsonLexerError.UnescapedControlCharacter {
+    if error == JsonLexerError::UnescapedControlCharacter {
         return "Remplacez le caractère de contrôle par son échappement JSON, par exemple \\n ou \\t";
     }
 
-    if error == JsonLexerError.InvalidStringEscape {
+    if error == JsonLexerError::InvalidStringEscape {
         return "Utilisez un échappement JSON valide, comme \\n, \\t ou \\u suivi de quatre chiffres hexadécimaux";
     }
 
-    if error == JsonLexerError.InvalidUnicodeEscape {
+    if error == JsonLexerError::InvalidUnicodeEscape {
         return "Un échappement Unicode doit avoir la forme \\u suivie de quatre chiffres hexadécimaux, par exemple \\u00E9";
     }
 
@@ -444,92 +444,92 @@ proc error_name(
     error: JsonLexerError
 ) -> string {
     if error ==
-       JsonLexerError.None {
+       JsonLexerError::None {
         return "none";
     }
 
     if error ==
-       JsonLexerError.SourceTooLarge {
+       JsonLexerError::SourceTooLarge {
         return "source-too-large";
     }
 
     if error ==
-       JsonLexerError.TooManyTokens {
+       JsonLexerError::TooManyTokens {
         return "too-many-tokens";
     }
 
     if error ==
-       JsonLexerError.UnexpectedCharacter {
+       JsonLexerError::UnexpectedCharacter {
         return "unexpected-character";
     }
 
     if error ==
-       JsonLexerError.InvalidLiteral {
+       JsonLexerError::InvalidLiteral {
         return "invalid-literal";
     }
 
     if error ==
-       JsonLexerError.InvalidNullLiteral {
+       JsonLexerError::InvalidNullLiteral {
         return "invalid-null-literal";
     }
 
     if error ==
-       JsonLexerError.InvalidTrueLiteral {
+       JsonLexerError::InvalidTrueLiteral {
         return "invalid-true-literal";
     }
 
     if error ==
-       JsonLexerError.InvalidFalseLiteral {
+       JsonLexerError::InvalidFalseLiteral {
         return "invalid-false-literal";
     }
 
     if error ==
-       JsonLexerError.InvalidNumber {
+       JsonLexerError::InvalidNumber {
         return "invalid-number";
     }
 
     if error ==
-       JsonLexerError.InvalidNumberLeadingZero {
+       JsonLexerError::InvalidNumberLeadingZero {
         return "invalid-number-leading-zero";
     }
 
     if error ==
-       JsonLexerError.InvalidNumberFraction {
+       JsonLexerError::InvalidNumberFraction {
         return "invalid-number-fraction";
     }
 
     if error ==
-       JsonLexerError.InvalidNumberExponent {
+       JsonLexerError::InvalidNumberExponent {
         return "invalid-number-exponent";
     }
 
     if error ==
-       JsonLexerError.NumberTooLong {
+       JsonLexerError::NumberTooLong {
         return "number-too-long";
     }
 
     if error ==
-       JsonLexerError.UnterminatedString {
+       JsonLexerError::UnterminatedString {
         return "unterminated-string";
     }
 
     if error ==
-       JsonLexerError.UnescapedControlCharacter {
+       JsonLexerError::UnescapedControlCharacter {
         return "unescaped-control-character";
     }
 
     if error ==
-       JsonLexerError.InvalidStringEscape {
+       JsonLexerError::InvalidStringEscape {
         return "invalid-string-escape";
     }
 
     if error ==
-       JsonLexerError.InvalidUnicodeEscape {
+       JsonLexerError::InvalidUnicodeEscape {
         return "invalid-unicode-escape";
     }
 
     if error ==
-       JsonLexerError.StringTooLong {
+       JsonLexerError::StringTooLong {
         return "string-too-long";
     }
 
@@ -946,7 +946,7 @@ proc emit(
        result.limits.max_tokens {
         return fail(
             &result,
-            JsonLexerError.TooManyTokens,
+            JsonLexerError::TooManyTokens,
             "JSON input contains too many tokens",
             "the configured JSON token limit was exceeded",
             "",
@@ -992,37 +992,37 @@ proc punctuation_kind(
     value: char
 ) -> JsonTokenKind {
     if value == '{' {
-        return JsonTokenKind.LeftBrace;
+        return JsonTokenKind::LeftBrace;
     }
 
     if value == '}' {
-        return JsonTokenKind.RightBrace;
+        return JsonTokenKind::RightBrace;
     }
 
     if value == '[' {
-        return JsonTokenKind.LeftBracket;
+        return JsonTokenKind::LeftBracket;
     }
 
     if value == ']' {
-        return JsonTokenKind.RightBracket;
+        return JsonTokenKind::RightBracket;
     }
 
     if value == ':' {
-        return JsonTokenKind.Colon;
+        return JsonTokenKind::Colon;
     }
 
     if value == ',' {
-        return JsonTokenKind.Comma;
+        return JsonTokenKind::Comma;
     }
 
-    return JsonTokenKind.Invalid;
+    return JsonTokenKind::Invalid;
 }
 
 proc is_punctuation(
     value: char
 ) -> bool {
     return punctuation_kind(value) !=
-         JsonTokenKind.Invalid;
+         JsonTokenKind::Invalid;
 }
 
 proc scan_punctuation(
@@ -1233,8 +1233,8 @@ proc scan_null(
     return scan_fixed_literal(
         state,
         "null",
-        JsonTokenKind.Null,
-        JsonLexerError.InvalidNullLiteral);
+        JsonTokenKind::Null,
+        JsonLexerError::InvalidNullLiteral);
 }
 
 proc scan_true(
@@ -1243,8 +1243,8 @@ proc scan_true(
     return scan_fixed_literal(
         state,
         "true",
-        JsonTokenKind.True,
-        JsonLexerError.InvalidTrueLiteral);
+        JsonTokenKind::True,
+        JsonLexerError::InvalidTrueLiteral);
 }
 
 proc scan_false(
@@ -1253,8 +1253,8 @@ proc scan_false(
     return scan_fixed_literal(
         state,
         "false",
-        JsonTokenKind.False,
-        JsonLexerError.InvalidFalseLiteral);
+        JsonTokenKind::False,
+        JsonLexerError::InvalidFalseLiteral);
 }
 
 /// -------------------------------------------------------------------------
@@ -1295,7 +1295,7 @@ proc scan_number(
                     &result)) {
             return fail(
                 &result,
-                JsonLexerError.InvalidNumber,
+                JsonLexerError::InvalidNumber,
                 "invalid JSON number",
                 "a minus sign must be followed by a decimal digit",
                 "-",
@@ -1336,7 +1336,7 @@ proc scan_number(
 
             return fail(
                 &result,
-                JsonLexerError.InvalidNumberLeadingZero,
+                JsonLexerError::InvalidNumberLeadingZero,
                 "invalid JSON number",
                 "leading zeroes are not permitted in JSON numbers",
                 state_slice(
@@ -1355,7 +1355,7 @@ proc scan_number(
                     &result)) {
             return fail_here(
                 &result,
-                JsonLexerError.InvalidNumber,
+                JsonLexerError::InvalidNumber,
                 "invalid JSON number",
                 "expected a decimal digit");
         }
@@ -1390,7 +1390,7 @@ proc scan_number(
                     &result)) {
             return fail(
                 &result,
-                JsonLexerError.InvalidNumberFraction,
+                JsonLexerError::InvalidNumberFraction,
                 "invalid JSON number fraction",
                 "a decimal point must be followed by at least one digit",
                 ".",
@@ -1442,7 +1442,7 @@ proc scan_number(
                     &result)) {
             return fail(
                 &result,
-                JsonLexerError.InvalidNumberExponent,
+                JsonLexerError::InvalidNumberExponent,
                 "invalid JSON number exponent",
                 "an exponent must contain at least one decimal digit",
                 state_slice(
@@ -1493,7 +1493,7 @@ proc scan_number(
 
         return fail(
             &result,
-            JsonLexerError.InvalidNumber,
+            JsonLexerError::InvalidNumber,
             "invalid character after JSON number",
             "JSON numbers must be followed by whitespace, ',', ']' or '}'",
             state_slice(
@@ -1513,7 +1513,7 @@ proc scan_number(
        result.limits.max_number_length {
         return fail(
             &result,
-            JsonLexerError.NumberTooLong,
+            JsonLexerError::NumberTooLong,
             "JSON number is too long",
             "the configured JSON number length limit was exceeded",
             state_slice(
@@ -1534,7 +1534,7 @@ proc scan_number(
     return emit(
         &result,
         token(
-            JsonTokenKind.Number,
+            JsonTokenKind::Number,
             lexeme,
             lexeme,
             span(
@@ -1592,7 +1592,7 @@ proc scan_string(
             return emit(
                 &result,
                 token(
-                    JsonTokenKind.String,
+                    JsonTokenKind::String,
                     lexeme,
                     decoded,
                     span(
@@ -1618,24 +1618,24 @@ proc scan_string(
             if not escaped.ok {
                 let mapped_error:
                     JsonLexerError =
-                        JsonLexerError.InvalidStringEscape;
+                        JsonLexerError::InvalidStringEscape;
 
                 let mut detail: string =
                     escape_error_name(
                         escaped.error);
 
                 if escaped.error ==
-                       JsonEscapeError.InvalidHexDigit ||
+                       JsonEscapeError::InvalidHexDigit ||
                    escaped.error ==
-                       JsonEscapeError.IncompleteUnicodeEscape ||
+                       JsonEscapeError::IncompleteUnicodeEscape ||
                    escaped.error ==
-                       JsonEscapeError.UnexpectedLowSurrogate ||
+                       JsonEscapeError::UnexpectedLowSurrogate ||
                    escaped.error ==
-                       JsonEscapeError.MissingLowSurrogate ||
+                       JsonEscapeError::MissingLowSurrogate ||
                    escaped.error ==
-                       JsonEscapeError.InvalidLowSurrogate ||
+                       JsonEscapeError::InvalidLowSurrogate ||
                    escaped.error ==
-                       JsonEscapeError.InvalidUnicodeScalar {
+                       JsonEscapeError::InvalidUnicodeScalar {
                     set detail =
                         "invalid Unicode escape: " +
                         detail;
@@ -1668,7 +1668,7 @@ proc scan_string(
                result.limits.max_string_length {
                 return fail(
                     &result,
-                    JsonLexerError.StringTooLong,
+                    JsonLexerError::StringTooLong,
                     "JSON string is too long",
                     "the configured decoded JSON string length limit was exceeded",
                     "",
@@ -1700,7 +1700,7 @@ proc scan_string(
 
             return fail(
                 &result,
-                JsonLexerError.UnescapedControlCharacter,
+                JsonLexerError::UnescapedControlCharacter,
                 "unescaped control character in JSON string",
                 "characters U+0000 through U+001F must be escaped inside JSON strings",
                 "" + value,
@@ -1719,7 +1719,7 @@ proc scan_string(
            result.limits.max_string_length {
             return fail(
                 &result,
-                JsonLexerError.StringTooLong,
+                JsonLexerError::StringTooLong,
                 "JSON string is too long",
                 "the configured decoded JSON string length limit was exceeded",
                 "",
@@ -1735,7 +1735,7 @@ proc scan_string(
 
     return fail(
         &result,
-        JsonLexerError.UnterminatedString,
+        JsonLexerError::UnterminatedString,
         "unterminated JSON string",
         "expected a closing quotation mark",
         state_slice(
@@ -1788,7 +1788,7 @@ proc scan_invalid_literal(
 
     return fail(
         &result,
-        JsonLexerError.InvalidLiteral,
+        JsonLexerError::InvalidLiteral,
         "invalid JSON literal",
         "valid JSON literals are null, true and false",
         found,
@@ -1814,7 +1814,7 @@ proc scan_unexpected(
 
     return fail(
         state,
-        JsonLexerError.UnexpectedCharacter,
+        JsonLexerError::UnexpectedCharacter,
         "unexpected character in JSON input",
         "the character does not begin a valid JSON token",
         found,
@@ -1903,7 +1903,7 @@ proc run(
         &state.limits) {
         let error: JsonLexerDiagnostic =
             report(
-                JsonLexerError.Internal,
+                JsonLexerError::Internal,
                 "invalid JSON lexer limits",
                 "all JSON lexer limits must be greater than zero",
                 "Vérifiez les limites configurées avant de lancer l'analyse JSON",
@@ -1925,7 +1925,7 @@ proc run(
 
         let error: JsonLexerDiagnostic =
             report(
-                JsonLexerError.SourceTooLarge,
+                JsonLexerError::SourceTooLarge,
                 "JSON source is too large",
                 "the configured JSON source length limit was exceeded",
                 "Réduisez le document ou augmentez max_source_length",
@@ -2059,7 +2059,7 @@ proc significant_token_count(
 
     if result.tokens[
            result.token_count - 1].kind ==
-       JsonTokenKind.End {
+       JsonTokenKind::End {
         return result.token_count - 1;
     }
 
@@ -2102,7 +2102,7 @@ proc string_count(
 ) -> usize {
     return count_kind(
         result,
-        JsonTokenKind.String);
+        JsonTokenKind::String);
 }
 
 proc number_count(
@@ -2110,7 +2110,7 @@ proc number_count(
 ) -> usize {
     return count_kind(
         result,
-        JsonTokenKind.Number);
+        JsonTokenKind::Number);
 }
 
 proc literal_count(
@@ -2118,19 +2118,19 @@ proc literal_count(
 ) -> usize {
     return count_kind(
                result,
-               JsonTokenKind.Null) +
+               JsonTokenKind::Null) +
          count_kind(
                result,
-               JsonTokenKind.True) +
+               JsonTokenKind::True) +
          count_kind(
                result,
-               JsonTokenKind.False) +
+               JsonTokenKind::False) +
          count_kind(
                result,
-               JsonTokenKind.Number) +
+               JsonTokenKind::Number) +
          count_kind(
                result,
-               JsonTokenKind.String);
+               JsonTokenKind::String);
 }
 
 /// -------------------------------------------------------------------------
@@ -2142,10 +2142,10 @@ proc opening_container_count(
 ) -> usize {
     return count_kind(
                result,
-               JsonTokenKind.LeftBrace) +
+               JsonTokenKind::LeftBrace) +
          count_kind(
                result,
-               JsonTokenKind.LeftBracket);
+               JsonTokenKind::LeftBracket);
 }
 
 proc closing_container_count(
@@ -2153,10 +2153,10 @@ proc closing_container_count(
 ) -> usize {
     return count_kind(
                result,
-               JsonTokenKind.RightBrace) +
+               JsonTokenKind::RightBrace) +
          count_kind(
                result,
-               JsonTokenKind.RightBracket);
+               JsonTokenKind::RightBracket);
 }
 
 /// -------------------------------------------------------------------------
@@ -2191,12 +2191,12 @@ proc validate_token(
     }
 
     if value.kind ==
-       JsonTokenKind.Invalid {
+       JsonTokenKind::Invalid {
         return false;
     }
 
     if value.kind ==
-       JsonTokenKind.End {
+       JsonTokenKind::End {
         return value.lexeme.length == 0;
     }
 
@@ -2208,7 +2208,7 @@ proc validate_result(
 ) -> bool {
     if not result.ok {
         return result.error.error !=
-             JsonLexerError.None;
+             JsonLexerError::None;
     }
 
     if result.token_count == 0 {
@@ -2234,7 +2234,7 @@ proc validate_result(
 
     return result.tokens[
         result.token_count - 1].kind ==
-            JsonTokenKind.End;
+            JsonTokenKind::End;
 }
 
 /// -------------------------------------------------------------------------
@@ -2250,7 +2250,7 @@ test "json lexer empty input" {
     assert result.token_count == 1;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.End;
+        JsonTokenKind::End;
 
     assert validate_result(
         &result);
@@ -2266,7 +2266,7 @@ test "json lexer whitespace only" {
     assert result.token_count == 1;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.End;
+        JsonTokenKind::End;
 
     assert result.tokens[0].span.start.line ==
         1;
@@ -2286,25 +2286,25 @@ test "json lexer punctuation" {
     assert result.token_count == 7;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.LeftBrace;
+        JsonTokenKind::LeftBrace;
 
     assert result.tokens[1].kind ==
-        JsonTokenKind.RightBrace;
+        JsonTokenKind::RightBrace;
 
     assert result.tokens[2].kind ==
-        JsonTokenKind.LeftBracket;
+        JsonTokenKind::LeftBracket;
 
     assert result.tokens[3].kind ==
-        JsonTokenKind.RightBracket;
+        JsonTokenKind::RightBracket;
 
     assert result.tokens[4].kind ==
-        JsonTokenKind.Colon;
+        JsonTokenKind::Colon;
 
     assert result.tokens[5].kind ==
-        JsonTokenKind.Comma;
+        JsonTokenKind::Comma;
 
     assert result.tokens[6].kind ==
-        JsonTokenKind.End;
+        JsonTokenKind::End;
 }
 
 /// -------------------------------------------------------------------------
@@ -2318,7 +2318,7 @@ test "json lexer null" {
     assert result.ok;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.Null;
+        JsonTokenKind::Null;
 
     assert result.tokens[0].lexeme ==
         "null";
@@ -2331,7 +2331,7 @@ test "json lexer true" {
     assert result.ok;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.True;
+        JsonTokenKind::True;
 }
 
 test "json lexer false" {
@@ -2341,7 +2341,7 @@ test "json lexer false" {
     assert result.ok;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.False;
+        JsonTokenKind::False;
 }
 
 test "json lexer rejects malformed null" {
@@ -2351,7 +2351,7 @@ test "json lexer rejects malformed null" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidNullLiteral;
+        JsonLexerError::InvalidNullLiteral;
 }
 
 test "json lexer rejects literal suffix" {
@@ -2361,7 +2361,7 @@ test "json lexer rejects literal suffix" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidTrueLiteral;
+        JsonLexerError::InvalidTrueLiteral;
 }
 
 /// -------------------------------------------------------------------------
@@ -2375,7 +2375,7 @@ test "json lexer zero" {
     assert result.ok;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.Number;
+        JsonTokenKind::Number;
 
     assert result.tokens[0].value ==
         "0";
@@ -2409,7 +2409,7 @@ test "json lexer large integer" {
     assert result.ok;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.Number;
+        JsonTokenKind::Number;
 }
 
 test "json lexer rejects leading zero" {
@@ -2419,7 +2419,7 @@ test "json lexer rejects leading zero" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidNumberLeadingZero;
+        JsonLexerError::InvalidNumberLeadingZero;
 }
 
 test "json lexer rejects negative leading zero" {
@@ -2429,7 +2429,7 @@ test "json lexer rejects negative leading zero" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidNumberLeadingZero;
+        JsonLexerError::InvalidNumberLeadingZero;
 }
 
 test "json lexer rejects lone minus" {
@@ -2439,7 +2439,7 @@ test "json lexer rejects lone minus" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidNumber;
+        JsonLexerError::InvalidNumber;
 }
 
 /// -------------------------------------------------------------------------
@@ -2473,7 +2473,7 @@ test "json lexer rejects missing fraction digits" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidNumberFraction;
+        JsonLexerError::InvalidNumberFraction;
 }
 
 test "json lexer rejects leading decimal point" {
@@ -2483,7 +2483,7 @@ test "json lexer rejects leading decimal point" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.UnexpectedCharacter;
+        JsonLexerError::UnexpectedCharacter;
 }
 
 /// -------------------------------------------------------------------------
@@ -2535,7 +2535,7 @@ test "json lexer rejects empty exponent" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidNumberExponent;
+        JsonLexerError::InvalidNumberExponent;
 }
 
 test "json lexer rejects signed empty exponent" {
@@ -2545,7 +2545,7 @@ test "json lexer rejects signed empty exponent" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidNumberExponent;
+        JsonLexerError::InvalidNumberExponent;
 }
 
 /// -------------------------------------------------------------------------
@@ -2559,7 +2559,7 @@ test "json lexer empty string" {
     assert result.ok;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.String;
+        JsonTokenKind::String;
 
     assert result.tokens[0].value ==
         "";
@@ -2630,7 +2630,7 @@ test "json lexer unicode escape" {
     assert result.ok;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.String;
+        JsonTokenKind::String;
 }
 
 test "json lexer surrogate pair" {
@@ -2641,7 +2641,7 @@ test "json lexer surrogate pair" {
     assert result.ok;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.String;
+        JsonTokenKind::String;
 }
 
 test "json lexer rejects invalid escape" {
@@ -2652,7 +2652,7 @@ test "json lexer rejects invalid escape" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidStringEscape;
+        JsonLexerError::InvalidStringEscape;
 }
 
 test "json lexer rejects incomplete unicode escape" {
@@ -2663,7 +2663,7 @@ test "json lexer rejects incomplete unicode escape" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidStringEscape;
+        JsonLexerError::InvalidStringEscape;
 }
 
 test "json lexer rejects unescaped newline in string" {
@@ -2674,7 +2674,7 @@ test "json lexer rejects unescaped newline in string" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.UnescapedControlCharacter;
+        JsonLexerError::UnescapedControlCharacter;
 }
 
 test "json lexer rejects unterminated string" {
@@ -2685,7 +2685,7 @@ test "json lexer rejects unterminated string" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.UnterminatedString;
+        JsonLexerError::UnterminatedString;
 }
 
 /// -------------------------------------------------------------------------
@@ -2701,13 +2701,13 @@ test "json lexer empty array" {
     assert result.token_count == 3;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.LeftBracket;
+        JsonTokenKind::LeftBracket;
 
     assert result.tokens[1].kind ==
-        JsonTokenKind.RightBracket;
+        JsonTokenKind::RightBracket;
 
     assert result.tokens[2].kind ==
-        JsonTokenKind.End;
+        JsonTokenKind::End;
 }
 
 test "json lexer scalar array" {
@@ -2719,15 +2719,15 @@ test "json lexer scalar array" {
 
     assert count_kind(
         &result,
-        JsonTokenKind.Null) == 1;
+        JsonTokenKind::Null) == 1;
 
     assert count_kind(
         &result,
-        JsonTokenKind.True) == 1;
+        JsonTokenKind::True) == 1;
 
     assert count_kind(
         &result,
-        JsonTokenKind.False) == 1;
+        JsonTokenKind::False) == 1;
 
     assert number_count(
         &result) == 2;
@@ -2747,10 +2747,10 @@ test "json lexer empty object" {
     assert result.ok;
 
     assert result.tokens[0].kind ==
-        JsonTokenKind.LeftBrace;
+        JsonTokenKind::LeftBrace;
 
     assert result.tokens[1].kind ==
-        JsonTokenKind.RightBrace;
+        JsonTokenKind::RightBrace;
 }
 
 test "json lexer simple object" {
@@ -2768,11 +2768,11 @@ test "json lexer simple object" {
 
     assert count_kind(
         &result,
-        JsonTokenKind.Colon) == 2;
+        JsonTokenKind::Colon) == 2;
 
     assert count_kind(
         &result,
-        JsonTokenKind.Comma) == 1;
+        JsonTokenKind::Comma) == 1;
 }
 
 /// -------------------------------------------------------------------------
@@ -2798,7 +2798,7 @@ test "json lexer tracks multiline positions" {
     assert result.ok;
 
     assert result.tokens[1].kind ==
-        JsonTokenKind.String;
+        JsonTokenKind::String;
 
     assert result.tokens[1].span.start.line ==
         1;
@@ -2833,7 +2833,7 @@ test "json lexer rejects comments" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.UnexpectedCharacter;
+        JsonLexerError::UnexpectedCharacter;
 }
 
 test "json lexer rejects block comments" {
@@ -2844,7 +2844,7 @@ test "json lexer rejects block comments" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.UnexpectedCharacter;
+        JsonLexerError::UnexpectedCharacter;
 }
 
 test "json lexer rejects single quoted strings" {
@@ -2855,7 +2855,7 @@ test "json lexer rejects single quoted strings" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.UnexpectedCharacter;
+        JsonLexerError::UnexpectedCharacter;
 }
 
 test "json lexer rejects plus number" {
@@ -2865,7 +2865,7 @@ test "json lexer rejects plus number" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.UnexpectedCharacter;
+        JsonLexerError::UnexpectedCharacter;
 }
 
 test "json lexer rejects hexadecimal number" {
@@ -2875,7 +2875,7 @@ test "json lexer rejects hexadecimal number" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidNumber;
+        JsonLexerError::InvalidNumber;
 }
 
 test "json lexer rejects NaN" {
@@ -2885,7 +2885,7 @@ test "json lexer rejects NaN" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidLiteral;
+        JsonLexerError::InvalidLiteral;
 }
 
 test "json lexer rejects Infinity" {
@@ -2895,7 +2895,7 @@ test "json lexer rejects Infinity" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.InvalidLiteral;
+        JsonLexerError::InvalidLiteral;
 }
 
 /// -------------------------------------------------------------------------
@@ -2986,7 +2986,7 @@ test "json lexer source limit" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.SourceTooLarge;
+        JsonLexerError::SourceTooLarge;
 }
 
 test "json lexer number limit" {
@@ -3005,7 +3005,7 @@ test "json lexer number limit" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.NumberTooLong;
+        JsonLexerError::NumberTooLong;
 }
 
 test "json lexer string limit" {
@@ -3024,7 +3024,7 @@ test "json lexer string limit" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.StringTooLong;
+        JsonLexerError::StringTooLong;
 }
 
 test "json lexer token limit" {
@@ -3043,7 +3043,7 @@ test "json lexer token limit" {
     assert not result.ok;
 
     assert result.error.error ==
-        JsonLexerError.TooManyTokens;
+        JsonLexerError::TooManyTokens;
 }
 
 /// -------------------------------------------------------------------------
@@ -3075,15 +3075,15 @@ test "json lexer realistic document" {
 
     assert count_kind(
         &result,
-        JsonTokenKind.Null) == 1;
+        JsonTokenKind::Null) == 1;
 
     assert count_kind(
         &result,
-        JsonTokenKind.True) == 1;
+        JsonTokenKind::True) == 1;
 
     assert count_kind(
         &result,
-        JsonTokenKind.False) == 1;
+        JsonTokenKind::False) == 1;
 
     assert number_count(
         &result) == 5;

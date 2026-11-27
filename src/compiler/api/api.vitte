@@ -832,23 +832,23 @@ proc api_module_declaration_priority(
     let mut index = start;
     while index <= end and index < lexer.token_count {
         let kind = lexer.tokens[index].kind;
-        if kind == TokenKind.KwUse { return 0; }
-        if kind == TokenKind.KwSpace { return 1; }
-        if kind == TokenKind.KwForm or kind == TokenKind.KwPick or
-           kind == TokenKind.KwType or kind == TokenKind.KwOpaque or
-           kind == TokenKind.KwTrait {
+        if kind == TokenKind::KwUse { return 0; }
+        if kind == TokenKind::KwSpace { return 1; }
+        if kind == TokenKind::KwForm or kind == TokenKind::KwPick or
+           kind == TokenKind::KwType or kind == TokenKind::KwOpaque or
+           kind == TokenKind::KwTrait {
             return 2;
         }
-        if kind == TokenKind.KwConst or kind == TokenKind.KwStatic {
+        if kind == TokenKind::KwConst or kind == TokenKind::KwStatic {
             return 3;
         }
-        if kind == TokenKind.KwImpl or kind == TokenKind.KwMacro {
+        if kind == TokenKind::KwImpl or kind == TokenKind::KwMacro {
             return 4;
         }
-        if kind == TokenKind.KwProc or kind == TokenKind.KwExtern {
+        if kind == TokenKind::KwProc or kind == TokenKind::KwExtern {
             return 5;
         }
-        if kind == TokenKind.KwTest { return 6; }
+        if kind == TokenKind::KwTest { return 6; }
         set index += 1;
     }
     return 6;
@@ -861,30 +861,30 @@ proc api_module_segment_end(lexer: &Lexer, start: usize) -> usize {
     let mut braces: usize = 0;
     while index < lexer.token_count {
         let kind = lexer.tokens[index].kind;
-        if kind == TokenKind.Eof {
+        if kind == TokenKind::Eof {
             return index;
         }
-        if kind == TokenKind.LeftParen {
+        if kind == TokenKind::LeftParen {
             set parentheses += 1;
-        } elif kind == TokenKind.RightParen and parentheses != 0 {
+        } elif kind == TokenKind::RightParen and parentheses != 0 {
             set parentheses -= 1;
-        } elif kind == TokenKind.LeftBracket {
+        } elif kind == TokenKind::LeftBracket {
             set brackets += 1;
-        } elif kind == TokenKind.RightBracket and brackets != 0 {
+        } elif kind == TokenKind::RightBracket and brackets != 0 {
             set brackets -= 1;
-        } elif kind == TokenKind.LeftBrace {
+        } elif kind == TokenKind::LeftBrace {
             set braces += 1;
-        } elif kind == TokenKind.RightBrace and braces != 0 {
+        } elif kind == TokenKind::RightBrace and braces != 0 {
             set braces -= 1;
             if braces == 0 and parentheses == 0 and brackets == 0 {
                 let next = index + 1;
                 if next < lexer.token_count and
-                   lexer.tokens[next].kind == TokenKind.Semicolon {
+                   lexer.tokens[next].kind == TokenKind::Semicolon {
                     return next;
                 }
                 return index;
             }
-        } elif kind == TokenKind.Semicolon and parentheses == 0 and
+        } elif kind == TokenKind::Semicolon and parentheses == 0 and
                brackets == 0 and braces == 0 {
             return index;
         }
@@ -901,17 +901,17 @@ proc api_module_segment_is_space_header(
     let mut index = start;
     while index <= end and index < lexer.token_count {
         let kind = lexer.tokens[index].kind;
-        if kind == TokenKind.KwSpace {
+        if kind == TokenKind::KwSpace {
             let mut scan = index + 1;
             while scan <= end {
-                if lexer.tokens[scan].kind == TokenKind.LeftBrace {
+                if lexer.tokens[scan].kind == TokenKind::LeftBrace {
                     return false;
                 }
                 set scan += 1;
             }
             return true;
         }
-        if kind != TokenKind.KwExport and kind != TokenKind.KwPub {
+        if kind != TokenKind::KwExport and kind != TokenKind::KwPub {
             return false;
         }
         set index += 1;
@@ -935,7 +935,7 @@ proc api_module_append_namespaced_declarations(
     while priority <= 6 {
         let mut segment_start: usize = 0;
         while segment_start < lexer.token_count and
-              lexer.tokens[segment_start].kind != TokenKind.Eof {
+              lexer.tokens[segment_start].kind != TokenKind::Eof {
             let segment_end = api_module_segment_end(&lexer, segment_start);
             if segment_end < segment_start or segment_end >= lexer.token_count {
                 vitte_lexer_destroy(&mut lexer);
@@ -1222,7 +1222,7 @@ proc api_invalid_argument(
 ) -> Status {
     return fail(
         api,
-        Status.ErrorInvalidArgument,
+        Status::ErrorInvalidArgument,
         "VITTE_API_INVALID_ARGUMENT",
         message
     );
@@ -1234,7 +1234,7 @@ proc api_invalid_state(
 ) -> Status {
     return fail(
         api,
-        Status.ErrorInvalidState,
+        Status::ErrorInvalidState,
         "VITTE_API_INVALID_STATE",
         message
     );
@@ -1245,7 +1245,7 @@ proc api_out_of_memory(
 ) -> Status {
     return fail(
         api,
-        Status.ErrorOutOfMemory,
+        Status::ErrorOutOfMemory,
         "VITTE_API_OUT_OF_MEMORY",
         "out of memory"
     );
@@ -1257,7 +1257,7 @@ proc io_error(
 ) -> Status {
     return fail(
         api,
-        Status.ErrorIo,
+        Status::ErrorIo,
         "VITTE_API_IO_ERROR",
         message
     );
@@ -1269,7 +1269,7 @@ proc api_internal_error(
 ) -> Status {
     return fail(
         api,
-        Status.ErrorInternal,
+        Status::ErrorInternal,
         "VITTE_API_INTERNAL_ERROR",
         message
     );
@@ -1314,7 +1314,7 @@ proc api_context_is_valid(
         return false;
     }
 
-    if api.state == ApiState.Destroyed {
+    if api.state == ApiState::Destroyed {
         return false;
     }
 
@@ -1340,7 +1340,7 @@ proc result_create() -> ApiResult {
     return ApiResult {
         magic: API_RESULT_MAGIC,
 
-        status: Status.Ok,
+        status: Status::Ok,
 
         source_name: "",
 
@@ -1428,7 +1428,7 @@ proc validate_source(
         );
     }
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 
@@ -1755,7 +1755,7 @@ proc capture_diagnostics(
     );
 
     if bag == null {
-        return Status.Ok;
+        return Status::Ok;
     }
 
     let bag_value = bag?;
@@ -1823,7 +1823,7 @@ proc capture_diagnostics(
     }
     buffer_destroy(&mut buffer);
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 proc append_pipeline_diagnostic(
@@ -1842,7 +1842,7 @@ proc append_pipeline_diagnostic(
     let bag_value = bag?;
 
     let mut item: Diagnostic = diagnostic_default();
-    set item.severity = if code == "VITTE_IR_E_VERIFY" { DiagnosticSeverity.Fatal } else { DiagnosticSeverity.Error };
+    set item.severity = if code == "VITTE_IR_E_VERIFY" { DiagnosticSeverity::Fatal } else { DiagnosticSeverity::Error };
     set item.origin = origin;
     set item.code = code;
     set item.message = message;
@@ -2183,12 +2183,12 @@ proc compile_internal(
 ) -> Status {
     if not api_context_is_valid(api) {
         set_last_error(
-            Status.ErrorInvalidState,
+            Status::ErrorInvalidState,
             "VITTE_API_INVALID_STATE",
             "invalid compiler API context"
         );
 
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     let validation_status: Status =
@@ -2199,11 +2199,11 @@ proc compile_internal(
             source_length
         );
 
-    if validation_status != Status.Ok {
+    if validation_status != Status::Ok {
         return validation_status;
     }
 
-    if api.state == ApiState.Compiling {
+    if api.state == ApiState::Compiling {
         return api_invalid_state(
             api,
             "compiler context is already compiling"
@@ -2234,7 +2234,7 @@ proc compile_internal(
         return api_out_of_memory(api);
     }
 
-    set api.state = ApiState.Compiling;
+    set api.state = ApiState::Compiling;
     set api.compilation_count += 1;
 
     error_reset(&mut api.last_error);
@@ -2245,7 +2245,7 @@ proc compile_internal(
             &mut api.context
         );
 
-    if status != Status.Ok {
+    if status != Status::Ok {
         propagate_context_error(
             api,
             status,
@@ -2253,7 +2253,7 @@ proc compile_internal(
             "unable to begin compiler context"
         );
 
-        set api.state = ApiState.Failed;
+        set api.state = ApiState::Failed;
         set api.failed_compilation_count += 1;
 
         set result.status = status;
@@ -2278,7 +2278,7 @@ proc compile_internal(
         &mut source_id
     );
 
-    if status != Status.Ok {
+    if status != Status::Ok {
         propagate_context_error(
             api,
             status,
@@ -2287,7 +2287,7 @@ proc compile_internal(
         );
     }
 
-    if status == Status.Ok {
+    if status == Status::Ok {
         let pipeline: NativePipelineResult = if action == NATIVE_FRONTEND_ACTION_CHECK {
             native_pipeline_check(source_text, source_length, source_id)
         } elif action == NATIVE_FRONTEND_ACTION_EMIT_IR {
@@ -2313,7 +2313,7 @@ proc compile_internal(
                 "VITTE_CODEGEN_ERROR"
             } else if pipeline.ir_error != 0 {
                 "VITTE_IR_E_LOWERING"
-            } else if pipeline.status == Status.ErrorParse {
+            } else if pipeline.status == Status::ErrorParse {
                 "VITTE_LEXER_ERROR"
             } else {
                 "VITTE_PIPELINE_ERROR"
@@ -2344,7 +2344,7 @@ proc compile_internal(
                 } else {
                     "C17 code generation rejected the IR"
                 }
-            } else if pipeline.status == Status.ErrorParse {
+            } else if pipeline.status == Status::ErrorParse {
                 "native lexer rejected the source"
             } else {
                 "front-end pipeline failed"
@@ -2379,19 +2379,19 @@ proc compile_internal(
                 vitte_lexer_error_name(pipeline.lexer_error)
             };
             let origin: DiagnosticOrigin = if pipeline.sema_error_count != 0 or pipeline.sema_error != 0 {
-                DiagnosticOrigin.NameResolution
+                DiagnosticOrigin::NameResolution
             } else if pipeline.parser_diagnostic_count != 0 or pipeline.parser_error != 0 {
-                DiagnosticOrigin.Parser
+                DiagnosticOrigin::Parser
             } else if pipeline.hir_error != 0 {
-                DiagnosticOrigin.Hir
+                DiagnosticOrigin::Hir
             } else if pipeline.ir_error != 0 and pipeline.ir_diagnostic_code.length != 0 {
-                DiagnosticOrigin.Ir
+                DiagnosticOrigin::Ir
             } else if pipeline.codegen_error != 0 {
-                DiagnosticOrigin.Codegen
+                DiagnosticOrigin::Codegen
             } else if pipeline.ir_error != 0 {
-                DiagnosticOrigin.Ir
+                DiagnosticOrigin::Ir
             } else {
-                DiagnosticOrigin.Lexer
+                DiagnosticOrigin::Lexer
             };
 
             set status = fail(
@@ -2417,11 +2417,11 @@ proc compile_internal(
                 code,
                 message
             );
-        } else if pipeline.last_completed_phase == NativePipelinePhase.Lexed {
+        } else if pipeline.last_completed_phase == NativePipelinePhase::Lexed {
             /// A parser setup failure did not produce an AST.
             set status = fail(
                 api,
-                Status.ErrorInternal,
+                Status::ErrorInternal,
                 "VITTE_API_FRONTEND_INCOMPLETE",
                 "front-end stopped before parsing completed"
             );
@@ -2433,7 +2433,7 @@ proc compile_internal(
                 "front-end stopped before parsing completed",
                 vitte_parser_error_name(pipeline.parser_error as ParserError),
                 "",
-                DiagnosticOrigin.Driver
+                DiagnosticOrigin::Driver
             );
 
             context_set_failure(
@@ -2442,7 +2442,7 @@ proc compile_internal(
                 "VITTE_API_FRONTEND_INCOMPLETE",
                 "front-end stopped before parsing completed"
             );
-        } else if pipeline.last_completed_phase == NativePipelinePhase.Generated {
+        } else if pipeline.last_completed_phase == NativePipelinePhase::Generated {
             let generated_bytes: [u8] = pipeline.generated_source.bytes();
             let mut output_buffer: ApiBuffer = ApiBuffer {
                 data: [],
@@ -2473,13 +2473,13 @@ proc compile_internal(
             &mut api.context
         );
 
-    if status == Status.Ok  and
-       end_status != Status.Ok {
+    if status == Status::Ok  and
+       end_status != Status::Ok {
         set status = end_status;
     }
 
-    if status != Status.Ok  and
-       api.last_error.status == Status.Ok {
+    if status != Status::Ok  and
+       api.last_error.status == Status::Ok {
         propagate_context_error(
             api,
             status,
@@ -2496,14 +2496,14 @@ proc compile_internal(
             &mut result
         );
 
-    if status == Status.Ok  and
-       diagnostic_status != Status.Ok {
+    if status == Status::Ok  and
+       diagnostic_status != Status::Ok {
         set status = diagnostic_status;
         set result.status = status;
     }
 
     set result.succeeded =
-        status == Status.Ok  and
+        status == Status::Ok  and
         result.error_count == 0;
 
     if not result.succeeded and source_id != 0 {
@@ -2520,10 +2520,10 @@ proc compile_internal(
     }
 
     if result.succeeded {
-        set api.state = ApiState.Ready;
+        set api.state = ApiState::Ready;
         set api.successful_compilation_count += 1;
     } else {
-        set api.state = ApiState.Failed;
+        set api.state = ApiState::Failed;
         set api.failed_compilation_count += 1;
     }
 
@@ -2541,7 +2541,7 @@ export proc api_create() -> Api {
     let mut api: Api = Api {
         magic: API_CONTEXT_MAGIC,
 
-        state: ApiState.Uninitialized,
+        state: ApiState::Uninitialized,
 
         context: context_uninitialized(),
 
@@ -2557,18 +2557,18 @@ export proc api_create() -> Api {
             &mut api.context
         );
 
-    if status != Status.Ok {
+    if status != Status::Ok {
         set_last_error(
             status,
             "VITTE_API_CONTEXT_INIT",
             "unable to initialize compiler context"
         );
 
-        set api.state = ApiState.Failed;
+        set api.state = ApiState::Failed;
         return api;
     }
 
-    set api.state = ApiState.Ready;
+    set api.state = ApiState::Ready;
 
     return api;
 }
@@ -2790,11 +2790,11 @@ export proc api_destroy(
         return;
     }
 
-    if api.state == ApiState.Compiling {
+    if api.state == ApiState::Compiling {
         return;
     }
 
-    set api.state = ApiState.Destroyed;
+    set api.state = ApiState::Destroyed;
 
     context_destroy(
         &mut api.context
@@ -2834,7 +2834,7 @@ proc api_compile_source_with_action_and_diagnostics(
             diagnostic_color,
             &mut result
         );
-    if result.status == Status.Ok and status != Status.Ok {
+    if result.status == Status::Ok and status != Status::Ok {
         set result.status = status;
         let fallback_name: str = if source_name == null { "<memory>" } else { source_name? };
         let fallback_name_copy: ?string = duplicate_string(fallback_name);
@@ -2909,7 +2909,7 @@ proc api_compile_file_with_action_and_diagnostics(
 ) -> ApiResult {
     if not api_context_is_valid(api) {
         set_last_error(
-            Status.ErrorInvalidState,
+            Status::ErrorInvalidState,
             "VITTE_API_INVALID_STATE",
             "invalid compiler API context"
         );
@@ -2917,7 +2917,7 @@ proc api_compile_file_with_action_and_diagnostics(
         return ApiResult {
             magic: API_RESULT_MAGIC,
 
-            status: Status.ErrorInvalidState,
+            status: Status::ErrorInvalidState,
 
             source_name: path,
 
@@ -2977,7 +2977,7 @@ proc api_compile_file_with_action_and_diagnostics(
     ) {
         buffer_destroy(&mut expansion.output);
         api_module_expansion_destroy(&mut expansion);
-        let status: Status = if api.last_error.status != Status.Ok {
+        let status: Status = if api.last_error.status != Status::Ok {
             api.last_error.status
         } else {
             api_invalid_argument(api, "unable to resolve or assemble imported modules")
@@ -3073,7 +3073,7 @@ export proc api_result_status(
     result: &ApiResult
 ) -> Status {
     if not result_is_valid(result) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
 
     return result.status;
@@ -3181,7 +3181,7 @@ export proc api_is_compiling(
     api: &Api
 ) -> bool {
     return api_context_is_valid(api)  and
-           api.state == ApiState.Compiling;
+           api.state == ApiState::Compiling;
 }
 
 export proc api_compilation_count(
@@ -3400,13 +3400,13 @@ export proc api_check_file(
 export proc api_status_is_ok(
     status: Status
 ) -> bool {
-    return status == Status.Ok;
+    return status == Status::Ok;
 }
 
 export proc api_status_is_error(
     status: Status
 ) -> bool {
-    return status != Status.Ok;
+    return status != Status::Ok;
 }
 
 /// =========================================================================
@@ -3417,12 +3417,12 @@ export proc vitte_api_native_create(
     out_api: &mut *mut Api
 ) -> Status {
     if out_api == null {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
     set *out_api = null;
 
     let mut api_value: Api = api_create();
-    if api_value.state != ApiState.Ready {
+    if api_value.state != ApiState::Ready {
         let status: Status = api_value.last_error.status;
         api_destroy(&mut api_value);
         return status;
@@ -3431,13 +3431,13 @@ export proc vitte_api_native_create(
     let storage: *mut u8 = vitte_native_api_allocate(sizeof(Api));
     if storage == null {
         api_destroy(&mut api_value);
-        return Status.ErrorOutOfMemory;
+        return Status::ErrorOutOfMemory;
     }
 
     let api_pointer: *mut Api = storage as *mut Api;
     set *api_pointer = api_value;
     set *out_api = api_pointer;
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_api_native_destroy(api: *mut Api) {
@@ -3621,7 +3621,7 @@ export proc vitte_api_native_is_valid(api: &Api) -> bool {
 }
 
 export proc vitte_api_native_is_compiling(api: &Api) -> bool {
-    return api_context_is_valid(api) and api.state == ApiState.Compiling;
+    return api_context_is_valid(api) and api.state == ApiState::Compiling;
 }
 
 export proc vitte_api_native_error_status(api: &Api) -> Status {

@@ -76,7 +76,7 @@ export proc vitte_diagnostic_lsp_options_init(options: *mut DiagnosticLSPOptions
         include_contract_in_data: true,
         include_cascade_in_data: true,
         source_name: "vitte".as_ptr(),
-        position_encoding: DiagnosticLSPPositionEncoding.Utf16,
+        position_encoding: DiagnosticLSPPositionEncoding::Utf16,
         position_converter: null,
         position_user_data: null,
         uri_converter: null,
@@ -115,9 +115,9 @@ export proc vitte_diagnostic_lsp_source_position_converter(
     user_data: *mut u8
 ) -> bool {
     if position == null or user_data == null { return false; }
-    if encoding != DiagnosticLSPPositionEncoding.Utf8 and
-       encoding != DiagnosticLSPPositionEncoding.Utf16 and
-       encoding != DiagnosticLSPPositionEncoding.Utf32 { return false; }
+    if encoding != DiagnosticLSPPositionEncoding::Utf8 and
+       encoding != DiagnosticLSPPositionEncoding::Utf16 and
+       encoding != DiagnosticLSPPositionEncoding::Utf32 { return false; }
 
     set *position = DiagnosticLSPPosition { line: 0, character: 0, valid: false };
     let sources: ?&SourceContext = &*(user_data as *const SourceContext);
@@ -181,7 +181,7 @@ export proc vitte_diagnostic_lsp_source_position_converter(
     } else { return false; };
 
     // UTF-8 LSP characters are byte offsets and may address any byte.
-    if encoding == DiagnosticLSPPositionEncoding.Utf8 {
+    if encoding == DiagnosticLSPPositionEncoding::Utf8 {
         set *position = DiagnosticLSPPosition {
             line: line_index,
             character: target_offset - line_start,
@@ -194,10 +194,10 @@ export proc vitte_diagnostic_lsp_source_position_converter(
     let mut character: usize = 0;
     while cursor < target_offset {
         let decoded = vitte_unicode_decode_utf8(source_entry.data, cursor, source_entry.length);
-        let codepoint = if decoded.error == UnicodeError.None {
+        let codepoint = if decoded.error == UnicodeError::None {
             decoded.codepoint
         } else { 0xfffd };
-        let decoded_width = if decoded.error == UnicodeError.None {
+        let decoded_width = if decoded.error == UnicodeError::None {
             decoded.length
         } else { 1 };
         if decoded_width == 0 or decoded_width > target_offset - cursor {
@@ -205,7 +205,7 @@ export proc vitte_diagnostic_lsp_source_position_converter(
             return false;
         }
 
-        let units: usize = if encoding == DiagnosticLSPPositionEncoding.Utf16 and codepoint > 0xffff {
+        let units: usize = if encoding == DiagnosticLSPPositionEncoding::Utf16 and codepoint > 0xffff {
             2
         } else { 1 };
         if character > usize.MAX - units { return false; }
@@ -300,18 +300,18 @@ export proc vitte_diagnostic_lsp_set_uri_converter(
 
 export proc vitte_diagnostic_lsp_use_utf8(options: *mut DiagnosticLSPOptions) -> void {
     if options != null {
-        set (*options).position_encoding = DiagnosticLSPPositionEncoding.Utf8;
+        set (*options).position_encoding = DiagnosticLSPPositionEncoding::Utf8;
     }
 }
 
 export proc vitte_diagnostic_lsp_use_utf16(options: *mut DiagnosticLSPOptions) -> void {
     if options != null {
-        set (*options).position_encoding = DiagnosticLSPPositionEncoding.Utf16;
+        set (*options).position_encoding = DiagnosticLSPPositionEncoding::Utf16;
     }
 }
 
 export proc vitte_diagnostic_lsp_use_utf32(options: *mut DiagnosticLSPOptions) -> void {
     if options != null {
-        set (*options).position_encoding = DiagnosticLSPPositionEncoding.Utf32;
+        set (*options).position_encoding = DiagnosticLSPPositionEncoding::Utf32;
     }
 }

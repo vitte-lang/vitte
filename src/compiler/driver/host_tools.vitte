@@ -110,18 +110,18 @@ proc host_tools_run_toolchain(
     failed_stage: *mut u32
 ) -> u32 {
     if failed_stage == null {
-        return DriverHostToolStatus.InvalidArgument as u32;
+        return DriverHostToolStatus::InvalidArgument as u32;
     }
-    set *failed_stage = DriverHostToolStage.None as u32;
+    set *failed_stage = DriverHostToolStage::None as u32;
     if source == null or (emit_object and run_program) or
        (emit_llvm_ir and (emit_object or run_program)) or run_argc < 0 or
        (run_argc > 0 and run_argv == null) {
-        set *failed_stage = DriverHostToolStage.Prepare as u32;
-        return DriverHostToolStatus.InvalidArgument as u32;
+        set *failed_stage = DriverHostToolStage::Prepare as u32;
+        return DriverHostToolStatus::InvalidArgument as u32;
     }
     if (emit_object or emit_llvm_ir) and (output_path == null or output_path[0] == 0) {
-        set *failed_stage = DriverHostToolStage.Prepare as u32;
-        return DriverHostToolStatus.InvalidArgument as u32;
+        set *failed_stage = DriverHostToolStage::Prepare as u32;
+        return DriverHostToolStatus::InvalidArgument as u32;
     }
 
     let source_buffer = allocate(HOST_TEMP_PATH_CAPACITY);
@@ -139,8 +139,8 @@ proc host_tools_run_toolchain(
         if source_buffer != null { deallocate(source_buffer); }
         if object_buffer != null { deallocate(object_buffer); }
         if executable_buffer != null { deallocate(executable_buffer); }
-        set *failed_stage = DriverHostToolStage.Prepare as u32;
-        return DriverHostToolStatus.OutOfMemory as u32;
+        set *failed_stage = DriverHostToolStage::Prepare as u32;
+        return DriverHostToolStatus::OutOfMemory as u32;
     }
 
     let mut source_created = false;
@@ -171,8 +171,8 @@ proc host_tools_run_toolchain(
             source_buffer, object_buffer, executable_buffer,
             source_created, object_created, executable_created
         );
-        set *failed_stage = DriverHostToolStage.Prepare as u32;
-        return DriverHostToolStatus.IoFailure as u32;
+        set *failed_stage = DriverHostToolStage::Prepare as u32;
+        return DriverHostToolStatus::IoFailure as u32;
     }
     set source_created = true;
 
@@ -183,8 +183,8 @@ proc host_tools_run_toolchain(
                 source_buffer, object_buffer, executable_buffer,
                 source_created, object_created, executable_created
             );
-            set *failed_stage = DriverHostToolStage.Prepare as u32;
-            return DriverHostToolStatus.IoFailure as u32;
+            set *failed_stage = DriverHostToolStage::Prepare as u32;
+            return DriverHostToolStatus::IoFailure as u32;
         }
         set executable_created = true;
         if run_program {
@@ -195,8 +195,8 @@ proc host_tools_run_toolchain(
                     source_buffer, object_buffer, executable_buffer,
                     source_created, object_created, executable_created
                 );
-                set *failed_stage = DriverHostToolStage.Prepare as u32;
-                return DriverHostToolStatus.IoFailure as u32;
+                set *failed_stage = DriverHostToolStage::Prepare as u32;
+                return DriverHostToolStatus::IoFailure as u32;
             }
         }
     }
@@ -207,8 +207,8 @@ proc host_tools_run_toolchain(
                 source_buffer, object_buffer, executable_buffer,
                 source_created, object_created, executable_created
             );
-            set *failed_stage = DriverHostToolStage.Prepare as u32;
-            return DriverHostToolStatus.IoFailure as u32;
+            set *failed_stage = DriverHostToolStage::Prepare as u32;
+            return DriverHostToolStatus::IoFailure as u32;
         }
         set object_created = true;
     }
@@ -218,8 +218,8 @@ proc host_tools_run_toolchain(
             source_buffer, object_buffer, executable_buffer,
             source_created, object_created, executable_created
         );
-        set *failed_stage = DriverHostToolStage.Prepare as u32;
-        return DriverHostToolStatus.IoFailure as u32;
+        set *failed_stage = DriverHostToolStage::Prepare as u32;
+        return DriverHostToolStatus::IoFailure as u32;
     }
 
     let compile_output = if emit_llvm_ir {
@@ -237,8 +237,8 @@ proc host_tools_run_toolchain(
             source_buffer, object_buffer, executable_buffer,
             source_created, object_created, executable_created
         );
-        set *failed_stage = DriverHostToolStage.Prepare as u32;
-        return DriverHostToolStatus.OutOfMemory as u32;
+        set *failed_stage = DriverHostToolStage::Prepare as u32;
+        return DriverHostToolStatus::OutOfMemory as u32;
     }
     let mut compile_argument_count: usize = 0;
     if debug_info {
@@ -295,16 +295,16 @@ proc host_tools_run_toolchain(
             source_created, object_created, executable_created
         );
         set *failed_stage = if emit_llvm_ir {
-            DriverHostToolStage.LLVMEmit as u32
+            DriverHostToolStage::LLVMEmit as u32
         } else {
-            DriverHostToolStage.CCompile as u32
+            DriverHostToolStage::CCompile as u32
         };
         return if compile_status == -2 {
-            DriverHostToolStatus.OutOfMemory as u32
+            DriverHostToolStatus::OutOfMemory as u32
         } else if compile_status < 0 {
-            DriverHostToolStatus.InvocationFailure as u32
+            DriverHostToolStatus::InvocationFailure as u32
         } else {
-            DriverHostToolStatus.ProcessFailure as u32
+            DriverHostToolStatus::ProcessFailure as u32
         };
     }
 
@@ -317,8 +317,8 @@ proc host_tools_run_toolchain(
                 source_buffer, object_buffer, executable_buffer,
                 source_created, object_created, executable_created
             );
-            set *failed_stage = DriverHostToolStage.LLVMEmit as u32;
-            return DriverHostToolStatus.IoFailure as u32;
+            set *failed_stage = DriverHostToolStage::LLVMEmit as u32;
+            return DriverHostToolStatus::IoFailure as u32;
         }
         set executable_created = false;
     }
@@ -337,8 +337,8 @@ proc host_tools_run_toolchain(
                 source_buffer, object_buffer, executable_buffer,
                 source_created, object_created, executable_created
             );
-            set *failed_stage = DriverHostToolStage.Prepare as u32;
-            return DriverHostToolStatus.OutOfMemory as u32;
+            set *failed_stage = DriverHostToolStage::Prepare as u32;
+            return DriverHostToolStatus::OutOfMemory as u32;
         }
         set link_arguments[0] = object_buffer;
         set link_arguments[1] = "-o".as_ptr() as *mut u8;
@@ -354,13 +354,13 @@ proc host_tools_run_toolchain(
                 source_buffer, object_buffer, executable_buffer,
                 source_created, object_created, executable_created
             );
-            set *failed_stage = DriverHostToolStage.Link as u32;
+            set *failed_stage = DriverHostToolStage::Link as u32;
             return if link_status == -2 {
-                DriverHostToolStatus.OutOfMemory as u32
+                DriverHostToolStatus::OutOfMemory as u32
             } else if link_status < 0 {
-                DriverHostToolStatus.InvocationFailure as u32
+                DriverHostToolStatus::InvocationFailure as u32
             } else {
-                DriverHostToolStatus.ProcessFailure as u32
+                DriverHostToolStatus::ProcessFailure as u32
             };
         }
     }
@@ -376,13 +376,13 @@ proc host_tools_run_toolchain(
                 source_buffer, object_buffer, executable_buffer,
                 source_created, object_created, executable_created
             );
-            set *failed_stage = DriverHostToolStage.Execute as u32;
+            set *failed_stage = DriverHostToolStage::Execute as u32;
             return if execute_status == -2 {
-                DriverHostToolStatus.OutOfMemory as u32
+                DriverHostToolStatus::OutOfMemory as u32
             } else if execute_status < 0 {
-                DriverHostToolStatus.InvocationFailure as u32
+                DriverHostToolStatus::InvocationFailure as u32
             } else {
-                DriverHostToolStatus.ProcessFailure as u32
+                DriverHostToolStatus::ProcessFailure as u32
             };
         }
     }
@@ -391,7 +391,7 @@ proc host_tools_run_toolchain(
         source_buffer, object_buffer, executable_buffer,
         source_created, object_created, executable_created
     );
-    return DriverHostToolStatus.Success as u32;
+    return DriverHostToolStatus::Success as u32;
 }
 
 /// Compile generated C17 to an LLVM textual IR module through Clang.

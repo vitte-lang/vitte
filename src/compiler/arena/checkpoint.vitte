@@ -188,8 +188,8 @@ pub proc checkpoint_new() -> Checkpoint {
     return Checkpoint {
         magic: CHECKPOINT_MAGIC,
 
-        state: CheckpointState.Empty,
-        last_error: CheckpointError.None,
+        state: CheckpointState::Empty,
+        last_error: CheckpointError::None,
 
         arena: null,
         parent: null,
@@ -211,8 +211,8 @@ pub proc checkpoint_new() -> Checkpoint {
 
 pub proc checkpoint_stats_empty() -> CheckpointStats {
     return CheckpointStats {
-        state: CheckpointState.Empty,
-        last_error: CheckpointError.None,
+        state: CheckpointState::Empty,
+        last_error: CheckpointError::None,
 
         sequence: 0,
         generation: 0,
@@ -376,7 +376,7 @@ proc checkpoint_active_snapshot_valid(
         return false;
     }
 
-    if checkpoint.state != CheckpointState.Active {
+    if checkpoint.state != CheckpointState::Active {
         return false;
     }
 
@@ -489,28 +489,28 @@ pub proc checkpoint_is_active(
     checkpoint: &Checkpoint,
 ) -> bool {
     return checkpoint_magic_valid(checkpoint)  and 
-           checkpoint.state == CheckpointState.Active;
+           checkpoint.state == CheckpointState::Active;
 }
 
 pub proc checkpoint_is_committed(
     checkpoint: &Checkpoint,
 ) -> bool {
     return checkpoint_magic_valid(checkpoint)  and 
-           checkpoint.state == CheckpointState.Committed;
+           checkpoint.state == CheckpointState::Committed;
 }
 
 pub proc checkpoint_is_rolled_back(
     checkpoint: &Checkpoint,
 ) -> bool {
     return checkpoint_magic_valid(checkpoint)  and 
-           checkpoint.state == CheckpointState.RolledBack;
+           checkpoint.state == CheckpointState::RolledBack;
 }
 
 pub proc checkpoint_is_invalidated(
     checkpoint: &Checkpoint,
 ) -> bool {
     return checkpoint_magic_valid(checkpoint)  and 
-           checkpoint.state == CheckpointState.Invalidated;
+           checkpoint.state == CheckpointState::Invalidated;
 }
 
 /* ========================================================================= */
@@ -525,10 +525,10 @@ pub proc checkpoint_capture(
         checkpoint_init(checkpoint);
     }
 
-    if checkpoint.state == CheckpointState.Active {
+    if checkpoint.state == CheckpointState::Active {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidState,
+            CheckpointError::InvalidState,
         );
 
         return false;
@@ -537,7 +537,7 @@ pub proc checkpoint_capture(
     if not arena_context_is_valid(arena) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidArena,
+            CheckpointError::InvalidArena,
         );
 
         return false;
@@ -549,14 +549,14 @@ pub proc checkpoint_capture(
     if snapshot.generation == 0 {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.Corruption,
+            CheckpointError::Corruption,
         );
 
         return false;
     }
 
-    set checkpoint.state = CheckpointState.Active;
-    set checkpoint.last_error = CheckpointError.None;
+    set checkpoint.state = CheckpointState::Active;
+    set checkpoint.last_error = CheckpointError::None;
 
     set checkpoint.arena = arena;
 
@@ -585,10 +585,10 @@ pub proc checkpoint_capture(
         checkpoint_clear_transaction(checkpoint);
 
         set checkpoint.state =
-            CheckpointState.Invalidated;
+            CheckpointState::Invalidated;
 
         set checkpoint.last_error =
-            CheckpointError.Corruption;
+            CheckpointError::Corruption;
 
         return false;
     }
@@ -611,16 +611,16 @@ pub proc checkpoint_capture_nested(
     if checkpoint == parent {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidArgument,
+            CheckpointError::InvalidArgument,
         );
 
         return false;
     }
 
-    if checkpoint.state == CheckpointState.Active {
+    if checkpoint.state == CheckpointState::Active {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidState,
+            CheckpointError::InvalidState,
         );
 
         return false;
@@ -629,7 +629,7 @@ pub proc checkpoint_capture_nested(
     if not checkpoint_is_active(parent) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidState,
+            CheckpointError::InvalidState,
         );
 
         return false;
@@ -639,7 +639,7 @@ pub proc checkpoint_capture_nested(
        not checkpoint_parent_chain_acyclic(parent) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.Stale,
+            CheckpointError::Stale,
         );
 
         return false;
@@ -648,7 +648,7 @@ pub proc checkpoint_capture_nested(
     if parent.depth >= CHECKPOINT_MAX_DEPTH {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.DepthExceeded,
+            CheckpointError::DepthExceeded,
         );
 
         return false;
@@ -657,7 +657,7 @@ pub proc checkpoint_capture_nested(
     if parent.arena == null {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidArena,
+            CheckpointError::InvalidArena,
         );
 
         return false;
@@ -668,7 +668,7 @@ pub proc checkpoint_capture_nested(
     if not arena_context_is_valid(arena) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidArena,
+            CheckpointError::InvalidArena,
         );
 
         return false;
@@ -678,7 +678,7 @@ pub proc checkpoint_capture_nested(
        arena_context_generation(arena) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.GenerationMismatch,
+            CheckpointError::GenerationMismatch,
         );
 
         return false;
@@ -696,10 +696,10 @@ pub proc checkpoint_capture_nested(
         checkpoint_clear_transaction(checkpoint);
 
         set checkpoint.state =
-            CheckpointState.Invalidated;
+            CheckpointState::Invalidated;
 
         set checkpoint.last_error =
-            CheckpointError.Corruption;
+            CheckpointError::Corruption;
 
         return false;
     }
@@ -859,10 +859,10 @@ pub proc checkpoint_rollback(
         return false;
     }
 
-    if checkpoint.state != CheckpointState.Active {
+    if checkpoint.state != CheckpointState::Active {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidState,
+            CheckpointError::InvalidState,
         );
 
         return false;
@@ -871,7 +871,7 @@ pub proc checkpoint_rollback(
     if checkpoint.arena == null {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidCheckpoint,
+            CheckpointError::InvalidCheckpoint,
         );
 
         return false;
@@ -882,7 +882,7 @@ pub proc checkpoint_rollback(
     if not arena_context_is_valid(arena) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidArena,
+            CheckpointError::InvalidArena,
         );
 
         return false;
@@ -892,7 +892,7 @@ pub proc checkpoint_rollback(
        arena_context_generation(arena) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.GenerationMismatch,
+            CheckpointError::GenerationMismatch,
         );
 
         return false;
@@ -901,7 +901,7 @@ pub proc checkpoint_rollback(
     if not checkpoint_parent_chain_acyclic(checkpoint) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.Corruption,
+            CheckpointError::Corruption,
         );
 
         return false;
@@ -913,7 +913,7 @@ pub proc checkpoint_rollback(
         if not checkpoint_is_active(parent) {
             checkpoint_set_error(
                 checkpoint,
-                CheckpointError.Stale,
+                CheckpointError::Stale,
             );
 
             return false;
@@ -922,7 +922,7 @@ pub proc checkpoint_rollback(
         if parent.arena != checkpoint.arena {
             checkpoint_set_error(
                 checkpoint,
-                CheckpointError.ForeignArena,
+                CheckpointError::ForeignArena,
             );
 
             return false;
@@ -931,7 +931,7 @@ pub proc checkpoint_rollback(
         if parent.generation != checkpoint.generation {
             checkpoint_set_error(
                 checkpoint,
-                CheckpointError.GenerationMismatch,
+                CheckpointError::GenerationMismatch,
             );
 
             return false;
@@ -946,7 +946,7 @@ pub proc checkpoint_rollback(
            arena_context_used_bytes(arena) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.Stale,
+            CheckpointError::Stale,
         );
 
         return false;
@@ -965,7 +965,7 @@ pub proc checkpoint_rollback(
     if not arena_context_rollback(arena, snapshot) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.RollbackFailed,
+            CheckpointError::RollbackFailed,
         );
 
         return false;
@@ -978,19 +978,19 @@ pub proc checkpoint_rollback(
        arena_context_requested_bytes(arena) !=
            checkpoint.requested_bytes {
         set checkpoint.state =
-            CheckpointState.Invalidated;
+            CheckpointState::Invalidated;
 
         set checkpoint.last_error =
-            CheckpointError.Corruption;
+            CheckpointError::Corruption;
 
         return false;
     }
 
     set checkpoint.state =
-        CheckpointState.RolledBack;
+        CheckpointState::RolledBack;
 
     set checkpoint.last_error =
-        CheckpointError.None;
+        CheckpointError::None;
 
     return true;
 }
@@ -1006,10 +1006,10 @@ pub proc checkpoint_commit(
         return false;
     }
 
-    if checkpoint.state != CheckpointState.Active {
+    if checkpoint.state != CheckpointState::Active {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidState,
+            CheckpointError::InvalidState,
         );
 
         return false;
@@ -1018,7 +1018,7 @@ pub proc checkpoint_commit(
     if checkpoint.arena == null {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidArena,
+            CheckpointError::InvalidArena,
         );
 
         return false;
@@ -1029,7 +1029,7 @@ pub proc checkpoint_commit(
     if not arena_context_is_valid(arena) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.InvalidArena,
+            CheckpointError::InvalidArena,
         );
 
         return false;
@@ -1039,7 +1039,7 @@ pub proc checkpoint_commit(
        arena_context_generation(arena) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.GenerationMismatch,
+            CheckpointError::GenerationMismatch,
         );
 
         return false;
@@ -1048,7 +1048,7 @@ pub proc checkpoint_commit(
     if not checkpoint_parent_chain_acyclic(checkpoint) {
         checkpoint_set_error(
             checkpoint,
-            CheckpointError.Corruption,
+            CheckpointError::Corruption,
         );
 
         return false;
@@ -1060,7 +1060,7 @@ pub proc checkpoint_commit(
         if not checkpoint_is_active(parent) {
             checkpoint_set_error(
                 checkpoint,
-                CheckpointError.Stale,
+                CheckpointError::Stale,
             );
 
             return false;
@@ -1069,7 +1069,7 @@ pub proc checkpoint_commit(
         if parent.arena != checkpoint.arena {
             checkpoint_set_error(
                 checkpoint,
-                CheckpointError.ForeignArena,
+                CheckpointError::ForeignArena,
             );
 
             return false;
@@ -1078,7 +1078,7 @@ pub proc checkpoint_commit(
         if parent.generation != checkpoint.generation {
             checkpoint_set_error(
                 checkpoint,
-                CheckpointError.GenerationMismatch,
+                CheckpointError::GenerationMismatch,
             );
 
             return false;
@@ -1091,10 +1091,10 @@ pub proc checkpoint_commit(
      */
 
     set checkpoint.state =
-        CheckpointState.Committed;
+        CheckpointState::Committed;
 
     set checkpoint.last_error =
-        CheckpointError.None;
+        CheckpointError::None;
 
     return true;
 }
@@ -1111,10 +1111,10 @@ pub proc checkpoint_invalidate(
     }
 
     set checkpoint.state =
-        CheckpointState.Invalidated;
+        CheckpointState::Invalidated;
 
     set checkpoint.last_error =
-        CheckpointError.None;
+        CheckpointError::None;
 }
 
 /* ========================================================================= */
@@ -1140,10 +1140,10 @@ pub proc checkpoint_destroy(
         CHECKPOINT_DEAD_MAGIC;
 
     set checkpoint.state =
-        CheckpointState.Invalidated;
+        CheckpointState::Invalidated;
 
     set checkpoint.last_error =
-        CheckpointError.InvalidCheckpoint;
+        CheckpointError::InvalidCheckpoint;
 }
 
 /* ========================================================================= */
@@ -1154,7 +1154,7 @@ pub proc checkpoint_last_error(
     checkpoint: &Checkpoint,
 ) -> CheckpointError {
     if not checkpoint_magic_valid(checkpoint) {
-        return CheckpointError.InvalidCheckpoint;
+        return CheckpointError::InvalidCheckpoint;
     }
 
     return checkpoint.last_error;
@@ -1168,14 +1168,14 @@ pub proc checkpoint_clear_error(
     }
 
     set checkpoint.last_error =
-        CheckpointError.None;
+        CheckpointError::None;
 }
 
 pub proc checkpoint_has_error(
     checkpoint: &Checkpoint,
 ) -> bool {
     return checkpoint_last_error(checkpoint) !=
-           CheckpointError.None;
+           CheckpointError::None;
 }
 
 /* ========================================================================= */
@@ -1392,7 +1392,7 @@ pub proc checkpoint_stats(
         checkpoint.parent != null;
 
     let arena_current =
-        checkpoint.state == CheckpointState.Active  and 
+        checkpoint.state == CheckpointState::Active  and
         checkpoint.arena != null  and 
         arena_context_is_valid(checkpoint.arena?)  and 
         checkpoint.generation ==
@@ -1441,7 +1441,7 @@ pub proc checkpoint_stats(
             checkpoint.reserved_bytes;
 
         set stats.stale =
-            checkpoint.state == CheckpointState.Active;
+            checkpoint.state == CheckpointState::Active;
     }
 
     return stats;
@@ -1633,7 +1633,7 @@ pub proc checkpoint_is_empty(
     checkpoint: &Checkpoint,
 ) -> bool {
     return checkpoint_is_initialized(checkpoint)  and
-           checkpoint.state == CheckpointState.Empty;
+           checkpoint.state == CheckpointState::Empty;
 }
 
 pub proc checkpoint_is_resolved(
@@ -1643,9 +1643,9 @@ pub proc checkpoint_is_resolved(
         return false;
     }
 
-    return checkpoint.state == CheckpointState.Committed  or
-           checkpoint.state == CheckpointState.RolledBack  or
-           checkpoint.state == CheckpointState.Invalidated;
+    return checkpoint.state == CheckpointState::Committed  or
+           checkpoint.state == CheckpointState::RolledBack  or
+           checkpoint.state == CheckpointState::Invalidated;
 }
 
 pub proc checkpoint_has_parent(

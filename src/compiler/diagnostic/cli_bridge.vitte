@@ -492,7 +492,7 @@ export proc vitte_cli_diagnostic_transport_set(
 ) -> bool {
     let header = cli_transport_header(batch);
     if header == null or count != (*header).count or index >= count or code == null or message == null or
-       severity > CliDiagnosticSeverity.Fatal as u32 or origin > CliDiagnosticOrigin.Internal as u32 or
+       severity > CliDiagnosticSeverity::Fatal as u32 or origin > CliDiagnosticOrigin::Internal as u32 or
        (has_span and end_offset < start_offset) {
         return false;
     }
@@ -523,8 +523,8 @@ export proc vitte_cli_diagnostic_transport_set(
     set (*diag_entry).expected = owned_expected;
     set (*diag_entry).found = owned_found;
     set (*diag_entry).is_primary = true;
-    set (*diag_entry).poisons_analysis = severity == CliDiagnosticSeverity.Error as u32 or
-        severity == CliDiagnosticSeverity.Fatal as u32;
+    set (*diag_entry).poisons_analysis = severity == CliDiagnosticSeverity::Error as u32 or
+        severity == CliDiagnosticSeverity::Fatal as u32;
     if details != null {
         let details_length = cstring_length(details as *const u8);
         let details_bytes = details as *const u8;
@@ -552,7 +552,7 @@ export proc vitte_cli_diagnostic_transport_set(
     }
 
     if has_span and owned_source_name != null and
-       origin == CliDiagnosticOrigin.Parser as u32 and
+       origin == CliDiagnosticOrigin::Parser as u32 and
        cli_transport_cstr_equals(owned_code, "VITTE_PARSER_E_INVALID_EXPRESSION_LIST") and
        cli_transport_cstr_equals(owned_expected, ",") and
        (cli_transport_cstr_equals(owned_found, "identifier") or
@@ -583,8 +583,8 @@ export proc vitte_cli_diagnostic_transport_set(
         cli_transport_cstr_equals(owned_found, "await")) {
         let suggestion = &mut (*header).suggestions[index];
         set (*suggestion).message = "Insert a comma only if the following token starts another list item; if one expression was intended, add the intended operator or grouping instead.".as_ptr() as *const char;
-        set (*suggestion).applicability = CliDiagnosticApplicability.Maybe;
-        set (*suggestion).confidence = CliDiagnosticConfidence.Medium;
+        set (*suggestion).applicability = CliDiagnosticApplicability::Maybe;
+        set (*suggestion).confidence = CliDiagnosticConfidence::Medium;
         set (*suggestion).preferred = false;
         set (*suggestion).suggestion_id = diagnostic_id;
         set (*suggestion).has_span = true;
@@ -645,7 +645,7 @@ export proc vitte_cli_diagnostic_transport_set_semantic(
     set diagnostics[index].context = owned_context;
     if has_related {
         let location = &mut (*header).related[index];
-        set (*location).kind = CliDiagnosticLocationKind.Related;
+        set (*location).kind = CliDiagnosticLocationKind::Related;
         set (*location).label = owned_related_label;
         set (*location).span = CliDiagnosticSpan {
             valid: true, file_id: related_file_id, source_id: related_source_id,
@@ -657,23 +657,23 @@ export proc vitte_cli_diagnostic_transport_set_semantic(
         set diagnostics[index].related = location as *const CliDiagnosticLocation;
         set diagnostics[index].related_count = 1;
     }
-    if diagnostics[index].origin == CliDiagnosticOrigin.Contract or
-       diagnostics[index].origin == CliDiagnosticOrigin.ConstantEval {
+    if diagnostics[index].origin == CliDiagnosticOrigin::Contract or
+       diagnostics[index].origin == CliDiagnosticOrigin::ConstantEval {
         let cause = &mut (*header).causes[index];
-        set (*cause).kind = if diagnostics[index].origin == CliDiagnosticOrigin.Contract {
-            CliDiagnosticCauseKind.Contract
+        set (*cause).kind = if diagnostics[index].origin == CliDiagnosticOrigin::Contract {
+            CliDiagnosticCauseKind::Contract
         } else {
-            CliDiagnosticCauseKind.ConstantEval
+            CliDiagnosticCauseKind::ConstantEval
         };
         set (*cause).message = if owned_cause != null { owned_cause } else if
             diagnostics[index].help != null { diagnostics[index].help } else if
-            diagnostics[index].origin == CliDiagnosticOrigin.Contract {
+            diagnostics[index].origin == CliDiagnosticOrigin::Contract {
                 "contract condition is invalid or false".as_ptr() as *const char
             } else {
                 "compile-time evaluation cannot produce a value".as_ptr() as *const char
             };
-        set (*cause).confidence = CliDiagnosticConfidence.Certain;
-        if has_related and diagnostics[index].origin == CliDiagnosticOrigin.Contract {
+        set (*cause).confidence = CliDiagnosticConfidence::Certain;
+        if has_related and diagnostics[index].origin == CliDiagnosticOrigin::Contract {
             set (*cause).has_span = true;
             set (*cause).span = (*header).related[index].span;
         } elif diagnostics[index].has_span {
@@ -728,8 +728,8 @@ export proc vitte_cli_diagnostic_init(diagnostic_value: *mut CliDiagnostic) {
     }
 
     fill(diagnostic_value as *mut u8, 0, sizeof(CliDiagnostic));
-    set (*diagnostic_value).severity = CliDiagnosticSeverity.Error;
-    set (*diagnostic_value).origin = CliDiagnosticOrigin.Unknown;
+    set (*diagnostic_value).severity = CliDiagnosticSeverity::Error;
+    set (*diagnostic_value).origin = CliDiagnosticOrigin::Unknown;
     set (*diagnostic_value).source_id = 0;
     set (*diagnostic_value).parent_diagnostic = VITTE_CLI_DIAGNOSTIC_INDEX_NONE;
     set (*diagnostic_value).root_diagnostic = VITTE_CLI_DIAGNOSTIC_INDEX_NONE;
@@ -751,7 +751,7 @@ export proc vitte_cli_diagnostic_render_options_init(options: *mut CliDiagnostic
     }
 
     fill(options as *mut u8, 0, sizeof(CliDiagnosticRenderOptions));
-    set (*options).format = CliDiagnosticFormat.Terminal;
+    set (*options).format = CliDiagnosticFormat::Terminal;
     set (*options).show_source = true;
     set (*options).show_source_line = true;
     set (*options).show_codes = true;
@@ -797,16 +797,16 @@ proc cli_bridge_array_is_valid(items: *const char, count: usize, maximum: usize)
 }
 
 export proc vitte_cli_diagnostic_severity_is_valid(severity: CliDiagnosticSeverity) -> bool {
-    return severity >= CliDiagnosticSeverity.Note and severity <= CliDiagnosticSeverity.Fatal;
+    return severity >= CliDiagnosticSeverity::Note and severity <= CliDiagnosticSeverity::Fatal;
 }
 
 export proc vitte_cli_diagnostic_format_is_valid(format: CliDiagnosticFormat) -> bool {
-    return format >= CliDiagnosticFormat.Terminal and
-           format <= CliDiagnosticFormat.Lsp;
+    return format >= CliDiagnosticFormat::Terminal and
+           format <= CliDiagnosticFormat::Lsp;
 }
 
 export proc vitte_cli_diagnostic_origin_is_valid(origin: CliDiagnosticOrigin) -> bool {
-    return origin >= CliDiagnosticOrigin.Unknown and origin <= CliDiagnosticOrigin.Internal;
+    return origin >= CliDiagnosticOrigin::Unknown and origin <= CliDiagnosticOrigin::Internal;
 }
 
 export proc vitte_cli_diagnostic_span_is_valid(span: *const CliDiagnosticSpan) -> bool {

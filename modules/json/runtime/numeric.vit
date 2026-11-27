@@ -191,95 +191,95 @@ form JsonNumericFormatResult {
 proc error_name(
     error: JsonNumericError
 ) -> string {
-    if error == JsonNumericError.None {
+    if error == JsonNumericError::None {
         return "none";
     }
 
-    if error == JsonNumericError.Empty {
+    if error == JsonNumericError::Empty {
         return "empty";
     }
 
-    if error == JsonNumericError.InvalidCharacter {
+    if error == JsonNumericError::InvalidCharacter {
         return "invalid-character";
     }
 
-    if error == JsonNumericError.InvalidSign {
+    if error == JsonNumericError::InvalidSign {
         return "invalid-sign";
     }
 
-    if error == JsonNumericError.InvalidInteger {
+    if error == JsonNumericError::InvalidInteger {
         return "invalid-integer";
     }
 
-    if error == JsonNumericError.InvalidFraction {
+    if error == JsonNumericError::InvalidFraction {
         return "invalid-fraction";
     }
 
-    if error == JsonNumericError.InvalidExponent {
+    if error == JsonNumericError::InvalidExponent {
         return "invalid-exponent";
     }
 
-    if error == JsonNumericError.LeadingPlus {
+    if error == JsonNumericError::LeadingPlus {
         return "leading-plus";
     }
 
-    if error == JsonNumericError.LeadingZero {
+    if error == JsonNumericError::LeadingZero {
         return "leading-zero";
     }
 
-    if error == JsonNumericError.MissingIntegerDigits {
+    if error == JsonNumericError::MissingIntegerDigits {
         return "missing-integer-digits";
     }
 
-    if error == JsonNumericError.MissingFractionDigits {
+    if error == JsonNumericError::MissingFractionDigits {
         return "missing-fraction-digits";
     }
 
-    if error == JsonNumericError.MissingExponentDigits {
+    if error == JsonNumericError::MissingExponentDigits {
         return "missing-exponent-digits";
     }
 
-    if error == JsonNumericError.IntegerOverflow {
+    if error == JsonNumericError::IntegerOverflow {
         return "integer-overflow";
     }
 
-    if error == JsonNumericError.IntegerUnderflow {
+    if error == JsonNumericError::IntegerUnderflow {
         return "integer-underflow";
     }
 
-    if error == JsonNumericError.UnsignedOverflow {
+    if error == JsonNumericError::UnsignedOverflow {
         return "unsigned-overflow";
     }
 
-    if error == JsonNumericError.NegativeUnsigned {
+    if error == JsonNumericError::NegativeUnsigned {
         return "negative-unsigned";
     }
 
-    if error == JsonNumericError.FloatOverflow {
+    if error == JsonNumericError::FloatOverflow {
         return "float-overflow";
     }
 
-    if error == JsonNumericError.FloatUnderflow {
+    if error == JsonNumericError::FloatUnderflow {
         return "float-underflow";
     }
 
-    if error == JsonNumericError.NonFinite {
+    if error == JsonNumericError::NonFinite {
         return "non-finite";
     }
 
-    if error == JsonNumericError.DivisionByZero {
+    if error == JsonNumericError::DivisionByZero {
         return "division-by-zero";
     }
 
-    if error == JsonNumericError.RemainderByZero {
+    if error == JsonNumericError::RemainderByZero {
         return "remainder-by-zero";
     }
 
-    if error == JsonNumericError.ExponentTooLarge {
+    if error == JsonNumericError::ExponentTooLarge {
         return "exponent-too-large";
     }
 
-    if error == JsonNumericError.InvalidPrecision {
+    if error == JsonNumericError::InvalidPrecision {
         return "invalid-precision";
     }
 
@@ -289,11 +289,11 @@ proc error_name(
 proc kind_name(
     kind: JsonNumericKind
 ) -> string {
-    if kind == JsonNumericKind.Invalid {
+    if kind == JsonNumericKind::Invalid {
         return "invalid";
     }
 
-    if kind == JsonNumericKind.Integer {
+    if kind == JsonNumericKind::Integer {
         return "integer";
     }
 
@@ -303,15 +303,15 @@ proc kind_name(
 proc class_name(
     class_value: JsonNumericClass
 ) -> string {
-    if class_value == JsonNumericClass.Invalid {
+    if class_value == JsonNumericClass::Invalid {
         return "invalid";
     }
 
-    if class_value == JsonNumericClass.Zero {
+    if class_value == JsonNumericClass::Zero {
         return "zero";
     }
 
-    if class_value == JsonNumericClass.Positive {
+    if class_value == JsonNumericClass::Positive {
         return "positive";
     }
 
@@ -447,10 +447,10 @@ proc empty_scan() -> JsonNumericScan {
         ok: false,
 
         kind:
-            JsonNumericKind.Invalid,
+            JsonNumericKind::Invalid,
 
         error:
-            JsonNumericError.Empty,
+            JsonNumericError::Empty,
 
         error_index: 0,
 
@@ -488,7 +488,7 @@ proc scan_failure(
     set result.ok = false;
 
     set result.kind =
-        JsonNumericKind.Invalid;
+        JsonNumericKind::Invalid;
 
     set result.error =
         error;
@@ -509,17 +509,17 @@ proc scan_success(
     set result.ok = true;
 
     set result.error =
-        JsonNumericError.None;
+        JsonNumericError::None;
 
     set result.error_index = 0;
 
     if result.has_fraction ||
        result.has_exponent {
         set result.kind =
-            JsonNumericKind.Float;
+            JsonNumericKind::Float;
     } else {
         set result.kind =
-            JsonNumericKind.Integer;
+            JsonNumericKind::Integer;
     }
 
     return result;
@@ -545,7 +545,7 @@ export proc scan(
     if source[index] == '+' {
         return scan_failure(
             result,
-            JsonNumericError.LeadingPlus,
+            JsonNumericError::LeadingPlus,
             index);
     }
 
@@ -556,7 +556,7 @@ export proc scan(
         if index >= source.length {
             return scan_failure(
                 result,
-                JsonNumericError.MissingIntegerDigits,
+                JsonNumericError::MissingIntegerDigits,
                 index);
         }
     }
@@ -574,7 +574,7 @@ export proc scan(
            is_digit(source[index]) {
             return scan_failure(
                 result,
-                JsonNumericError.LeadingZero,
+                JsonNumericError::LeadingZero,
                 index);
         }
     } else {
@@ -582,7 +582,7 @@ export proc scan(
             source[index]) {
             return scan_failure(
                 result,
-                JsonNumericError.MissingIntegerDigits,
+                JsonNumericError::MissingIntegerDigits,
                 index);
         }
 
@@ -610,7 +610,7 @@ export proc scan(
            not is_digit(source[index]) {
             return scan_failure(
                 result,
-                JsonNumericError.MissingFractionDigits,
+                JsonNumericError::MissingFractionDigits,
                 index);
         }
 
@@ -635,7 +635,7 @@ export proc scan(
         if index >= source.length {
             return scan_failure(
                 result,
-                JsonNumericError.MissingExponentDigits,
+                JsonNumericError::MissingExponentDigits,
                 index);
         }
 
@@ -655,7 +655,7 @@ export proc scan(
            not is_digit(source[index]) {
             return scan_failure(
                 result,
-                JsonNumericError.MissingExponentDigits,
+                JsonNumericError::MissingExponentDigits,
                 index);
         }
 
@@ -672,7 +672,7 @@ export proc scan(
     if index != source.length {
         return scan_failure(
             result,
-            JsonNumericError.InvalidCharacter,
+            JsonNumericError::InvalidCharacter,
             index);
     }
 
@@ -701,7 +701,7 @@ proc is_integer_literal(
 
     return result.ok &&
          result.kind ==
-             JsonNumericKind.Integer;
+             JsonNumericKind::Integer;
 }
 
 proc is_float_literal(
@@ -713,7 +713,7 @@ proc is_float_literal(
 
     return result.ok &&
          result.kind ==
-             JsonNumericKind.Float;
+             JsonNumericKind::Float;
 }
 
 proc is_negative_literal(
@@ -762,7 +762,7 @@ proc u64_append_digit_checked(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.InvalidCharacter,
+                JsonNumericError::InvalidCharacter,
             error_index: 0,
         };
     }
@@ -773,7 +773,7 @@ proc u64_append_digit_checked(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.UnsignedOverflow,
+                JsonNumericError::UnsignedOverflow,
             error_index: 0,
         };
     }
@@ -788,7 +788,7 @@ proc u64_append_digit_checked(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.UnsignedOverflow,
+                JsonNumericError::UnsignedOverflow,
             error_index: 0,
         };
     }
@@ -798,7 +798,7 @@ proc u64_append_digit_checked(
         value:
             multiplied + digit,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -826,12 +826,12 @@ export proc parse_u64(
     }
 
     if scanned.kind !=
-       JsonNumericKind.Integer {
+       JsonNumericKind::Integer {
         return JsonU64Result {
             ok: false,
             value: 0,
             error:
-                JsonNumericError.InvalidInteger,
+                JsonNumericError::InvalidInteger,
             error_index: 0,
         };
     }
@@ -841,7 +841,7 @@ export proc parse_u64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.NegativeUnsigned,
+                JsonNumericError::NegativeUnsigned,
             error_index: 0,
         };
     }
@@ -885,7 +885,7 @@ export proc parse_u64(
         ok: true,
         value: result,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -913,12 +913,12 @@ export proc parse_i64(
     }
 
     if scanned.kind !=
-       JsonNumericKind.Integer {
+       JsonNumericKind::Integer {
         return JsonI64Result {
             ok: false,
             value: 0,
             error:
-                JsonNumericError.InvalidInteger,
+                JsonNumericError::InvalidInteger,
             error_index: 0,
         };
     }
@@ -959,9 +959,9 @@ export proc parse_i64(
                 value: 0,
                 error:
                     if scanned.negative {
-                        JsonNumericError.IntegerUnderflow
+                        JsonNumericError::IntegerUnderflow
                     } else {
-                        JsonNumericError.IntegerOverflow
+                        JsonNumericError::IntegerOverflow
                     },
                 error_index:
                     index,
@@ -979,9 +979,9 @@ export proc parse_i64(
                 value: 0,
                 error:
                     if scanned.negative {
-                        JsonNumericError.IntegerUnderflow
+                        JsonNumericError::IntegerUnderflow
                     } else {
-                        JsonNumericError.IntegerOverflow
+                        JsonNumericError::IntegerOverflow
                     },
                 error_index:
                     index,
@@ -1002,7 +1002,7 @@ export proc parse_i64(
                 value:
                     JSON_NUMERIC_I64_MIN,
                 error:
-                    JsonNumericError.None,
+                    JsonNumericError::None,
                 error_index: 0,
             };
         }
@@ -1012,7 +1012,7 @@ export proc parse_i64(
             value:
                 -(magnitude as i64),
             error:
-                JsonNumericError.None,
+                JsonNumericError::None,
             error_index: 0,
         };
     }
@@ -1022,7 +1022,7 @@ export proc parse_i64(
         value:
             magnitude as i64,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1040,7 +1040,7 @@ proc parse_exponent(
             ok: true,
             value: 0,
             error:
-                JsonNumericError.None,
+                JsonNumericError::None,
             error_index: 0,
         };
     }
@@ -1063,7 +1063,7 @@ proc parse_exponent(
                 ok: false,
                 value: 0,
                 error:
-                    JsonNumericError.ExponentTooLarge,
+                    JsonNumericError::ExponentTooLarge,
                 error_index:
                     index,
             };
@@ -1078,7 +1078,7 @@ proc parse_exponent(
                 ok: false,
                 value: 0,
                 error:
-                    JsonNumericError.ExponentTooLarge,
+                    JsonNumericError::ExponentTooLarge,
                 error_index:
                     index,
             };
@@ -1095,7 +1095,7 @@ proc parse_exponent(
         ok: true,
         value: value,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1249,7 +1249,7 @@ export proc parse_f64(
         ok: true,
         value: value,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1311,42 +1311,42 @@ proc classify_i64(
     value: i64
 ) -> JsonNumericClass {
     if value == 0 {
-        return JsonNumericClass.Zero;
+        return JsonNumericClass::Zero;
     }
 
     if value > 0 {
-        return JsonNumericClass.Positive;
+        return JsonNumericClass::Positive;
     }
 
-    return JsonNumericClass.Negative;
+    return JsonNumericClass::Negative;
 }
 
 proc classify_u64(
     value: u64
 ) -> JsonNumericClass {
     if value == 0 {
-        return JsonNumericClass.Zero;
+        return JsonNumericClass::Zero;
     }
 
-    return JsonNumericClass.Positive;
+    return JsonNumericClass::Positive;
 }
 
 proc classify_f64(
     value: f64
 ) -> JsonNumericClass {
     if value != value {
-        return JsonNumericClass.Invalid;
+        return JsonNumericClass::Invalid;
     }
 
     if value == 0.0 {
-        return JsonNumericClass.Zero;
+        return JsonNumericClass::Zero;
     }
 
     if value > 0.0 {
-        return JsonNumericClass.Positive;
+        return JsonNumericClass::Positive;
     }
 
-    return JsonNumericClass.Negative;
+    return JsonNumericClass::Negative;
 }
 
 /// -------------------------------------------------------------------------
@@ -1469,7 +1469,7 @@ proc checked_add_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerOverflow,
+                JsonNumericError::IntegerOverflow,
             error_index: 0,
         };
     }
@@ -1481,7 +1481,7 @@ proc checked_add_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerUnderflow,
+                JsonNumericError::IntegerUnderflow,
             error_index: 0,
         };
     }
@@ -1491,7 +1491,7 @@ proc checked_add_i64(
         value:
             left + right,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1507,7 +1507,7 @@ proc checked_sub_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerUnderflow,
+                JsonNumericError::IntegerUnderflow,
             error_index: 0,
         };
     }
@@ -1519,7 +1519,7 @@ proc checked_sub_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerOverflow,
+                JsonNumericError::IntegerOverflow,
             error_index: 0,
         };
     }
@@ -1529,7 +1529,7 @@ proc checked_sub_i64(
         value:
             left - right,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1544,7 +1544,7 @@ proc checked_mul_i64(
             ok: true,
             value: 0,
             error:
-                JsonNumericError.None,
+                JsonNumericError::None,
             error_index: 0,
         };
     }
@@ -1556,7 +1556,7 @@ proc checked_mul_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerOverflow,
+                JsonNumericError::IntegerOverflow,
             error_index: 0,
         };
     }
@@ -1568,7 +1568,7 @@ proc checked_mul_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerOverflow,
+                JsonNumericError::IntegerOverflow,
             error_index: 0,
         };
     }
@@ -1581,7 +1581,7 @@ proc checked_mul_i64(
                     ok: false,
                     value: 0,
                     error:
-                        JsonNumericError.IntegerOverflow,
+                        JsonNumericError::IntegerOverflow,
                     error_index: 0,
                 };
             }
@@ -1592,7 +1592,7 @@ proc checked_mul_i64(
                     ok: false,
                     value: 0,
                     error:
-                        JsonNumericError.IntegerUnderflow,
+                        JsonNumericError::IntegerUnderflow,
                     error_index: 0,
                 };
             }
@@ -1605,7 +1605,7 @@ proc checked_mul_i64(
                     ok: false,
                     value: 0,
                     error:
-                        JsonNumericError.IntegerUnderflow,
+                        JsonNumericError::IntegerUnderflow,
                     error_index: 0,
                 };
             }
@@ -1616,7 +1616,7 @@ proc checked_mul_i64(
                     ok: false,
                     value: 0,
                     error:
-                        JsonNumericError.IntegerOverflow,
+                        JsonNumericError::IntegerOverflow,
                     error_index: 0,
                 };
             }
@@ -1628,7 +1628,7 @@ proc checked_mul_i64(
         value:
             left * right,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1642,7 +1642,7 @@ proc checked_div_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.DivisionByZero,
+                JsonNumericError::DivisionByZero,
             error_index: 0,
         };
     }
@@ -1654,7 +1654,7 @@ proc checked_div_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerOverflow,
+                JsonNumericError::IntegerOverflow,
             error_index: 0,
         };
     }
@@ -1664,7 +1664,7 @@ proc checked_div_i64(
         value:
             left / right,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1678,7 +1678,7 @@ proc checked_rem_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.RemainderByZero,
+                JsonNumericError::RemainderByZero,
             error_index: 0,
         };
     }
@@ -1690,7 +1690,7 @@ proc checked_rem_i64(
             ok: true,
             value: 0,
             error:
-                JsonNumericError.None,
+                JsonNumericError::None,
             error_index: 0,
         };
     }
@@ -1700,7 +1700,7 @@ proc checked_rem_i64(
         value:
             left % right,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1714,7 +1714,7 @@ proc checked_neg_i64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerOverflow,
+                JsonNumericError::IntegerOverflow,
             error_index: 0,
         };
     }
@@ -1723,7 +1723,7 @@ proc checked_neg_i64(
         ok: true,
         value: -value,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1742,7 +1742,7 @@ proc checked_add_u64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.UnsignedOverflow,
+                JsonNumericError::UnsignedOverflow,
             error_index: 0,
         };
     }
@@ -1752,7 +1752,7 @@ proc checked_add_u64(
         value:
             left + right,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -1767,7 +1767,7 @@ proc checked_mul_u64(
             ok: true,
             value: 0,
             error:
-                JsonNumericError.None,
+                JsonNumericError::None,
             error_index: 0,
         };
     }
@@ -1778,7 +1778,7 @@ proc checked_mul_u64(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.UnsignedOverflow,
+                JsonNumericError::UnsignedOverflow,
             error_index: 0,
         };
     }
@@ -1788,7 +1788,7 @@ proc checked_mul_u64(
         value:
             left * right,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -2076,7 +2076,7 @@ proc format_success(
         ok: true,
         text: text,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
     };
 }
 
@@ -2186,13 +2186,13 @@ proc format_f64_with_options(
     if options.fraction_digits >
        JSON_NUMERIC_MAX_FORMAT_FRACTION_DIGITS {
         return format_failure(
-            JsonNumericError.InvalidPrecision);
+            JsonNumericError::InvalidPrecision);
     }
 
     if is_nan(value) ||
        is_infinite(value) {
         return format_failure(
-            JsonNumericError.NonFinite);
+            JsonNumericError::NonFinite);
     }
 
     if value == 0.0 {
@@ -2236,7 +2236,7 @@ proc format_f64_with_options(
     if absolute >
        (JSON_NUMERIC_I64_MAX as f64) {
         return format_failure(
-            JsonNumericError.FloatOverflow);
+            JsonNumericError::FloatOverflow);
     }
 
     let whole:
@@ -2362,7 +2362,7 @@ export proc normalize(
     }
 
     if scanned.kind ==
-       JsonNumericKind.Integer {
+       JsonNumericKind::Integer {
         return normalize_integer_literal(
             source);
     }
@@ -2535,7 +2535,7 @@ proc f64_to_i64_checked(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.NonFinite,
+                JsonNumericError::NonFinite,
             error_index: 0,
         };
     }
@@ -2546,7 +2546,7 @@ proc f64_to_i64_checked(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerOverflow,
+                JsonNumericError::IntegerOverflow,
             error_index: 0,
         };
     }
@@ -2557,7 +2557,7 @@ proc f64_to_i64_checked(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.IntegerUnderflow,
+                JsonNumericError::IntegerUnderflow,
             error_index: 0,
         };
     }
@@ -2567,7 +2567,7 @@ proc f64_to_i64_checked(
             ok: false,
             value: 0,
             error:
-                JsonNumericError.InvalidInteger,
+                JsonNumericError::InvalidInteger,
             error_index: 0,
         };
     }
@@ -2577,7 +2577,7 @@ proc f64_to_i64_checked(
         value:
             value as i64,
         error:
-            JsonNumericError.None,
+            JsonNumericError::None,
         error_index: 0,
     };
 }
@@ -2594,7 +2594,7 @@ test "json numeric accepts zero" {
     assert result.ok;
 
     assert result.kind ==
-        JsonNumericKind.Integer;
+        JsonNumericKind::Integer;
 
     assert result.integer_digits == 1;
 }
@@ -2618,7 +2618,7 @@ test "json numeric accepts positive integer" {
     assert result.ok;
 
     assert result.kind ==
-        JsonNumericKind.Integer;
+        JsonNumericKind::Integer;
 
     assert result.integer_digits == 9;
 }
@@ -2640,7 +2640,7 @@ test "json numeric accepts decimal fraction" {
     assert result.ok;
 
     assert result.kind ==
-        JsonNumericKind.Float;
+        JsonNumericKind::Float;
 
     assert result.has_fraction;
 
@@ -2701,7 +2701,7 @@ test "json numeric rejects empty" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.Empty;
+        JsonNumericError::Empty;
 }
 
 test "json numeric rejects leading plus" {
@@ -2712,7 +2712,7 @@ test "json numeric rejects leading plus" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.LeadingPlus;
+        JsonNumericError::LeadingPlus;
 }
 
 test "json numeric rejects sign only" {
@@ -2723,7 +2723,7 @@ test "json numeric rejects sign only" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingIntegerDigits;
+        JsonNumericError::MissingIntegerDigits;
 }
 
 test "json numeric rejects leading zero" {
@@ -2734,7 +2734,7 @@ test "json numeric rejects leading zero" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.LeadingZero;
+        JsonNumericError::LeadingZero;
 }
 
 test "json numeric rejects negative leading zero" {
@@ -2745,7 +2745,7 @@ test "json numeric rejects negative leading zero" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.LeadingZero;
+        JsonNumericError::LeadingZero;
 }
 
 test "json numeric rejects missing integer before fraction" {
@@ -2756,7 +2756,7 @@ test "json numeric rejects missing integer before fraction" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingIntegerDigits;
+        JsonNumericError::MissingIntegerDigits;
 }
 
 test "json numeric rejects empty fraction" {
@@ -2767,7 +2767,7 @@ test "json numeric rejects empty fraction" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingFractionDigits;
+        JsonNumericError::MissingFractionDigits;
 }
 
 test "json numeric rejects exponent without digits" {
@@ -2778,7 +2778,7 @@ test "json numeric rejects exponent without digits" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingExponentDigits;
+        JsonNumericError::MissingExponentDigits;
 }
 
 test "json numeric rejects signed exponent without digits" {
@@ -2789,7 +2789,7 @@ test "json numeric rejects signed exponent without digits" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingExponentDigits;
+        JsonNumericError::MissingExponentDigits;
 }
 
 test "json numeric rejects alpha suffix" {
@@ -2800,7 +2800,7 @@ test "json numeric rejects alpha suffix" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.InvalidCharacter;
+        JsonNumericError::InvalidCharacter;
 }
 
 /// -------------------------------------------------------------------------
@@ -2867,7 +2867,7 @@ test "json numeric detects positive i64 overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 test "json numeric detects negative i64 underflow" {
@@ -2879,7 +2879,7 @@ test "json numeric detects negative i64 underflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerUnderflow;
+        JsonNumericError::IntegerUnderflow;
 }
 
 test "json numeric i64 rejects fraction" {
@@ -2890,7 +2890,7 @@ test "json numeric i64 rejects fraction" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.InvalidInteger;
+        JsonNumericError::InvalidInteger;
 }
 
 /// -------------------------------------------------------------------------
@@ -2918,7 +2918,7 @@ test "json numeric detects u64 overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.UnsignedOverflow;
+        JsonNumericError::UnsignedOverflow;
 }
 
 test "json numeric rejects negative u64" {
@@ -2929,7 +2929,7 @@ test "json numeric rejects negative u64" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.NegativeUnsigned;
+        JsonNumericError::NegativeUnsigned;
 }
 
 /// -------------------------------------------------------------------------
@@ -3006,7 +3006,7 @@ test "json numeric checked add overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 test "json numeric checked sub" {
@@ -3030,7 +3030,7 @@ test "json numeric checked sub underflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerUnderflow;
+        JsonNumericError::IntegerUnderflow;
 }
 
 test "json numeric checked multiply" {
@@ -3075,7 +3075,7 @@ test "json numeric checked division by zero" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.DivisionByZero;
+        JsonNumericError::DivisionByZero;
 }
 
 test "json numeric checked remainder" {
@@ -3099,7 +3099,7 @@ test "json numeric checked remainder by zero" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.RemainderByZero;
+        JsonNumericError::RemainderByZero;
 }
 
 test "json numeric checked negation" {
@@ -3120,7 +3120,7 @@ test "json numeric checked minimum negation overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 /// -------------------------------------------------------------------------
@@ -3279,28 +3279,28 @@ test "json numeric clamp" {
 
 test "json numeric classifications" {
     assert classify_i64(0) ==
-        JsonNumericClass.Zero;
+        JsonNumericClass::Zero;
 
     assert classify_i64(1) ==
-        JsonNumericClass.Positive;
+        JsonNumericClass::Positive;
 
     assert classify_i64(-1) ==
-        JsonNumericClass.Negative;
+        JsonNumericClass::Negative;
 
     assert classify_u64(0) ==
-        JsonNumericClass.Zero;
+        JsonNumericClass::Zero;
 
     assert classify_u64(1) ==
-        JsonNumericClass.Positive;
+        JsonNumericClass::Positive;
 
     assert classify_f64(0.0) ==
-        JsonNumericClass.Zero;
+        JsonNumericClass::Zero;
 
     assert classify_f64(1.0) ==
-        JsonNumericClass.Positive;
+        JsonNumericClass::Positive;
 
     assert classify_f64(-1.0) ==
-        JsonNumericClass.Negative;
+        JsonNumericClass::Negative;
 }
 
 test "json numeric representability" {
@@ -3322,26 +3322,26 @@ test "json numeric representability" {
 
 test "json numeric metadata" {
     assert error_name(
-        JsonNumericError.None) ==
+        JsonNumericError::None) ==
         "none";
 
     assert error_name(
-        JsonNumericError.LeadingZero) ==
+        JsonNumericError::LeadingZero) ==
         "leading-zero";
 
     assert error_name(
-        JsonNumericError.IntegerOverflow) ==
+        JsonNumericError::IntegerOverflow) ==
         "integer-overflow";
 
     assert kind_name(
-        JsonNumericKind.Integer) ==
+        JsonNumericKind::Integer) ==
         "integer";
 
     assert kind_name(
-        JsonNumericKind.Float) ==
+        JsonNumericKind::Float) ==
         "float";
 
     assert class_name(
-        JsonNumericClass.Positive) ==
+        JsonNumericClass::Positive) ==
         "positive";
 }

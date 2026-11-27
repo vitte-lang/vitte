@@ -258,7 +258,7 @@ export extern proc vitte_import_reset(context: *ImportContext) -> bool;
 
 export proc vitte_import_is_valid(context: *ImportContext) -> bool {
     if context == null or (*context).magic != IMPORT_MAGIC { return false; }
-    if (*context).state <= ImportState.Invalid or (*context).state >= ImportState.Destroyed { return false; }
+    if (*context).state <= ImportState::Invalid or (*context).state >= ImportState::Destroyed { return false; }
     if (*context).module_count > (*context).module_capacity or
        (*context).edge_count > (*context).edge_capacity or
        (*context).string_count > (*context).string_capacity or
@@ -287,7 +287,7 @@ export proc vitte_import_get_module(context: *ImportContext, id: ImportModuleId)
 }
 
 export proc vitte_import_get_module_mut(context: *ImportContext, id: ImportModuleId) -> *ImportModule {
-    if not vitte_import_is_valid(context) or (*context).state != ImportState.Building or
+    if not vitte_import_is_valid(context) or (*context).state != ImportState::Building or
        id == 0 or id > (*context).module_count as u64 { return null; }
     return &(*context).modules[(id - 1) as usize];
 }
@@ -353,23 +353,23 @@ export proc vitte_import_stats(context: *ImportContext) -> ImportStats {
 }
 
 export proc vitte_import_set_limits(context: *ImportContext, max_modules: usize, max_imports: usize, max_string_bytes: usize) -> bool {
-    if not vitte_import_is_valid(context) or (*context).state != ImportState.Building {
-        if context != null and (*context).magic == IMPORT_MAGIC { set (*context).last_error = ImportError.InvalidState; }
+    if not vitte_import_is_valid(context) or (*context).state != ImportState::Building {
+        if context != null and (*context).magic == IMPORT_MAGIC { set (*context).last_error = ImportError::InvalidState; }
         return false;
     }
     if max_modules == 0 or max_imports == 0 or max_string_bytes == 0 {
-        set (*context).last_error = ImportError.InvalidArgument;
+        set (*context).last_error = ImportError::InvalidArgument;
         return false;
     }
     if max_modules < (*context).module_count or max_imports < (*context).edge_count or
        max_string_bytes < (*context).string_bytes {
-        set (*context).last_error = ImportError.InvalidArgument;
+        set (*context).last_error = ImportError::InvalidArgument;
         return false;
     }
     set (*context).max_modules = max_modules;
     set (*context).max_imports = max_imports;
     set (*context).max_string_bytes = max_string_bytes;
-    set (*context).last_error = ImportError.None;
+    set (*context).last_error = ImportError::None;
     return true;
 }
 

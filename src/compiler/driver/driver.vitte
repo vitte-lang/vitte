@@ -290,7 +290,7 @@ export form DriverStats {
 
     elapsed_nanoseconds: u64,
 
-    phases: [DriverPhaseStats; DriverPhase.Count],
+    phases: [DriverPhaseStats; DriverPhase::Count],
 
     prepared: bool,
     finished: bool,
@@ -304,10 +304,10 @@ export form DriverStats {
 
 export proc vitte_driver_config_default() -> DriverConfig {
     return DriverConfig {
-        command: DriverCommand.Build,
+        command: DriverCommand::Build,
 
-        backend: DriverBackend.Default,
-        optimization: DriverOptimization.Default,
+        backend: DriverBackend::Default,
+        optimization: DriverOptimization::Default,
 
         max_inputs: DRIVER_DEFAULT_MAX_INPUTS,
         max_errors: DRIVER_DEFAULT_MAX_ERRORS,
@@ -347,16 +347,16 @@ export proc vitte_driver_config_validate(
     config: &DriverConfig
 ) -> bool {
 
-    if config.command == DriverCommand.Invalid
-        or config.command == DriverCommand.Count {
+    if config.command == DriverCommand::Invalid
+        or config.command == DriverCommand::Count {
         return false;
     }
 
-    if config.backend == DriverBackend.Count {
+    if config.backend == DriverBackend::Count {
         return false;
     }
 
-    if config.optimization == DriverOptimization.Count {
+    if config.optimization == DriverOptimization::Count {
         return false;
     }
 
@@ -390,7 +390,7 @@ export proc vitte_driver_config_validate(
         return false;
     }
 
-    if config.command == DriverCommand.Check
+    if config.command == DriverCommand::Check
         and config.execute_after_build {
         return false;
     }
@@ -415,7 +415,7 @@ export proc vitte_driver_config_apply_cli(
         return false;
     }
 
-    if (*cli).state != CliState.Parsed {
+    if (*cli).state != CliState::Parsed {
         return false;
     }
 
@@ -423,58 +423,58 @@ export proc vitte_driver_config_apply_cli(
         return false;
     }
 
-    if (*cli).config.command == CliCommand.Build {
-        set driver_config.command = DriverCommand.Build;
+    if (*cli).config.command == CliCommand::Build {
+        set driver_config.command = DriverCommand::Build;
 
-    } else if (*cli).config.command == CliCommand.Check {
-        set driver_config.command = DriverCommand.Check;
+    } else if (*cli).config.command == CliCommand::Check {
+        set driver_config.command = DriverCommand::Check;
 
-    } else if (*cli).config.command == CliCommand.Run {
-        set driver_config.command = DriverCommand.Run;
+    } else if (*cli).config.command == CliCommand::Run {
+        set driver_config.command = DriverCommand::Run;
 
-    } else if (*cli).config.command == CliCommand.Test {
-        set driver_config.command = DriverCommand.Test;
-
-    } else {
-        return false;
-    }
-
-    if (*cli).config.backend == CliBackend.Default {
-        set driver_config.backend = DriverBackend.Default;
-
-    } else if (*cli).config.backend == CliBackend.C17 {
-        set driver_config.backend = DriverBackend.C17;
-
-    } else if (*cli).config.backend == CliBackend.Native {
-        set driver_config.backend = DriverBackend.Native;
-
-    } else if (*cli).config.backend == CliBackend.Bytecode {
-        set driver_config.backend = DriverBackend.Bytecode;
+    } else if (*cli).config.command == CliCommand::Test {
+        set driver_config.command = DriverCommand::Test;
 
     } else {
         return false;
     }
 
-    if (*cli).config.optimization == CliOptimization.Default {
-        set driver_config.optimization = DriverOptimization.Default;
+    if (*cli).config.backend == CliBackend::Default {
+        set driver_config.backend = DriverBackend::Default;
 
-    } else if (*cli).config.optimization == CliOptimization.None {
-        set driver_config.optimization = DriverOptimization.None;
+    } else if (*cli).config.backend == CliBackend::C17 {
+        set driver_config.backend = DriverBackend::C17;
 
-    } else if (*cli).config.optimization == CliOptimization.Debug {
-        set driver_config.optimization = DriverOptimization.Debug;
+    } else if (*cli).config.backend == CliBackend::Native {
+        set driver_config.backend = DriverBackend::Native;
 
-    } else if (*cli).config.optimization == CliOptimization.Balanced {
-        set driver_config.optimization = DriverOptimization.Balanced;
+    } else if (*cli).config.backend == CliBackend::Bytecode {
+        set driver_config.backend = DriverBackend::Bytecode;
 
-    } else if (*cli).config.optimization == CliOptimization.Speed {
-        set driver_config.optimization = DriverOptimization.Speed;
+    } else {
+        return false;
+    }
 
-    } else if (*cli).config.optimization == CliOptimization.Size {
-        set driver_config.optimization = DriverOptimization.Size;
+    if (*cli).config.optimization == CliOptimization::Default {
+        set driver_config.optimization = DriverOptimization::Default;
 
-    } else if (*cli).config.optimization == CliOptimization.Aggressive {
-        set driver_config.optimization = DriverOptimization.Aggressive;
+    } else if (*cli).config.optimization == CliOptimization::None {
+        set driver_config.optimization = DriverOptimization::None;
+
+    } else if (*cli).config.optimization == CliOptimization::Debug {
+        set driver_config.optimization = DriverOptimization::Debug;
+
+    } else if (*cli).config.optimization == CliOptimization::Balanced {
+        set driver_config.optimization = DriverOptimization::Balanced;
+
+    } else if (*cli).config.optimization == CliOptimization::Speed {
+        set driver_config.optimization = DriverOptimization::Speed;
+
+    } else if (*cli).config.optimization == CliOptimization::Size {
+        set driver_config.optimization = DriverOptimization::Size;
+
+    } else if (*cli).config.optimization == CliOptimization::Aggressive {
+        set driver_config.optimization = DriverOptimization::Aggressive;
 
     } else {
         return false;
@@ -514,8 +514,8 @@ export proc vitte_driver_config_apply_cli(
         (*cli).config.incremental;
 
     set driver_config.execute_after_build =
-        (*cli).config.command == CliCommand.Run
-        or (*cli).config.command == CliCommand.Test;
+        (*cli).config.command == CliCommand::Run
+        or (*cli).config.command == CliCommand::Test;
 
     return vitte_driver_config_validate(driver_config);
 }
@@ -528,71 +528,71 @@ export proc vitte_driver_phase_error(
     phase: DriverPhase
 ) -> DriverError {
 
-    if phase == DriverPhase.LoadSource {
-        return DriverError.Source;
+    if phase == DriverPhase::LoadSource {
+        return DriverError::Source;
     }
 
-    if phase == DriverPhase.Lex {
-        return DriverError.Lexer;
+    if phase == DriverPhase::Lex {
+        return DriverError::Lexer;
     }
 
-    if phase == DriverPhase.Parse {
-        return DriverError.Parser;
+    if phase == DriverPhase::Parse {
+        return DriverError::Parser;
     }
 
-    if phase == DriverPhase.Imports {
-        return DriverError.Import;
+    if phase == DriverPhase::Imports {
+        return DriverError::Import;
     }
 
-    if phase == DriverPhase.Names {
-        return DriverError.NameResolution;
+    if phase == DriverPhase::Names {
+        return DriverError::NameResolution;
     }
 
-    if phase == DriverPhase.Types {
-        return DriverError.TypeCheck;
+    if phase == DriverPhase::Types {
+        return DriverError::TypeCheck;
     }
 
-    if phase == DriverPhase.Contracts {
-        return DriverError.Contract;
+    if phase == DriverPhase::Contracts {
+        return DriverError::Contract;
     }
 
-    if phase == DriverPhase.ConstantFold {
-        return DriverError.ConstantFold;
+    if phase == DriverPhase::ConstantFold {
+        return DriverError::ConstantFold;
     }
 
-    if phase == DriverPhase.Hir {
-        return DriverError.Hir;
+    if phase == DriverPhase::Hir {
+        return DriverError::Hir;
     }
 
-    if phase == DriverPhase.Ir {
-        return DriverError.Ir;
+    if phase == DriverPhase::Ir {
+        return DriverError::Ir;
     }
 
-    if phase == DriverPhase.Optimize {
-        return DriverError.Optimization;
+    if phase == DriverPhase::Optimize {
+        return DriverError::Optimization;
     }
 
-    if phase == DriverPhase.Codegen {
-        return DriverError.Codegen;
+    if phase == DriverPhase::Codegen {
+        return DriverError::Codegen;
     }
 
-    if phase == DriverPhase.Backend {
-        return DriverError.Backend;
+    if phase == DriverPhase::Backend {
+        return DriverError::Backend;
     }
 
-    if phase == DriverPhase.Toolchain {
-        return DriverError.Toolchain;
+    if phase == DriverPhase::Toolchain {
+        return DriverError::Toolchain;
     }
 
-    if phase == DriverPhase.Link {
-        return DriverError.Link;
+    if phase == DriverPhase::Link {
+        return DriverError::Link;
     }
 
-    if phase == DriverPhase.Execute {
-        return DriverError.Execution;
+    if phase == DriverPhase::Execute {
+        return DriverError::Execution;
     }
 
-    return DriverError.Internal;
+    return DriverError::Internal;
 }
 
 // ============================================================================

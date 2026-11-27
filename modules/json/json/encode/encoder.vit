@@ -98,7 +98,7 @@ proc encode_success(
     return JsonEncodeResult {
         ok: true,
         text: text,
-        error: JsonEncodeError.None,
+        error: JsonEncodeError::None,
     };
 }
 
@@ -116,27 +116,27 @@ proc error_name(
     error: JsonEncodeError
 ) -> string {
     if error ==
-       JsonEncodeError.None {
+       JsonEncodeError::None {
         return "none";
     }
 
     if error ==
-       JsonEncodeError.InvalidValue {
+       JsonEncodeError::InvalidValue {
         return "invalid JSON value";
     }
 
     if error ==
-       JsonEncodeError.InvalidNumber {
+       JsonEncodeError::InvalidNumber {
         return "invalid JSON number";
     }
 
     if error ==
-       JsonEncodeError.InvalidString {
+       JsonEncodeError::InvalidString {
         return "invalid JSON string";
     }
 
     if error ==
-       JsonEncodeError.DuplicateKey {
+       JsonEncodeError::DuplicateKey {
         return "duplicate object key";
     }
 
@@ -155,7 +155,7 @@ proc encoder(
         output: "",
         depth: 0,
         failed: false,
-        error: JsonEncodeError.None,
+        error: JsonEncodeError::None,
     };
 }
 
@@ -631,7 +631,7 @@ proc append_simple_float(
     if not float_is_finite(value) {
         return encoder_fail(
             state,
-            JsonEncodeError.InvalidNumber);
+            JsonEncodeError::InvalidNumber);
     }
 
     if value == 0.0 {
@@ -660,7 +660,7 @@ proc append_simple_float(
        9223372036854775807.0 {
         return encoder_fail(
             &result,
-            JsonEncodeError.InvalidNumber);
+            JsonEncodeError::InvalidNumber);
     }
 
     let integer_part: i64 =
@@ -761,7 +761,7 @@ proc encode_array_into(
        JSON_ENCODER_MAX_DEPTH {
         return encoder_fail(
             state,
-            JsonEncodeError.DepthExceeded);
+            JsonEncodeError::DepthExceeded);
     }
 
     let mut result: JsonEncoder =
@@ -901,14 +901,14 @@ proc encode_object_into(
        JSON_ENCODER_MAX_DEPTH {
         return encoder_fail(
             state,
-            JsonEncodeError.DepthExceeded);
+            JsonEncodeError::DepthExceeded);
     }
 
     if object_has_duplicate_keys(
         members) {
         return encoder_fail(
             state,
-            JsonEncodeError.DuplicateKey);
+            JsonEncodeError::DuplicateKey);
     }
 
     let mut result: JsonEncoder =
@@ -1038,7 +1038,7 @@ proc encode_value_into(
 
     return encoder_fail(
         state,
-        JsonEncodeError.InvalidValue);
+        JsonEncodeError::InvalidValue);
 }
 
 /// -------------------------------------------------------------------------
@@ -1052,17 +1052,17 @@ export proc encode_with_options(
     if not validate(value) {
         if has_duplicate_keys(value) {
             return encode_failure(
-                JsonEncodeError.DuplicateKey);
+                JsonEncodeError::DuplicateKey);
         }
 
         return encode_failure(
-            JsonEncodeError.InvalidValue);
+            JsonEncodeError::InvalidValue);
     }
 
     if depth(value) >
        JSON_ENCODER_MAX_DEPTH {
         return encode_failure(
-            JsonEncodeError.DepthExceeded);
+            JsonEncodeError::DepthExceeded);
     }
 
     let initial: JsonEncoder =
@@ -1679,7 +1679,7 @@ test "json encoder rejects duplicate keys" {
     assert not result.ok;
 
     assert result.error ==
-        JsonEncodeError.DuplicateKey;
+        JsonEncodeError::DuplicateKey;
 }
 
 /// -------------------------------------------------------------------------

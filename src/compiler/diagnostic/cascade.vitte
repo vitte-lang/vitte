@@ -116,8 +116,8 @@ proc diagnostic_is_error(
     diagnostic_value: &Diagnostic,
 ) -> bool {
     return
-        diagnostic_value.severity == DiagnosticSeverity.Error or
-        diagnostic_value.severity == DiagnosticSeverity.Fatal;
+        diagnostic_value.severity == DiagnosticSeverity::Error or
+        diagnostic_value.severity == DiagnosticSeverity::Fatal;
 }
 
 proc index_valid(
@@ -159,79 +159,79 @@ proc phase_rank(
     origin: DiagnosticOrigin,
 ) -> u64 {
     match origin {
-        DiagnosticOrigin.Io => {
+        DiagnosticOrigin::Io => {
             return 10;
         },
 
-        DiagnosticOrigin.Scanner => {
+        DiagnosticOrigin::Scanner => {
             return 15;
         },
 
-        DiagnosticOrigin.Lexer => {
+        DiagnosticOrigin::Lexer => {
             return 20;
         },
 
-        DiagnosticOrigin.Parser => {
+        DiagnosticOrigin::Parser => {
             return 30;
         },
 
-        DiagnosticOrigin.Import => {
+        DiagnosticOrigin::Import => {
             return 40;
         },
 
-        DiagnosticOrigin.NameResolution => {
+        DiagnosticOrigin::NameResolution => {
             return 50;
         },
 
-        DiagnosticOrigin.TypeCheck => {
+        DiagnosticOrigin::TypeCheck => {
             return 60;
         },
 
-        DiagnosticOrigin.Contract => {
+        DiagnosticOrigin::Contract => {
             return 63;
         },
 
-        DiagnosticOrigin.ConstantEval => {
+        DiagnosticOrigin::ConstantEval => {
             return 65;
         },
 
-        DiagnosticOrigin.Hir => {
+        DiagnosticOrigin::Hir => {
             return 70;
         },
 
-        DiagnosticOrigin.Ir => {
+        DiagnosticOrigin::Ir => {
             return 80;
         },
 
-        DiagnosticOrigin.Codegen => {
+        DiagnosticOrigin::Codegen => {
             return 85;
         },
 
-        DiagnosticOrigin.C17Backend => {
+        DiagnosticOrigin::C17Backend => {
             return 90;
         },
 
-        DiagnosticOrigin.CCompiler => {
+        DiagnosticOrigin::CCompiler => {
             return 100;
         },
 
-        DiagnosticOrigin.Linker => {
+        DiagnosticOrigin::Linker => {
             return 110;
         },
 
-        DiagnosticOrigin.Runtime => {
+        DiagnosticOrigin::Runtime => {
             return 120;
         },
 
-        DiagnosticOrigin.Driver => {
+        DiagnosticOrigin::Driver => {
             return 130;
         },
 
-        DiagnosticOrigin.Internal => {
+        DiagnosticOrigin::Internal => {
             return 140;
         },
 
-        DiagnosticOrigin.Unknown => {
+        DiagnosticOrigin::Unknown => {
             return 0;
         },
     }
@@ -276,8 +276,8 @@ proc phase_dependency(
     root: DiagnosticOrigin,
     derived: DiagnosticOrigin,
 ) -> bool {
-    if root == DiagnosticOrigin.Unknown or
-       derived == DiagnosticOrigin.Unknown {
+    if root == DiagnosticOrigin::Unknown or
+       derived == DiagnosticOrigin::Unknown {
         return false;
     }
 
@@ -285,152 +285,152 @@ proc phase_dependency(
         return true;
     }
 
-    if root == DiagnosticOrigin.Internal or
-       root == DiagnosticOrigin.Driver or
-       root == DiagnosticOrigin.Runtime {
+    if root == DiagnosticOrigin::Internal or
+       root == DiagnosticOrigin::Driver or
+       root == DiagnosticOrigin::Runtime {
         return false;
     }
 
     match root {
-        DiagnosticOrigin.Io => {
+        DiagnosticOrigin::Io => {
             return
-                derived == DiagnosticOrigin.Lexer or
-                derived == DiagnosticOrigin.Parser or
-                derived == DiagnosticOrigin.Import;
+                derived == DiagnosticOrigin::Lexer or
+                derived == DiagnosticOrigin::Parser or
+                derived == DiagnosticOrigin::Import;
         },
 
-        DiagnosticOrigin.Scanner => {
+        DiagnosticOrigin::Scanner => {
             return
-                derived == DiagnosticOrigin.Lexer or
-                derived == DiagnosticOrigin.Parser or
-                derived == DiagnosticOrigin.NameResolution or
-                derived == DiagnosticOrigin.TypeCheck or
-                derived == DiagnosticOrigin.ConstantEval or
-                derived == DiagnosticOrigin.Hir or
-                derived == DiagnosticOrigin.Ir or
-                derived == DiagnosticOrigin.Codegen or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::Lexer or
+                derived == DiagnosticOrigin::Parser or
+                derived == DiagnosticOrigin::NameResolution or
+                derived == DiagnosticOrigin::TypeCheck or
+                derived == DiagnosticOrigin::ConstantEval or
+                derived == DiagnosticOrigin::Hir or
+                derived == DiagnosticOrigin::Ir or
+                derived == DiagnosticOrigin::Codegen or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.Lexer => {
+        DiagnosticOrigin::Lexer => {
             return
-                derived == DiagnosticOrigin.Parser or
-                derived == DiagnosticOrigin.NameResolution or
-                derived == DiagnosticOrigin.TypeCheck or
-                derived == DiagnosticOrigin.ConstantEval or
-                derived == DiagnosticOrigin.Hir or
-                derived == DiagnosticOrigin.Ir or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::Parser or
+                derived == DiagnosticOrigin::NameResolution or
+                derived == DiagnosticOrigin::TypeCheck or
+                derived == DiagnosticOrigin::ConstantEval or
+                derived == DiagnosticOrigin::Hir or
+                derived == DiagnosticOrigin::Ir or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.Parser => {
+        DiagnosticOrigin::Parser => {
             return
-                derived == DiagnosticOrigin.NameResolution or
-                derived == DiagnosticOrigin.TypeCheck or
-                derived == DiagnosticOrigin.Contract or
-                derived == DiagnosticOrigin.ConstantEval or
-                derived == DiagnosticOrigin.Hir or
-                derived == DiagnosticOrigin.Ir or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::NameResolution or
+                derived == DiagnosticOrigin::TypeCheck or
+                derived == DiagnosticOrigin::Contract or
+                derived == DiagnosticOrigin::ConstantEval or
+                derived == DiagnosticOrigin::Hir or
+                derived == DiagnosticOrigin::Ir or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.Import => {
+        DiagnosticOrigin::Import => {
             return
-                derived == DiagnosticOrigin.NameResolution or
-                derived == DiagnosticOrigin.TypeCheck or
-                derived == DiagnosticOrigin.Contract or
-                derived == DiagnosticOrigin.ConstantEval or
-                derived == DiagnosticOrigin.Hir or
-                derived == DiagnosticOrigin.Ir or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler or
-                derived == DiagnosticOrigin.Linker;
+                derived == DiagnosticOrigin::NameResolution or
+                derived == DiagnosticOrigin::TypeCheck or
+                derived == DiagnosticOrigin::Contract or
+                derived == DiagnosticOrigin::ConstantEval or
+                derived == DiagnosticOrigin::Hir or
+                derived == DiagnosticOrigin::Ir or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler or
+                derived == DiagnosticOrigin::Linker;
         },
 
-        DiagnosticOrigin.NameResolution => {
+        DiagnosticOrigin::NameResolution => {
             return
-                derived == DiagnosticOrigin.TypeCheck or
-                derived == DiagnosticOrigin.Contract or
-                derived == DiagnosticOrigin.ConstantEval or
-                derived == DiagnosticOrigin.Hir or
-                derived == DiagnosticOrigin.Ir or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::TypeCheck or
+                derived == DiagnosticOrigin::Contract or
+                derived == DiagnosticOrigin::ConstantEval or
+                derived == DiagnosticOrigin::Hir or
+                derived == DiagnosticOrigin::Ir or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.TypeCheck => {
+        DiagnosticOrigin::TypeCheck => {
             return
-                derived == DiagnosticOrigin.Contract or
-                derived == DiagnosticOrigin.ConstantEval or
-                derived == DiagnosticOrigin.Hir or
-                derived == DiagnosticOrigin.Ir or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::Contract or
+                derived == DiagnosticOrigin::ConstantEval or
+                derived == DiagnosticOrigin::Hir or
+                derived == DiagnosticOrigin::Ir or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.Contract => {
+        DiagnosticOrigin::Contract => {
             return
-                derived == DiagnosticOrigin.ConstantEval or
-                derived == DiagnosticOrigin.Hir or
-                derived == DiagnosticOrigin.Ir or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::ConstantEval or
+                derived == DiagnosticOrigin::Hir or
+                derived == DiagnosticOrigin::Ir or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.ConstantEval => {
+        DiagnosticOrigin::ConstantEval => {
             return
-                derived == DiagnosticOrigin.Hir or
-                derived == DiagnosticOrigin.Ir or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::Hir or
+                derived == DiagnosticOrigin::Ir or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.Hir => {
+        DiagnosticOrigin::Hir => {
             return
-                derived == DiagnosticOrigin.Ir or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::Ir or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.Ir => {
+        DiagnosticOrigin::Ir => {
             return
-                derived == DiagnosticOrigin.Codegen or
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::Codegen or
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.Codegen => {
+        DiagnosticOrigin::Codegen => {
             return
-                derived == DiagnosticOrigin.C17Backend or
-                derived == DiagnosticOrigin.CCompiler;
+                derived == DiagnosticOrigin::C17Backend or
+                derived == DiagnosticOrigin::CCompiler;
         },
 
-        DiagnosticOrigin.C17Backend => {
+        DiagnosticOrigin::C17Backend => {
             return
-                derived == DiagnosticOrigin.CCompiler or
-                derived == DiagnosticOrigin.Linker;
+                derived == DiagnosticOrigin::CCompiler or
+                derived == DiagnosticOrigin::Linker;
         },
 
-        DiagnosticOrigin.CCompiler => {
-            return derived == DiagnosticOrigin.Linker;
+        DiagnosticOrigin::CCompiler => {
+            return derived == DiagnosticOrigin::Linker;
         },
 
-        DiagnosticOrigin.Unknown => {
+        DiagnosticOrigin::Unknown => {
             return false;
         },
 
-        DiagnosticOrigin.Driver => {
+        DiagnosticOrigin::Driver => {
             return false;
         },
 
-        DiagnosticOrigin.Runtime => {
+        DiagnosticOrigin::Runtime => {
             return false;
         },
 
-        DiagnosticOrigin.Internal => {
+        DiagnosticOrigin::Internal => {
             return false;
         },
     }
@@ -1363,21 +1363,21 @@ export proc cascade_set_last_parent(
 ) -> Status {
     if not bag.initialized or
        diagnostic_bag_count(bag) == 0 {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     let child_index: usize =
         diagnostic_bag_count(bag) - 1;
 
     if parent_index >= child_index {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
 
     if not index_valid(
         bag,
         parent_index,
     ) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
 
     if would_cycle(
@@ -1385,7 +1385,7 @@ export proc cascade_set_last_parent(
         child_index,
         parent_index,
     ) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
 
     let root_index: usize =
@@ -1395,11 +1395,11 @@ export proc cascade_set_last_parent(
         );
 
     if root_index == DIAGNOSTIC_INDEX_NONE {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     if root_index >= child_index {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     let mut child = bag.storage[child_index];
@@ -1411,7 +1411,7 @@ export proc cascade_set_last_parent(
     set bag.storage[child_index] = child;
     bag_rebuild_counts(bag);
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc cascade_mark_last(
@@ -1420,21 +1420,21 @@ export proc cascade_mark_last(
 ) -> Status {
     if not bag.initialized or
        diagnostic_bag_count(bag) == 0 {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     let child_index: usize =
         diagnostic_bag_count(bag) - 1;
 
     if root_index >= child_index {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
 
     if not index_valid(
         bag,
         root_index,
     ) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
 
     if would_cycle(
@@ -1442,7 +1442,7 @@ export proc cascade_mark_last(
         child_index,
         root_index,
     ) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
 
     let resolved_root: usize =
@@ -1453,7 +1453,7 @@ export proc cascade_mark_last(
 
     if resolved_root ==
        DIAGNOSTIC_INDEX_NONE {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     let mut child = bag.storage[child_index];
@@ -1465,7 +1465,7 @@ export proc cascade_mark_last(
     set bag.storage[child_index] = child;
     bag_rebuild_counts(bag);
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc cascade_mark_last_suppressed(
@@ -1473,7 +1473,7 @@ export proc cascade_mark_last_suppressed(
 ) -> Status {
     if not bag.initialized or
        diagnostic_bag_count(bag) == 0 {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     suppress(
@@ -1481,7 +1481,7 @@ export proc cascade_mark_last_suppressed(
         diagnostic_bag_count(bag) - 1,
     );
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 /// -------------------------------------------------------------------------
@@ -1564,7 +1564,7 @@ export proc cascade_should_suppress(
 ) -> bool {
     if not bag.initialized or
        not ast_span_is_valid(span) or
-       phase == DiagnosticOrigin.Unknown {
+       phase == DiagnosticOrigin::Unknown {
         return false;
     }
 
@@ -1614,13 +1614,13 @@ proc classify_one(
         bag,
         index,
     ) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
 
     if not diagnostic_is_error(
         &bag.storage[index],
     ) {
-        return Status.Ok;
+        return Status::Ok;
     }
 
     if has_explicit_relation(
@@ -1639,7 +1639,7 @@ proc classify_one(
             );
         }
 
-        return Status.Ok;
+        return Status::Ok;
     }
 
     let parent: CascadeCandidate =
@@ -1661,7 +1661,7 @@ proc classify_one(
             index,
         );
 
-        return Status.Ok;
+        return Status::Ok;
     }
 
     let mut diagnostic_value = bag.storage[index];
@@ -1684,7 +1684,7 @@ proc classify_one(
         );
     }
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc cascade_classify_last(
@@ -1693,7 +1693,7 @@ export proc cascade_classify_last(
 ) -> Status {
     if not bag.initialized or
        diagnostic_bag_count(bag) == 0 {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     let status = classify_one(
@@ -1702,7 +1702,7 @@ export proc cascade_classify_last(
         suppress_derived,
     );
 
-    if status == Status.Ok {
+    if status == Status::Ok {
         bag_rebuild_counts(bag);
     }
 
@@ -1714,7 +1714,7 @@ export proc cascade_classify_all(
     suppress_derived: bool,
 ) -> Status {
     if not bag.initialized {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     let mut index: usize = 0;
@@ -1727,7 +1727,7 @@ export proc cascade_classify_all(
                 suppress_derived,
             );
 
-        if status != Status.Ok {
+        if status != Status::Ok {
             return status;
         }
 
@@ -1736,7 +1736,7 @@ export proc cascade_classify_all(
 
     bag_rebuild_counts(bag);
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 /// -------------------------------------------------------------------------

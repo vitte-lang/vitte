@@ -54,7 +54,7 @@ proc package_report(text: string) {
 }
 
 proc package_discard_filesystem_result(result: FilesystemResult) {
-    if result.error == FilesystemError.None { return; }
+    if result.error == FilesystemError::None { return; }
 }
 
 proc package_discard_bool(result: bool) {
@@ -203,7 +203,7 @@ proc package_resolve_release(
     if release == null { return false; }
     let mut registry: FilesystemBuffer;
     let read_result = vitte_filesystem_read_file(registry_path, PACKAGE_REGISTRY_LIMIT, &mut registry);
-    if read_result.error != FilesystemError.None { return false; }
+    if read_result.error != FilesystemError::None { return false; }
     let contents = string.from_bytes(registry.data, registry.length);
     let mut best_version: PackageVersion = PackageVersion { major: 0, minor: 0, patch: 0 };
     let mut found = false;
@@ -272,10 +272,10 @@ proc package_contains(text: string, needle: string) -> bool {
 proc package_remove_tree(path: string) -> bool {
     let mut metadata: FilesystemMetadata;
     let stat_result = vitte_filesystem_stat(path, false, &mut metadata);
-    if stat_result.error == FilesystemError.NotFound { return true; }
-    if stat_result.error != FilesystemError.None { return false; }
-    if metadata.kind != FilesystemKind.Directory {
-        return vitte_filesystem_remove_file(path).error == FilesystemError.None;
+    if stat_result.error == FilesystemError::NotFound { return true; }
+    if stat_result.error != FilesystemError::None { return false; }
+    if metadata.kind != FilesystemKind::Directory {
+        return vitte_filesystem_remove_file(path).error == FilesystemError::None;
     }
     let mut listing: FilesystemDirectoryList = FilesystemDirectoryList {
         entries: null,
@@ -283,7 +283,7 @@ proc package_remove_tree(path: string) -> bool {
         capacity: 0
     };
     let list_result = vitte_filesystem_list_directory(path, 0, &mut listing);
-    if list_result.error != FilesystemError.None { return false; }
+    if list_result.error != FilesystemError::None { return false; }
     let mut index: usize = 0;
     while index < listing.count {
         let child_path = vitte_filesystem_join(path, listing.entries[index].name);
@@ -294,14 +294,14 @@ proc package_remove_tree(path: string) -> bool {
         set index += 1;
     }
     vitte_filesystem_directory_list_destroy(&mut listing);
-    return vitte_filesystem_remove_directory(path).error == FilesystemError.None;
+    return vitte_filesystem_remove_directory(path).error == FilesystemError::None;
 }
 
 proc package_read_text(path: string, maximum: usize, output: *mut string) -> bool {
     if output == null { return false; }
     let mut file: FilesystemBuffer;
     let result: FilesystemResult = vitte_filesystem_read_file(path, maximum, &mut file);
-    if result.error != FilesystemError.None { return false; }
+    if result.error != FilesystemError::None { return false; }
     set *output = string.from_bytes(file.data, file.length);
     vitte_filesystem_buffer_destroy(&mut file);
     return true;
@@ -370,11 +370,11 @@ proc package_write_project_records(root: string, release: PackageRelease) -> boo
     let manifest_updated = package_update_text(manifest_original, manifest_prefix, manifest_record);
     let lock_updated = package_update_text(lock_original, lock_prefix, lock_record);
     let manifest_bytes = manifest_updated.as_bytes();
-    if vitte_filesystem_write_file_atomic(manifest_path, manifest_bytes.as_ptr() as *mut u8, manifest_bytes.len()).error != FilesystemError.None {
+    if vitte_filesystem_write_file_atomic(manifest_path, manifest_bytes.as_ptr() as *mut u8, manifest_bytes.len()).error != FilesystemError::None {
         return false;
     }
     let lock_bytes = lock_updated.as_bytes();
-    if vitte_filesystem_write_file_atomic(lock_path, lock_bytes.as_ptr() as *mut u8, lock_bytes.len()).error != FilesystemError.None {
+    if vitte_filesystem_write_file_atomic(lock_path, lock_bytes.as_ptr() as *mut u8, lock_bytes.len()).error != FilesystemError::None {
         package_restore_file(manifest_path, manifest_existed, manifest_original);
         return false;
     }
@@ -431,7 +431,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
 
     let mut current_directory = "";
     let cwd_result = vitte_filesystem_current_directory(&mut current_directory);
-    if cwd_result.error != FilesystemError.None {
+    if cwd_result.error != FilesystemError::None {
         package_report("vitte install: cannot determine the project directory");
         return 1;
     }
@@ -441,7 +441,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
         vitte_filesystem_join(current_directory, ".vitte/modules")
     };
     if modules_root.len() == 0 or
-       compiler_filesystem_create_directories(modules_root).error != FilesystemError.None {
+       compiler_filesystem_create_directories(modules_root).error != FilesystemError::None {
         package_report("vitte install: cannot create the module directory");
         return 1;
     }
@@ -475,7 +475,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
     }
     let mut archive: FilesystemBuffer;
     let archive_read = vitte_filesystem_read_file(archive_path, PACKAGE_ARCHIVE_LIMIT, &mut archive);
-    if archive_read.error != FilesystemError.None {
+    if archive_read.error != FilesystemError::None {
         package_report("vitte install: downloaded archive is unreadable or too large");
         package_discard_filesystem_result(vitte_filesystem_remove_file(registry_path));
         package_discard_filesystem_result(vitte_filesystem_remove_file(archive_path));
@@ -496,7 +496,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
     let backup_path = vitte_filesystem_join(modules_root, backup_name);
     let target_path = vitte_filesystem_join(modules_root, release.name);
     package_discard_bool(package_remove_tree(stage_path));
-    if compiler_filesystem_create_directories(stage_path).error != FilesystemError.None {
+    if compiler_filesystem_create_directories(stage_path).error != FilesystemError::None {
         package_report("vitte install: cannot create package staging directory");
         package_discard_filesystem_result(vitte_filesystem_remove_file(registry_path));
         package_discard_filesystem_result(vitte_filesystem_remove_file(archive_path));
@@ -516,7 +516,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
     }
     if not archive_extracted {
         package_discard_bool(package_remove_tree(stage_path));
-        if compiler_filesystem_create_directories(stage_path).error != FilesystemError.None or
+        if compiler_filesystem_create_directories(stage_path).error != FilesystemError::None or
            not package_extract_with_pax(archive_path, stage_path) {
             package_report("vitte install: archive layout or package metadata is invalid");
             package_discard_bool(package_remove_tree(stage_path));
@@ -536,7 +536,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
     package_discard_bool(package_remove_tree(backup_path));
     let mut old_target_moved = false;
     if vitte_filesystem_exists(target_path) {
-        if vitte_filesystem_rename(target_path, backup_path).error != FilesystemError.None {
+        if vitte_filesystem_rename(target_path, backup_path).error != FilesystemError::None {
             package_report("vitte install: cannot preserve the existing package directory");
             package_discard_bool(package_remove_tree(stage_path));
             package_discard_filesystem_result(vitte_filesystem_remove_file(registry_path));
@@ -545,7 +545,7 @@ export proc vitte_package_install(name: string, requested_version: ?string, glob
         }
         set old_target_moved = true;
     }
-    if vitte_filesystem_rename(extracted_package_path, target_path).error != FilesystemError.None {
+    if vitte_filesystem_rename(extracted_package_path, target_path).error != FilesystemError::None {
         if old_target_moved { package_discard_filesystem_result(vitte_filesystem_rename(backup_path, target_path)); }
         package_report("vitte install: cannot activate the downloaded package");
         package_discard_bool(package_remove_tree(stage_path));

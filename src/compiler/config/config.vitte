@@ -434,9 +434,9 @@ export proc vitte_config_key_name(key: ConfigKey) -> string {
 
 export proc vitte_config_resolved_default() -> ConfigResolved {
     return ConfigResolved {
-        profile: ConfigProfile.Default,
-        backend: ConfigBackend.Default,
-        optimization: ConfigOptimization.Default,
+        profile: ConfigProfile::Default,
+        backend: ConfigBackend::Default,
+        optimization: ConfigOptimization::Default,
         target: null,
         output: null,
         manifest_path: null,
@@ -448,8 +448,8 @@ export proc vitte_config_resolved_default() -> ConfigResolved {
         jobs: VITTE_CONFIG_DEFAULT_JOBS,
         max_errors: VITTE_CONFIG_DEFAULT_MAX_ERRORS,
         max_output_bytes: VITTE_CONFIG_DEFAULT_MAX_OUTPUT_BYTES,
-        diagnostic_format: ConfigDiagnosticFormat.Default,
-        color: ConfigColor.Auto,
+        diagnostic_format: ConfigDiagnosticFormat::Default,
+        color: ConfigColor::Auto,
         verbose: false,
         quiet: false,
         warnings_as_errors: false,
@@ -484,7 +484,7 @@ proc config_owned_strings_destroy(config: *mut Config) {
 
 export proc vitte_config_is_valid(config: *const Config) -> bool {
     if config == null or (*config).magic != VITTE_CONFIG_MAGIC or
-       (*config).state <= ConfigState.Invalid or (*config).state >= ConfigState.Destroyed or
+       (*config).state <= ConfigState::Invalid or (*config).state >= ConfigState::Destroyed or
        (*config).entry_count > (*config).entry_capacity or
        ((*config).entry_count != 0 and (*config).entries == null) or
        (*config).max_entries == 0 or (*config).max_string_bytes == 0 or
@@ -500,8 +500,8 @@ export proc vitte_config_init(config: *mut Config) -> bool {
     if config == null { return false; }
     fill(config as *mut u8, 0, sizeof(Config));
     set (*config).magic = VITTE_CONFIG_MAGIC;
-    set (*config).state = ConfigState.Ready;
-    set (*config).last_error = ConfigError.None;
+    set (*config).state = ConfigState::Ready;
+    set (*config).last_error = ConfigError::None;
     set (*config).max_entries = VITTE_CONFIG_DEFAULT_MAX_ENTRIES;
     set (*config).max_string_bytes = VITTE_CONFIG_DEFAULT_MAX_STRING_BYTES;
     set (*config).resolved = vitte_config_resolved_default();
@@ -520,13 +520,13 @@ export proc vitte_config_destroy(config: *mut Config) {
     set (*config).resolved = ConfigResolved {};
     set (*config).message = ConfigMessage {};
     set (*config).stats = ConfigStats {};
-    set (*config).last_error = ConfigError.None;
-    set (*config).state = ConfigState.Destroyed;
+    set (*config).last_error = ConfigError::None;
+    set (*config).state = ConfigState::Destroyed;
     set (*config).magic = VITTE_CONFIG_DEAD_MAGIC;
 }
 
 export proc vitte_config_reset(config: *mut Config) -> bool {
-    if config == null or (*config).magic != VITTE_CONFIG_MAGIC or (*config).state == ConfigState.Merging {
+    if config == null or (*config).magic != VITTE_CONFIG_MAGIC or (*config).state == ConfigState::Merging {
         return false;
     }
     config_owned_strings_destroy(config);
@@ -534,15 +534,15 @@ export proc vitte_config_reset(config: *mut Config) -> bool {
     set (*config).resolved = vitte_config_resolved_default();
     set (*config).message = ConfigMessage {};
     set (*config).stats = ConfigStats {};
-    set (*config).last_error = ConfigError.None;
+    set (*config).last_error = ConfigError::None;
     set (*config).next_sequence = 1;
     if (*config).generation != 18446744073709551615 { set (*config).generation += 1; }
-    set (*config).state = ConfigState.Ready;
+    set (*config).state = ConfigState::Ready;
     return true;
 }
 
 export proc vitte_config_set_limits(config: *mut Config, max_entries: usize, max_string_bytes: usize) -> bool {
-    if not vitte_config_is_valid(config) or (*config).state != ConfigState.Ready or
+    if not vitte_config_is_valid(config) or (*config).state != ConfigState::Ready or
        max_entries == 0 or max_string_bytes == 0 or max_entries < (*config).entry_count {
         return false;
     }
@@ -552,57 +552,57 @@ export proc vitte_config_set_limits(config: *mut Config, max_entries: usize, max
 }
 
 export proc vitte_config_value_bool(value: bool) -> ConfigValue {
-    return ConfigValue { type_: ConfigValueType.Bool, as_: if value { 1 as u64 } else { 0 as u64 } };
+    return ConfigValue { type_: ConfigValueType::Bool, as_: if value { 1 as u64 } else { 0 as u64 } };
 }
 
 export proc vitte_config_value_size(value: usize) -> ConfigValue {
-    return ConfigValue { type_: ConfigValueType.Size, as_: value as u64 };
+    return ConfigValue { type_: ConfigValueType::Size, as_: value as u64 };
 }
 
 export proc vitte_config_value_u64(value: u64) -> ConfigValue {
-    return ConfigValue { type_: ConfigValueType.U64, as_: value };
+    return ConfigValue { type_: ConfigValueType::U64, as_: value };
 }
 
 export proc vitte_config_value_string(value: *const char) -> ConfigValue {
-    return ConfigValue { type_: ConfigValueType.String, as_: value as usize as u64 };
+    return ConfigValue { type_: ConfigValueType::String, as_: value as usize as u64 };
 }
 
 proc config_fail(config: *mut Config, error: ConfigError, key: ConfigKey, origin: ConfigOrigin, detail: string) -> bool {
     if config == null { return false; }
     set (*config).last_error = error;
-    set (*config).state = ConfigState.Failed;
+    set (*config).state = ConfigState::Failed;
     set (*config).message = ConfigMessage { error: error, key: key, origin: origin, detail: detail.as_ptr() as *const char };
     return false;
 }
 
 proc config_key_value_type(key: ConfigKey) -> ConfigValueType {
-    if key == ConfigKey.Profile or key == ConfigKey.Backend or key == ConfigKey.Optimization or
-       key == ConfigKey.DiagnosticFormat or key == ConfigKey.Color { return ConfigValueType.U64; }
-    if key == ConfigKey.Target or key == ConfigKey.Output or key == ConfigKey.ManifestPath or
-       key == ConfigKey.ProjectRoot or key == ConfigKey.BuildDir or key == ConfigKey.CacheDir or
-       key == ConfigKey.Sysroot or key == ConfigKey.Registry { return ConfigValueType.String; }
-    if key == ConfigKey.Jobs or key == ConfigKey.MaxErrors or key == ConfigKey.MaxOutputBytes { return ConfigValueType.Size; }
-    if key >= ConfigKey.Verbose and key < ConfigKey.Count { return ConfigValueType.Bool; }
-    return ConfigValueType.Invalid;
+    if key == ConfigKey::Profile or key == ConfigKey::Backend or key == ConfigKey::Optimization or
+       key == ConfigKey::DiagnosticFormat or key == ConfigKey::Color { return ConfigValueType::U64; }
+    if key == ConfigKey::Target or key == ConfigKey::Output or key == ConfigKey::ManifestPath or
+       key == ConfigKey::ProjectRoot or key == ConfigKey::BuildDir or key == ConfigKey::CacheDir or
+       key == ConfigKey::Sysroot or key == ConfigKey::Registry { return ConfigValueType::String; }
+    if key == ConfigKey::Jobs or key == ConfigKey::MaxErrors or key == ConfigKey::MaxOutputBytes { return ConfigValueType::Size; }
+    if key >= ConfigKey::Verbose and key < ConfigKey::Count { return ConfigValueType::Bool; }
+    return ConfigValueType::Invalid;
 }
 
 proc config_source_valid(source: ConfigSource) -> bool {
-    return source >= ConfigSource.Default and source < ConfigSource.Count;
+    return source >= ConfigSource::Default and source < ConfigSource::Count;
 }
 
 proc config_source_precedence(source: ConfigSource) -> usize {
-    if source == ConfigSource.System { return 10; }
-    if source == ConfigSource.User { return 20; }
-    if source == ConfigSource.Project { return 30; }
-    if source == ConfigSource.Environment { return 40; }
-    if source == ConfigSource.CommandLine { return 50; }
-    if source == ConfigSource.Override { return 60; }
+    if source == ConfigSource::System { return 10; }
+    if source == ConfigSource::User { return 20; }
+    if source == ConfigSource::Project { return 30; }
+    if source == ConfigSource::Environment { return 40; }
+    if source == ConfigSource::CommandLine { return 50; }
+    if source == ConfigSource::Override { return 60; }
     return 0;
 }
 
 proc config_values_equal(left: &ConfigValue, right: &ConfigValue) -> bool {
     if left.type_ != right.type_ { return false; }
-    if left.type_ != ConfigValueType.String { return left.as_ == right.as_; }
+    if left.type_ != ConfigValueType::String { return left.as_ == right.as_; }
     let left_text = left.as_ as usize as *const char;
     let right_text = right.as_ as usize as *const char;
     if left_text == null or right_text == null { return left_text == right_text; }
@@ -648,18 +648,18 @@ proc config_rollback_owned_strings(config: *mut Config, count: usize) {
 
 proc config_reserve_entries(config: *mut Config, required: usize, origin: ConfigOrigin) -> bool {
     if required <= (*config).entry_capacity { return true; }
-    if required > (*config).max_entries { return config_fail(config, ConfigError.TooManyEntries, ConfigKey.Invalid, origin, "configuration entry limit exceeded"); }
+    if required > (*config).max_entries { return config_fail(config, ConfigError::TooManyEntries, ConfigKey::Invalid, origin, "configuration entry limit exceeded"); }
     let mut capacity: usize = if (*config).entry_capacity == 0 { VITTE_CONFIG_DEFAULT_INITIAL_CAPACITY } else { (*config).entry_capacity };
     while capacity < required {
-        if capacity > usize.MAX / 2 { return config_fail(config, ConfigError.Overflow, ConfigKey.Invalid, origin, "configuration capacity overflow"); }
+        if capacity > usize.MAX / 2 { return config_fail(config, ConfigError::Overflow, ConfigKey::Invalid, origin, "configuration capacity overflow"); }
         set capacity *= 2;
         if capacity > (*config).max_entries { set capacity = (*config).max_entries; break; }
     }
     if capacity < required or capacity > usize.MAX / sizeof(ConfigEntry) {
-        return config_fail(config, ConfigError.Overflow, ConfigKey.Invalid, origin, "configuration allocation size overflow");
+        return config_fail(config, ConfigError::Overflow, ConfigKey::Invalid, origin, "configuration allocation size overflow");
     }
     let replacement = allocate(capacity * sizeof(ConfigEntry)) as *mut ConfigEntry;
-    if replacement == null { return config_fail(config, ConfigError.OutOfMemory, ConfigKey.Invalid, origin, "unable to grow configuration storage"); }
+    if replacement == null { return config_fail(config, ConfigError::OutOfMemory, ConfigKey::Invalid, origin, "unable to grow configuration storage"); }
     fill(replacement as *mut u8, 0, capacity * sizeof(ConfigEntry));
     if (*config).entry_count != 0 { copy(replacement as *mut u8, (*config).entries as *const u8, (*config).entry_count * sizeof(ConfigEntry)); }
     deallocate((*config).entries as *mut u8);
@@ -669,66 +669,66 @@ proc config_reserve_entries(config: *mut Config, required: usize, origin: Config
 }
 
 proc config_apply_value(resolved: *mut ConfigResolved, key: ConfigKey, value: &ConfigValue) -> bool {
-    if key == ConfigKey.Profile { set (*resolved).profile = value.as_ as ConfigProfile; return true; }
-    if key == ConfigKey.Backend { set (*resolved).backend = value.as_ as ConfigBackend; return true; }
-    if key == ConfigKey.Optimization { set (*resolved).optimization = value.as_ as ConfigOptimization; return true; }
-    if key == ConfigKey.Target { set (*resolved).target = value.as_ as usize as *const char; return true; }
-    if key == ConfigKey.Output { set (*resolved).output = value.as_ as usize as *const char; return true; }
-    if key == ConfigKey.ManifestPath { set (*resolved).manifest_path = value.as_ as usize as *const char; return true; }
-    if key == ConfigKey.ProjectRoot { set (*resolved).project_root = value.as_ as usize as *const char; return true; }
-    if key == ConfigKey.BuildDir { set (*resolved).build_dir = value.as_ as usize as *const char; return true; }
-    if key == ConfigKey.CacheDir { set (*resolved).cache_dir = value.as_ as usize as *const char; return true; }
-    if key == ConfigKey.Sysroot { set (*resolved).sysroot = value.as_ as usize as *const char; return true; }
-    if key == ConfigKey.Registry { set (*resolved).registry = value.as_ as usize as *const char; return true; }
-    if key == ConfigKey.Jobs { set (*resolved).jobs = value.as_ as usize; return true; }
-    if key == ConfigKey.MaxErrors { set (*resolved).max_errors = value.as_ as usize; return true; }
-    if key == ConfigKey.MaxOutputBytes { set (*resolved).max_output_bytes = value.as_ as usize; return true; }
-    if key == ConfigKey.DiagnosticFormat { set (*resolved).diagnostic_format = value.as_ as ConfigDiagnosticFormat; return true; }
-    if key == ConfigKey.Color { set (*resolved).color = value.as_ as ConfigColor; return true; }
-    if key == ConfigKey.Verbose { set (*resolved).verbose = value.as_ != 0; return true; }
-    if key == ConfigKey.Quiet { set (*resolved).quiet = value.as_ != 0; return true; }
-    if key == ConfigKey.WarningsAsErrors { set (*resolved).warnings_as_errors = value.as_ != 0; return true; }
-    if key == ConfigKey.EmitDebugInfo { set (*resolved).emit_debug_info = value.as_ != 0; return true; }
-    if key == ConfigKey.EmitSourceMap { set (*resolved).emit_source_map = value.as_ != 0; return true; }
-    if key == ConfigKey.EmitComments { set (*resolved).emit_comments = value.as_ != 0; return true; }
-    if key == ConfigKey.RuntimeChecks { set (*resolved).runtime_checks = value.as_ != 0; return true; }
-    if key == ConfigKey.BoundsChecks { set (*resolved).bounds_checks = value.as_ != 0; return true; }
-    if key == ConfigKey.NullChecks { set (*resolved).null_checks = value.as_ != 0; return true; }
-    if key == ConfigKey.OverflowChecks { set (*resolved).overflow_checks = value.as_ != 0; return true; }
-    if key == ConfigKey.Deterministic { set (*resolved).deterministic = value.as_ != 0; return true; }
-    if key == ConfigKey.Incremental { set (*resolved).incremental = value.as_ != 0; return true; }
-    if key == ConfigKey.Offline { set (*resolved).offline = value.as_ != 0; return true; }
-    if key == ConfigKey.Locked { set (*resolved).locked = value.as_ != 0; return true; }
-    if key == ConfigKey.FrozenDependencies { set (*resolved).frozen_dependencies = value.as_ != 0; return true; }
-    if key == ConfigKey.Force { set (*resolved).force = value.as_ != 0; return true; }
+    if key == ConfigKey::Profile { set (*resolved).profile = value.as_ as ConfigProfile; return true; }
+    if key == ConfigKey::Backend { set (*resolved).backend = value.as_ as ConfigBackend; return true; }
+    if key == ConfigKey::Optimization { set (*resolved).optimization = value.as_ as ConfigOptimization; return true; }
+    if key == ConfigKey::Target { set (*resolved).target = value.as_ as usize as *const char; return true; }
+    if key == ConfigKey::Output { set (*resolved).output = value.as_ as usize as *const char; return true; }
+    if key == ConfigKey::ManifestPath { set (*resolved).manifest_path = value.as_ as usize as *const char; return true; }
+    if key == ConfigKey::ProjectRoot { set (*resolved).project_root = value.as_ as usize as *const char; return true; }
+    if key == ConfigKey::BuildDir { set (*resolved).build_dir = value.as_ as usize as *const char; return true; }
+    if key == ConfigKey::CacheDir { set (*resolved).cache_dir = value.as_ as usize as *const char; return true; }
+    if key == ConfigKey::Sysroot { set (*resolved).sysroot = value.as_ as usize as *const char; return true; }
+    if key == ConfigKey::Registry { set (*resolved).registry = value.as_ as usize as *const char; return true; }
+    if key == ConfigKey::Jobs { set (*resolved).jobs = value.as_ as usize; return true; }
+    if key == ConfigKey::MaxErrors { set (*resolved).max_errors = value.as_ as usize; return true; }
+    if key == ConfigKey::MaxOutputBytes { set (*resolved).max_output_bytes = value.as_ as usize; return true; }
+    if key == ConfigKey::DiagnosticFormat { set (*resolved).diagnostic_format = value.as_ as ConfigDiagnosticFormat; return true; }
+    if key == ConfigKey::Color { set (*resolved).color = value.as_ as ConfigColor; return true; }
+    if key == ConfigKey::Verbose { set (*resolved).verbose = value.as_ != 0; return true; }
+    if key == ConfigKey::Quiet { set (*resolved).quiet = value.as_ != 0; return true; }
+    if key == ConfigKey::WarningsAsErrors { set (*resolved).warnings_as_errors = value.as_ != 0; return true; }
+    if key == ConfigKey::EmitDebugInfo { set (*resolved).emit_debug_info = value.as_ != 0; return true; }
+    if key == ConfigKey::EmitSourceMap { set (*resolved).emit_source_map = value.as_ != 0; return true; }
+    if key == ConfigKey::EmitComments { set (*resolved).emit_comments = value.as_ != 0; return true; }
+    if key == ConfigKey::RuntimeChecks { set (*resolved).runtime_checks = value.as_ != 0; return true; }
+    if key == ConfigKey::BoundsChecks { set (*resolved).bounds_checks = value.as_ != 0; return true; }
+    if key == ConfigKey::NullChecks { set (*resolved).null_checks = value.as_ != 0; return true; }
+    if key == ConfigKey::OverflowChecks { set (*resolved).overflow_checks = value.as_ != 0; return true; }
+    if key == ConfigKey::Deterministic { set (*resolved).deterministic = value.as_ != 0; return true; }
+    if key == ConfigKey::Incremental { set (*resolved).incremental = value.as_ != 0; return true; }
+    if key == ConfigKey::Offline { set (*resolved).offline = value.as_ != 0; return true; }
+    if key == ConfigKey::Locked { set (*resolved).locked = value.as_ != 0; return true; }
+    if key == ConfigKey::FrozenDependencies { set (*resolved).frozen_dependencies = value.as_ != 0; return true; }
+    if key == ConfigKey::Force { set (*resolved).force = value.as_ != 0; return true; }
     return false;
 }
 
 proc config_value_valid(config: &Config, key: ConfigKey, value: &ConfigValue) -> bool {
     if config_key_value_type(key) != value.type_ { return false; }
-    if key == ConfigKey.Profile { return value.as_ < ConfigProfile.Count as u64; }
-    if key == ConfigKey.Backend { return value.as_ < ConfigBackend.Count as u64; }
-    if key == ConfigKey.Optimization { return value.as_ < ConfigOptimization.Count as u64; }
-    if key == ConfigKey.DiagnosticFormat { return value.as_ < ConfigDiagnosticFormat.Count as u64; }
-    if key == ConfigKey.Color { return value.as_ < ConfigColor.Count as u64; }
-    if key == ConfigKey.Jobs or key == ConfigKey.MaxErrors { return value.as_ != 0; }
-    if key == ConfigKey.Target { return value.as_ != 0 and cstring_length(value.as_ as usize as *const u8) != 0; }
-    if key == ConfigKey.Output or key == ConfigKey.ManifestPath or key == ConfigKey.ProjectRoot or
-       key == ConfigKey.BuildDir or key == ConfigKey.CacheDir or key == ConfigKey.Sysroot or key == ConfigKey.Registry {
+    if key == ConfigKey::Profile { return value.as_ < ConfigProfile::Count as u64; }
+    if key == ConfigKey::Backend { return value.as_ < ConfigBackend::Count as u64; }
+    if key == ConfigKey::Optimization { return value.as_ < ConfigOptimization::Count as u64; }
+    if key == ConfigKey::DiagnosticFormat { return value.as_ < ConfigDiagnosticFormat::Count as u64; }
+    if key == ConfigKey::Color { return value.as_ < ConfigColor::Count as u64; }
+    if key == ConfigKey::Jobs or key == ConfigKey::MaxErrors { return value.as_ != 0; }
+    if key == ConfigKey::Target { return value.as_ != 0 and cstring_length(value.as_ as usize as *const u8) != 0; }
+    if key == ConfigKey::Output or key == ConfigKey::ManifestPath or key == ConfigKey::ProjectRoot or
+       key == ConfigKey::BuildDir or key == ConfigKey::CacheDir or key == ConfigKey::Sysroot or key == ConfigKey::Registry {
         return value.as_ == 0 or cstring_length(value.as_ as usize as *const u8) <= config.max_string_bytes;
     }
-    return key >= ConfigKey.MaxOutputBytes and key < ConfigKey.Count;
+    return key >= ConfigKey::MaxOutputBytes and key < ConfigKey::Count;
 }
 
 export proc vitte_config_set(config: *mut Config, key: ConfigKey, input: ConfigValue, input_origin: ConfigOrigin) -> bool {
     if not vitte_config_is_valid(config) { return false; }
-    if (*config).state == ConfigState.Frozen { return config_fail(config, ConfigError.Frozen, key, input_origin, "configuration is frozen"); }
-    if (*config).state != ConfigState.Ready and (*config).state != ConfigState.Merging and (*config).state != ConfigState.Validated {
-        return config_fail(config, ConfigError.InvalidState, key, input_origin, "configuration cannot be modified in current state");
+    if (*config).state == ConfigState::Frozen { return config_fail(config, ConfigError::Frozen, key, input_origin, "configuration is frozen"); }
+    if (*config).state != ConfigState::Ready and (*config).state != ConfigState::Merging and (*config).state != ConfigState::Validated {
+        return config_fail(config, ConfigError::InvalidState, key, input_origin, "configuration cannot be modified in current state");
     }
-    if key <= ConfigKey.Invalid or key >= ConfigKey.Count { return config_fail(config, ConfigError.InvalidKey, key, input_origin, "invalid configuration key"); }
-    if not config_source_valid(input_origin.source) { return config_fail(config, ConfigError.InvalidSource, key, input_origin, "invalid configuration source"); }
-    if not config_value_valid(config as &Config, key, &input) { return config_fail(config, ConfigError.InvalidValue, key, input_origin, "invalid configuration value"); }
+    if key <= ConfigKey::Invalid or key >= ConfigKey::Count { return config_fail(config, ConfigError::InvalidKey, key, input_origin, "invalid configuration key"); }
+    if not config_source_valid(input_origin.source) { return config_fail(config, ConfigError::InvalidSource, key, input_origin, "invalid configuration source"); }
+    if not config_value_valid(config as &Config, key, &input) { return config_fail(config, ConfigError::InvalidValue, key, input_origin, "invalid configuration value"); }
 
     let mut existing_index: usize = 0;
     while existing_index < (*config).entry_count and (*config).entries[existing_index].key != key { set existing_index += 1; }
@@ -739,19 +739,19 @@ export proc vitte_config_set(config: *mut Config, key: ConfigKey, input: ConfigV
         let old_precedence = config_source_precedence(old.origin.source);
         if new_precedence < old_precedence {
             set (*config).stats.ignored_lower_precedence_count += 1;
-            set (*config).state = ConfigState.Ready;
-            set (*config).last_error = ConfigError.None;
+            set (*config).state = ConfigState::Ready;
+            set (*config).last_error = ConfigError::None;
             return true;
         }
-        if new_precedence == old_precedence and old.origin.source != ConfigSource.Default and not config_values_equal(&old.value, &input) {
-            return config_fail(config, ConfigError.Conflict, key, input_origin, "conflicting values from equal-precedence configuration sources");
+        if new_precedence == old_precedence and old.origin.source != ConfigSource::Default and not config_values_equal(&old.value, &input) {
+            return config_fail(config, ConfigError::Conflict, key, input_origin, "conflicting values from equal-precedence configuration sources");
         }
         if config_values_equal(&old.value, &input) {
             if new_precedence >= old_precedence {
                 let retained_origin = input_origin;
                 if retained_origin.name != null {
                     let name_copy = config_retain_string(config, retained_origin.name);
-                    if name_copy == null { return config_fail(config, ConfigError.OutOfMemory, key, input_origin, "cannot retain configuration source"); }
+                    if name_copy == null { return config_fail(config, ConfigError::OutOfMemory, key, input_origin, "cannot retain configuration source"); }
                     set (*config).entries[existing_index].origin.name = name_copy as *const char;
                 } else { set (*config).entries[existing_index].origin.name = null; }
                 set (*config).entries[existing_index].origin.source = retained_origin.source;
@@ -760,41 +760,41 @@ export proc vitte_config_set(config: *mut Config, key: ConfigKey, input: ConfigV
                 set (*config).entries[existing_index].sequence = (*config).next_sequence;
                 if (*config).next_sequence != 18446744073709551615 { set (*config).next_sequence += 1; }
             }
-            set (*config).state = ConfigState.Ready;
-            set (*config).last_error = ConfigError.None;
+            set (*config).state = ConfigState::Ready;
+            set (*config).last_error = ConfigError::None;
             return true;
         }
     } elif (*config).entry_count >= (*config).max_entries {
-        return config_fail(config, ConfigError.TooManyEntries, key, input_origin, "configuration entry limit exceeded");
+        return config_fail(config, ConfigError::TooManyEntries, key, input_origin, "configuration entry limit exceeded");
     }
 
     let owned_before: usize = (*config).owned_string_count;
     let mut value: ConfigValue = input;
     let mut origin: ConfigOrigin = input_origin;
-    if value.type_ == ConfigValueType.String and value.as_ != 0 {
+    if value.type_ == ConfigValueType::String and value.as_ != 0 {
         let string_copy = config_retain_string(config, value.as_ as usize as *const char);
-        if string_copy == null { return config_fail(config, ConfigError.OutOfMemory, key, input_origin, "cannot retain configuration value"); }
+        if string_copy == null { return config_fail(config, ConfigError::OutOfMemory, key, input_origin, "cannot retain configuration value"); }
         set value.as_ = string_copy as usize as u64;
     }
     if origin.name != null {
         let name_copy = config_retain_string(config, origin.name);
         if name_copy == null {
             config_rollback_owned_strings(config, owned_before);
-            return config_fail(config, ConfigError.OutOfMemory, key, input_origin, "cannot retain configuration source");
+            return config_fail(config, ConfigError::OutOfMemory, key, input_origin, "cannot retain configuration source");
         }
         set origin.name = name_copy as *const char;
     }
-    set (*config).state = ConfigState.Merging;
+    set (*config).state = ConfigState::Merging;
     if has_existing {
         set (*config).entries[existing_index].value = value;
         set (*config).entries[existing_index].origin = origin;
         set (*config).entries[existing_index].sequence = (*config).next_sequence;
-        set (*config).entries[existing_index].explicitly_set = origin.source != ConfigSource.Default;
+        set (*config).entries[existing_index].explicitly_set = origin.source != ConfigSource::Default;
         set (*config).stats.overridden_entry_count += 1;
     } else {
         if (*config).entry_count == usize.MAX {
             config_rollback_owned_strings(config, owned_before);
-            return config_fail(config, ConfigError.Overflow, key, origin, "configuration entry count overflow");
+            return config_fail(config, ConfigError::Overflow, key, origin, "configuration entry count overflow");
         }
         if not config_reserve_entries(config, (*config).entry_count + 1, origin) {
             config_rollback_owned_strings(config, owned_before);
@@ -802,16 +802,16 @@ export proc vitte_config_set(config: *mut Config, key: ConfigKey, input: ConfigV
         }
         set (*config).entries[(*config).entry_count] = ConfigEntry {
             key: key, value: value, origin: origin, sequence: (*config).next_sequence,
-            explicitly_set: origin.source != ConfigSource.Default
+            explicitly_set: origin.source != ConfigSource::Default
         };
         set (*config).entry_count += 1;
     }
     if (*config).next_sequence != 18446744073709551615 { set (*config).next_sequence += 1; }
     if not config_apply_value((&((*config).resolved)) as *mut ConfigResolved, key, &value) {
-        return config_fail(config, ConfigError.Corruption, key, origin, "failed to update resolved configuration");
+        return config_fail(config, ConfigError::Corruption, key, origin, "failed to update resolved configuration");
     }
-    set (*config).state = ConfigState.Ready;
-    set (*config).last_error = ConfigError.None;
+    set (*config).state = ConfigState::Ready;
+    set (*config).last_error = ConfigError::None;
     return true;
 }
 
@@ -832,168 +832,168 @@ export proc vitte_config_set_string(config: *mut Config, key: ConfigKey, value: 
 }
 
 export proc vitte_config_set_profile(config: *mut Config, profile: ConfigProfile, origin: ConfigOrigin) -> bool {
-    if profile >= ConfigProfile.Count { return config_fail(config, ConfigError.InvalidProfile, ConfigKey.Profile, origin, "invalid profile"); }
-    return vitte_config_set_u64(config, ConfigKey.Profile, profile as u64, origin);
+    if profile >= ConfigProfile::Count { return config_fail(config, ConfigError::InvalidProfile, ConfigKey::Profile, origin, "invalid profile"); }
+    return vitte_config_set_u64(config, ConfigKey::Profile, profile as u64, origin);
 }
 
 export proc vitte_config_set_backend(config: *mut Config, backend: ConfigBackend, origin: ConfigOrigin) -> bool {
-    if backend >= ConfigBackend.Count { return config_fail(config, ConfigError.InvalidBackend, ConfigKey.Backend, origin, "invalid backend"); }
-    return vitte_config_set_u64(config, ConfigKey.Backend, backend as u64, origin);
+    if backend >= ConfigBackend::Count { return config_fail(config, ConfigError::InvalidBackend, ConfigKey::Backend, origin, "invalid backend"); }
+    return vitte_config_set_u64(config, ConfigKey::Backend, backend as u64, origin);
 }
 
 export proc vitte_config_set_optimization(config: *mut Config, optimization: ConfigOptimization, origin: ConfigOrigin) -> bool {
-    if optimization >= ConfigOptimization.Count { return config_fail(config, ConfigError.InvalidOptimization, ConfigKey.Optimization, origin, "invalid optimization"); }
-    return vitte_config_set_u64(config, ConfigKey.Optimization, optimization as u64, origin);
+    if optimization >= ConfigOptimization::Count { return config_fail(config, ConfigError::InvalidOptimization, ConfigKey::Optimization, origin, "invalid optimization"); }
+    return vitte_config_set_u64(config, ConfigKey::Optimization, optimization as u64, origin);
 }
 
 export proc vitte_config_set_diagnostic_format(config: *mut Config, format: ConfigDiagnosticFormat, origin: ConfigOrigin) -> bool {
-    if format >= ConfigDiagnosticFormat.Count { return config_fail(config, ConfigError.InvalidDiagnosticFormat, ConfigKey.DiagnosticFormat, origin, "invalid diagnostic format"); }
-    return vitte_config_set_u64(config, ConfigKey.DiagnosticFormat, format as u64, origin);
+    if format >= ConfigDiagnosticFormat::Count { return config_fail(config, ConfigError::InvalidDiagnosticFormat, ConfigKey::DiagnosticFormat, origin, "invalid diagnostic format"); }
+    return vitte_config_set_u64(config, ConfigKey::DiagnosticFormat, format as u64, origin);
 }
 
 export proc vitte_config_set_color(config: *mut Config, color: ConfigColor, origin: ConfigOrigin) -> bool {
-    if color >= ConfigColor.Count { return config_fail(config, ConfigError.InvalidColorMode, ConfigKey.Color, origin, "invalid color mode"); }
-    return vitte_config_set_u64(config, ConfigKey.Color, color as u64, origin);
+    if color >= ConfigColor::Count { return config_fail(config, ConfigError::InvalidColorMode, ConfigKey::Color, origin, "invalid color mode"); }
+    return vitte_config_set_u64(config, ConfigKey::Color, color as u64, origin);
 }
 
 export proc vitte_config_set_text(config: *mut Config, key: ConfigKey, text: *const char, origin: ConfigOrigin) -> bool {
     if config == null or text == null { return false; }
     let expected: ConfigValueType = config_key_value_type(key);
-    if expected == ConfigValueType.Bool {
+    if expected == ConfigValueType::Bool {
         let mut value: bool = false;
-        if not vitte_config_parse_bool(text, &mut value) { return config_fail(config, ConfigError.InvalidValue, key, origin, "invalid boolean configuration value"); }
+        if not vitte_config_parse_bool(text, &mut value) { return config_fail(config, ConfigError::InvalidValue, key, origin, "invalid boolean configuration value"); }
         return vitte_config_set_bool(config, key, value, origin);
     }
-    if expected == ConfigValueType.Size {
+    if expected == ConfigValueType::Size {
         let mut value: usize = 0;
-        if not vitte_config_parse_size(text, &mut value) { return config_fail(config, ConfigError.InvalidValue, key, origin, "invalid numeric configuration value"); }
+        if not vitte_config_parse_size(text, &mut value) { return config_fail(config, ConfigError::InvalidValue, key, origin, "invalid numeric configuration value"); }
         return vitte_config_set_size(config, key, value, origin);
     }
-    if expected == ConfigValueType.String { return vitte_config_set_string(config, key, text, origin); }
-    if key == ConfigKey.Profile {
-        let mut value: ConfigProfile = ConfigProfile.Default;
-        if not vitte_config_parse_profile(text, (&value) as *mut ConfigProfile) { return config_fail(config, ConfigError.InvalidProfile, key, origin, "invalid profile value"); }
+    if expected == ConfigValueType::String { return vitte_config_set_string(config, key, text, origin); }
+    if key == ConfigKey::Profile {
+        let mut value: ConfigProfile = ConfigProfile::Default;
+        if not vitte_config_parse_profile(text, (&value) as *mut ConfigProfile) { return config_fail(config, ConfigError::InvalidProfile, key, origin, "invalid profile value"); }
         return vitte_config_set_profile(config, value, origin);
     }
-    if key == ConfigKey.Backend {
-        let mut value: ConfigBackend = ConfigBackend.Default;
-        if not vitte_config_parse_backend(text, (&value) as *mut ConfigBackend) { return config_fail(config, ConfigError.InvalidBackend, key, origin, "invalid backend value"); }
+    if key == ConfigKey::Backend {
+        let mut value: ConfigBackend = ConfigBackend::Default;
+        if not vitte_config_parse_backend(text, (&value) as *mut ConfigBackend) { return config_fail(config, ConfigError::InvalidBackend, key, origin, "invalid backend value"); }
         return vitte_config_set_backend(config, value, origin);
     }
-    if key == ConfigKey.Optimization {
-        let mut value: ConfigOptimization = ConfigOptimization.Default;
-        if not vitte_config_parse_optimization(text, (&value) as *mut ConfigOptimization) { return config_fail(config, ConfigError.InvalidOptimization, key, origin, "invalid optimization value"); }
+    if key == ConfigKey::Optimization {
+        let mut value: ConfigOptimization = ConfigOptimization::Default;
+        if not vitte_config_parse_optimization(text, (&value) as *mut ConfigOptimization) { return config_fail(config, ConfigError::InvalidOptimization, key, origin, "invalid optimization value"); }
         return vitte_config_set_optimization(config, value, origin);
     }
-    if key == ConfigKey.DiagnosticFormat {
-        let mut value: ConfigDiagnosticFormat = ConfigDiagnosticFormat.Default;
-        if not vitte_config_parse_diagnostic_format(text, (&value) as *mut ConfigDiagnosticFormat) { return config_fail(config, ConfigError.InvalidDiagnosticFormat, key, origin, "invalid diagnostic format"); }
+    if key == ConfigKey::DiagnosticFormat {
+        let mut value: ConfigDiagnosticFormat = ConfigDiagnosticFormat::Default;
+        if not vitte_config_parse_diagnostic_format(text, (&value) as *mut ConfigDiagnosticFormat) { return config_fail(config, ConfigError::InvalidDiagnosticFormat, key, origin, "invalid diagnostic format"); }
         return vitte_config_set_diagnostic_format(config, value, origin);
     }
-    if key == ConfigKey.Color {
-        let mut value: ConfigColor = ConfigColor.Auto;
-        if not vitte_config_parse_color(text, (&value) as *mut ConfigColor) { return config_fail(config, ConfigError.InvalidColorMode, key, origin, "invalid color mode"); }
+    if key == ConfigKey::Color {
+        let mut value: ConfigColor = ConfigColor::Auto;
+        if not vitte_config_parse_color(text, (&value) as *mut ConfigColor) { return config_fail(config, ConfigError::InvalidColorMode, key, origin, "invalid color mode"); }
         return vitte_config_set_color(config, value, origin);
     }
-    return config_fail(config, ConfigError.InvalidKey, key, origin, "invalid configuration key");
+    return config_fail(config, ConfigError::InvalidKey, key, origin, "invalid configuration key");
 }
 
 export proc vitte_config_apply_profile(config: *mut Config, profile: ConfigProfile, origin: ConfigOrigin) -> bool {
-    if profile >= ConfigProfile.Count { return config_fail(config, ConfigError.InvalidProfile, ConfigKey.Profile, origin, "invalid build profile"); }
+    if profile >= ConfigProfile::Count { return config_fail(config, ConfigError::InvalidProfile, ConfigKey::Profile, origin, "invalid build profile"); }
     if not vitte_config_set_profile(config, profile, origin) { return false; }
-    if profile == ConfigProfile.Debug {
-        return vitte_config_set_optimization(config, ConfigOptimization.Debug, origin) and
-            vitte_config_set_bool(config, ConfigKey.EmitDebugInfo, true, origin);
+    if profile == ConfigProfile::Debug {
+        return vitte_config_set_optimization(config, ConfigOptimization::Debug, origin) and
+            vitte_config_set_bool(config, ConfigKey::EmitDebugInfo, true, origin);
     }
-    if profile == ConfigProfile.Release { return vitte_config_set_optimization(config, ConfigOptimization.Speed, origin); }
-    if profile == ConfigProfile.Size { return vitte_config_set_optimization(config, ConfigOptimization.Size, origin); }
-    if profile == ConfigProfile.Sanitize {
-        return vitte_config_set_optimization(config, ConfigOptimization.Debug, origin) and
-            vitte_config_set_bool(config, ConfigKey.EmitDebugInfo, true, origin) and
-            vitte_config_set_bool(config, ConfigKey.RuntimeChecks, true, origin) and
-            vitte_config_set_bool(config, ConfigKey.BoundsChecks, true, origin) and
-            vitte_config_set_bool(config, ConfigKey.NullChecks, true, origin) and
-            vitte_config_set_bool(config, ConfigKey.OverflowChecks, true, origin);
+    if profile == ConfigProfile::Release { return vitte_config_set_optimization(config, ConfigOptimization::Speed, origin); }
+    if profile == ConfigProfile::Size { return vitte_config_set_optimization(config, ConfigOptimization::Size, origin); }
+    if profile == ConfigProfile::Sanitize {
+        return vitte_config_set_optimization(config, ConfigOptimization::Debug, origin) and
+            vitte_config_set_bool(config, ConfigKey::EmitDebugInfo, true, origin) and
+            vitte_config_set_bool(config, ConfigKey::RuntimeChecks, true, origin) and
+            vitte_config_set_bool(config, ConfigKey::BoundsChecks, true, origin) and
+            vitte_config_set_bool(config, ConfigKey::NullChecks, true, origin) and
+            vitte_config_set_bool(config, ConfigKey::OverflowChecks, true, origin);
     }
-    if profile == ConfigProfile.Freestanding { return vitte_config_set_bool(config, ConfigKey.Incremental, false, origin); }
+    if profile == ConfigProfile::Freestanding { return vitte_config_set_bool(config, ConfigKey::Incremental, false, origin); }
     return true;
 }
 
 export proc vitte_config_apply_defaults(config: *mut Config) -> bool {
     if not vitte_config_is_valid(config) { return false; }
     let origin = vitte_config_origin_default();
-    if not vitte_config_set_profile(config, ConfigProfile.Default, origin) or
-       not vitte_config_set_backend(config, ConfigBackend.Default, origin) or
-       not vitte_config_set_optimization(config, ConfigOptimization.Default, origin) or
-       not vitte_config_set_size(config, ConfigKey.Jobs, VITTE_CONFIG_DEFAULT_JOBS, origin) or
-       not vitte_config_set_size(config, ConfigKey.MaxErrors, VITTE_CONFIG_DEFAULT_MAX_ERRORS, origin) or
-       not vitte_config_set_size(config, ConfigKey.MaxOutputBytes, VITTE_CONFIG_DEFAULT_MAX_OUTPUT_BYTES, origin) or
-       not vitte_config_set_diagnostic_format(config, ConfigDiagnosticFormat.Default, origin) or
-       not vitte_config_set_color(config, ConfigColor.Auto, origin) { return false; }
-    if not vitte_config_set_bool(config, ConfigKey.Verbose, false, origin) or
-       not vitte_config_set_bool(config, ConfigKey.Quiet, false, origin) or
-       not vitte_config_set_bool(config, ConfigKey.WarningsAsErrors, false, origin) or
-       not vitte_config_set_bool(config, ConfigKey.EmitDebugInfo, false, origin) or
-       not vitte_config_set_bool(config, ConfigKey.EmitSourceMap, false, origin) or
-       not vitte_config_set_bool(config, ConfigKey.EmitComments, false, origin) or
-       not vitte_config_set_bool(config, ConfigKey.RuntimeChecks, true, origin) or
-       not vitte_config_set_bool(config, ConfigKey.BoundsChecks, true, origin) or
-       not vitte_config_set_bool(config, ConfigKey.NullChecks, true, origin) or
-       not vitte_config_set_bool(config, ConfigKey.OverflowChecks, true, origin) or
-       not vitte_config_set_bool(config, ConfigKey.Deterministic, true, origin) or
-       not vitte_config_set_bool(config, ConfigKey.Incremental, true, origin) or
-       not vitte_config_set_bool(config, ConfigKey.Offline, false, origin) or
-       not vitte_config_set_bool(config, ConfigKey.Locked, false, origin) or
-       not vitte_config_set_bool(config, ConfigKey.FrozenDependencies, false, origin) { return false; }
-    return vitte_config_set_bool(config, ConfigKey.Force, false, origin);
+    if not vitte_config_set_profile(config, ConfigProfile::Default, origin) or
+       not vitte_config_set_backend(config, ConfigBackend::Default, origin) or
+       not vitte_config_set_optimization(config, ConfigOptimization::Default, origin) or
+       not vitte_config_set_size(config, ConfigKey::Jobs, VITTE_CONFIG_DEFAULT_JOBS, origin) or
+       not vitte_config_set_size(config, ConfigKey::MaxErrors, VITTE_CONFIG_DEFAULT_MAX_ERRORS, origin) or
+       not vitte_config_set_size(config, ConfigKey::MaxOutputBytes, VITTE_CONFIG_DEFAULT_MAX_OUTPUT_BYTES, origin) or
+       not vitte_config_set_diagnostic_format(config, ConfigDiagnosticFormat::Default, origin) or
+       not vitte_config_set_color(config, ConfigColor::Auto, origin) { return false; }
+    if not vitte_config_set_bool(config, ConfigKey::Verbose, false, origin) or
+       not vitte_config_set_bool(config, ConfigKey::Quiet, false, origin) or
+       not vitte_config_set_bool(config, ConfigKey::WarningsAsErrors, false, origin) or
+       not vitte_config_set_bool(config, ConfigKey::EmitDebugInfo, false, origin) or
+       not vitte_config_set_bool(config, ConfigKey::EmitSourceMap, false, origin) or
+       not vitte_config_set_bool(config, ConfigKey::EmitComments, false, origin) or
+       not vitte_config_set_bool(config, ConfigKey::RuntimeChecks, true, origin) or
+       not vitte_config_set_bool(config, ConfigKey::BoundsChecks, true, origin) or
+       not vitte_config_set_bool(config, ConfigKey::NullChecks, true, origin) or
+       not vitte_config_set_bool(config, ConfigKey::OverflowChecks, true, origin) or
+       not vitte_config_set_bool(config, ConfigKey::Deterministic, true, origin) or
+       not vitte_config_set_bool(config, ConfigKey::Incremental, true, origin) or
+       not vitte_config_set_bool(config, ConfigKey::Offline, false, origin) or
+       not vitte_config_set_bool(config, ConfigKey::Locked, false, origin) or
+       not vitte_config_set_bool(config, ConfigKey::FrozenDependencies, false, origin) { return false; }
+    return vitte_config_set_bool(config, ConfigKey::Force, false, origin);
 }
 
 export proc vitte_config_validate(config: *mut Config) -> bool {
     if not vitte_config_is_valid(config) { return false; }
-    if (*config).state == ConfigState.Frozen { return true; }
+    if (*config).state == ConfigState::Frozen { return true; }
     if (*config).stats.validation_count != usize.MAX { set (*config).stats.validation_count += 1; }
-    if (*config).state != ConfigState.Ready and (*config).state != ConfigState.Validated {
-        return config_fail(config, ConfigError.InvalidState, ConfigKey.Invalid, vitte_config_origin_default(), "configuration cannot be validated in current state");
+    if (*config).state != ConfigState::Ready and (*config).state != ConfigState::Validated {
+        return config_fail(config, ConfigError::InvalidState, ConfigKey::Invalid, vitte_config_origin_default(), "configuration cannot be validated in current state");
     }
-    let origin: ConfigOrigin = ConfigOrigin { source: ConfigSource.Override, name: "semantic-validation".as_ptr() as *const char, line: 0, column: 0 };
+    let origin: ConfigOrigin = ConfigOrigin { source: ConfigSource::Override, name: "semantic-validation".as_ptr() as *const char, line: 0, column: 0 };
     let value: &ConfigResolved = &(*config).resolved;
-    if value.profile >= ConfigProfile.Count { return config_fail(config, ConfigError.InvalidProfile, ConfigKey.Profile, origin, "resolved profile is invalid"); }
-    if value.backend >= ConfigBackend.Count { return config_fail(config, ConfigError.InvalidBackend, ConfigKey.Backend, origin, "resolved backend is invalid"); }
-    if value.optimization >= ConfigOptimization.Count { return config_fail(config, ConfigError.InvalidOptimization, ConfigKey.Optimization, origin, "resolved optimization is invalid"); }
-    if value.diagnostic_format >= ConfigDiagnosticFormat.Count { return config_fail(config, ConfigError.InvalidDiagnosticFormat, ConfigKey.DiagnosticFormat, origin, "resolved diagnostic format is invalid"); }
-    if value.color >= ConfigColor.Count { return config_fail(config, ConfigError.InvalidColorMode, ConfigKey.Color, origin, "resolved color mode is invalid"); }
-    if value.jobs == 0 { return config_fail(config, ConfigError.InvalidValue, ConfigKey.Jobs, origin, "jobs must be greater than zero"); }
-    if value.max_errors == 0 { return config_fail(config, ConfigError.InvalidValue, ConfigKey.MaxErrors, origin, "max-errors must be greater than zero"); }
-    if value.verbose and value.quiet { return config_fail(config, ConfigError.Conflict, ConfigKey.Verbose, origin, "verbose and quiet modes cannot both be enabled"); }
+    if value.profile >= ConfigProfile::Count { return config_fail(config, ConfigError::InvalidProfile, ConfigKey::Profile, origin, "resolved profile is invalid"); }
+    if value.backend >= ConfigBackend::Count { return config_fail(config, ConfigError::InvalidBackend, ConfigKey::Backend, origin, "resolved backend is invalid"); }
+    if value.optimization >= ConfigOptimization::Count { return config_fail(config, ConfigError::InvalidOptimization, ConfigKey::Optimization, origin, "resolved optimization is invalid"); }
+    if value.diagnostic_format >= ConfigDiagnosticFormat::Count { return config_fail(config, ConfigError::InvalidDiagnosticFormat, ConfigKey::DiagnosticFormat, origin, "resolved diagnostic format is invalid"); }
+    if value.color >= ConfigColor::Count { return config_fail(config, ConfigError::InvalidColorMode, ConfigKey::Color, origin, "resolved color mode is invalid"); }
+    if value.jobs == 0 { return config_fail(config, ConfigError::InvalidValue, ConfigKey::Jobs, origin, "jobs must be greater than zero"); }
+    if value.max_errors == 0 { return config_fail(config, ConfigError::InvalidValue, ConfigKey::MaxErrors, origin, "max-errors must be greater than zero"); }
+    if value.verbose and value.quiet { return config_fail(config, ConfigError::Conflict, ConfigKey::Verbose, origin, "verbose and quiet modes cannot both be enabled"); }
     if value.frozen_dependencies and (not value.locked or not value.offline) {
-        return config_fail(config, ConfigError.Conflict, ConfigKey.FrozenDependencies, origin, "frozen dependency mode requires locked and offline modes");
+        return config_fail(config, ConfigError::Conflict, ConfigKey::FrozenDependencies, origin, "frozen dependency mode requires locked and offline modes");
     }
-    set (*config).state = ConfigState.Validated;
-    set (*config).last_error = ConfigError.None;
+    set (*config).state = ConfigState::Validated;
+    set (*config).last_error = ConfigError::None;
     set (*config).stats.validated = true;
     return true;
 }
 
 export proc vitte_config_freeze(config: *mut Config) -> bool {
     if not vitte_config_is_valid(config) { return false; }
-    if (*config).state == ConfigState.Frozen { return true; }
-    if (*config).state != ConfigState.Validated and not vitte_config_validate(config) { return false; }
-    set (*config).state = ConfigState.Frozen;
+    if (*config).state == ConfigState::Frozen { return true; }
+    if (*config).state != ConfigState::Validated and not vitte_config_validate(config) { return false; }
+    set (*config).state = ConfigState::Frozen;
     set (*config).stats.frozen = true;
     return true;
 }
 
 export proc vitte_config_enable_frozen_dependencies(config: *mut Config, origin: ConfigOrigin) -> bool {
-    return vitte_config_set_bool(config, ConfigKey.FrozenDependencies, true, origin) and
-        vitte_config_set_bool(config, ConfigKey.Locked, true, origin) and
-        vitte_config_set_bool(config, ConfigKey.Offline, true, origin);
+    return vitte_config_set_bool(config, ConfigKey::FrozenDependencies, true, origin) and
+        vitte_config_set_bool(config, ConfigKey::Locked, true, origin) and
+        vitte_config_set_bool(config, ConfigKey::Offline, true, origin);
 }
 
 export proc vitte_config_merge(destination: *mut Config, source: *const Config) -> bool {
     if not vitte_config_is_valid(destination) or not vitte_config_is_valid(source) { return false; }
     if destination as *const Config == source { return true; }
-    if (*destination).state == ConfigState.Frozen {
-        return config_fail(destination, ConfigError.Frozen, ConfigKey.Invalid, vitte_config_origin_default(), "cannot merge into frozen configuration");
+    if (*destination).state == ConfigState::Frozen {
+        return config_fail(destination, ConfigError::Frozen, ConfigKey::Invalid, vitte_config_origin_default(), "cannot merge into frozen configuration");
     }
     let mut index: usize = 0;
     while index < (*source).entry_count {
@@ -1051,7 +1051,7 @@ export proc vitte_config_clone(destination: *mut Config, source: *const Config) 
 
         let mut index: usize = 0;
         while index < (*destination).entry_count {
-            if (*destination).entries[index].value.type_ == ConfigValueType.String {
+            if (*destination).entries[index].value.type_ == ConfigValueType::String {
                 let text: *const char = (*destination).entries[index].value.as_ as usize as *const char;
                 let remapped = config_remap_clone_string(destination as *const Config, source, text);
                 set (*destination).entries[index].value.as_ = remapped as usize as u64;
@@ -1082,7 +1082,7 @@ export proc vitte_config_clone(destination: *mut Config, source: *const Config) 
 export proc vitte_config_equal(left: *const Config, right: *const Config) -> bool {
     if not vitte_config_is_valid(left) or not vitte_config_is_valid(right) { return false; }
     let mut key_value: usize = 1;
-    while key_value < ConfigKey.Count as usize {
+    while key_value < ConfigKey::Count as usize {
         let key = key_value as ConfigKey;
         let left_entry = vitte_config_find_entry(left, key);
         let right_entry = vitte_config_find_entry(right, key);
@@ -1105,7 +1105,7 @@ export proc vitte_config_entry_at(config: *const Config, index: usize) -> *const
 }
 
 export proc vitte_config_find_entry(config: *const Config, key: ConfigKey) -> *const ConfigEntry {
-    if not vitte_config_is_valid(config) or key <= ConfigKey.Invalid or key >= ConfigKey.Count { return null; }
+    if not vitte_config_is_valid(config) or key <= ConfigKey::Invalid or key >= ConfigKey::Count { return null; }
     let mut index: usize = 0;
     while index < (*config).entry_count {
         if (*config).entries[index].key == key { return &(*config).entries[index]; }
@@ -1125,7 +1125,7 @@ export proc vitte_config_is_explicit(config: *const Config, key: ConfigKey) -> b
 
 export proc vitte_config_source_of(config: *const Config, key: ConfigKey) -> ConfigSource {
     let config_entry = vitte_config_find_entry(config, key);
-    if config_entry == null { return ConfigSource.Default; }
+    if config_entry == null { return ConfigSource::Default; }
     return (*config_entry).origin.source;
 }
 
@@ -1136,7 +1136,7 @@ export proc vitte_config_origin_of(config: *const Config, key: ConfigKey) -> *co
 }
 
 export proc vitte_config_origin_default() -> ConfigOrigin {
-    return ConfigOrigin { source: ConfigSource.Default, name: "built-in".as_ptr() as *const char, line: 0, column: 0 };
+    return ConfigOrigin { source: ConfigSource::Default, name: "built-in".as_ptr() as *const char, line: 0, column: 0 };
 }
 
 export proc vitte_config_origin_make(source: ConfigSource, name: *const char, line: usize, column: usize) -> ConfigOrigin {
@@ -1149,12 +1149,12 @@ export proc vitte_config_resolved(config: *const Config) -> *const ConfigResolve
 }
 
 export proc vitte_config_state(config: *const Config) -> ConfigState {
-    if config == null or (*config).magic != VITTE_CONFIG_MAGIC { return ConfigState.Invalid; }
+    if config == null or (*config).magic != VITTE_CONFIG_MAGIC { return ConfigState::Invalid; }
     return (*config).state;
 }
 
 export proc vitte_config_last_error(config: *const Config) -> ConfigError {
-    if config == null or (*config).magic != VITTE_CONFIG_MAGIC { return ConfigError.InvalidConfig; }
+    if config == null or (*config).magic != VITTE_CONFIG_MAGIC { return ConfigError::InvalidConfig; }
     return (*config).last_error;
 }
 
@@ -1189,10 +1189,10 @@ proc config_hash_string(hash_value: u64, value: *const char) -> u64 {
 
 proc config_hash_value(hash_value: u64, value: &ConfigValue) -> u64 {
     let mut hash = config_hash_u64(hash_value, (*value).type_ as u64);
-    if (*value).type_ == ConfigValueType.Bool or (*value).type_ == ConfigValueType.Size or (*value).type_ == ConfigValueType.U64 {
+    if (*value).type_ == ConfigValueType::Bool or (*value).type_ == ConfigValueType::Size or (*value).type_ == ConfigValueType::U64 {
         return config_hash_u64(hash, (*value).as_);
     }
-    if (*value).type_ == ConfigValueType.String {
+    if (*value).type_ == ConfigValueType::String {
         return config_hash_string(hash, (*value).as_ as usize as *const char);
     }
     return hash;
@@ -1202,7 +1202,7 @@ export proc vitte_config_fingerprint(config: *const Config) -> u64 {
     if not vitte_config_is_valid(config) { return 0; }
     let mut hash: u64 = VITTE_CONFIG_FNV_OFFSET;
     let mut key_value: usize = 1;
-    while key_value < ConfigKey.Count as usize {
+    while key_value < ConfigKey::Count as usize {
         let key = key_value as ConfigKey;
         let config_entry = vitte_config_find_entry(config, key);
         if config_entry != null {
@@ -1259,16 +1259,16 @@ export proc vitte_config_stats(config: *const Config) -> ConfigStats {
     while index < (*config).entry_count {
         let config_entry: &ConfigEntry = &(*config).entries[index];
         if (*config_entry).explicitly_set { set stats.explicit_entry_count += 1; }
-        if (*config_entry).value.type_ == ConfigValueType.String { set stats.string_entry_count += 1; }
-        if (*config_entry).value.type_ == ConfigValueType.Bool { set stats.boolean_entry_count += 1; }
-        if (*config_entry).value.type_ == ConfigValueType.Size or (*config_entry).value.type_ == ConfigValueType.U64 {
+        if (*config_entry).value.type_ == ConfigValueType::String { set stats.string_entry_count += 1; }
+        if (*config_entry).value.type_ == ConfigValueType::Bool { set stats.boolean_entry_count += 1; }
+        if (*config_entry).value.type_ == ConfigValueType::Size or (*config_entry).value.type_ == ConfigValueType::U64 {
             set stats.numeric_entry_count += 1;
         }
         set index += 1;
     }
     set stats.fingerprint = vitte_config_fingerprint(config);
-    set stats.validated = (*config).state == ConfigState.Validated or (*config).state == ConfigState.Frozen;
-    set stats.frozen = (*config).state == ConfigState.Frozen;
+    set stats.validated = (*config).state == ConfigState::Validated or (*config).state == ConfigState::Frozen;
+    set stats.frozen = (*config).state == ConfigState::Frozen;
     return stats;
 }
 
@@ -1331,59 +1331,59 @@ export proc vitte_config_parse_size(text: *const char, value: *mut usize) -> boo
 
 export proc vitte_config_parse_profile(text: *const char, profile: *mut ConfigProfile) -> bool {
     if text == null or profile == null { return false; }
-    if config_cstr_equal(text, "default") { set *profile = ConfigProfile.Default; return true; }
-    if config_cstr_equal(text, "debug") { set *profile = ConfigProfile.Debug; return true; }
-    if config_cstr_equal(text, "release") { set *profile = ConfigProfile.Release; return true; }
-    if config_cstr_equal(text, "size") { set *profile = ConfigProfile.Size; return true; }
-    if config_cstr_equal(text, "sanitize") { set *profile = ConfigProfile.Sanitize; return true; }
-    if config_cstr_equal(text, "freestanding") { set *profile = ConfigProfile.Freestanding; return true; }
+    if config_cstr_equal(text, "default") { set *profile = ConfigProfile::Default; return true; }
+    if config_cstr_equal(text, "debug") { set *profile = ConfigProfile::Debug; return true; }
+    if config_cstr_equal(text, "release") { set *profile = ConfigProfile::Release; return true; }
+    if config_cstr_equal(text, "size") { set *profile = ConfigProfile::Size; return true; }
+    if config_cstr_equal(text, "sanitize") { set *profile = ConfigProfile::Sanitize; return true; }
+    if config_cstr_equal(text, "freestanding") { set *profile = ConfigProfile::Freestanding; return true; }
     return false;
 }
 
 export proc vitte_config_parse_backend(text: *const char, backend: *mut ConfigBackend) -> bool {
     if text == null or backend == null { return false; }
-    if config_cstr_equal(text, "default") { set *backend = ConfigBackend.Default; return true; }
-    if config_cstr_equal(text, "c17") or config_cstr_equal(text, "c") { set *backend = ConfigBackend.C17; return true; }
-    if config_cstr_equal(text, "native") { set *backend = ConfigBackend.Native; return true; }
-    if config_cstr_equal(text, "bytecode") { set *backend = ConfigBackend.Bytecode; return true; }
+    if config_cstr_equal(text, "default") { set *backend = ConfigBackend::Default; return true; }
+    if config_cstr_equal(text, "c17") or config_cstr_equal(text, "c") { set *backend = ConfigBackend::C17; return true; }
+    if config_cstr_equal(text, "native") { set *backend = ConfigBackend::Native; return true; }
+    if config_cstr_equal(text, "bytecode") { set *backend = ConfigBackend::Bytecode; return true; }
     return false;
 }
 
 export proc vitte_config_parse_optimization(text: *const char, optimization: *mut ConfigOptimization) -> bool {
     if text == null or optimization == null { return false; }
-    if config_cstr_equal(text, "default") { set *optimization = ConfigOptimization.Default; return true; }
-    if config_cstr_equal(text, "none") or config_cstr_equal(text, "0") { set *optimization = ConfigOptimization.None; return true; }
-    if config_cstr_equal(text, "debug") { set *optimization = ConfigOptimization.Debug; return true; }
-    if config_cstr_equal(text, "balanced") or config_cstr_equal(text, "1") { set *optimization = ConfigOptimization.Balanced; return true; }
-    if config_cstr_equal(text, "speed") or config_cstr_equal(text, "2") { set *optimization = ConfigOptimization.Speed; return true; }
-    if config_cstr_equal(text, "size") or config_cstr_equal(text, "s") { set *optimization = ConfigOptimization.Size; return true; }
-    if config_cstr_equal(text, "aggressive") or config_cstr_equal(text, "3") { set *optimization = ConfigOptimization.Aggressive; return true; }
+    if config_cstr_equal(text, "default") { set *optimization = ConfigOptimization::Default; return true; }
+    if config_cstr_equal(text, "none") or config_cstr_equal(text, "0") { set *optimization = ConfigOptimization::None; return true; }
+    if config_cstr_equal(text, "debug") { set *optimization = ConfigOptimization::Debug; return true; }
+    if config_cstr_equal(text, "balanced") or config_cstr_equal(text, "1") { set *optimization = ConfigOptimization::Balanced; return true; }
+    if config_cstr_equal(text, "speed") or config_cstr_equal(text, "2") { set *optimization = ConfigOptimization::Speed; return true; }
+    if config_cstr_equal(text, "size") or config_cstr_equal(text, "s") { set *optimization = ConfigOptimization::Size; return true; }
+    if config_cstr_equal(text, "aggressive") or config_cstr_equal(text, "3") { set *optimization = ConfigOptimization::Aggressive; return true; }
     return false;
 }
 
 export proc vitte_config_parse_diagnostic_format(text: *const char, format: *mut ConfigDiagnosticFormat) -> bool {
     if text == null or format == null { return false; }
-    if config_cstr_equal(text, "default") { set *format = ConfigDiagnosticFormat.Default; return true; }
-    if config_cstr_equal(text, "terminal") { set *format = ConfigDiagnosticFormat.Terminal; return true; }
-    if config_cstr_equal(text, "short") { set *format = ConfigDiagnosticFormat.Short; return true; }
-    if config_cstr_equal(text, "json") { set *format = ConfigDiagnosticFormat.Json; return true; }
-    if config_cstr_equal(text, "sarif") { set *format = ConfigDiagnosticFormat.Sarif; return true; }
-    if config_cstr_equal(text, "lsp") { set *format = ConfigDiagnosticFormat.Lsp; return true; }
+    if config_cstr_equal(text, "default") { set *format = ConfigDiagnosticFormat::Default; return true; }
+    if config_cstr_equal(text, "terminal") { set *format = ConfigDiagnosticFormat::Terminal; return true; }
+    if config_cstr_equal(text, "short") { set *format = ConfigDiagnosticFormat::Short; return true; }
+    if config_cstr_equal(text, "json") { set *format = ConfigDiagnosticFormat::Json; return true; }
+    if config_cstr_equal(text, "sarif") { set *format = ConfigDiagnosticFormat::Sarif; return true; }
+    if config_cstr_equal(text, "lsp") { set *format = ConfigDiagnosticFormat::Lsp; return true; }
     return false;
 }
 
 export proc vitte_config_parse_color(text: *const char, color: *mut ConfigColor) -> bool {
     if text == null or color == null { return false; }
-    if config_cstr_equal(text, "auto") { set *color = ConfigColor.Auto; return true; }
-    if config_cstr_equal(text, "always") { set *color = ConfigColor.Always; return true; }
-    if config_cstr_equal(text, "never") { set *color = ConfigColor.Never; return true; }
+    if config_cstr_equal(text, "auto") { set *color = ConfigColor::Auto; return true; }
+    if config_cstr_equal(text, "always") { set *color = ConfigColor::Always; return true; }
+    if config_cstr_equal(text, "never") { set *color = ConfigColor::Never; return true; }
     return false;
 }
 
 export proc vitte_config_parse_key(text: *const char, key: *mut ConfigKey) -> bool {
     if text == null or key == null { return false; }
     let mut index: usize = 1;
-    while index < ConfigKey.Count as usize {
+    while index < ConfigKey::Count as usize {
         let candidate = index as ConfigKey;
         if config_cstr_equal(text, vitte_config_key_name(candidate)) {
             set *key = candidate;
@@ -1442,29 +1442,29 @@ export proc vitte_config_load_text(
 ) -> bool {
     if not vitte_config_is_valid(config) { return false; }
     if path == null {
-        return config_fail(config, ConfigError.InvalidArgument, ConfigKey.Invalid,
+        return config_fail(config, ConfigError::InvalidArgument, ConfigKey::Invalid,
             ConfigOrigin { source: source, name: "<config-file>".as_ptr() as *const char, line: 0, column: 1 },
             "configuration file path is null");
     }
     if data == null and length != 0 {
-        return config_fail(config, ConfigError.InvalidArgument, ConfigKey.Invalid,
+        return config_fail(config, ConfigError::InvalidArgument, ConfigKey::Invalid,
             ConfigOrigin { source: source, name: path, line: 0, column: 1 },
             "configuration text is null");
     }
-    if not config_source_valid(source) or source == ConfigSource.Default {
-        return config_fail(config, ConfigError.InvalidArgument, ConfigKey.Invalid,
-            ConfigOrigin { source: ConfigSource.Project, name: path, line: 0, column: 1 },
+    if not config_source_valid(source) or source == ConfigSource::Default {
+        return config_fail(config, ConfigError::InvalidArgument, ConfigKey::Invalid,
+            ConfigOrigin { source: ConfigSource::Project, name: path, line: 0, column: 1 },
             "configuration file source is invalid");
     }
     let stable_path = config_retain_string(config, path);
     if stable_path == null {
-        return config_fail(config, ConfigError.OutOfMemory, ConfigKey.Invalid,
+        return config_fail(config, ConfigError::OutOfMemory, ConfigKey::Invalid,
             ConfigOrigin { source: source, name: path, line: 0, column: 1 },
             "cannot retain configuration file name");
     }
     let line = allocate(8192);
     if line == null {
-        return config_fail(config, ConfigError.OutOfMemory, ConfigKey.Invalid,
+        return config_fail(config, ConfigError::OutOfMemory, ConfigKey::Invalid,
             ConfigOrigin { source: source, name: stable_path as *const char, line: 0, column: 1 },
             "cannot allocate configuration line buffer");
     }
@@ -1481,7 +1481,7 @@ export proc vitte_config_load_text(
         set line_number += 1;
         if line_length >= 8192 {
             deallocate(line);
-            return config_fail(config, ConfigError.InvalidConfig, ConfigKey.Invalid,
+            return config_fail(config, ConfigError::InvalidConfig, ConfigKey::Invalid,
                 ConfigOrigin { source: source, name: stable_path as *const char, line: line_number, column: 1 },
                 "configuration line is too long");
         }
@@ -1495,7 +1495,7 @@ export proc vitte_config_load_text(
         if key_start == line_length or line[key_start] == 35 or line[key_start] == 59 { continue; }
         if line[key_start] == 91 {
             deallocate(line);
-            return config_fail(config, ConfigError.InvalidConfig, ConfigKey.Invalid,
+            return config_fail(config, ConfigError::InvalidConfig, ConfigKey::Invalid,
                 ConfigOrigin { source: source, name: stable_path as *const char, line: line_number, column: key_start + 1 },
                 "configuration sections are not supported; use flat keys");
         }
@@ -1515,7 +1515,7 @@ export proc vitte_config_load_text(
         }
         if separator == usize.MAX {
             deallocate(line);
-            return config_fail(config, ConfigError.InvalidConfig, ConfigKey.Invalid,
+            return config_fail(config, ConfigError::InvalidConfig, ConfigKey::Invalid,
                 ConfigOrigin { source: source, name: stable_path as *const char, line: line_number, column: key_start + 1 },
                 "configuration line must contain '=' or ':'");
         }
@@ -1548,21 +1548,21 @@ export proc vitte_config_load_text(
         set line[value_end] = 0;
         if value_end == value_start {
             deallocate(line);
-            return config_fail(config, ConfigError.InvalidValue, ConfigKey.Invalid,
+            return config_fail(config, ConfigError::InvalidValue, ConfigKey::Invalid,
                 ConfigOrigin { source: source, name: stable_path as *const char, line: line_number, column: value_start + 1 },
                 "configuration assignment has an empty value");
         }
 
-        let mut parsed_key: ConfigKey = ConfigKey.Invalid;
+        let mut parsed_key: ConfigKey = ConfigKey::Invalid;
         if not vitte_config_parse_key(pointer::add_bytes_const(line as *const u8, key_start) as *const char, (&parsed_key) as *mut ConfigKey) {
             deallocate(line);
-            return config_fail(config, ConfigError.UnknownKey, ConfigKey.Invalid,
+            return config_fail(config, ConfigError::UnknownKey, ConfigKey::Invalid,
                 ConfigOrigin { source: source, name: stable_path as *const char, line: line_number, column: key_start + 1 },
                 "unknown configuration key");
         }
         if not config_unquote_buffer(line, value_start, value_end - value_start) {
             deallocate(line);
-            return config_fail(config, ConfigError.InvalidValue, parsed_key,
+            return config_fail(config, ConfigError::InvalidValue, parsed_key,
                 ConfigOrigin { source: source, name: stable_path as *const char, line: line_number, column: value_start + 1 },
                 "configuration string has an unterminated quote");
         }
@@ -1581,19 +1581,19 @@ export proc vitte_config_load_text(
 export proc vitte_config_load_file(config: *mut Config, path: *const char, source: ConfigSource) -> bool {
     if not vitte_config_is_valid(config) { return false; }
     if path == null {
-        return config_fail(config, ConfigError.InvalidArgument, ConfigKey.Invalid,
+        return config_fail(config, ConfigError::InvalidArgument, ConfigKey::Invalid,
             ConfigOrigin { source: source, name: "<config-file>".as_ptr() as *const char, line: 0, column: 1 },
             "configuration file path is null");
     }
-    if not config_source_valid(source) or source == ConfigSource.Default {
-        return config_fail(config, ConfigError.InvalidArgument, ConfigKey.Invalid,
-            ConfigOrigin { source: ConfigSource.Project, name: path, line: 0, column: 1 },
+    if not config_source_valid(source) or source == ConfigSource::Default {
+        return config_fail(config, ConfigError::InvalidArgument, ConfigKey::Invalid,
+            ConfigOrigin { source: ConfigSource::Project, name: path, line: 0, column: 1 },
             "configuration file source is invalid");
     }
 
     let stable_path = config_retain_string(config, path);
     if stable_path == null {
-        return config_fail(config, ConfigError.OutOfMemory, ConfigKey.Invalid,
+        return config_fail(config, ConfigError::OutOfMemory, ConfigKey::Invalid,
             ConfigOrigin { source: source, name: path, line: 0, column: 0 },
             "cannot retain configuration file name");
     }
@@ -1602,9 +1602,9 @@ export proc vitte_config_load_file(config: *mut Config, path: *const char, sourc
     let path_text: string = string.from_bytes(stable_path, path_length);
     let mut buffer: FilesystemBuffer = FilesystemBuffer { data: null, length: 0, capacity: 0 };
     let read_result = vitte_filesystem_read_file(path_text, 0, &mut buffer);
-    if read_result.error != FilesystemError.None {
+    if read_result.error != FilesystemError::None {
         vitte_filesystem_buffer_destroy(&mut buffer);
-        return config_fail(config, ConfigError.InvalidConfig, ConfigKey.Invalid,
+        return config_fail(config, ConfigError::InvalidConfig, ConfigKey::Invalid,
             ConfigOrigin { source: source, name: stable_path as *const char, line: 0, column: 0 },
             "configuration file could not be read");
     }
@@ -1618,22 +1618,22 @@ export proc vitte_config_load_file(config: *mut Config, path: *const char, sourc
 export proc vitte_config_apply_cli(config: *mut Config, argc: i32, argv: *const *const char) -> bool {
     if not vitte_config_is_valid(config) { return false; }
     if argc < 0 or (argc != 0 and argv == null) {
-        return config_fail(config, ConfigError.InvalidArgument, ConfigKey.Invalid,
-            ConfigOrigin { source: ConfigSource.CommandLine, name: "<argv>".as_ptr() as *const char, line: 0, column: 1 },
+        return config_fail(config, ConfigError::InvalidArgument, ConfigKey::Invalid,
+            ConfigOrigin { source: ConfigSource::CommandLine, name: "<argv>".as_ptr() as *const char, line: 0, column: 1 },
             "invalid command-line argument vector");
     }
     let mut argument_index: i32 = 0;
     while argument_index < argc {
         let argument: *const char = argv[argument_index as usize];
         if argument == null {
-            return config_fail(config, ConfigError.InvalidArgument, ConfigKey.Invalid,
-                ConfigOrigin { source: ConfigSource.CommandLine, name: "<null>".as_ptr() as *const char, line: 0, column: 1 },
+            return config_fail(config, ConfigError::InvalidArgument, ConfigKey::Invalid,
+                ConfigOrigin { source: ConfigSource::CommandLine, name: "<null>".as_ptr() as *const char, line: 0, column: 1 },
                 "configuration argument is null");
         }
         if config_cstr_equal(argument, "--") { break; }
-        let origin: ConfigOrigin = ConfigOrigin { source: ConfigSource.CommandLine, name: argument, line: 0, column: 1 };
+        let origin: ConfigOrigin = ConfigOrigin { source: ConfigSource::CommandLine, name: argument, line: 0, column: 1 };
         if (argument[0] as u8) != 45 or (argument[1] as u8) != 45 {
-            return config_fail(config, ConfigError.InvalidArgument, ConfigKey.Invalid, origin,
+            return config_fail(config, ConfigError::InvalidArgument, ConfigKey::Invalid, origin,
                 "configuration argument must start with '--'");
         }
         let option_start = pointer::add_bytes_const(argument as *const u8, 2);
@@ -1650,7 +1650,7 @@ export proc vitte_config_apply_cli(config: *mut Config, argc: i32, argv: *const 
             set scan += 1;
         }
         if option_length == 0 or option_length >= 256 {
-            return config_fail(config, ConfigError.InvalidKey, ConfigKey.Invalid, origin,
+            return config_fail(config, ConfigError::InvalidKey, ConfigKey::Invalid, origin,
                 "configuration option name is empty or too long");
         }
         let mut option: [u8; 256];
@@ -1678,19 +1678,19 @@ export proc vitte_config_apply_cli(config: *mut Config, argc: i32, argv: *const 
             set value = pointer::add_bytes_const(option_start, equals_index + 1) as *const char;
         } else {
             if argument_index + 1 >= argc {
-                return config_fail(config, ConfigError.InvalidValue, ConfigKey.Invalid, origin,
+                return config_fail(config, ConfigError::InvalidValue, ConfigKey::Invalid, origin,
                     "configuration option requires a value");
             }
             set argument_index += 1;
             set value = argv[argument_index as usize];
         }
-        let mut parsed_key: ConfigKey = ConfigKey.Invalid;
+        let mut parsed_key: ConfigKey = ConfigKey::Invalid;
         if not vitte_config_parse_key((&option[0]) as *const char, (&parsed_key) as *mut ConfigKey) {
-            return config_fail(config, ConfigError.UnknownKey, ConfigKey.Invalid, origin,
+            return config_fail(config, ConfigError::UnknownKey, ConfigKey::Invalid, origin,
                 "unknown configuration option");
         }
         if value == null {
-            return config_fail(config, ConfigError.InvalidValue, parsed_key, origin,
+            return config_fail(config, ConfigError::InvalidValue, parsed_key, origin,
                 "configuration option value is null");
         }
         if not vitte_config_set_text(config, parsed_key, value, origin) { return false; }
@@ -1706,21 +1706,21 @@ export type ConfigEnvironmentGetFn = proc(user_data: *mut u8, name: *const char)
 export proc vitte_config_apply_environment_with(config: *mut Config, prefix: *const char, get: ?ConfigEnvironmentGetFn, user_data: *mut u8) -> bool {
     if not vitte_config_is_valid(config) { return false; }
     if get == null {
-        return config_fail(config, ConfigError.InvalidArgument, ConfigKey.Invalid,
-            ConfigOrigin { source: ConfigSource.Environment, name: "<environment>".as_ptr() as *const char, line: 0, column: 1 },
+        return config_fail(config, ConfigError::InvalidArgument, ConfigKey::Invalid,
+            ConfigOrigin { source: ConfigSource::Environment, name: "<environment>".as_ptr() as *const char, line: 0, column: 1 },
             "environment lookup callback is null");
     }
     let lookup = get?;
     let prefix_text: *const char = if prefix == null { "VITTE_".as_ptr() as *const char } else { prefix };
     let prefix_length = cstring_length(prefix_text as *const u8);
     let mut key_value: usize = 1;
-    while key_value < ConfigKey.Count as usize {
+    while key_value < ConfigKey::Count as usize {
         let key = key_value as ConfigKey;
         let key_text = vitte_config_key_name(key);
         let key_length = cstring_length(key_text.as_ptr() as *const u8);
         if prefix_length > 255 or key_length > 255 - prefix_length {
-            return config_fail(config, ConfigError.InvalidConfig, key,
-                ConfigOrigin { source: ConfigSource.Environment, name: prefix_text, line: 0, column: 1 },
+            return config_fail(config, ConfigError::InvalidConfig, key,
+                ConfigOrigin { source: ConfigSource::Environment, name: prefix_text, line: 0, column: 1 },
                 "environment variable name is too long");
         }
         let name_length = prefix_length + key_length;
@@ -1743,11 +1743,11 @@ export proc vitte_config_apply_environment_with(config: *mut Config, prefix: *co
         if value != null {
             let retained_name = config_retain_string(config, (&name[0]) as *const char);
             if retained_name == null {
-                return config_fail(config, ConfigError.OutOfMemory, key,
-                    ConfigOrigin { source: ConfigSource.Environment, name: (&name[0]) as *const char, line: 0, column: 0 },
+                return config_fail(config, ConfigError::OutOfMemory, key,
+                    ConfigOrigin { source: ConfigSource::Environment, name: (&name[0]) as *const char, line: 0, column: 0 },
                     "cannot retain environment variable name");
             }
-            let origin: ConfigOrigin = ConfigOrigin { source: ConfigSource.Environment, name: retained_name as *const char, line: 0, column: 0 };
+            let origin: ConfigOrigin = ConfigOrigin { source: ConfigSource::Environment, name: retained_name as *const char, line: 0, column: 0 };
             if not vitte_config_set_text(config, key, value, origin) { return false; }
         }
         set key_value += 1;
@@ -1778,23 +1778,23 @@ export proc vitte_config_generation(config: *const Config) -> u64 {
 // These helpers mirror static-inline helpers from config.h. They are part of
 // the native module surface, but do not correspond to external C symbols.
 export proc vitte_config_is_ready(config: *const Config) -> bool {
-    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and (*config).state == ConfigState.Ready;
+    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and (*config).state == ConfigState::Ready;
 }
 
 export proc vitte_config_is_validated(config: *const Config) -> bool {
-    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and ((*config).state == ConfigState.Validated or (*config).state == ConfigState.Frozen);
+    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and ((*config).state == ConfigState::Validated or (*config).state == ConfigState::Frozen);
 }
 
 export proc vitte_config_is_frozen(config: *const Config) -> bool {
-    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and (*config).state == ConfigState.Frozen;
+    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and (*config).state == ConfigState::Frozen;
 }
 
 export proc vitte_config_has_failed(config: *const Config) -> bool {
-    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and (*config).state == ConfigState.Failed;
+    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and (*config).state == ConfigState::Failed;
 }
 
 export proc vitte_config_has_error(config: *const Config) -> bool {
-    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and (*config).last_error != ConfigError.None;
+    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and (*config).last_error != ConfigError::None;
 }
 
 export proc vitte_config_is_verbose(config: *const Config) -> bool {
@@ -1818,5 +1818,5 @@ export proc vitte_config_is_deterministic(config: *const Config) -> bool {
 }
 
 export proc vitte_config_uses_c17_backend(config: *const Config) -> bool {
-    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and ((*config).resolved.backend == ConfigBackend.Default or (*config).resolved.backend == ConfigBackend.C17);
+    return config != null and (*config).magic == VITTE_CONFIG_MAGIC and ((*config).resolved.backend == ConfigBackend::Default or (*config).resolved.backend == ConfigBackend::C17);
 }

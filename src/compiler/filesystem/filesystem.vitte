@@ -173,66 +173,66 @@ export extern proc vitte_filesystem_is_directory(path: string) -> bool;
 export extern proc vitte_filesystem_is_symlink(path: string) -> bool;
 
 export proc vitte_filesystem_read_file(path: string, max_bytes: usize, buffer: *mut FilesystemBuffer) -> FilesystemResult {
-    if buffer == null { return FilesystemResult { error: FilesystemError.InvalidArgument, system_error: 0 }; }
+    if buffer == null { return FilesystemResult { error: FilesystemError::InvalidArgument, system_error: 0 }; }
     set *buffer = FilesystemBuffer { data: null, length: 0, capacity: 0 };
-    if path.len() == 0 { return FilesystemResult { error: FilesystemError.InvalidPath, system_error: 0 }; }
+    if path.len() == 0 { return FilesystemResult { error: FilesystemError::InvalidPath, system_error: 0 }; }
 
     let file = vitte_native_fs_file_open(path.as_ptr() as *const u8, "rb".as_ptr() as *const u8);
-    if file == null { return FilesystemResult { error: FilesystemError.Open, system_error: 0 }; }
+    if file == null { return FilesystemResult { error: FilesystemError::Open, system_error: 0 }; }
     let mut length: usize = 0;
     if not vitte_native_fs_file_size(file, &mut length) {
         vitte_native_fs_file_close(file);
-        return FilesystemResult { error: FilesystemError.Stat, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::Stat, system_error: 0 };
     }
     if max_bytes != 0 and length > max_bytes {
         vitte_native_fs_file_close(file);
-        return FilesystemResult { error: FilesystemError.TooLarge, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::TooLarge, system_error: 0 };
     }
     if length == (0 as usize) - 1 {
         vitte_native_fs_file_close(file);
-        return FilesystemResult { error: FilesystemError.Overflow, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::Overflow, system_error: 0 };
     }
     let capacity: usize = if length == 0 { 1 as usize } else { length + 1 };
     let data = allocate(capacity) as *mut u8;
     if data == null {
         vitte_native_fs_file_close(file);
-        return FilesystemResult { error: FilesystemError.OutOfMemory, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::OutOfMemory, system_error: 0 };
     }
     let read_count = vitte_native_fs_file_read(data, length, file);
     let read_failed = vitte_native_fs_file_error(file) != 0 or read_count != length;
     let close_status = vitte_native_fs_file_close(file);
     if read_failed {
         deallocate(data);
-        return FilesystemResult { error: FilesystemError.Read, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::Read, system_error: 0 };
     }
     if close_status != 0 {
         deallocate(data);
-        return FilesystemResult { error: FilesystemError.Close, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::Close, system_error: 0 };
     }
     set (*buffer).data = data;
     set (*buffer).length = length;
     set (*buffer).capacity = capacity;
-    return FilesystemResult { error: FilesystemError.None, system_error: 0 };
+    return FilesystemResult { error: FilesystemError::None, system_error: 0 };
 }
 
 export proc vitte_filesystem_write_file(path: string, data: *u8, length: usize) -> FilesystemResult {
-    if path.len() == 0 { return FilesystemResult { error: FilesystemError.InvalidPath, system_error: 0 }; }
-    if data == null and length != 0 { return FilesystemResult { error: FilesystemError.InvalidArgument, system_error: 0 }; }
+    if path.len() == 0 { return FilesystemResult { error: FilesystemError::InvalidPath, system_error: 0 }; }
+    if data == null and length != 0 { return FilesystemResult { error: FilesystemError::InvalidArgument, system_error: 0 }; }
     let file = vitte_native_fs_file_open(path.as_ptr() as *const u8, "wb".as_ptr() as *const u8);
-    if file == null { return FilesystemResult { error: FilesystemError.Open, system_error: 0 }; }
+    if file == null { return FilesystemResult { error: FilesystemError::Open, system_error: 0 }; }
     let written = vitte_native_fs_file_write(data as *const u8, length, file);
     let write_failed = written != length;
     let flush_failed = not write_failed and vitte_native_fs_file_flush(file) != 0;
     let close_failed = vitte_native_fs_file_close(file) != 0;
-    if write_failed { return FilesystemResult { error: FilesystemError.Write, system_error: 0 }; }
-    if flush_failed { return FilesystemResult { error: FilesystemError.Flush, system_error: 0 }; }
-    if close_failed { return FilesystemResult { error: FilesystemError.Close, system_error: 0 }; }
-    return FilesystemResult { error: FilesystemError.None, system_error: 0 };
+    if write_failed { return FilesystemResult { error: FilesystemError::Write, system_error: 0 }; }
+    if flush_failed { return FilesystemResult { error: FilesystemError::Flush, system_error: 0 }; }
+    if close_failed { return FilesystemResult { error: FilesystemError::Close, system_error: 0 }; }
+    return FilesystemResult { error: FilesystemError::None, system_error: 0 };
 }
 
 export proc vitte_filesystem_write_file_atomic(path: string, data: *u8, length: usize) -> FilesystemResult {
-    if path.len() == 0 { return FilesystemResult { error: FilesystemError.InvalidPath, system_error: 0 }; }
-    if data == null and length != 0 { return FilesystemResult { error: FilesystemError.InvalidArgument, system_error: 0 }; }
+    if path.len() == 0 { return FilesystemResult { error: FilesystemError::InvalidPath, system_error: 0 }; }
+    if data == null and length != 0 { return FilesystemResult { error: FilesystemError::InvalidArgument, system_error: 0 }; }
     let process_id = vitte_native_fs_process_id();
     let mut attempt: usize = 0;
     let mut temp_path: string = "";
@@ -243,36 +243,36 @@ export proc vitte_filesystem_write_file_atomic(path: string, data: *u8, length: 
         set temp_path += process_id.to_string();
         set temp_path += "-";
         set temp_path += attempt.to_string();
-        if temp_path.len() > 32768 { return FilesystemResult { error: FilesystemError.PathTooLong, system_error: 0 }; }
+        if temp_path.len() > 32768 { return FilesystemResult { error: FilesystemError::PathTooLong, system_error: 0 }; }
         set file = vitte_native_fs_file_open(temp_path.as_ptr() as *const u8, "wbx".as_ptr() as *const u8);
         if file == null { set attempt += 1; }
     }
-    if file == null { return FilesystemResult { error: FilesystemError.Open, system_error: 0 }; }
+    if file == null { return FilesystemResult { error: FilesystemError::Open, system_error: 0 }; }
     let written = vitte_native_fs_file_write(data as *const u8, length, file);
     if written != length {
         vitte_native_fs_file_close(file);
         vitte_native_fs_remove(temp_path.as_ptr() as *const u8);
-        return FilesystemResult { error: FilesystemError.Write, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::Write, system_error: 0 };
     }
     if vitte_native_fs_file_flush(file) != 0 {
         vitte_native_fs_file_close(file);
         vitte_native_fs_remove(temp_path.as_ptr() as *const u8);
-        return FilesystemResult { error: FilesystemError.Flush, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::Flush, system_error: 0 };
     }
     if vitte_native_fs_file_sync(file) != 0 {
         vitte_native_fs_file_close(file);
         vitte_native_fs_remove(temp_path.as_ptr() as *const u8);
-        return FilesystemResult { error: FilesystemError.Write, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::Write, system_error: 0 };
     }
     if vitte_native_fs_file_close(file) != 0 {
         vitte_native_fs_remove(temp_path.as_ptr() as *const u8);
-        return FilesystemResult { error: FilesystemError.Close, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::Close, system_error: 0 };
     }
     if vitte_native_fs_rename_replace(temp_path.as_ptr() as *const u8, path.as_ptr() as *const u8) != 0 {
         vitte_native_fs_remove(temp_path.as_ptr() as *const u8);
-        return FilesystemResult { error: FilesystemError.Rename, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::Rename, system_error: 0 };
     }
-    return FilesystemResult { error: FilesystemError.None, system_error: 0 };
+    return FilesystemResult { error: FilesystemError::None, system_error: 0 };
 }
 
 export extern proc vitte_filesystem_create_directory(path: string) -> FilesystemResult;
@@ -292,12 +292,12 @@ export proc compiler_filesystem_create_directories(path: string) -> FilesystemRe
     let source = path.as_bytes();
     let length: usize = source.len();
     if length == 0 or length > FILESYSTEM_MAX_PATH_BYTES {
-        return FilesystemResult { error: FilesystemError.InvalidPath, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::InvalidPath, system_error: 0 };
     }
 
     let copy = allocate(length + 1) as *mut u8;
     if copy == null {
-        return FilesystemResult { error: FilesystemError.OutOfMemory, system_error: 0 };
+        return FilesystemResult { error: FilesystemError::OutOfMemory, system_error: 0 };
     }
 
     let mut index: usize = 0;
@@ -340,7 +340,7 @@ export proc compiler_filesystem_create_directories(path: string) -> FilesystemRe
         set copy[index] = 0;
         let result = filesystem_create_directory_at(copy);
         set copy[index] = 47;
-        if result.error != FilesystemError.None {
+        if result.error != FilesystemError::None {
             deallocate(copy);
             return result;
         }

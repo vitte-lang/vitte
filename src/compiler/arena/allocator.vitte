@@ -272,7 +272,7 @@ proc arena_set_success(
 ) {
     arena_set_error(
         arena,
-        ArenaError.None
+        ArenaError::None
     );
 }
 
@@ -280,7 +280,7 @@ pub proc arena_last_error(
     arena: &Arena
 ) -> ArenaError {
     if not arena_magic_valid(arena) {
-        return ArenaError.InvalidArena;
+        return ArenaError::InvalidArena;
     }
 
     return arena.last_error;
@@ -405,7 +405,7 @@ proc arena_allocation_block_create(
     if capacity == 0 {
         arena_set_error(
             arena,
-            ArenaError.InvalidArgument
+            ArenaError::InvalidArgument
         );
 
         return null;
@@ -420,7 +420,7 @@ proc arena_allocation_block_create(
     ) {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return null;
@@ -435,7 +435,7 @@ proc arena_allocation_block_create(
     if pointer.is_null(raw) {
         arena_set_error(
             arena,
-            ArenaError.OutOfMemory
+            ArenaError::OutOfMemory
         );
 
         return null;
@@ -574,7 +574,7 @@ proc arena_append_block(
     if not arena_block_valid(arena_block_value) {
         arena_set_error(
             arena,
-            ArenaError.Corruption
+            ArenaError::Corruption
         );
 
         return false;
@@ -583,7 +583,7 @@ proc arena_append_block(
     if arena.block_count == usize.MAX {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return false;
@@ -595,7 +595,7 @@ proc arena_append_block(
     ) {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return false;
@@ -612,7 +612,7 @@ proc arena_append_block(
         if not arena_block_valid(last) {
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             set arena_block_value.previous = null;
@@ -652,7 +652,7 @@ proc arena_unlink_block(
     if not arena_block_valid(arena_block_value) {
         arena_set_error(
             arena,
-            ArenaError.Corruption
+            ArenaError::Corruption
         );
 
         return false;
@@ -663,7 +663,7 @@ proc arena_unlink_block(
        arena.block_count == 0 {
         arena_set_error(
             arena,
-            ArenaError.Corruption
+            ArenaError::Corruption
         );
 
         return false;
@@ -680,7 +680,7 @@ proc arena_unlink_block(
         if not arena_block_valid(previous) {
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             return false;
@@ -697,7 +697,7 @@ proc arena_unlink_block(
         if not arena_block_valid(next) {
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             return false;
@@ -750,7 +750,7 @@ proc arena_try_allocate_from_block(
     if not arena_block_valid(arena_block_value) {
         arena_set_error(
             arena,
-            ArenaError.Corruption
+            ArenaError::Corruption
         );
 
         return null;
@@ -759,7 +759,7 @@ proc arena_try_allocate_from_block(
     if not arena_alignment_valid(alignment) {
         arena_set_error(
             arena,
-            ArenaError.InvalidAlignment
+            ArenaError::InvalidAlignment
         );
 
         return null;
@@ -774,7 +774,7 @@ proc arena_try_allocate_from_block(
     if arena_add_overflow(base, old_used) {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return null;
@@ -791,7 +791,7 @@ proc arena_try_allocate_from_block(
         ) {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return null;
@@ -800,7 +800,7 @@ proc arena_try_allocate_from_block(
     if address < base {
         arena_set_error(
             arena,
-            ArenaError.Corruption
+            ArenaError::Corruption
         );
 
         return null;
@@ -812,7 +812,7 @@ proc arena_try_allocate_from_block(
     if arena_add_overflow(offset, size) {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return null;
@@ -858,7 +858,7 @@ proc arena_find_reusable_block(
         if not arena_block_valid(current) {
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             return null;
@@ -931,7 +931,7 @@ pub proc arena_init(
     set arena.generation = 1;
 
     set arena.last_error =
-        ArenaError.None;
+        ArenaError::None;
 
     return true;
 }
@@ -989,7 +989,7 @@ pub proc arena_destroy(
     set arena.generation = 0;
 
     set arena.last_error =
-        ArenaError.InvalidArena;
+        ArenaError::InvalidArena;
 
     set arena.magic =
         ARENA_DEAD_MAGIC;
@@ -1028,7 +1028,7 @@ pub proc arena_alloc_aligned(
     ) {
         arena_set_error(
             arena,
-            ArenaError.InvalidAlignment
+            ArenaError::InvalidAlignment
         );
 
         return null;
@@ -1040,7 +1040,7 @@ pub proc arena_alloc_aligned(
     ) {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return null;
@@ -1066,7 +1066,7 @@ pub proc arena_alloc_aligned(
         if not arena_block_valid(current) {
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             return null;
@@ -1092,7 +1092,7 @@ pub proc arena_alloc_aligned(
 
                     arena_set_error(
                         arena,
-                        ArenaError.Corruption
+                        ArenaError::Corruption
                     );
 
                     return null;
@@ -1118,7 +1118,7 @@ pub proc arena_alloc_aligned(
                 return memory_ptr;
             }
 
-            if arena.last_error != ArenaError.None {
+            if arena.last_error != ArenaError::None {
                 return null;
             }
         }
@@ -1153,10 +1153,10 @@ pub proc arena_alloc_aligned(
             );
 
         if memory_ptr == null {
-            if arena.last_error == ArenaError.None {
+            if arena.last_error == ArenaError::None {
                 arena_set_error(
                     arena,
-                    ArenaError.Corruption
+                    ArenaError::Corruption
                 );
             }
 
@@ -1172,7 +1172,7 @@ pub proc arena_alloc_aligned(
 
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             return null;
@@ -1198,7 +1198,7 @@ pub proc arena_alloc_aligned(
         return memory_ptr;
     }
 
-    if arena.last_error != ArenaError.None {
+    if arena.last_error != ArenaError::None {
         return null;
     }
 
@@ -1254,9 +1254,9 @@ pub proc arena_alloc_aligned(
         let mut failure: ArenaError =
             arena.last_error;
 
-        if failure == ArenaError.None {
+        if failure == ArenaError::None {
             set failure =
-                ArenaError.Corruption;
+                ArenaError::Corruption;
         }
 
         if not arena_unlink_block(
@@ -1285,7 +1285,7 @@ pub proc arena_alloc_aligned(
             created.used - consumed;
 
         let mut failure: ArenaError =
-            ArenaError.Corruption;
+            ArenaError::Corruption;
 
         if not arena_unlink_block(
             arena,
@@ -1359,7 +1359,7 @@ proc arena_alloc_array(
     ) {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return null;
@@ -1408,7 +1408,7 @@ proc arena_calloc_aligned(
     ) {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return null;
@@ -1459,7 +1459,7 @@ proc arena_memdup(
        size != 0 {
         arena_set_error(
             arena,
-            ArenaError.InvalidArgument
+            ArenaError::InvalidArgument
         );
 
         return null;
@@ -1501,7 +1501,7 @@ proc arena_strndup(
        length != 0 {
         arena_set_error(
             arena,
-            ArenaError.InvalidArgument
+            ArenaError::InvalidArgument
         );
 
         return null;
@@ -1513,7 +1513,7 @@ proc arena_strndup(
     ) {
         arena_set_error(
             arena,
-            ArenaError.Overflow
+            ArenaError::Overflow
         );
 
         return null;
@@ -1560,7 +1560,7 @@ proc arena_strdup(
     if pointer.is_null(text) {
         arena_set_error(
             arena,
-            ArenaError.InvalidArgument
+            ArenaError::InvalidArgument
         );
 
         return null;
@@ -1670,7 +1670,7 @@ pub proc arena_rewind(
        mark.generation != arena.generation {
         arena_set_error(
             arena,
-            ArenaError.InvalidMark
+            ArenaError::InvalidMark
         );
 
         return false;
@@ -1681,7 +1681,7 @@ pub proc arena_rewind(
        mark.allocation_count > arena.allocation_count {
         arena_set_error(
             arena,
-            ArenaError.InvalidMark
+            ArenaError::InvalidMark
         );
 
         return false;
@@ -1692,7 +1692,7 @@ pub proc arena_rewind(
            mark.used_bytes != 0 {
             arena_set_error(
                 arena,
-                ArenaError.InvalidMark
+                ArenaError::InvalidMark
             );
 
             return false;
@@ -1706,7 +1706,7 @@ pub proc arena_rewind(
             if not arena_block_valid(current) {
                 arena_set_error(
                     arena,
-                    ArenaError.Corruption
+                    ArenaError::Corruption
                 );
 
                 return false;
@@ -1755,7 +1755,7 @@ pub proc arena_rewind(
     ) {
         arena_set_error(
             arena,
-            ArenaError.InvalidMark
+            ArenaError::InvalidMark
         );
 
         return false;
@@ -1766,7 +1766,7 @@ pub proc arena_rewind(
        mark.used > marked_block.capacity {
         arena_set_error(
             arena,
-            ArenaError.InvalidMark
+            ArenaError::InvalidMark
         );
 
         return false;
@@ -1784,7 +1784,7 @@ pub proc arena_rewind(
         if not arena_block_valid(current) {
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             return false;
@@ -1811,7 +1811,7 @@ pub proc arena_rewind(
         ) {
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             return false;
@@ -1826,7 +1826,7 @@ pub proc arena_rewind(
     if block != marked_block {
         arena_set_error(
             arena,
-            ArenaError.Corruption
+            ArenaError::Corruption
         );
 
         return false;
@@ -1838,7 +1838,7 @@ pub proc arena_rewind(
     ) {
         arena_set_error(
             arena,
-            ArenaError.Corruption
+            ArenaError::Corruption
         );
 
         return false;
@@ -1850,7 +1850,7 @@ pub proc arena_rewind(
     if recomputed_used != mark.used_bytes {
         arena_set_error(
             arena,
-            ArenaError.InvalidMark
+            ArenaError::InvalidMark
         );
 
         return false;
@@ -1927,7 +1927,7 @@ pub proc arena_reset(
         if not arena_block_valid(current) {
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             return;
@@ -1996,7 +1996,7 @@ pub proc arena_trim(
         if not arena_block_valid(current) {
             arena_set_error(
                 arena,
-                ArenaError.Corruption
+                ArenaError::Corruption
             );
 
             return;
@@ -2049,7 +2049,7 @@ pub proc arena_reset_and_trim(
 
     arena_reset(arena);
 
-    if arena.last_error != ArenaError.None {
+    if arena.last_error != ArenaError::None {
         return;
     }
 
@@ -2575,15 +2575,15 @@ proc arena_padding_bytes(arena: &Arena) -> usize {
 }
 
 proc arena_has_error(arena: &Arena) -> bool {
-    return arena_last_error(arena) != ArenaError.None;
+    return arena_last_error(arena) != ArenaError::None;
 }
 
 proc arena_out_of_memory(arena: &Arena) -> bool {
-    return arena_last_error(arena) == ArenaError.OutOfMemory;
+    return arena_last_error(arena) == ArenaError::OutOfMemory;
 }
 
 proc arena_is_corrupted(arena: &Arena) -> bool {
-    return arena_last_error(arena) == ArenaError.Corruption;
+    return arena_last_error(arena) == ArenaError::Corruption;
 }
 
 pub proc arena_utilization_basis_points(arena: &Arena) -> u32 {

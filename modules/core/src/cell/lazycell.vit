@@ -22,7 +22,7 @@ proc lazycell_new<T>(
     initializer: proc() -> T
 ) -> LazyCell[T] {
     return LazyCell[T] {
-        state: LazyCellState.Uninitialized,
+        state: LazyCellState::Uninitialized,
         value: null,
         initializer: initializer,
     };
@@ -32,21 +32,21 @@ proc lazycell_new<T>(
 proc lazycell_is_initialized<T>(
     cell: &LazyCell[T]
 ) -> bool {
-    return cell.state == LazyCellState.Initialized;
+    return cell.state == LazyCellState::Initialized;
 }
 
 /// Vérifie si une initialisation est en cours.
 proc lazycell_is_initializing<T>(
     cell: &LazyCell[T]
 ) -> bool {
-    return cell.state == LazyCellState.Initializing;
+    return cell.state == LazyCellState::Initializing;
 }
 
 /// Vérifie si la cellule n'a jamais été initialisée.
 proc lazycell_is_uninitialized<T>(
     cell: &LazyCell[T]
 ) -> bool {
-    return cell.state == LazyCellState.Uninitialized;
+    return cell.state == LazyCellState::Uninitialized;
 }
 
 /// Initialise la cellule si nécessaire.
@@ -55,20 +55,20 @@ proc lazycell_is_uninitialized<T>(
 proc lazycell_force<T>(
     cell: &mut LazyCell[T]
 ) -> bool {
-    if cell.state == LazyCellState.Initialized {
+    if cell.state == LazyCellState::Initialized {
         return true;
     }
 
-    if cell.state == LazyCellState.Initializing {
+    if cell.state == LazyCellState::Initializing {
         return false;
     }
 
-    set cell.state = LazyCellState.Initializing;
+    set cell.state = LazyCellState::Initializing;
 
     let value: T = cell.initializer();
 
     set cell.value = value;
-    set cell.state = LazyCellState.Initialized;
+    set cell.state = LazyCellState::Initialized;
 
     return true;
 }
@@ -102,7 +102,7 @@ proc lazycell_get_mut<T>(
 proc lazycell_try_get<T>(
     cell: &LazyCell[T]
 ) -> ?&T {
-    if cell.state != LazyCellState.Initialized {
+    if cell.state != LazyCellState::Initialized {
         return null;
     }
 
@@ -117,7 +117,7 @@ proc lazycell_set<T>(
     value: T
 ) {
     set cell.value = value;
-    set cell.state = LazyCellState.Initialized;
+    set cell.state = LazyCellState::Initialized;
 }
 
 /// Initialise la cellule avec une valeur explicite
@@ -126,12 +126,12 @@ proc lazycell_set_if_uninitialized<T>(
     cell: &mut LazyCell[T],
     value: T
 ) -> bool {
-    if cell.state != LazyCellState.Uninitialized {
+    if cell.state != LazyCellState::Uninitialized {
         return false;
     }
 
     set cell.value = value;
-    set cell.state = LazyCellState.Initialized;
+    set cell.state = LazyCellState::Initialized;
 
     return true;
 }
@@ -142,12 +142,12 @@ proc lazycell_set_if_uninitialized<T>(
 proc lazycell_reset<T>(
     cell: &mut LazyCell[T]
 ) -> bool {
-    if cell.state == LazyCellState.Initializing {
+    if cell.state == LazyCellState::Initializing {
         return false;
     }
 
     set cell.value = null;
-    set cell.state = LazyCellState.Uninitialized;
+    set cell.state = LazyCellState::Uninitialized;
 
     return true;
 }
@@ -156,16 +156,16 @@ proc lazycell_reset<T>(
 proc lazycell_can_initialize<T>(
     cell: &LazyCell[T]
 ) -> bool {
-    return cell.state == LazyCellState.Uninitialized;
+    return cell.state == LazyCellState::Uninitialized;
 }
 
 /// Exécute l'initialisation uniquement si nécessaire.
 proc lazycell_initialize_if_needed<T>(
     cell: &mut LazyCell[T]
 ) -> bool {
-    if cell.state == LazyCellState.Uninitialized {
+    if cell.state == LazyCellState::Uninitialized {
         return lazycell_force(cell);
-    } elif cell.state == LazyCellState.Initialized {
+    } elif cell.state == LazyCellState::Initialized {
         return true;
     } else {
         return false;

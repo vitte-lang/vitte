@@ -95,29 +95,29 @@ pub proc target_default() -> Target {
     let little_endian = bytes[0] == 2 and bytes[1] == 1;
     let platform = version_platform();
     let architecture_name = version_architecture();
-    let mut environment: TargetEnvironment = TargetEnvironment.Unknown;
-    let mut architecture: TargetArchitecture = TargetArchitecture.Unknown;
+    let mut environment: TargetEnvironment = TargetEnvironment::Unknown;
+    let mut architecture: TargetArchitecture = TargetArchitecture::Unknown;
 
     if platform == "windows" or platform == "win32" or platform == "win64" {
-        set environment = TargetEnvironment.Windows;
+        set environment = TargetEnvironment::Windows;
     } elif platform == "darwin" or platform == "macos" or platform == "macosx" {
-        set environment = TargetEnvironment.Darwin;
+        set environment = TargetEnvironment::Darwin;
     } elif platform == "linux" {
-        set environment = TargetEnvironment.Linux;
+        set environment = TargetEnvironment::Linux;
     } elif platform == "freebsd" {
-        set environment = TargetEnvironment.FreeBSD;
+        set environment = TargetEnvironment::FreeBSD;
     }
 
     if architecture_name == "x86_64" or architecture_name == "amd64" or architecture_name == "x64" {
-        set architecture = TargetArchitecture.X86_64;
+        set architecture = TargetArchitecture::X86_64;
     } elif architecture_name == "x86" or architecture_name == "i386" or architecture_name == "i486" or architecture_name == "i586" or architecture_name == "i686" {
-        set architecture = TargetArchitecture.X86;
+        set architecture = TargetArchitecture::X86;
     } elif architecture_name == "arm" or architecture_name == "arm32" or architecture_name == "armv7l" {
-        set architecture = TargetArchitecture.ARM;
+        set architecture = TargetArchitecture::ARM;
     } elif architecture_name == "aarch64" or architecture_name == "arm64" {
-        set architecture = TargetArchitecture.AArch64;
+        set architecture = TargetArchitecture::AArch64;
     } elif architecture_name == "riscv" or architecture_name == "riscv32" or architecture_name == "riscv64" {
-        set architecture = TargetArchitecture.RISCV;
+        set architecture = TargetArchitecture::RISCV;
     }
 
     return target_make((sizeof(*const u8)*8) as u32, (sizeof(usize)*8) as u32, 8, little_endian, environment, architecture);
@@ -135,15 +135,15 @@ pub proc backend_stats_empty() -> BackendStats { return BackendStats { output_by
 pub proc writer_make(write: ?WriteFn, user_data: *u8) -> Writer { return Writer { write: write, user_data: user_data }; }
 
 pub proc backend_is_valid(backend: &Backend) -> bool { return backend.magic == BACKEND_MAGIC and backend_config_validate(&backend.config) and target_validate(&backend.target) and backend.writer.write != null; }
-proc backend_fail(backend: &mut Backend, error: BackendError) -> bool { set backend.last_error = error; set backend.state = BackendState.Failed; return false; }
+proc backend_fail(backend: &mut Backend, error: BackendError) -> bool { set backend.last_error = error; set backend.state = BackendState::Failed; return false; }
 
 pub proc backend_init(backend: &mut Backend, config: BackendConfig, target: Target, writer: Writer) -> bool {
     if not backend_config_validate(&config) { return false; }
     if not target_validate(&target) or writer.write == null { return false; }
-    set backend.magic = BACKEND_MAGIC; set backend.state = BackendState.Ready; set backend.last_error = BackendError.None;
+    set backend.magic = BACKEND_MAGIC; set backend.state = BackendState::Ready; set backend.last_error = BackendError::None;
     set backend.config = config; set backend.target = target; set backend.writer = writer;
     set backend.line = 1; set backend.column = 0; set backend.indent_depth = 0; set backend.at_line_start = true;
-    set backend.current_section = Section.None; set backend.last_section = Section.None; set backend.cancelled = false;
+    set backend.current_section = Section::None; set backend.last_section = Section::None; set backend.cancelled = false;
     set backend.source = source_location_empty(); set backend.stats = backend_stats_empty();
     set backend.diagnostic_handler = null; set backend.diagnostic_user_data = null; set backend.source_map = null; set backend.source_map_user_data = null;
     return true;
@@ -151,13 +151,13 @@ pub proc backend_init(backend: &mut Backend, config: BackendConfig, target: Targ
 
 proc backend_raw_write(backend: &mut Backend, bytes: &[u8]) -> bool {
     if not backend_is_valid(backend) { return false; }
-    if backend.state != BackendState.Generating { return backend_fail(backend, BackendError.InvalidState); }
-    if backend.cancelled { set backend.state = BackendState.Cancelled; set backend.last_error = BackendError.Cancelled; return false; }
+    if backend.state != BackendState::Generating { return backend_fail(backend, BackendError::InvalidState); }
+    if backend.cancelled { set backend.state = BackendState::Cancelled; set backend.last_error = BackendError::Cancelled; return false; }
     if bytes.len == 0 { return true; }
-    if backend_add_overflow(backend.stats.output_bytes, bytes.len) { return backend_fail(backend, BackendError.Overflow); }
-    if backend.stats.output_bytes + bytes.len > backend.config.max_output_bytes { return backend_fail(backend, BackendError.OutputLimit); }
+    if backend_add_overflow(backend.stats.output_bytes, bytes.len) { return backend_fail(backend, BackendError::Overflow); }
+    if backend.stats.output_bytes + bytes.len > backend.config.max_output_bytes { return backend_fail(backend, BackendError::OutputLimit); }
     let write = backend.writer.write?;
-    if not write(backend.writer.user_data, bytes.as_ptr(), bytes.len) { return backend_fail(backend, BackendError.Output); }
+    if not write(backend.writer.user_data, bytes.as_ptr(), bytes.len) { return backend_fail(backend, BackendError::Output); }
     set backend.stats.output_bytes += bytes.len;
     return true;
 }
@@ -165,8 +165,8 @@ proc backend_raw_write(backend: &mut Backend, bytes: &[u8]) -> bool {
 proc backend_emit_indent(backend: &mut Backend) -> bool {
     if not backend.at_line_start { return true; }
     if not backend.config.pretty { set backend.at_line_start = false; return true; }
-    if backend.indent_depth > backend.config.max_indent_depth { return backend_fail(backend, BackendError.InvalidState); }
-    if backend.config.indent_width != 0 and backend.indent_depth > usize.MAX / backend.config.indent_width { return backend_fail(backend, BackendError.Overflow); }
+    if backend.indent_depth > backend.config.max_indent_depth { return backend_fail(backend, BackendError::InvalidState); }
+    if backend.config.indent_width != 0 and backend.indent_depth > usize.MAX / backend.config.indent_width { return backend_fail(backend, BackendError::Overflow); }
     let mut spaces = backend.indent_depth * backend.config.indent_width;
     while spaces != 0 {
         let chunk = backend_min(spaces, BACKEND_INDENT.len());
@@ -265,8 +265,8 @@ pub proc backend_write_identifier(backend: &mut Backend, identifier: str) -> boo
     return true;
 }
 
-pub proc backend_indent(backend: &mut Backend) -> bool { if not backend_is_valid(backend) { return false; } if backend.indent_depth >= backend.config.max_indent_depth { return backend_fail(backend, BackendError.Overflow); } set backend.indent_depth += 1; set backend.stats.maximum_indent_depth = if backend.indent_depth > backend.stats.maximum_indent_depth { backend.indent_depth } else { backend.stats.maximum_indent_depth }; return true; }
-pub proc backend_dedent(backend: &mut Backend) -> bool { if not backend_is_valid(backend) { return false; } if backend.indent_depth == 0 { return backend_fail(backend, BackendError.InvalidState); } set backend.indent_depth -= 1; return true; }
+pub proc backend_indent(backend: &mut Backend) -> bool { if not backend_is_valid(backend) { return false; } if backend.indent_depth >= backend.config.max_indent_depth { return backend_fail(backend, BackendError::Overflow); } set backend.indent_depth += 1; set backend.stats.maximum_indent_depth = if backend.indent_depth > backend.stats.maximum_indent_depth { backend.indent_depth } else { backend.stats.maximum_indent_depth }; return true; }
+pub proc backend_dedent(backend: &mut Backend) -> bool { if not backend_is_valid(backend) { return false; } if backend.indent_depth == 0 { return backend_fail(backend, BackendError::InvalidState); } set backend.indent_depth -= 1; return true; }
 pub proc backend_open_block(backend: &mut Backend) -> bool { return backend_write(backend, "{") and backend_newline(backend) and backend_indent(backend); }
 pub proc backend_close_block(backend: &mut Backend, semicolon: bool) -> bool { if not backend_dedent(backend) or not backend_write(backend, "}") { return false; } if semicolon and not backend_write_char(backend, 59) { return false; } return true; }
 
@@ -292,9 +292,9 @@ pub proc backend_report(backend: &mut Backend, level: DiagnosticLevel, code: str
         if backend.source.valid { callback(backend.diagnostic_user_data, level, code, message, &backend.source); }
         else { callback(backend.diagnostic_user_data, level, code, message, null); }
     }
-    if level == DiagnosticLevel.Error {
-        if backend.stats.error_count >= backend.config.max_errors { set backend.last_error = BackendError.TooManyErrors; set backend.state = BackendState.Failed; }
-        elif backend.config.fail_fast { set backend.last_error = BackendError.Internal; set backend.state = BackendState.Failed; }
+    if level == DiagnosticLevel::Error {
+        if backend.stats.error_count >= backend.config.max_errors { set backend.last_error = BackendError::TooManyErrors; set backend.state = BackendState::Failed; }
+        elif backend.config.fail_fast { set backend.last_error = BackendError::Internal; set backend.state = BackendState::Failed; }
     }
 }
 pub proc backend_comment(backend: &mut Backend, text: str) -> bool {
@@ -319,9 +319,9 @@ pub proc backend_comment(backend: &mut Backend, text: str) -> bool {
 
 proc backend_section_rank(section: Section) -> usize { return section as usize; }
 pub proc backend_begin_section(backend: &mut Backend, section: Section) -> bool {
-    if not backend_is_valid(backend) or section == Section.None or section == Section.Count { return false; }
-    if backend.state != BackendState.Generating { return backend_fail(backend, BackendError.InvalidState); }
-    if backend.current_section != Section.None or (backend.config.deterministic and backend.last_section != Section.None and backend_section_rank(section) <= backend_section_rank(backend.last_section)) { return backend_fail(backend, BackendError.InvalidState); }
+    if not backend_is_valid(backend) or section == Section::None or section == Section::Count { return false; }
+    if backend.state != BackendState::Generating { return backend_fail(backend, BackendError::InvalidState); }
+    if backend.current_section != Section::None or (backend.config.deterministic and backend.last_section != Section::None and backend_section_rank(section) <= backend_section_rank(backend.last_section)) { return backend_fail(backend, BackendError::InvalidState); }
     set backend.current_section = section;
     set backend.last_section = section;
     set backend.stats.section_count = backend_sat_add(backend.stats.section_count, 1);
@@ -331,51 +331,51 @@ pub proc backend_begin_section(backend: &mut Backend, section: Section) -> bool 
 }
 pub proc backend_end_section(backend: &mut Backend) -> bool {
     if not backend_is_valid(backend) { return false; }
-    if backend.current_section == Section.None { return backend_fail(backend, BackendError.InvalidState); }
-    set backend.current_section = Section.None;
+    if backend.current_section == Section::None { return backend_fail(backend, BackendError::InvalidState); }
+    set backend.current_section = Section::None;
     return true;
 }
 pub proc backend_cancel(backend: &mut Backend) { if backend.magic == BACKEND_MAGIC { set backend.cancelled = true; } }
 pub proc backend_is_cancelled(backend: &Backend) -> bool { return backend.magic == BACKEND_MAGIC and backend.cancelled; }
 pub proc backend_begin(backend: &mut Backend) -> bool {
     if not backend_is_valid(backend) { return false; }
-    if backend.state != BackendState.Ready { return backend_fail(backend, BackendError.InvalidState); }
+    if backend.state != BackendState::Ready { return backend_fail(backend, BackendError::InvalidState); }
     set backend.stats = backend_stats_empty();
-    set backend.state = BackendState.Generating;
-    set backend.last_error = BackendError.None;
+    set backend.state = BackendState::Generating;
+    set backend.last_error = BackendError::None;
     set backend.line = 1;
     set backend.column = 0;
     set backend.indent_depth = 0;
     set backend.at_line_start = true;
-    set backend.current_section = Section.None;
-    set backend.last_section = Section.None;
+    set backend.current_section = Section::None;
+    set backend.last_section = Section::None;
     set backend.cancelled = false;
     set backend.source = source_location_empty();
     if backend.config.emit_banner {
-        if not backend_begin_section(backend, Section.Banner) or
+        if not backend_begin_section(backend, Section::Banner) or
            not backend_write(backend, "/*\n * Generated by the Vitte compiler.\n * Backend: ISO C17.\n * This file is generated; do not edit manually.\n */\n") or
            not backend_end_section(backend) { return false; }
     }
     return true;
 }
 pub proc backend_finish(backend: &mut Backend) -> bool {
-    if not backend_is_valid(backend) or backend.state != BackendState.Generating { return false; }
-    if backend.current_section != Section.None or backend.indent_depth != 0 { return backend_fail(backend, BackendError.InvalidState); }
-    if backend.cancelled { set backend.state = BackendState.Cancelled; set backend.last_error = BackendError.Cancelled; return false; }
-    set backend.state = BackendState.Finished;
-    if not backend_validate(backend) { set backend.state = BackendState.Failed; set backend.last_error = BackendError.Internal; return false; }
+    if not backend_is_valid(backend) or backend.state != BackendState::Generating { return false; }
+    if backend.current_section != Section::None or backend.indent_depth != 0 { return backend_fail(backend, BackendError::InvalidState); }
+    if backend.cancelled { set backend.state = BackendState::Cancelled; set backend.last_error = BackendError::Cancelled; return false; }
+    set backend.state = BackendState::Finished;
+    if not backend_validate(backend) { set backend.state = BackendState::Failed; set backend.last_error = BackendError::Internal; return false; }
     return true;
 }
 pub proc backend_reset(backend: &mut Backend) -> bool {
-    if backend.magic != BACKEND_MAGIC or backend.state == BackendState.Generating { return false; }
-    set backend.state = BackendState.Ready;
-    set backend.last_error = BackendError.None;
+    if backend.magic != BACKEND_MAGIC or backend.state == BackendState::Generating { return false; }
+    set backend.state = BackendState::Ready;
+    set backend.last_error = BackendError::None;
     set backend.line = 1;
     set backend.column = 0;
     set backend.indent_depth = 0;
     set backend.at_line_start = true;
-    set backend.current_section = Section.None;
-    set backend.last_section = Section.None;
+    set backend.current_section = Section::None;
+    set backend.last_section = Section::None;
     set backend.cancelled = false;
     set backend.source = source_location_empty();
     set backend.stats = backend_stats_empty();
@@ -389,18 +389,18 @@ pub proc backend_destroy(backend: &mut Backend) {
     set backend.diagnostic_user_data = null;
     set backend.source_map = null;
     set backend.source_map_user_data = null;
-    set backend.current_section = Section.None;
-    set backend.state = BackendState.Destroyed;
+    set backend.current_section = Section::None;
+    set backend.state = BackendState::Destroyed;
     set backend.magic = BACKEND_DEAD_MAGIC;
 }
-pub proc backend_last_error(backend: &Backend) -> BackendError { if backend.magic != BACKEND_MAGIC { return BackendError.InvalidBackend; } return backend.last_error; }
+pub proc backend_last_error(backend: &Backend) -> BackendError { if backend.magic != BACKEND_MAGIC { return BackendError::InvalidBackend; } return backend.last_error; }
 pub proc backend_clear_error(backend: &mut Backend) {
     if not backend_is_valid(backend) { return; }
-    set backend.last_error = BackendError.None;
-    if backend.state == BackendState.Failed { set backend.state = BackendState.Ready; }
+    set backend.last_error = BackendError::None;
+    if backend.state == BackendState::Failed { set backend.state = BackendState::Ready; }
 }
-pub proc backend_state(backend: &Backend) -> BackendState { if backend.magic != BACKEND_MAGIC { return BackendState.Uninitialized; } return backend.state; }
-pub proc backend_current_section(backend: &Backend) -> Section { if not backend_is_valid(backend) { return Section.None; } return backend.current_section; }
+pub proc backend_state(backend: &Backend) -> BackendState { if backend.magic != BACKEND_MAGIC { return BackendState::Uninitialized; } return backend.state; }
+pub proc backend_current_section(backend: &Backend) -> Section { if not backend_is_valid(backend) { return Section::None; } return backend.current_section; }
 pub proc backend_line(backend: &Backend) -> usize { if not backend_is_valid(backend) { return 0; } return backend.line; }
 pub proc backend_column(backend: &Backend) -> usize { if not backend_is_valid(backend) { return 0; } return backend.column; }
 pub proc backend_output_offset(backend: &Backend) -> usize { if not backend_is_valid(backend) { return 0; } return backend.stats.output_bytes; }
@@ -415,14 +415,14 @@ pub proc backend_validate(backend: &Backend) -> bool {
        backend.indent_depth > backend.config.max_indent_depth or
        backend.stats.maximum_indent_depth > backend.config.max_indent_depth or
        backend.stats.output_bytes > backend.config.max_output_bytes or
-       backend.current_section as usize >= Section.Count as usize or
-       backend.last_section as usize >= Section.Count as usize or
+       backend.current_section as usize >= Section::Count as usize or
+       backend.last_section as usize >= Section::Count as usize or
        (backend.source.valid and backend.source.begin > backend.source.end) {
         return false;
     }
-    if backend.state == BackendState.Finished and
-       (backend.current_section != Section.None or backend.indent_depth != 0) { return false; }
-    if backend.state == BackendState.Cancelled and backend.last_error != BackendError.Cancelled { return false; }
+    if backend.state == BackendState::Finished and
+       (backend.current_section != Section::None or backend.indent_depth != 0) { return false; }
+    if backend.state == BackendState::Cancelled and backend.last_error != BackendError::Cancelled { return false; }
     return true;
 }
 pub proc backend_generate(backend: &mut Backend, translation_unit: *const u8, emitter: ?EmitTranslationUnitFn, user_data: *u8) -> bool {
@@ -430,10 +430,10 @@ pub proc backend_generate(backend: &mut Backend, translation_unit: *const u8, em
     if not backend_begin(backend) { return false; }
     let emit = emitter?;
     if not emit(backend, translation_unit, user_data) {
-        if backend.state == BackendState.Generating { return backend_fail(backend, BackendError.Internal); }
+        if backend.state == BackendState::Generating { return backend_fail(backend, BackendError::Internal); }
         return false;
     }
-    if backend.state != BackendState.Generating { return false; }
+    if backend.state != BackendState::Generating { return false; }
     return backend_finish(backend);
 }
 
@@ -589,11 +589,11 @@ export proc vitte_c17_backend_generate(backend: &mut C17Backend, translation_uni
     return backend_generate(backend, translation_unit, emitter, user_data);
 }
 
-export proc vitte_c17_backend_is_ready(backend: &C17Backend) -> bool { return backend.state == C17BackendState.Ready; }
-export proc vitte_c17_backend_is_generating(backend: &C17Backend) -> bool { return backend.state == C17BackendState.Generating; }
-export proc vitte_c17_backend_is_finished(backend: &C17Backend) -> bool { return backend.state == C17BackendState.Finished; }
-export proc vitte_c17_backend_has_failed(backend: &C17Backend) -> bool { return backend.state == C17BackendState.Failed; }
-export proc vitte_c17_backend_has_error(backend: &C17Backend) -> bool { return backend.last_error != C17BackendError.None; }
+export proc vitte_c17_backend_is_ready(backend: &C17Backend) -> bool { return backend.state == C17BackendState::Ready; }
+export proc vitte_c17_backend_is_generating(backend: &C17Backend) -> bool { return backend.state == C17BackendState::Generating; }
+export proc vitte_c17_backend_is_finished(backend: &C17Backend) -> bool { return backend.state == C17BackendState::Finished; }
+export proc vitte_c17_backend_has_failed(backend: &C17Backend) -> bool { return backend.state == C17BackendState::Failed; }
+export proc vitte_c17_backend_has_error(backend: &C17Backend) -> bool { return backend.last_error != C17BackendError::None; }
 export proc vitte_c17_backend_error_count(backend: &C17Backend) -> usize { return backend.stats.error_count; }
 export proc vitte_c17_backend_warning_count(backend: &C17Backend) -> usize { return backend.stats.warning_count; }
 export proc vitte_c17_backend_has_diagnostics(backend: &C17Backend) -> bool { return backend.stats.error_count != 0 or backend.stats.warning_count != 0 or backend.stats.note_count != 0; }

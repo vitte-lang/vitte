@@ -6,15 +6,15 @@ use core::primitive::float::{f64_is_nan, f64_is_infinite};
 use core::convert::cast::{cast_f32_to_f64};
 
 export proc fmt_f64_fixed(value: f64, precision: usize, buffer: *mut u8, capacity: usize) -> FormatResult {
-    if precision > 6 { return format_failure(FormatError.InvalidArgument); }
-    if buffer == null { return format_failure(FormatError.NullBuffer); }
-    if f64_is_nan(value) || f64_is_infinite(value) { return format_failure(FormatError.InvalidArgument); }
+    if precision > 6 { return format_failure(FormatError::InvalidArgument); }
+    if buffer == null { return format_failure(FormatError::NullBuffer); }
+    if f64_is_nan(value) || f64_is_infinite(value) { return format_failure(FormatError::InvalidArgument); }
 
     let negative: bool = value < 0.0;
     let absolute: f64 = if negative { -value } else { value };
     // 2^64 is representable as f64 while U64_MAX is not. Reject that boundary
     // before converting, otherwise the cast is outside the unsigned range.
-    if absolute >= 18446744073709551616.0 { return format_failure(FormatError.InvalidArgument); }
+    if absolute >= 18446744073709551616.0 { return format_failure(FormatError::InvalidArgument); }
 
     let mut integer: u64 = absolute as u64;
     let mut scale: u64 = 1;
@@ -27,14 +27,14 @@ export proc fmt_f64_fixed(value: f64, precision: usize, buffer: *mut u8, capacit
     let mut fraction: u64 = 0;
     if precision == 0 {
         if absolute - integer as f64 >= 0.5 {
-            if integer == 18446744073709551615 { return format_failure(FormatError.InvalidArgument); }
+            if integer == 18446744073709551615 { return format_failure(FormatError::InvalidArgument); }
             set integer = integer + 1;
         }
     } else {
         // Round to nearest, with exact halfway cases rounded away from zero.
         set fraction = ((absolute - integer as f64) * scale as f64 + 0.5) as u64;
         if fraction >= scale {
-            if integer == 18446744073709551615 { return format_failure(FormatError.InvalidArgument); }
+            if integer == 18446744073709551615 { return format_failure(FormatError::InvalidArgument); }
             set integer = integer + 1;
             set fraction = 0;
         }
@@ -48,7 +48,7 @@ export proc fmt_f64_fixed(value: f64, precision: usize, buffer: *mut u8, capacit
         precision + 1 as usize
     };
     let required: usize = sign_length + integer_length + fraction_length;
-    if capacity < required { return format_failure(FormatError.BufferTooSmall); }
+    if capacity < required { return format_failure(FormatError::BufferTooSmall); }
 
     let mut position: usize = sign_length + integer_length;
     let mut current: u64 = integer;

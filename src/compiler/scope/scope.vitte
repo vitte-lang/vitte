@@ -232,7 +232,7 @@ proc scope_sat_add(left: u64, right: u64) -> u64 {
 proc scope_fail(context: *mut Scope, error: ScopeError) -> bool {
     if context != null and (*context).magic == SCOPE_MAGIC {
         set (*context).last_error = error;
-        set (*context).state = ScopeState.Failed;
+        set (*context).state = ScopeState::Failed;
         set (*context).stats.failures = scope_sat_add((*context).stats.failures, 1);
     }
     return false;
@@ -244,7 +244,7 @@ proc scope_set_error(context: *mut Scope, error: ScopeError) {
 
 proc scope_context_valid(context: *const Scope) -> bool {
     if context == null or (*context).magic != SCOPE_MAGIC { return false; }
-    if (*context).state <= ScopeState.Invalid or (*context).state >= ScopeState.Destroyed { return false; }
+    if (*context).state <= ScopeState::Invalid or (*context).state >= ScopeState::Destroyed { return false; }
     if (*context).scope_count > (*context).scope_capacity or (*context).symbol_count > (*context).symbol_capacity { return false; }
     if ((*context).scope_count != 0 and (*context).scopes == null) or ((*context).symbol_count != 0 and (*context).symbols == null) { return false; }
     if (*context).max_scopes == 0 or (*context).max_symbols == 0 or (*context).max_name_bytes == 0 or (*context).max_depth == 0 { return false; }
@@ -277,16 +277,16 @@ proc scope_next_capacity(current: usize, required: usize, result: *mut usize) ->
 
 proc scope_reserve_scopes(context: *mut Scope, required: usize) -> bool {
     if required <= (*context).scope_capacity { return true; }
-    if required > (*context).max_scopes { scope_set_error(context, ScopeError.ScopeLimit); return false; }
+    if required > (*context).max_scopes { scope_set_error(context, ScopeError::ScopeLimit); return false; }
     let mut capacity: usize = 0;
     let mut bytes: usize = 0;
     if not scope_next_capacity((*context).scope_capacity, required, &mut capacity) or not scope_mul_size(capacity, sizeof(ScopeEntry), &mut bytes) {
-        scope_set_error(context, ScopeError.Overflow); return false;
+        scope_set_error(context, ScopeError::Overflow); return false;
     }
     if capacity > (*context).max_scopes { set capacity = (*context).max_scopes; }
-    if capacity < required or not scope_mul_size(capacity, sizeof(ScopeEntry), &mut bytes) { scope_set_error(context, ScopeError.Overflow); return false; }
+    if capacity < required or not scope_mul_size(capacity, sizeof(ScopeEntry), &mut bytes) { scope_set_error(context, ScopeError::Overflow); return false; }
     let replacement = allocate(bytes);
-    if replacement == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError.OutOfMemory); return false; }
+    if replacement == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError::OutOfMemory); return false; }
     fill(replacement, 0, bytes);
     if (*context).scopes != null and (*context).scope_count != 0 { copy(replacement, (*context).scopes as *const u8, (*context).scope_count * sizeof(ScopeEntry)); }
     if (*context).scopes != null { set (*context).stats.reallocations = scope_sat_add((*context).stats.reallocations, 1); } else { set (*context).stats.allocations = scope_sat_add((*context).stats.allocations, 1); }
@@ -298,14 +298,14 @@ proc scope_reserve_scopes(context: *mut Scope, required: usize) -> bool {
 
 proc scope_reserve_symbols(context: *mut Scope, required: usize) -> bool {
     if required <= (*context).symbol_capacity { return true; }
-    if required > (*context).max_symbols { scope_set_error(context, ScopeError.SymbolLimit); return false; }
+    if required > (*context).max_symbols { scope_set_error(context, ScopeError::SymbolLimit); return false; }
     let mut capacity: usize = 0;
     let mut bytes: usize = 0;
-    if not scope_next_capacity((*context).symbol_capacity, required, &mut capacity) { scope_set_error(context, ScopeError.Overflow); return false; }
+    if not scope_next_capacity((*context).symbol_capacity, required, &mut capacity) { scope_set_error(context, ScopeError::Overflow); return false; }
     if capacity > (*context).max_symbols { set capacity = (*context).max_symbols; }
-    if capacity < required or not scope_mul_size(capacity, sizeof(Symbol), &mut bytes) { scope_set_error(context, ScopeError.Overflow); return false; }
+    if capacity < required or not scope_mul_size(capacity, sizeof(Symbol), &mut bytes) { scope_set_error(context, ScopeError::Overflow); return false; }
     let replacement = allocate(bytes);
-    if replacement == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError.OutOfMemory); return false; }
+    if replacement == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError::OutOfMemory); return false; }
     fill(replacement, 0, bytes);
     if (*context).symbols != null and (*context).symbol_count != 0 { copy(replacement, (*context).symbols as *const u8, (*context).symbol_count * sizeof(Symbol)); }
     if (*context).symbols != null { set (*context).stats.reallocations = scope_sat_add((*context).stats.reallocations, 1); } else { set (*context).stats.allocations = scope_sat_add((*context).stats.allocations, 1); }
@@ -317,14 +317,14 @@ proc scope_reserve_symbols(context: *mut Scope, required: usize) -> bool {
 
 proc scope_reserve_children(context: *mut Scope, scope_id: ScopeId, required: usize) -> bool {
     let index = scope_index(context as *const Scope, scope_id);
-    if index == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError.InvalidScope); return false; }
+    if index == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError::InvalidScope); return false; }
     let scope_item = (&((*context).scopes[index])) as *mut ScopeEntry;
     if required <= (*scope_item).child_capacity { return true; }
     let mut capacity: usize = 0;
     let mut bytes: usize = 0;
-    if not scope_next_capacity((*scope_item).child_capacity, required, &mut capacity) or not scope_mul_size(capacity, sizeof(ScopeId), &mut bytes) { scope_set_error(context, ScopeError.Overflow); return false; }
+    if not scope_next_capacity((*scope_item).child_capacity, required, &mut capacity) or not scope_mul_size(capacity, sizeof(ScopeId), &mut bytes) { scope_set_error(context, ScopeError::Overflow); return false; }
     let replacement = allocate(bytes);
-    if replacement == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError.OutOfMemory); return false; }
+    if replacement == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError::OutOfMemory); return false; }
     fill(replacement, 0, bytes);
     if (*scope_item).children != null and (*scope_item).child_count != 0 { copy(replacement, (*scope_item).children as *const u8, (*scope_item).child_count * sizeof(ScopeId)); }
     if (*scope_item).children != null { set (*context).stats.reallocations = scope_sat_add((*context).stats.reallocations, 1); } else { set (*context).stats.allocations = scope_sat_add((*context).stats.allocations, 1); }
@@ -336,14 +336,14 @@ proc scope_reserve_children(context: *mut Scope, scope_id: ScopeId, required: us
 
 proc scope_reserve_local_symbols(context: *mut Scope, scope_id: ScopeId, required: usize) -> bool {
     let index = scope_index(context as *const Scope, scope_id);
-    if index == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError.InvalidScope); return false; }
+    if index == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError::InvalidScope); return false; }
     let scope_item = (&((*context).scopes[index])) as *mut ScopeEntry;
     if required <= (*scope_item).symbol_capacity { return true; }
     let mut capacity: usize = 0;
     let mut bytes: usize = 0;
-    if not scope_next_capacity((*scope_item).symbol_capacity, required, &mut capacity) or not scope_mul_size(capacity, sizeof(SymbolId), &mut bytes) { scope_set_error(context, ScopeError.Overflow); return false; }
+    if not scope_next_capacity((*scope_item).symbol_capacity, required, &mut capacity) or not scope_mul_size(capacity, sizeof(SymbolId), &mut bytes) { scope_set_error(context, ScopeError::Overflow); return false; }
     let replacement = allocate(bytes);
-    if replacement == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError.OutOfMemory); return false; }
+    if replacement == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError::OutOfMemory); return false; }
     fill(replacement, 0, bytes);
     if (*scope_item).symbols != null and (*scope_item).symbol_count != 0 { copy(replacement, (*scope_item).symbols as *const u8, (*scope_item).symbol_count * sizeof(SymbolId)); }
     if (*scope_item).symbols != null { set (*context).stats.reallocations = scope_sat_add((*context).stats.reallocations, 1); } else { set (*context).stats.allocations = scope_sat_add((*context).stats.allocations, 1); }
@@ -379,10 +379,10 @@ proc scope_name_valid(name: *const u8, length: usize) -> bool {
     return true;
 }
 proc scope_cstr_length(context: *mut Scope, name: *const u8) -> usize {
-    if name == null { scope_set_error(context, ScopeError.InvalidName); return 0; }
+    if name == null { scope_set_error(context, ScopeError::InvalidName); return 0; }
     let mut length: usize = 0;
     while length <= (*context).max_name_bytes and name[length] != 0 { set length += 1; }
-    if length > (*context).max_name_bytes { scope_set_error(context, ScopeError.NameLimit); return 0; }
+    if length > (*context).max_name_bytes { scope_set_error(context, ScopeError::NameLimit); return 0; }
     return length;
 }
 proc scope_bytes_equal(left: *const u8, right: *const u8, length: usize) -> bool {
@@ -460,7 +460,7 @@ proc scope_rebuild_hash(
     }
     let mut bytes: usize = 0;
     if not scope_mul_size(new_capacity, sizeof(usize), &mut bytes) {
-        scope_set_error(context, ScopeError.Overflow);
+        scope_set_error(context, ScopeError::Overflow);
         return false;
     }
     let new_table = allocate(bytes);
@@ -469,7 +469,7 @@ proc scope_rebuild_hash(
             (*context).stats.allocation_failures,
             1
         );
-        scope_set_error(context, ScopeError.OutOfMemory);
+        scope_set_error(context, ScopeError::OutOfMemory);
         return false;
     }
     fill(new_table, 0, bytes);
@@ -482,7 +482,7 @@ proc scope_rebuild_hash(
             (*scope).symbols[index]
         ) {
             deallocate(new_table as *mut u8);
-            scope_set_error(context, ScopeError.Corruption);
+            scope_set_error(context, ScopeError::Corruption);
             return false;
         }
         set index += 1;
@@ -517,7 +517,7 @@ proc scope_ensure_hash_capacity(
         set capacity = SCOPE_HASH_MIN_CAPACITY;
     } else {
         if capacity > SCOPE_SIZE_MAX / 2 {
-            scope_set_error(context, ScopeError.Overflow);
+            scope_set_error(context, ScopeError::Overflow);
             return false;
         }
         set capacity *= 2;
@@ -633,13 +633,13 @@ export proc vitte_scope_init(context: *mut Scope) -> bool {
     if context == null { return false; }
     fill(context as *mut u8, 0, sizeof(Scope));
     set (*context).magic = SCOPE_MAGIC;
-    set (*context).state = ScopeState.Building;
+    set (*context).state = ScopeState::Building;
     set (*context).max_scopes = SCOPE_DEFAULT_MAX_SCOPES;
     set (*context).max_symbols = SCOPE_DEFAULT_MAX_SYMBOLS;
     set (*context).max_name_bytes = SCOPE_DEFAULT_MAX_NAME_BYTES;
     set (*context).max_depth = SCOPE_DEFAULT_MAX_DEPTH;
     set (*context).generation = 1;
-    let root = vitte_scope_create(context, 0, ScopeKind.Root, vitte_scope_span_invalid(), null);
+    let root = vitte_scope_create(context, 0, ScopeKind::Root, vitte_scope_span_invalid(), null);
     if root == 0 { return false; }
     set (*context).root_scope = root;
     return true;
@@ -679,34 +679,34 @@ export proc vitte_scope_destroy(context: *mut Scope) {
     }
     fill(context as *mut u8, 0, sizeof(Scope));
     set (*context).magic = SCOPE_DEAD_MAGIC;
-    set (*context).state = ScopeState.Destroyed;
+    set (*context).state = ScopeState::Destroyed;
 }
 
 export proc vitte_scope_set_limits(context: *mut Scope, max_scopes: usize, max_symbols: usize, max_name_bytes: usize, max_depth: usize) -> bool {
     if not scope_context_valid(context) { return false; }
-    if (*context).state != ScopeState.Building { return scope_fail(context, ScopeError.InvalidState); }
+    if (*context).state != ScopeState::Building { return scope_fail(context, ScopeError::InvalidState); }
     if max_scopes == 0 or max_symbols == 0 or max_name_bytes == 0 or max_depth == 0 or max_scopes < (*context).scope_count or max_symbols < (*context).symbol_count {
-        scope_set_error(context, ScopeError.InvalidArgument); return false;
+        scope_set_error(context, ScopeError::InvalidArgument); return false;
     }
     set (*context).max_scopes = max_scopes; set (*context).max_symbols = max_symbols;
     set (*context).max_name_bytes = max_name_bytes; set (*context).max_depth = max_depth;
-    set (*context).last_error = ScopeError.None; return true;
+    set (*context).last_error = ScopeError::None; return true;
 }
 
 export proc vitte_scope_create(context: *mut Scope, parent_id: ScopeId, kind: ScopeKind, span: ScopeSpan, payload: *mut u8) -> ScopeId {
     if not scope_context_valid(context) { return 0; }
-    if (*context).state != ScopeState.Building { scope_set_error(context, ScopeError.InvalidState); return 0; }
-    if kind <= ScopeKind.Invalid or kind >= ScopeKind.Count { scope_set_error(context, ScopeError.InvalidArgument); return 0; }
-    if (*context).scope_count >= (*context).max_scopes { scope_set_error(context, ScopeError.ScopeLimit); return 0; }
+    if (*context).state != ScopeState::Building { scope_set_error(context, ScopeError::InvalidState); return 0; }
+    if kind <= ScopeKind::Invalid or kind >= ScopeKind::Count { scope_set_error(context, ScopeError::InvalidArgument); return 0; }
+    if (*context).scope_count >= (*context).max_scopes { scope_set_error(context, ScopeError::ScopeLimit); return 0; }
     let mut depth: usize = 0;
     if parent_id == 0 {
-        if (*context).scope_count != 0 or kind != ScopeKind.Root { scope_set_error(context, ScopeError.InvalidScope); return 0; }
+        if (*context).scope_count != 0 or kind != ScopeKind::Root { scope_set_error(context, ScopeError::InvalidScope); return 0; }
     } else {
         let parent: *const ScopeEntry = vitte_scope_get_scope(context as *const Scope, parent_id);
-        if parent == null { scope_set_error(context, ScopeError.InvalidScope); return 0; }
-        if (*parent).depth == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError.Overflow); return 0; }
+        if parent == null { scope_set_error(context, ScopeError::InvalidScope); return 0; }
+        if (*parent).depth == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError::Overflow); return 0; }
         set depth = (*parent).depth + 1;
-        if depth > (*context).max_depth { scope_set_error(context, ScopeError.DepthLimit); return 0; }
+        if depth > (*context).max_depth { scope_set_error(context, ScopeError::DepthLimit); return 0; }
         if not scope_reserve_children(context, parent_id, (*parent).child_count + 1) { return 0; }
     }
     let required: usize = (*context).scope_count + 1;
@@ -726,56 +726,56 @@ export proc vitte_scope_create(context: *mut Scope, parent_id: ScopeId, kind: Sc
     if parent_id == 0 { set (*context).root_scope = id; }
     set (*context).stats.scopes_created = scope_sat_add((*context).stats.scopes_created, 1);
     if depth as u64 > (*context).stats.max_depth { set (*context).stats.max_depth = depth as u64; }
-    set (*context).last_error = ScopeError.None;
+    set (*context).last_error = ScopeError::None;
     return id;
 }
 
 export proc vitte_scope_seal_scope(context: *mut Scope, scope_id: ScopeId) -> bool {
     if not scope_context_valid(context) { return false; }
-    if (*context).state != ScopeState.Building { return scope_fail(context, ScopeError.InvalidState); }
+    if (*context).state != ScopeState::Building { return scope_fail(context, ScopeError::InvalidState); }
     let index = scope_index(context as *const Scope, scope_id);
-    if index == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError.InvalidScope); return false; }
-    set (*context).scopes[index].sealed = true; set (*context).last_error = ScopeError.None; return true;
+    if index == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError::InvalidScope); return false; }
+    set (*context).scopes[index].sealed = true; set (*context).last_error = ScopeError::None; return true;
 }
 
 export proc vitte_scope_seal(context: *mut Scope) -> bool {
     if not scope_context_valid(context) { return false; }
-    if (*context).state != ScopeState.Building { return scope_fail(context, ScopeError.InvalidState); }
+    if (*context).state != ScopeState::Building { return scope_fail(context, ScopeError::InvalidState); }
     if not vitte_scope_validate(context) { return false; }
     let mut index: usize = 0;
     while index < (*context).scope_count { set (*context).scopes[index].sealed = true; set index += 1; }
-    set (*context).state = ScopeState.Sealed; set (*context).last_error = ScopeError.None; return true;
+    set (*context).state = ScopeState::Sealed; set (*context).last_error = ScopeError::None; return true;
 }
 
 export proc vitte_scope_declare(context: *mut Scope, scope_id: ScopeId, name: *const u8, name_length: usize, kind: SymbolKind, visibility: SymbolVisibility, declaration_flags: u32, span: ScopeSpan, payload: *mut u8) -> SymbolId {
     if not scope_context_valid(context) { return 0; }
-    if (*context).state != ScopeState.Building { scope_set_error(context, ScopeError.InvalidState); return 0; }
+    if (*context).state != ScopeState::Building { scope_set_error(context, ScopeError::InvalidState); return 0; }
     let scope_pos = scope_index(context as *const Scope, scope_id);
-    if scope_pos == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError.InvalidScope); return 0; }
-    if (*context).scopes[scope_pos].sealed { scope_set_error(context, ScopeError.InvalidState); return 0; }
-    if not scope_name_valid(name, name_length) { scope_set_error(context, ScopeError.InvalidName); return 0; }
-    if name_length > (*context).max_name_bytes { scope_set_error(context, ScopeError.NameLimit); return 0; }
-    if kind <= SymbolKind.Invalid or kind >= SymbolKind.Count or visibility >= SymbolVisibility.Count { scope_set_error(context, ScopeError.InvalidArgument); return 0; }
-    if (*context).symbol_count >= (*context).max_symbols { scope_set_error(context, ScopeError.SymbolLimit); return 0; }
+    if scope_pos == SCOPE_SIZE_MAX { scope_set_error(context, ScopeError::InvalidScope); return 0; }
+    if (*context).scopes[scope_pos].sealed { scope_set_error(context, ScopeError::InvalidState); return 0; }
+    if not scope_name_valid(name, name_length) { scope_set_error(context, ScopeError::InvalidName); return 0; }
+    if name_length > (*context).max_name_bytes { scope_set_error(context, ScopeError::NameLimit); return 0; }
+    if kind <= SymbolKind::Invalid or kind >= SymbolKind::Count or visibility >= SymbolVisibility::Count { scope_set_error(context, ScopeError::InvalidArgument); return 0; }
+    if (*context).symbol_count >= (*context).max_symbols { scope_set_error(context, ScopeError::SymbolLimit); return 0; }
     let hash = scope_name_hash(name, name_length);
     let scope = (&((*context).scopes[scope_pos])) as *const ScopeEntry;
     if scope_lookup_local_private(context as *const Scope, scope, name, name_length, hash) != 0 {
         set (*context).stats.duplicate_declarations = scope_sat_add((*context).stats.duplicate_declarations, 1);
-        scope_set_error(context, ScopeError.DuplicateSymbol); return 0;
+        scope_set_error(context, ScopeError::DuplicateSymbol); return 0;
     }
     let shadowed = scope_find_shadowed(context as *const Scope, scope_id, name, name_length, hash);
     let mut required: usize = 0;
     let mut local_required: usize = 0;
-    if not scope_add_size((*context).symbol_count, 1, &mut required) or not scope_add_size((*context).scopes[scope_pos].symbol_count, 1, &mut local_required) { scope_set_error(context, ScopeError.Overflow); return 0; }
+    if not scope_add_size((*context).symbol_count, 1, &mut required) or not scope_add_size((*context).scopes[scope_pos].symbol_count, 1, &mut local_required) { scope_set_error(context, ScopeError::Overflow); return 0; }
     if not scope_reserve_symbols(context, required) or not scope_reserve_local_symbols(context, scope_id, local_required) { return 0; }
     let scope_entry = (&mut (*context).scopes[scope_pos]) as *mut ScopeEntry;
     if not scope_ensure_hash_capacity(context, scope_entry, local_required) {
         return 0;
     }
     let mut name_bytes: usize = 0;
-    if not scope_add_size(name_length, 1, &mut name_bytes) { scope_set_error(context, ScopeError.Overflow); return 0; }
+    if not scope_add_size(name_length, 1, &mut name_bytes) { scope_set_error(context, ScopeError::Overflow); return 0; }
     let name_copy = allocate(name_bytes);
-    if name_copy == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError.OutOfMemory); return 0; }
+    if name_copy == null { set (*context).stats.allocation_failures = scope_sat_add((*context).stats.allocation_failures, 1); scope_set_error(context, ScopeError::OutOfMemory); return 0; }
     copy(name_copy, name, name_length); set name_copy[name_length] = 0;
     let id = required as SymbolId;
     let record = (&((*context).symbols[required - 1])) as *mut Symbol;
@@ -797,25 +797,25 @@ export proc vitte_scope_declare(context: *mut Scope, scope_id: ScopeId, name: *c
         set (*context).symbol_count -= 1;
         deallocate(name_copy as *mut u8);
         fill(record as *mut u8, 0, sizeof(Symbol));
-        scope_set_error(context, ScopeError.Corruption);
+        scope_set_error(context, ScopeError::Corruption);
         return 0;
     }
     set (*context).stats.symbols_declared = scope_sat_add((*context).stats.symbols_declared, 1);
     if shadowed != 0 { set (*context).stats.shadowing_declarations = scope_sat_add((*context).stats.shadowing_declarations, 1); }
-    set (*context).last_error = ScopeError.None;
+    set (*context).last_error = ScopeError::None;
     return id;
 }
 
 export proc vitte_scope_lookup_local_n(context: *mut Scope, scope_id: ScopeId, name: *const u8, name_length: usize) -> SymbolId {
     if not scope_context_valid(context) { return 0; }
-    if not scope_name_valid(name, name_length) { scope_set_error(context, ScopeError.InvalidName); return 0; }
+    if not scope_name_valid(name, name_length) { scope_set_error(context, ScopeError::InvalidName); return 0; }
     let scope = vitte_scope_get_scope(context as *const Scope, scope_id);
-    if scope == null { scope_set_error(context, ScopeError.InvalidScope); return 0; }
+    if scope == null { scope_set_error(context, ScopeError::InvalidScope); return 0; }
     let result = scope_lookup_local_private(context as *const Scope, scope, name, name_length, scope_name_hash(name, name_length));
     set (*context).stats.local_lookups = scope_sat_add((*context).stats.local_lookups, 1);
     if result == 0 { set (*context).stats.lookup_misses = scope_sat_add((*context).stats.lookup_misses, 1); }
     else { set (*context).stats.lookup_hits = scope_sat_add((*context).stats.lookup_hits, 1); }
-    set (*context).last_error = ScopeError.None; return result;
+    set (*context).last_error = ScopeError::None; return result;
 }
 
 export proc vitte_scope_lookup_local(context: *mut Scope, scope_id: ScopeId, name: *const u8) -> SymbolId {
@@ -827,22 +827,22 @@ export proc vitte_scope_lookup_local(context: *mut Scope, scope_id: ScopeId, nam
 
 export proc vitte_scope_lookup_n(context: *mut Scope, start_scope: ScopeId, name: *const u8, name_length: usize) -> SymbolId {
     if not scope_context_valid(context) { return 0; }
-    if not scope_name_valid(name, name_length) { scope_set_error(context, ScopeError.InvalidName); return 0; }
-    if vitte_scope_get_scope(context as *const Scope, start_scope) == null { scope_set_error(context, ScopeError.InvalidScope); return 0; }
+    if not scope_name_valid(name, name_length) { scope_set_error(context, ScopeError::InvalidName); return 0; }
+    if vitte_scope_get_scope(context as *const Scope, start_scope) == null { scope_set_error(context, ScopeError::InvalidScope); return 0; }
     let hash = scope_name_hash(name, name_length);
     let mut current = start_scope;
     let mut guard: usize = 0;
     set (*context).stats.recursive_lookups = scope_sat_add((*context).stats.recursive_lookups, 1);
     while current != 0 and guard < (*context).scope_count {
         let scope = vitte_scope_get_scope(context as *const Scope, current);
-        if scope == null { scope_set_error(context, ScopeError.Corruption); return 0; }
+        if scope == null { scope_set_error(context, ScopeError::Corruption); return 0; }
         let found = scope_lookup_local_private(context as *const Scope, scope, name, name_length, hash);
-        if found != 0 { set (*context).stats.lookup_hits = scope_sat_add((*context).stats.lookup_hits, 1); set (*context).last_error = ScopeError.None; return found; }
+        if found != 0 { set (*context).stats.lookup_hits = scope_sat_add((*context).stats.lookup_hits, 1); set (*context).last_error = ScopeError::None; return found; }
         set current = (*scope).parent_id; set guard += 1;
     }
-    if current != 0 { scope_set_error(context, ScopeError.Corruption); return 0; }
+    if current != 0 { scope_set_error(context, ScopeError::Corruption); return 0; }
     set (*context).stats.lookup_misses = scope_sat_add((*context).stats.lookup_misses, 1);
-    set (*context).last_error = ScopeError.None; return 0;
+    set (*context).last_error = ScopeError::None; return 0;
 }
 
 export proc vitte_scope_lookup(context: *mut Scope, start_scope: ScopeId, name: *const u8) -> SymbolId {
@@ -860,10 +860,10 @@ proc scope_symbol_visible_private(
     if context == null or symbol == null or
        scope_get_scope_private(context, requester_scope) == null or
        scope_get_scope_private(context, (*symbol).scope_id) == null or
-       (*symbol).visibility >= SymbolVisibility.Count {
+       (*symbol).visibility >= SymbolVisibility::Count {
         return false;
     }
-    if (*symbol).visibility == SymbolVisibility.Public { return true; }
+    if (*symbol).visibility == SymbolVisibility::Public { return true; }
     return scope_ancestor_private(
         context,
         (*symbol).scope_id,
@@ -874,13 +874,13 @@ proc scope_symbol_visible_private(
 export proc vitte_scope_lookup_visible_n(context: *mut Scope, start_scope: ScopeId, requester_scope: ScopeId, name: *const u8, name_length: usize) -> SymbolId {
     if not scope_context_valid(context) { return 0; }
     if scope_get_scope_private(context as *const Scope, requester_scope) == null {
-        scope_set_error(context, ScopeError.InvalidScope);
+        scope_set_error(context, ScopeError::InvalidScope);
         return 0;
     }
     let id = vitte_scope_lookup_n(context, start_scope, name, name_length);
     if id == 0 { return 0; }
     let symbol = vitte_scope_get_symbol(context as *const Scope, id);
-    if symbol == null { scope_set_error(context, ScopeError.Corruption); return 0; }
+    if symbol == null { scope_set_error(context, ScopeError::Corruption); return 0; }
     if scope_symbol_visible_private(context as *const Scope, symbol, requester_scope) {
         return id;
     }
@@ -897,13 +897,13 @@ export proc vitte_scope_lookup_visible(context: *mut Scope, start_scope: ScopeId
 
 export proc vitte_scope_get_scope(context: *const Scope, id: ScopeId) -> *const ScopeEntry { return scope_get_scope_private(context, id); }
 export proc vitte_scope_get_scope_mut(context: *mut Scope, id: ScopeId) -> *mut ScopeEntry {
-    if not scope_context_valid(context) or (*context).state != ScopeState.Building { return null; }
+    if not scope_context_valid(context) or (*context).state != ScopeState::Building { return null; }
     let index = scope_index(context as *const Scope, id); if index == SCOPE_SIZE_MAX { return null; }
     return (&((*context).scopes[index])) as *mut ScopeEntry;
 }
 export proc vitte_scope_get_symbol(context: *const Scope, id: SymbolId) -> *const Symbol { return scope_get_symbol_private(context, id); }
 export proc vitte_scope_get_symbol_mut(context: *mut Scope, id: SymbolId) -> *mut Symbol {
-    if not scope_context_valid(context) or (*context).state != ScopeState.Building { return null; }
+    if not scope_context_valid(context) or (*context).state != ScopeState::Building { return null; }
     let index = symbol_index(context as *const Scope, id); if index == SCOPE_SIZE_MAX { return null; }
     return (&((*context).symbols[index])) as *mut Symbol;
 }
@@ -924,10 +924,10 @@ export proc vitte_scope_symbol_shadows(context: *const Scope, symbol_id: SymbolI
 }
 export proc vitte_scope_refresh_shadow_links(context: *mut Scope) -> bool {
     if not scope_context_valid(context) {
-        return scope_fail(context, ScopeError.InvalidContext);
+        return scope_fail(context, ScopeError::InvalidContext);
     }
-    if (*context).state != ScopeState.Building {
-        return scope_fail(context, ScopeError.InvalidState);
+    if (*context).state != ScopeState::Building {
+        return scope_fail(context, ScopeError::InvalidState);
     }
     let mut shadowing_declarations: u64 = 0;
     let mut index: usize = 0;
@@ -935,7 +935,7 @@ export proc vitte_scope_refresh_shadow_links(context: *mut Scope) -> bool {
         let symbol = (&mut (*context).symbols[index]) as *mut Symbol;
         if (*symbol).name == null or (*symbol).name_length == 0 or
            scope_get_scope_private(context as *const Scope, (*symbol).scope_id) == null {
-            return scope_fail(context, ScopeError.Corruption);
+            return scope_fail(context, ScopeError::Corruption);
         }
         let shadowed = scope_find_shadowed(
             context as *const Scope,
@@ -951,7 +951,7 @@ export proc vitte_scope_refresh_shadow_links(context: *mut Scope) -> bool {
         set index += 1;
     }
     set (*context).stats.shadowing_declarations = shadowing_declarations;
-    set (*context).last_error = ScopeError.None;
+    set (*context).last_error = ScopeError::None;
     return true;
 }
 export proc vitte_scope_symbol_is_visible_from(context: *const Scope, symbol_id: SymbolId, requester_scope: ScopeId) -> bool {
@@ -966,8 +966,8 @@ proc scope_validate_scope_private(
 ) -> bool {
     if context == null or scope == null or
        (*scope).id != (expected_index + 1) as ScopeId or
-       (*scope).kind <= ScopeKind.Invalid or
-       (*scope).kind >= ScopeKind.Count or
+       (*scope).kind <= ScopeKind::Invalid or
+       (*scope).kind >= ScopeKind::Count or
        (*scope).child_count > (*scope).child_capacity or
        (*scope).symbol_count > (*scope).symbol_capacity or
        ((*scope).child_count != 0 and (*scope).children == null) or
@@ -980,7 +980,7 @@ proc scope_validate_scope_private(
 
     if (*scope).parent_id == 0 {
         if (*scope).id != (*context).root_scope or
-           (*scope).kind != ScopeKind.Root or (*scope).depth != 0 {
+           (*scope).kind != ScopeKind::Root or (*scope).depth != 0 {
             return false;
         }
     } else {
@@ -1070,9 +1070,9 @@ proc scope_validate_symbol_private(
            (*symbol).name as *const u8,
            (*symbol).name_length
        ) or
-       (*symbol).kind <= SymbolKind.Invalid or
-       (*symbol).kind >= SymbolKind.Count or
-       (*symbol).visibility >= SymbolVisibility.Count {
+       (*symbol).kind <= SymbolKind::Invalid or
+       (*symbol).kind >= SymbolKind::Count or
+       (*symbol).visibility >= SymbolVisibility::Count {
         return false;
     }
     let owner = scope_get_scope_private(context, (*symbol).scope_id);
@@ -1117,14 +1117,14 @@ proc scope_validate_symbol_private(
 
 export proc vitte_scope_validate(context: *mut Scope) -> bool {
     if not scope_context_valid(context) {
-        return scope_fail(context, ScopeError.InvalidContext);
+        return scope_fail(context, ScopeError::InvalidContext);
     }
     set (*context).stats.validation_runs = scope_sat_add(
         (*context).stats.validation_runs,
         1
     );
     if (*context).scope_count == 0 or (*context).root_scope == 0 {
-        set (*context).last_error = ScopeError.Validation;
+        set (*context).last_error = ScopeError::Validation;
         set (*context).stats.validation_failures = scope_sat_add(
             (*context).stats.validation_failures,
             1
@@ -1138,7 +1138,7 @@ export proc vitte_scope_validate(context: *mut Scope) -> bool {
         let scope = &(*context).scopes[index];
         if (*scope).parent_id == 0 { set root_count += 1; }
         if not scope_validate_scope_private(context, scope, index) {
-            set (*context).last_error = ScopeError.Validation;
+            set (*context).last_error = ScopeError::Validation;
             set (*context).stats.validation_failures = scope_sat_add(
                 (*context).stats.validation_failures,
                 1
@@ -1148,7 +1148,7 @@ export proc vitte_scope_validate(context: *mut Scope) -> bool {
         set index += 1;
     }
     if root_count != 1 {
-        set (*context).last_error = ScopeError.Validation;
+        set (*context).last_error = ScopeError::Validation;
         set (*context).stats.validation_failures = scope_sat_add(
             (*context).stats.validation_failures,
             1
@@ -1163,7 +1163,7 @@ export proc vitte_scope_validate(context: *mut Scope) -> bool {
             &(*context).symbols[index],
             index
         ) {
-            set (*context).last_error = ScopeError.Validation;
+            set (*context).last_error = ScopeError::Validation;
             set (*context).stats.validation_failures = scope_sat_add(
                 (*context).stats.validation_failures,
                 1
@@ -1179,7 +1179,7 @@ export proc vitte_scope_validate(context: *mut Scope) -> bool {
         let mut guard: usize = 0;
         while current != 0 {
             if guard >= (*context).scope_count {
-                set (*context).last_error = ScopeError.Validation;
+                set (*context).last_error = ScopeError::Validation;
                 set (*context).stats.validation_failures = scope_sat_add(
                     (*context).stats.validation_failures,
                     1
@@ -1192,7 +1192,7 @@ export proc vitte_scope_validate(context: *mut Scope) -> bool {
                 current
             );
             if current_scope == null {
-                set (*context).last_error = ScopeError.Validation;
+                set (*context).last_error = ScopeError::Validation;
                 set (*context).stats.validation_failures = scope_sat_add(
                     (*context).stats.validation_failures,
                     1
@@ -1201,7 +1201,7 @@ export proc vitte_scope_validate(context: *mut Scope) -> bool {
             }
             if (*current_scope).parent_id == 0 {
                 if (*current_scope).id != (*context).root_scope {
-                    set (*context).last_error = ScopeError.Validation;
+                    set (*context).last_error = ScopeError::Validation;
                     set (*context).stats.validation_failures = scope_sat_add(
                         (*context).stats.validation_failures,
                         1
@@ -1214,7 +1214,7 @@ export proc vitte_scope_validate(context: *mut Scope) -> bool {
         }
         set index += 1;
     }
-    set (*context).last_error = ScopeError.None;
+    set (*context).last_error = ScopeError::None;
     return true;
 }
 
@@ -1258,7 +1258,7 @@ export proc vitte_scope_stats(context: *const Scope) -> ScopeStats {
     return stats;
 }
 export proc vitte_scope_is_valid(context: *const Scope) -> bool { return scope_context_valid(context); }
-export proc vitte_scope_last_error(context: *const Scope) -> ScopeError { if context == null or (*context).magic != SCOPE_MAGIC { return ScopeError.InvalidContext; } return (*context).last_error; }
+export proc vitte_scope_last_error(context: *const Scope) -> ScopeError { if context == null or (*context).magic != SCOPE_MAGIC { return ScopeError::InvalidContext; } return (*context).last_error; }
 export proc vitte_scope_generation(context: *const Scope) -> u64 { if not scope_context_valid(context) { return 0; } return (*context).generation; }
 export proc vitte_scope_translation_unit_anchor() {}
 
@@ -1269,19 +1269,19 @@ export proc vitte_scope_api_version_patch() -> u32 { return SCOPE_API_VERSION_PA
 export proc vitte_scope_api_version() -> u32 { return SCOPE_API_VERSION; }
 
 export proc vitte_scope_error_is_valid(error: ScopeError) -> bool {
-    return error >= ScopeError.None and error < ScopeError.Count;
+    return error >= ScopeError::None and error < ScopeError::Count;
 }
 export proc vitte_scope_state_is_valid(state: ScopeState) -> bool {
-    return state > ScopeState.Invalid and state < ScopeState.Count;
+    return state > ScopeState::Invalid and state < ScopeState::Count;
 }
 export proc vitte_scope_kind_is_valid(kind: ScopeKind) -> bool {
-    return kind > ScopeKind.Invalid and kind < ScopeKind.Count;
+    return kind > ScopeKind::Invalid and kind < ScopeKind::Count;
 }
 export proc vitte_symbol_kind_is_valid(kind: SymbolKind) -> bool {
-    return kind > SymbolKind.Invalid and kind < SymbolKind.Count;
+    return kind > SymbolKind::Invalid and kind < SymbolKind::Count;
 }
 export proc vitte_symbol_visibility_is_valid(visibility: SymbolVisibility) -> bool {
-    return visibility >= SymbolVisibility.Private and visibility < SymbolVisibility.Count;
+    return visibility >= SymbolVisibility::Private and visibility < SymbolVisibility::Count;
 }
 export proc vitte_scope_id_is_valid(id: ScopeId) -> bool { return id != SCOPE_INVALID_SCOPE_ID; }
 export proc vitte_symbol_id_is_valid(id: SymbolId) -> bool { return id != SCOPE_INVALID_SYMBOL_ID; }
@@ -1312,20 +1312,20 @@ export proc vitte_scope_spans_overlap(left: ScopeSpan, right: ScopeSpan) -> bool
 }
 
 export proc vitte_scope_is_building(context: *const Scope) -> bool {
-    return context != null and (*context).magic == SCOPE_MAGIC and (*context).state == ScopeState.Building;
+    return context != null and (*context).magic == SCOPE_MAGIC and (*context).state == ScopeState::Building;
 }
 export proc vitte_scope_is_sealed(context: *const Scope) -> bool {
-    return context != null and (*context).magic == SCOPE_MAGIC and (*context).state == ScopeState.Sealed;
+    return context != null and (*context).magic == SCOPE_MAGIC and (*context).state == ScopeState::Sealed;
 }
 export proc vitte_scope_has_failed(context: *const Scope) -> bool {
-    return context != null and (*context).magic == SCOPE_MAGIC and (*context).state == ScopeState.Failed;
+    return context != null and (*context).magic == SCOPE_MAGIC and (*context).state == ScopeState::Failed;
 }
 export proc vitte_scope_is_destroyed(context: *const Scope) -> bool {
-    return context != null and (*context).magic == SCOPE_DEAD_MAGIC and (*context).state == ScopeState.Destroyed;
+    return context != null and (*context).magic == SCOPE_DEAD_MAGIC and (*context).state == ScopeState::Destroyed;
 }
 
 export proc vitte_scope_entry_is_root(scope: *const ScopeEntry) -> bool {
-    return scope != null and (*scope).parent_id == 0 and (*scope).kind == ScopeKind.Root;
+    return scope != null and (*scope).parent_id == 0 and (*scope).kind == ScopeKind::Root;
 }
 export proc vitte_scope_entry_is_sealed(scope: *const ScopeEntry) -> bool {
     return scope != null and (*scope).sealed;
@@ -1352,10 +1352,10 @@ export proc vitte_scope_entry_symbol_at(scope: *const ScopeEntry, index: usize) 
 }
 
 export proc vitte_symbol_is_public(symbol: *const Symbol) -> bool {
-    return symbol != null and (*symbol).visibility == SymbolVisibility.Public;
+    return symbol != null and (*symbol).visibility == SymbolVisibility::Public;
 }
 export proc vitte_symbol_is_private(symbol: *const Symbol) -> bool {
-    return symbol != null and (*symbol).visibility == SymbolVisibility.Private;
+    return symbol != null and (*symbol).visibility == SymbolVisibility::Private;
 }
 export proc vitte_symbol_has_flag(symbol: *const Symbol, flag: u32) -> bool {
     return symbol != null and ((*symbol).declaration_flags & flag) != 0;
@@ -1372,7 +1372,7 @@ export proc vitte_symbol_is_async(symbol: *const Symbol) -> bool { return vitte_
 export proc vitte_symbol_is_unsafe(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_UNSAFE); }
 export proc vitte_symbol_is_comptime(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_COMPTIME); }
 export proc vitte_symbol_is_imported(symbol: *const Symbol) -> bool {
-    return symbol != null and ((*symbol).kind == SymbolKind.Import or vitte_symbol_has_flag(symbol, SYMBOL_FLAG_IMPORTED));
+    return symbol != null and ((*symbol).kind == SymbolKind::Import or vitte_symbol_has_flag(symbol, SYMBOL_FLAG_IMPORTED));
 }
 export proc vitte_symbol_is_synthetic(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_SYNTHETIC); }
 export proc vitte_symbol_is_used(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_USED); }
@@ -1382,17 +1382,17 @@ export proc vitte_symbol_has_shadowed_declaration(symbol: *const Symbol) -> bool
 }
 
 export proc vitte_symbol_kind_is_type(kind: SymbolKind) -> bool {
-    return kind == SymbolKind.Type or kind == SymbolKind.Opaque or kind == SymbolKind.Form or
-           kind == SymbolKind.Pick or kind == SymbolKind.Trait or kind == SymbolKind.GenericParameter;
+    return kind == SymbolKind::Type or kind == SymbolKind::Opaque or kind == SymbolKind::Form or
+           kind == SymbolKind::Pick or kind == SymbolKind::Trait or kind == SymbolKind::GenericParameter;
 }
 export proc vitte_symbol_kind_is_value(kind: SymbolKind) -> bool {
-    return kind == SymbolKind.Const or kind == SymbolKind.Static or kind == SymbolKind.Field or
-           kind == SymbolKind.Variant or kind == SymbolKind.Proc or kind == SymbolKind.Parameter or
-           kind == SymbolKind.Local;
+    return kind == SymbolKind::Const or kind == SymbolKind::Static or kind == SymbolKind::Field or
+           kind == SymbolKind::Variant or kind == SymbolKind::Proc or kind == SymbolKind::Parameter or
+           kind == SymbolKind::Local;
 }
 export proc vitte_symbol_kind_is_callable(kind: SymbolKind) -> bool {
-    return kind == SymbolKind.Proc or kind == SymbolKind.Macro;
+    return kind == SymbolKind::Proc or kind == SymbolKind::Macro;
 }
 export proc vitte_symbol_kind_is_local_binding(kind: SymbolKind) -> bool {
-    return kind == SymbolKind.Parameter or kind == SymbolKind.Local or kind == SymbolKind.GenericParameter;
+    return kind == SymbolKind::Parameter or kind == SymbolKind::Local or kind == SymbolKind::GenericParameter;
 }

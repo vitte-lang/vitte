@@ -15,8 +15,8 @@ SEMANTIC_CASES = {
     "pick constructor through a transparent type alias": (
         "pick Order { Less, Equal, Greater }\n"
         "type OrderAlias = Order;\n"
-        "proc selected_order() -> OrderAlias { return OrderAlias.Less; }\n"
-        "proc main() -> i64 { if selected_order() == OrderAlias.Less { return 0; } return 1; }\n",
+        "proc selected_order() -> OrderAlias { return OrderAlias::Less; }\n"
+        "proc main() -> i64 { if selected_order() == OrderAlias::Less { return 0; } return 1; }\n",
         True,
     ),
     "qualified module header preserves forward procedure signatures": (

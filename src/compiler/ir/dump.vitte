@@ -27,10 +27,10 @@ proc ir_dump_type(context: &IRContext, id: u64) -> string {
     let type_ = vitte_ir_get_type(context as *mut IRContext, id);
     if type_ == null { return "<invalid-type>"; }
     let name = vitte_ir_type_kind_name(type_.kind);
-    if type_.kind == IRTypeKind.Pointer {
+    if type_.kind == IRTypeKind::Pointer {
         return ir_dump_type(context, type_.element_type) + "*";
     }
-    if type_.kind == IRTypeKind.Array {
+    if type_.kind == IRTypeKind::Array {
         return "[" + type_.array_length.to_string() + "]" +
             ir_dump_type(context, type_.element_type);
     }
@@ -143,15 +143,15 @@ proc ir_dump_instruction(context: &IRContext, instruction: &IRInstruction) -> st
     }
     set output += vitte_ir_opcode_name(instruction.opcode);
 
-    if instruction.opcode == IROpcode.Br {
+    if instruction.opcode == IROpcode::Br {
         set output += " %" + ir_dump_block_name(context, instruction.target_true);
     } else {
-        if instruction.opcode == IROpcode.CondBr {
+        if instruction.opcode == IROpcode::CondBr {
             set output += " " + ir_dump_value(context, instruction.operands[0]) +
                 ", %" + ir_dump_block_name(context, instruction.target_true) +
                 ", %" + ir_dump_block_name(context, instruction.target_false);
         } else {
-            if instruction.opcode == IROpcode.Phi {
+            if instruction.opcode == IROpcode::Phi {
                 let mut index: usize = 0;
                 while index < instruction.phi_count {
                     if index == 0 { set output += " "; } else { set output += ", "; }

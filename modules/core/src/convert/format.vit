@@ -52,7 +52,7 @@ export proc format_success(length: usize) -> FormatResult {
     return FormatResult {
         success: true,
         length: length,
-        error: FormatError.None
+        error: FormatError::None
     };
 }
 
@@ -156,13 +156,13 @@ export proc format_u64(
     capacity: usize
 ) -> FormatResult {
     if buffer == null {
-        return format_failure(FormatError.NullBuffer);
+        return format_failure(FormatError::NullBuffer);
     }
 
     let required: usize = format_u64_decimal_length(value);
 
     if capacity < required {
-        return format_failure(FormatError.BufferTooSmall);
+        return format_failure(FormatError::BufferTooSmall);
     }
 
     let mut current: u64 = value;
@@ -208,7 +208,7 @@ export proc format_i64(
     capacity: usize
 ) -> FormatResult {
     if buffer == null {
-        return format_failure(FormatError.NullBuffer);
+        return format_failure(FormatError::NullBuffer);
     }
 
     if value >= 0 {
@@ -218,7 +218,7 @@ export proc format_i64(
     let required: usize = format_i64_decimal_length(value);
 
     if capacity < required {
-        return format_failure(FormatError.BufferTooSmall);
+        return format_failure(FormatError::BufferTooSmall);
     }
 
     buffer[0] = 45;
@@ -308,12 +308,12 @@ export proc format_bool(
     capacity: usize
 ) -> FormatResult {
     if buffer == null {
-        return format_failure(FormatError.NullBuffer);
+        return format_failure(FormatError::NullBuffer);
     }
 
     if value {
         if capacity < 4 {
-            return format_failure(FormatError.BufferTooSmall);
+            return format_failure(FormatError::BufferTooSmall);
         }
 
         buffer[0] = 116;
@@ -325,7 +325,7 @@ export proc format_bool(
     }
 
     if capacity < 5 {
-        return format_failure(FormatError.BufferTooSmall);
+        return format_failure(FormatError::BufferTooSmall);
     }
 
     buffer[0] = 102;
@@ -373,17 +373,17 @@ export proc format_u64_base(
     capacity: usize
 ) -> FormatResult {
     if base < 2 or base > 36 {
-        return format_failure(FormatError.InvalidBase);
+        return format_failure(FormatError::InvalidBase);
     }
 
     if buffer == null {
-        return format_failure(FormatError.NullBuffer);
+        return format_failure(FormatError::NullBuffer);
     }
 
     let required: usize = format_u64_base_length(value, base);
 
     if capacity < required {
-        return format_failure(FormatError.BufferTooSmall);
+        return format_failure(FormatError::BufferTooSmall);
     }
 
     let mut current: u64 = value;
@@ -417,10 +417,10 @@ export proc format_i64_base(
     capacity: usize
 ) -> FormatResult {
     if base < 2 or base > 36 {
-        return format_failure(FormatError.InvalidBase);
+        return format_failure(FormatError::InvalidBase);
     }
     if buffer == null {
-        return format_failure(FormatError.NullBuffer);
+        return format_failure(FormatError::NullBuffer);
     }
     if value >= 0 {
         return format_u64_base(value as u64, base, uppercase, buffer, capacity);
@@ -430,7 +430,7 @@ export proc format_i64_base(
     let digit_length: usize = format_u64_base_length(magnitude, base);
     let required: usize = digit_length + 1;
     if capacity < required {
-        return format_failure(FormatError.BufferTooSmall);
+        return format_failure(FormatError::BufferTooSmall);
     }
 
     set buffer[0] = 45;
@@ -626,21 +626,21 @@ export proc format_hex_fixed_u64(
     capacity: usize
 ) -> FormatResult {
     if width > 16 {
-        return format_failure(FormatError.InvalidArgument);
+        return format_failure(FormatError::InvalidArgument);
     }
 
     if buffer == null {
-        return format_failure(FormatError.NullBuffer);
+        return format_failure(FormatError::NullBuffer);
     }
 
     if capacity < width {
-        return format_failure(FormatError.BufferTooSmall);
+        return format_failure(FormatError::BufferTooSmall);
     }
 
     let required: usize = format_u64_base_length(value, 16);
 
     if required > width {
-        return format_failure(FormatError.InvalidArgument);
+        return format_failure(FormatError::InvalidArgument);
     }
 
     let mut current: u64 = value;
@@ -673,15 +673,15 @@ export proc format_ascii(
     capacity: usize
 ) -> FormatResult {
     if buffer == null {
-        return format_failure(FormatError.NullBuffer);
+        return format_failure(FormatError::NullBuffer);
     }
 
     if capacity < 1 {
-        return format_failure(FormatError.BufferTooSmall);
+        return format_failure(FormatError::BufferTooSmall);
     }
 
     if character > 127 {
-        return format_failure(FormatError.InvalidArgument);
+        return format_failure(FormatError::InvalidArgument);
     }
 
     buffer[0] = character;
@@ -695,33 +695,33 @@ export proc format_char(
     capacity: usize
 ) -> FormatResult {
     if buffer == null {
-        return format_failure(FormatError.NullBuffer);
+        return format_failure(FormatError::NullBuffer);
     }
 
     let codepoint: u32 = character as u32;
     if codepoint > 1114111 || (codepoint >= 55296 && codepoint <= 57343) {
-        return format_failure(FormatError.InvalidArgument);
+        return format_failure(FormatError::InvalidArgument);
     }
 
     if codepoint <= 127 {
-        if capacity < 1 { return format_failure(FormatError.BufferTooSmall); }
+        if capacity < 1 { return format_failure(FormatError::BufferTooSmall); }
         set buffer[0] = codepoint as u8;
         return format_success(1);
     }
     if codepoint <= 2047 {
-        if capacity < 2 { return format_failure(FormatError.BufferTooSmall); }
+        if capacity < 2 { return format_failure(FormatError::BufferTooSmall); }
         set buffer[0] = (192 | (codepoint >> 6)) as u8;
         set buffer[1] = (128 | (codepoint & 63)) as u8;
         return format_success(2);
     }
     if codepoint <= 65535 {
-        if capacity < 3 { return format_failure(FormatError.BufferTooSmall); }
+        if capacity < 3 { return format_failure(FormatError::BufferTooSmall); }
         set buffer[0] = (224 | (codepoint >> 12)) as u8;
         set buffer[1] = (128 | ((codepoint >> 6) & 63)) as u8;
         set buffer[2] = (128 | (codepoint & 63)) as u8;
         return format_success(3);
     }
-    if capacity < 4 { return format_failure(FormatError.BufferTooSmall); }
+    if capacity < 4 { return format_failure(FormatError::BufferTooSmall); }
     set buffer[0] = (240 | (codepoint >> 18)) as u8;
     set buffer[1] = (128 | ((codepoint >> 12) & 63)) as u8;
     set buffer[2] = (128 | ((codepoint >> 6) & 63)) as u8;
@@ -731,10 +731,10 @@ export proc format_char(
 
 export proc format_bytes(bytes: &[u8], buffer: *mut u8, capacity: usize) -> FormatResult {
     if bytes.len() != 0 && buffer == null {
-        return format_failure(FormatError.NullBuffer);
+        return format_failure(FormatError::NullBuffer);
     }
     if capacity < bytes.len() {
-        return format_failure(FormatError.BufferTooSmall);
+        return format_failure(FormatError::BufferTooSmall);
     }
     let mut index: i64 = 0;
     let length: i64 = bytes.len() as i64;

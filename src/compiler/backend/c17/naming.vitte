@@ -137,7 +137,7 @@ proc naming_kind_index(kind: NameKind) -> usize {
         case NameKind::Enumerator => 10,
         case NameKind::Runtime => 11,
         case NameKind::Internal => 12,
-        case NameKind::Count => NameKind.Count as usize,
+        case NameKind::Count => NameKind::Count as usize,
     }
 }
 
@@ -575,7 +575,7 @@ pub proc naming_init(config: NamingConfig) -> Naming {
         generated_count: 0,
         collision_count: 0,
 
-        last_error: NamingError.None,
+        last_error: NamingError::None,
     };
 }
 
@@ -628,7 +628,7 @@ pub proc naming_reset(naming: &mut Naming) {
     set naming.generated_count = 0;
     set naming.collision_count = 0;
 
-    set naming.last_error = NamingError.None;
+    set naming.last_error = NamingError::None;
 }
 
 /* ================================================================ */
@@ -657,10 +657,10 @@ proc naming_reserve_entries(naming: &mut Naming, minimum: usize) -> bool {
         set capacity *= 2;
     }
     if naming_mul_overflow(capacity, sizeof(NameEntry)) {
-        return naming_fail(naming, NamingError.Overflow);
+        return naming_fail(naming, NamingError::Overflow);
     }
     if not naming.entries.reserve(capacity) {
-        return naming_fail(naming, NamingError.OutOfMemory);
+        return naming_fail(naming, NamingError::OutOfMemory);
     }
     set naming.entry_capacity = capacity;
     return true;
@@ -668,7 +668,7 @@ proc naming_reserve_entries(naming: &mut Naming, minimum: usize) -> bool {
 
 pub proc naming_last_error(naming: &Naming) -> NamingError {
     if not naming_is_valid(naming) {
-        return NamingError.InvalidNaming;
+        return NamingError::InvalidNaming;
     }
 
     return naming.last_error;
@@ -676,7 +676,7 @@ pub proc naming_last_error(naming: &Naming) -> NamingError {
 
 pub proc naming_clear_error(naming: &mut Naming) {
     if naming_is_valid(naming) {
-        set naming.last_error = NamingError.None;
+        set naming.last_error = NamingError::None;
     }
 }
 
@@ -788,21 +788,21 @@ proc naming_build_name(
     if source.len() == 0 {
         naming_fail(
             naming,
-            NamingError.InvalidIdentifier,
+            NamingError::InvalidIdentifier,
         );
 
         return null;
     }
 
     if source.len() > naming.config.max_identifier_bytes {
-        naming_fail(naming, NamingError.TooLong);
+        naming_fail(naming, NamingError::TooLong);
         return null;
     }
 
     let tag: str = naming_kind_tag(kind);
 
     if tag.len() == 0 {
-        naming_fail(naming, NamingError.InvalidKind);
+        naming_fail(naming, NamingError::InvalidKind);
         return null;
     }
 
@@ -840,14 +840,14 @@ proc naming_build_name(
 
     if generated.len() > naming.config.max_generated_bytes  or 
        generated.len() >= NAMING_MAX_GENERATED_BYTES {
-        naming_fail(naming, NamingError.TooLong);
+        naming_fail(naming, NamingError::TooLong);
         return null;
     }
 
     if not naming_is_safe_c_identifier(generated) {
         naming_fail(
             naming,
-            NamingError.InvalidIdentifier,
+            NamingError::InvalidIdentifier,
         );
 
         return null;
@@ -891,7 +891,7 @@ proc naming_register(
             1,
         );
 
-        set naming.last_error = NamingError.Collision;
+        set naming.last_error = NamingError::Collision;
 
         if naming.config.reject_collisions {
             return null;
@@ -905,7 +905,7 @@ proc naming_register(
     }
 
     if naming.entry_count == usize.MAX {
-        naming_fail(naming, NamingError.Overflow);
+        naming_fail(naming, NamingError::Overflow);
         return null;
     }
 
@@ -929,7 +929,7 @@ proc naming_register(
     };
 
     if not naming.entries.push(name_entry) {
-        naming_fail(naming, NamingError.OutOfMemory);
+        naming_fail(naming, NamingError::OutOfMemory);
         return null;
     }
 
@@ -940,7 +940,7 @@ proc naming_register(
         1,
     );
 
-    set naming.last_error = NamingError.None;
+    set naming.last_error = NamingError::None;
 
     return &naming.entries[naming.entry_count - 1];
 }
@@ -960,15 +960,15 @@ pub proc naming_mangle(
         return null;
     }
 
-    if kind <= NameKind.Invalid or kind >= NameKind.Count {
-        naming_fail(naming, NamingError.InvalidKind);
+    if kind <= NameKind::Invalid or kind >= NameKind::Count {
+        naming_fail(naming, NamingError::InvalidKind);
         return null;
     }
 
     if source.len() == 0 {
         naming_fail(
             naming,
-            NamingError.InvalidIdentifier,
+            NamingError::InvalidIdentifier,
         );
 
         return null;
@@ -983,7 +983,7 @@ pub proc naming_mangle(
     );
 
     if existing != usize.MAX {
-        set naming.last_error = NamingError.None;
+        set naming.last_error = NamingError::None;
         return &naming.entries[existing];
     }
 
@@ -1020,7 +1020,7 @@ pub proc naming_module(
 ) -> ?&NameEntry {
     return naming_mangle(
         naming,
-        NameKind.Module,
+        NameKind::Module,
         module_id,
         module_id,
         name,
@@ -1035,7 +1035,7 @@ pub proc naming_type(
 ) -> ?&NameEntry {
     return naming_mangle(
         naming,
-        NameKind.Type,
+        NameKind::Type,
         module_id,
         source_id,
         name,
@@ -1050,7 +1050,7 @@ pub proc naming_global(
 ) -> ?&NameEntry {
     return naming_mangle(
         naming,
-        NameKind.Global,
+        NameKind::Global,
         module_id,
         source_id,
         name,
@@ -1065,7 +1065,7 @@ pub proc naming_function(
 ) -> ?&NameEntry {
     return naming_mangle(
         naming,
-        NameKind.Function,
+        NameKind::Function,
         module_id,
         source_id,
         name,
@@ -1080,7 +1080,7 @@ pub proc naming_parameter(
 ) -> ?&NameEntry {
     return naming_mangle(
         naming,
-        NameKind.Parameter,
+        NameKind::Parameter,
         module_id,
         source_id,
         name,
@@ -1095,7 +1095,7 @@ pub proc naming_local(
 ) -> ?&NameEntry {
     return naming_mangle(
         naming,
-        NameKind.Local,
+        NameKind::Local,
         module_id,
         source_id,
         name,
@@ -1110,7 +1110,7 @@ pub proc naming_field(
 ) -> ?&NameEntry {
     return naming_mangle(
         naming,
-        NameKind.Field,
+        NameKind::Field,
         module_id,
         source_id,
         name,
@@ -1125,7 +1125,7 @@ pub proc naming_enumerator(
 ) -> ?&NameEntry {
     return naming_mangle(
         naming,
-        NameKind.Enumerator,
+        NameKind::Enumerator,
         module_id,
         source_id,
         name,
@@ -1138,7 +1138,7 @@ pub proc naming_runtime(
 ) -> ?&NameEntry {
     return naming_mangle(
         naming,
-        NameKind.Runtime,
+        NameKind::Runtime,
         0,
         0,
         name,
@@ -1160,7 +1160,7 @@ pub proc naming_temporary(
     let id: u64 = naming.next_temporary_id;
 
     if id == 18446744073709551615 {
-        naming_fail(naming, NamingError.Overflow);
+        naming_fail(naming, NamingError::Overflow);
         return null;
     }
 
@@ -1168,7 +1168,7 @@ pub proc naming_temporary(
 
     return naming_mangle(
         naming,
-        NameKind.Temporary,
+        NameKind::Temporary,
         module_id,
         id,
         "tmp",
@@ -1186,7 +1186,7 @@ pub proc naming_label(
     let id: u64 = naming.next_label_id;
 
     if id == 18446744073709551615 {
-        naming_fail(naming, NamingError.Overflow);
+        naming_fail(naming, NamingError::Overflow);
         return null;
     }
 
@@ -1194,7 +1194,7 @@ pub proc naming_label(
 
     return naming_mangle(
         naming,
-        NameKind.Label,
+        NameKind::Label,
         module_id,
         id,
         "label",
@@ -1219,7 +1219,7 @@ pub proc naming_internal(
     let id: u64 = naming.next_internal_id;
 
     if id == 18446744073709551615 {
-        naming_fail(naming, NamingError.Overflow);
+        naming_fail(naming, NamingError::Overflow);
         return null;
     }
 
@@ -1227,7 +1227,7 @@ pub proc naming_internal(
 
     return naming_mangle(
         naming,
-        NameKind.Internal,
+        NameKind::Internal,
         module_id,
         id,
         effective_purpose,
@@ -1315,7 +1315,7 @@ pub proc naming_stats(naming: &Naming) -> NamingStats {
         let kind_index: usize =
             naming_kind_index(name_entry.kind);
 
-        if kind_index > 0  and  kind_index < NameKind.Count as usize {
+        if kind_index > 0  and  kind_index < NameKind::Count as usize {
             set stats.by_kind[kind_index] =
                 naming_saturating_add(
                     stats.by_kind[kind_index],
@@ -1347,7 +1347,7 @@ pub proc naming_validate(naming: &Naming) -> bool {
     while index < naming.entry_count {
         let name_entry: &NameEntry = &naming.entries[index];
 
-        if name_entry.kind <= NameKind.Invalid or name_entry.kind >= NameKind.Count {
+        if name_entry.kind <= NameKind::Invalid or name_entry.kind >= NameKind::Count {
             return false;
         }
 
@@ -1497,45 +1497,45 @@ pub proc vitte_c17_naming_mangle(
 ) -> ?&NameEntry {
     if naming == null { return null; }
     let context = &mut *naming?;
-    if kind <= NameKind.Invalid or kind >= NameKind.Count {
+    if kind <= NameKind::Invalid or kind >= NameKind::Count {
         return naming_mangle(context, kind, module_id, source_id, "");
     }
     if source_length == 0 {
         return naming_mangle(context, kind, module_id, source_id, "");
     }
     if source_length > source.len() {
-        naming_fail(context, NamingError.InvalidArgument);
+        naming_fail(context, NamingError::InvalidArgument);
         return null;
     }
     return naming_mangle(context, kind, module_id, source_id, source.slice(0, source_length));
 }
 
 pub proc vitte_c17_naming_module(naming: ?&mut Naming, module_id: u64, name: string, length: usize) -> ?&NameEntry {
-    return vitte_c17_naming_mangle(naming, NameKind.Module, module_id, module_id, name, length);
+    return vitte_c17_naming_mangle(naming, NameKind::Module, module_id, module_id, name, length);
 }
 pub proc vitte_c17_naming_type(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
-    return vitte_c17_naming_mangle(naming, NameKind.Type, module_id, source_id, name, length);
+    return vitte_c17_naming_mangle(naming, NameKind::Type, module_id, source_id, name, length);
 }
 pub proc vitte_c17_naming_global(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
-    return vitte_c17_naming_mangle(naming, NameKind.Global, module_id, source_id, name, length);
+    return vitte_c17_naming_mangle(naming, NameKind::Global, module_id, source_id, name, length);
 }
 pub proc vitte_c17_naming_function(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
-    return vitte_c17_naming_mangle(naming, NameKind.Function, module_id, source_id, name, length);
+    return vitte_c17_naming_mangle(naming, NameKind::Function, module_id, source_id, name, length);
 }
 pub proc vitte_c17_naming_parameter(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
-    return vitte_c17_naming_mangle(naming, NameKind.Parameter, module_id, source_id, name, length);
+    return vitte_c17_naming_mangle(naming, NameKind::Parameter, module_id, source_id, name, length);
 }
 pub proc vitte_c17_naming_local(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
-    return vitte_c17_naming_mangle(naming, NameKind.Local, module_id, source_id, name, length);
+    return vitte_c17_naming_mangle(naming, NameKind::Local, module_id, source_id, name, length);
 }
 pub proc vitte_c17_naming_field(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
-    return vitte_c17_naming_mangle(naming, NameKind.Field, module_id, source_id, name, length);
+    return vitte_c17_naming_mangle(naming, NameKind::Field, module_id, source_id, name, length);
 }
 pub proc vitte_c17_naming_enumerator(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
-    return vitte_c17_naming_mangle(naming, NameKind.Enumerator, module_id, source_id, name, length);
+    return vitte_c17_naming_mangle(naming, NameKind::Enumerator, module_id, source_id, name, length);
 }
 pub proc vitte_c17_naming_runtime(naming: ?&mut Naming, name: string, length: usize) -> ?&NameEntry {
-    return vitte_c17_naming_mangle(naming, NameKind.Runtime, 0, 0, name, length);
+    return vitte_c17_naming_mangle(naming, NameKind::Runtime, 0, 0, name, length);
 }
 
 pub proc vitte_c17_naming_temporary(naming: ?&mut Naming, module_id: u64) -> ?&NameEntry {
@@ -1552,7 +1552,7 @@ pub proc vitte_c17_naming_internal(naming: ?&mut Naming, module_id: u64, purpose
         return naming_internal(&mut *naming?, module_id, "internal");
     }
     if purpose_length > purpose.len() {
-        naming_fail(&mut *naming?, NamingError.InvalidArgument);
+        naming_fail(&mut *naming?, NamingError::InvalidArgument);
         return null;
     }
     return naming_internal(&mut *naming?, module_id, purpose.slice(0, purpose_length));
@@ -1583,7 +1583,7 @@ pub proc vitte_c17_naming_at(naming: ?&Naming, index: usize) -> ?&NameEntry {
     return naming_at(naming?, index);
 }
 pub proc vitte_c17_naming_last_error(naming: ?&Naming) -> NamingError {
-    if naming == null { return NamingError.InvalidNaming; }
+    if naming == null { return NamingError::InvalidNaming; }
     return naming_last_error(naming?);
 }
 pub proc vitte_c17_naming_clear_error(naming: ?&mut Naming) {
@@ -1621,7 +1621,7 @@ pub proc vitte_c17_name_entry_hash(name_entry: ?&NameEntry) -> u64 {
 
 pub proc vitte_c17_naming_has_error(naming: ?&Naming) -> bool {
     if naming == null { return false; }
-    return naming?.last_error != NamingError.None;
+    return naming?.last_error != NamingError::None;
 }
 pub proc vitte_c17_naming_is_empty(naming: ?&Naming) -> bool {
     if naming == null { return true; }

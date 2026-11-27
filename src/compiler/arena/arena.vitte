@@ -297,7 +297,7 @@ proc arena_context_operational(
     context: &ArenaContext
 ) -> bool {
     return arena_context_magic_valid(context)  and 
-           context.state == ArenaState.Ready;
+           context.state == ArenaState::Ready;
 }
 
 proc arena_context_allocator_valid(
@@ -331,7 +331,7 @@ proc arena_context_set_invalid_state(
 ) {
     arena_context_set_error(
         context,
-        ArenaContextError.InvalidState
+        ArenaContextError::InvalidState
     );
 }
 
@@ -348,42 +348,42 @@ proc arena_context_import_allocator_error(
     match error {
         case ArenaError::None => {
             set context.last_error =
-                ArenaContextError.None;
+                ArenaContextError::None;
         }
 
         case ArenaError::InvalidArena => {
             set context.last_error =
-                ArenaContextError.Corruption;
+                ArenaContextError::Corruption;
         }
 
         case ArenaError::InvalidArgument => {
             set context.last_error =
-                ArenaContextError.InvalidArgument;
+                ArenaContextError::InvalidArgument;
         }
 
         case ArenaError::InvalidAlignment => {
             set context.last_error =
-                ArenaContextError.InvalidAlignment;
+                ArenaContextError::InvalidAlignment;
         }
 
         case ArenaError::Overflow => {
             set context.last_error =
-                ArenaContextError.Overflow;
+                ArenaContextError::Overflow;
         }
 
         case ArenaError::OutOfMemory => {
             set context.last_error =
-                ArenaContextError.OutOfMemory;
+                ArenaContextError::OutOfMemory;
         }
 
         case ArenaError::InvalidMark => {
             set context.last_error =
-                ArenaContextError.InvalidCheckpoint;
+                ArenaContextError::InvalidCheckpoint;
         }
 
         case ArenaError::Corruption => {
             set context.last_error =
-                ArenaContextError.Corruption;
+                ArenaContextError::Corruption;
         }
     }
 }
@@ -392,7 +392,7 @@ pub proc arena_context_last_error(
     context: &ArenaContext
 ) -> ArenaContextError {
     if not arena_context_magic_valid(context) {
-        return ArenaContextError.InvalidContext;
+        return ArenaContextError::InvalidContext;
     }
 
     return context.last_error;
@@ -406,7 +406,7 @@ pub proc arena_context_clear_error(
     }
 
     set context.last_error =
-        ArenaContextError.None;
+        ArenaContextError::None;
 
     arena_clear_error(&mut context.allocator);
 }
@@ -454,23 +454,23 @@ pub proc arena_context_init(
         ARENA_CONTEXT_MAGIC;
 
     set context.state =
-        ArenaState.Uninitialized;
+        ArenaState::Uninitialized;
 
     set context.config =
         effective;
 
     set context.last_error =
-        ArenaContextError.None;
+        ArenaContextError::None;
 
     if not arena_init(
         &mut context.allocator,
         effective.block_size
     ) {
         set context.state =
-            ArenaState.Failed;
+            ArenaState::Failed;
 
         set context.last_error =
-            ArenaContextError.OutOfMemory;
+            ArenaContextError::OutOfMemory;
 
         return false;
     }
@@ -487,7 +487,7 @@ pub proc arena_context_init(
     set context.peak_requested_bytes = 0;
 
     set context.state =
-        ArenaState.Ready;
+        ArenaState::Ready;
 
     return true;
 }
@@ -509,7 +509,7 @@ pub proc arena_context_destroy(
     }
 
     set context.state =
-        ArenaState.Destroyed;
+        ArenaState::Destroyed;
 
     arena_destroy(&mut context.allocator);
 
@@ -519,7 +519,7 @@ pub proc arena_context_destroy(
     set context.requested_bytes = 0;
 
     set context.last_error =
-        ArenaContextError.InvalidContext;
+        ArenaContextError::InvalidContext;
 
     set context.magic =
         ARENA_CONTEXT_DEAD_MAGIC;
@@ -545,7 +545,7 @@ proc arena_context_check_limit(
     ) {
         arena_context_set_error(
             context,
-            ArenaContextError.Overflow
+            ArenaContextError::Overflow
         );
 
         return false;
@@ -558,7 +558,7 @@ proc arena_context_check_limit(
        total > context.config.memory_limit {
         arena_context_set_error(
             context,
-            ArenaContextError.LimitExceeded
+            ArenaContextError::LimitExceeded
         );
 
         return false;
@@ -630,7 +630,7 @@ pub proc arena_context_alloc_aligned(
        not arena_context_is_power_of_two(alignment) {
         arena_context_set_error(
             context,
-            ArenaContextError.InvalidAlignment
+            ArenaContextError::InvalidAlignment
         );
 
         return null;
@@ -661,7 +661,7 @@ pub proc arena_context_alloc_aligned(
     );
 
     set context.last_error =
-        ArenaContextError.None;
+        ArenaContextError::None;
 
     return allocated;
 }
@@ -699,7 +699,7 @@ pub proc arena_context_alloc_array(
     ) {
         arena_context_set_error(
             context,
-            ArenaContextError.Overflow
+            ArenaContextError::Overflow
         );
 
         return null;
@@ -747,7 +747,7 @@ pub proc arena_context_calloc_aligned(
     ) {
         arena_context_set_error(
             context,
-            ArenaContextError.Overflow
+            ArenaContextError::Overflow
         );
 
         return null;
@@ -796,7 +796,7 @@ pub proc arena_context_memdup(
     if pointer.is_null(data)  and  size != 0 {
         arena_context_set_error(
             context,
-            ArenaContextError.InvalidArgument
+            ArenaContextError::InvalidArgument
         );
 
         return null;
@@ -841,7 +841,7 @@ pub proc arena_context_strndup(
     if pointer.is_null(text)  and  length != 0 {
         arena_context_set_error(
             context,
-            ArenaContextError.InvalidArgument
+            ArenaContextError::InvalidArgument
         );
 
         return null;
@@ -850,7 +850,7 @@ pub proc arena_context_strndup(
     if length > context.config.string_limit {
         arena_context_set_error(
             context,
-            ArenaContextError.LimitExceeded
+            ArenaContextError::LimitExceeded
         );
 
         return null;
@@ -859,7 +859,7 @@ pub proc arena_context_strndup(
     if arena_context_add_overflow(length, 1) {
         arena_context_set_error(
             context,
-            ArenaContextError.Overflow
+            ArenaContextError::Overflow
         );
 
         return null;
@@ -907,7 +907,7 @@ pub proc arena_context_strdup(
     if pointer.is_null(text) {
         arena_context_set_error(
             context,
-            ArenaContextError.InvalidArgument
+            ArenaContextError::InvalidArgument
         );
 
         return null;
@@ -929,7 +929,7 @@ pub proc arena_context_strdup(
         if length == limit {
             arena_context_set_error(
                 context,
-                ArenaContextError.LimitExceeded
+                ArenaContextError::LimitExceeded
             );
 
             return null;
@@ -1053,7 +1053,7 @@ pub proc arena_context_rollback(
     ) {
         arena_context_set_error(
             context,
-            ArenaContextError.InvalidCheckpoint
+            ArenaContextError::InvalidCheckpoint
         );
 
         return false;
@@ -1074,7 +1074,7 @@ pub proc arena_context_rollback(
         checkpoint.requested_bytes;
 
     set context.last_error =
-        ArenaContextError.None;
+        ArenaContextError::None;
 
     return true;
 }
@@ -1114,7 +1114,7 @@ pub proc arena_context_format(
        length > ARENA_CONTEXT_MAX_FORMATTED_STRING {
         arena_context_set_error(
             context,
-            ArenaContextError.LimitExceeded
+            ArenaContextError::LimitExceeded
         );
 
         return null;
@@ -1123,7 +1123,7 @@ pub proc arena_context_format(
     if arena_context_add_overflow(length, 1) {
         arena_context_set_error(
             context,
-            ArenaContextError.Overflow
+            ArenaContextError::Overflow
         );
 
         return null;
@@ -1153,12 +1153,12 @@ pub proc arena_context_format(
             checkpoint
         ) {
             set context.state =
-                ArenaState.Failed;
+                ArenaState::Failed;
         }
 
         arena_context_set_error(
             context,
-            ArenaContextError.Corruption
+            ArenaContextError::Corruption
         );
 
         return null;
@@ -1219,7 +1219,7 @@ pub proc arena_context_reset(
     }
 
     if arena_last_error(&context.allocator) !=
-       ArenaError.None {
+       ArenaError::None {
         arena_context_import_allocator_error(context);
         return;
     }
@@ -1229,10 +1229,10 @@ pub proc arena_context_reset(
 
     if after_generation == 0  or 
        after_generation == before_generation {
-        set context.state = ArenaState.Failed;
+        set context.state = ArenaState::Failed;
 
         set context.last_error =
-            ArenaContextError.Corruption;
+            ArenaContextError::Corruption;
 
         return;
     }
@@ -1244,7 +1244,7 @@ pub proc arena_context_reset(
     set context.requested_bytes = 0;
 
     set context.last_error =
-        ArenaContextError.None;
+        ArenaContextError::None;
 }
 
 pub proc arena_context_trim(
@@ -1260,13 +1260,13 @@ pub proc arena_context_trim(
     arena_trim(&mut context.allocator);
 
     if arena_last_error(&context.allocator) !=
-       ArenaError.None {
+       ArenaError::None {
         arena_context_import_allocator_error(context);
         return;
     }
 
     set context.last_error =
-        ArenaContextError.None;
+        ArenaContextError::None;
 }
 
 pub proc arena_context_reset_and_trim(
@@ -1285,7 +1285,7 @@ pub proc arena_context_reset_and_trim(
     arena_reset_and_trim(&mut context.allocator);
 
     if arena_last_error(&context.allocator) !=
-       ArenaError.None {
+       ArenaError::None {
         arena_context_import_allocator_error(context);
         return;
     }
@@ -1295,10 +1295,10 @@ pub proc arena_context_reset_and_trim(
 
     if after_generation == 0  or 
        after_generation == before_generation {
-        set context.state = ArenaState.Failed;
+        set context.state = ArenaState::Failed;
 
         set context.last_error =
-            ArenaContextError.Corruption;
+            ArenaContextError::Corruption;
 
         return;
     }
@@ -1310,7 +1310,7 @@ pub proc arena_context_reset_and_trim(
     set context.requested_bytes = 0;
 
     set context.last_error =
-        ArenaContextError.None;
+        ArenaContextError::None;
 }
 
 
@@ -1532,7 +1532,7 @@ pub proc arena_context_set_memory_limit(
        context.requested_bytes > normalized_limit {
         arena_context_set_error(
             context,
-            ArenaContextError.LimitExceeded
+            ArenaContextError::LimitExceeded
         );
 
         return false;
@@ -1542,7 +1542,7 @@ pub proc arena_context_set_memory_limit(
         normalized_limit;
 
     set context.last_error =
-        ArenaContextError.None;
+        ArenaContextError::None;
 
     return true;
 }
@@ -1574,7 +1574,7 @@ pub proc arena_context_set_string_limit(
     if limit == 0 {
         arena_context_set_error(
             context,
-            ArenaContextError.InvalidArgument
+            ArenaContextError::InvalidArgument
         );
 
         return false;
@@ -1583,7 +1583,7 @@ pub proc arena_context_set_string_limit(
     set context.config.string_limit = limit;
 
     set context.last_error =
-        ArenaContextError.None;
+        ArenaContextError::None;
 
     return true;
 }
@@ -1600,7 +1600,7 @@ pub proc arena_context_validate(
         return false;
     }
 
-    if context.state != ArenaState.Ready {
+    if context.state != ArenaState::Ready {
         return false;
     }
 
@@ -1704,20 +1704,20 @@ pub proc arena_context_has_allocations(context: &ArenaContext) -> bool {
 }
 
 pub proc arena_context_has_error(context: &ArenaContext) -> bool {
-    return arena_context_last_error(context) != ArenaContextError.None;
+    return arena_context_last_error(context) != ArenaContextError::None;
 }
 
 pub proc arena_context_out_of_memory(context: &ArenaContext) -> bool {
-    return arena_context_last_error(context) == ArenaContextError.OutOfMemory;
+    return arena_context_last_error(context) == ArenaContextError::OutOfMemory;
 }
 
 pub proc arena_context_limit_exceeded(context: &ArenaContext) -> bool {
-    return arena_context_last_error(context) == ArenaContextError.LimitExceeded;
+    return arena_context_last_error(context) == ArenaContextError::LimitExceeded;
 }
 
 pub proc arena_context_failed(context: &ArenaContext) -> bool {
     return arena_context_magic_valid(context)  and
-           context.state == ArenaState.Failed;
+           context.state == ArenaState::Failed;
 }
 
 pub proc arena_context_remaining_limit(context: &ArenaContext) -> usize {

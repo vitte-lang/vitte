@@ -209,15 +209,15 @@ proc diagnostic_engine_text_valid(
 proc diagnostic_engine_is_error_severity(
     severity: DiagnosticSeverity
 ) -> bool {
-    return severity == DiagnosticSeverity.Error or
-         severity == DiagnosticSeverity.Fatal;
+    return severity == DiagnosticSeverity::Error or
+         severity == DiagnosticSeverity::Fatal;
 }
 
 proc diagnostic_engine_is_warning_severity(
     severity: DiagnosticSeverity
 ) -> bool {
     return severity ==
-         DiagnosticSeverity.Warning;
+         DiagnosticSeverity::Warning;
 }
 
 proc diagnostic_engine_index_valid(
@@ -384,7 +384,7 @@ export proc diagnostic_engine(
         policy: selected_policy,
 
         current_origin:
-            DiagnosticOrigin.Unknown,
+            DiagnosticOrigin::Unknown,
 
         package: "",
         module: "",
@@ -415,7 +415,7 @@ export proc diagnostic_engine_reset(
     engine: &mut DiagnosticEngine
 ) {
     set engine.current_origin =
-        DiagnosticOrigin.Unknown;
+        DiagnosticOrigin::Unknown;
 
     set engine.package = "";
     set engine.module = "";
@@ -467,7 +467,7 @@ export proc diagnostic_engine_origin(
     engine: &DiagnosticEngine
 ) -> DiagnosticOrigin {
     if not diagnostic_engine_valid(engine) {
-        return DiagnosticOrigin.Unknown;
+        return DiagnosticOrigin::Unknown;
     }
 
     return engine.current_origin;
@@ -602,10 +602,10 @@ proc diagnostic_engine_report_limit(
         diagnostic_default();
 
     set diagnostic_value.severity =
-        DiagnosticSeverity.Fatal;
+        DiagnosticSeverity::Fatal;
 
     set diagnostic_value.origin =
-        DiagnosticOrigin.Driver;
+        DiagnosticOrigin::Driver;
 
     set diagnostic_value.code =
         "VITTE_INFRA_E_LIMIT";
@@ -732,11 +732,11 @@ export proc diagnostic_engine_emit(
         DiagnosticSeverity = severity;
 
     if effective_severity ==
-           DiagnosticSeverity.Warning and
+           DiagnosticSeverity::Warning and
        engine.policy.warnings_as_errors {
 
         set effective_severity =
-            DiagnosticSeverity.Error;
+            DiagnosticSeverity::Error;
     }
 
     let bag: &mut DiagnosticBag =
@@ -760,7 +760,7 @@ export proc diagnostic_engine_emit(
     }
 
     if effective_severity ==
-           DiagnosticSeverity.Warning and
+           DiagnosticSeverity::Warning and
        diagnostic_engine_visible_warnings(bag) >=
            engine.policy.warning_limit {
 
@@ -829,12 +829,12 @@ export proc diagnostic_engine_emit(
         if cascade_set_last_parent(
             bag,
             engine.current_parent
-        ) != Status.Ok {
+        ) != Status::Ok {
             return false;
         }
 
         if engine.policy.suppress_cascades {
-            if cascade_mark_last_suppressed(bag) != Status.Ok {
+            if cascade_mark_last_suppressed(bag) != Status::Ok {
                 return false;
             }
         }
@@ -862,7 +862,7 @@ export proc diagnostic_engine_emit(
     );
 
     if bag.storage[index].severity ==
-           DiagnosticSeverity.Fatal and
+           DiagnosticSeverity::Fatal and
        engine.policy.stop_after_fatal {
 
         set engine.stopped = true;
@@ -892,7 +892,7 @@ export proc diagnostic_engine_note(
 ) -> bool {
     return diagnostic_engine_emit(
         engine,
-        DiagnosticSeverity.Note,
+        DiagnosticSeverity::Note,
         code,
         message,
         "",
@@ -908,7 +908,7 @@ export proc diagnostic_engine_help(
 ) -> bool {
     return diagnostic_engine_emit(
         engine,
-        DiagnosticSeverity.Help,
+        DiagnosticSeverity::Help,
         code,
         message,
         "",
@@ -925,7 +925,7 @@ export proc diagnostic_engine_warning(
 ) -> bool {
     return diagnostic_engine_emit(
         engine,
-        DiagnosticSeverity.Warning,
+        DiagnosticSeverity::Warning,
         code,
         message,
         details,
@@ -942,7 +942,7 @@ export proc diagnostic_engine_error(
 ) -> bool {
     return diagnostic_engine_emit(
         engine,
-        DiagnosticSeverity.Error,
+        DiagnosticSeverity::Error,
         code,
         message,
         details,
@@ -959,7 +959,7 @@ export proc diagnostic_engine_fatal(
 ) -> bool {
     return diagnostic_engine_emit(
         engine,
-        DiagnosticSeverity.Fatal,
+        DiagnosticSeverity::Fatal,
         code,
         message,
         details,
@@ -984,7 +984,7 @@ export proc diagnostic_engine_primary_label(
     let mut diagnostic_value = engine.bag.storage[index];
     let result = diagnostic_add_label(
         &mut diagnostic_value,
-        DiagnosticLabelStyle.Primary,
+        DiagnosticLabelStyle::Primary,
         span,
         message
     );
@@ -1005,7 +1005,7 @@ export proc diagnostic_engine_secondary_label(
     let mut diagnostic_value = engine.bag.storage[index];
     let result = diagnostic_add_label(
         &mut diagnostic_value,
-        DiagnosticLabelStyle.Secondary,
+        DiagnosticLabelStyle::Secondary,
         span,
         message
     );
@@ -1379,14 +1379,14 @@ proc diagnostic_engine_classify_one(
         return false;
     }
 
-    return cascade_classify_last(bag, suppress) == Status.Ok;
+    return cascade_classify_last(bag, suppress) == Status::Ok;
 }
 
 proc diagnostic_engine_classify_cascades(
     bag: &mut DiagnosticBag,
     suppress: bool
 ) -> bool {
-    return cascade_classify_all(bag, suppress) == Status.Ok;
+    return cascade_classify_all(bag, suppress) == Status::Ok;
 }
 
 /// -------------------------------------------------------------------------
@@ -1518,11 +1518,11 @@ proc diagnostic_engine_severity_rank(
     severity: DiagnosticSeverity
 ) -> u64 {
     match severity {
-        DiagnosticSeverity.Fatal => { return 0; },
-        DiagnosticSeverity.Error => { return 1; },
-        DiagnosticSeverity.Warning => { return 2; },
-        DiagnosticSeverity.Note => { return 3; },
-        DiagnosticSeverity.Help => { return 4; }
+        DiagnosticSeverity::Fatal => { return 0; },
+        DiagnosticSeverity::Error => { return 1; },
+        DiagnosticSeverity::Warning => { return 2; },
+        DiagnosticSeverity::Note => { return 3; },
+        DiagnosticSeverity::Help => { return 4; }
     }
 }
 
@@ -1530,31 +1530,31 @@ proc diagnostic_engine_origin_rank(
     origin: DiagnosticOrigin
 ) -> u64 {
     match origin {
-        DiagnosticOrigin.Io => { return 10; },
+        DiagnosticOrigin::Io => { return 10; },
 
-        DiagnosticOrigin.Lexer => { return 20; },
-        DiagnosticOrigin.Parser => { return 30; },
+        DiagnosticOrigin::Lexer => { return 20; },
+        DiagnosticOrigin::Parser => { return 30; },
 
-        DiagnosticOrigin.Import => { return 40; },
-        DiagnosticOrigin.NameResolution => { return 50; },
-        DiagnosticOrigin.TypeCheck => { return 60; },
+        DiagnosticOrigin::Import => { return 40; },
+        DiagnosticOrigin::NameResolution => { return 50; },
+        DiagnosticOrigin::TypeCheck => { return 60; },
 
-        DiagnosticOrigin.Contract => { return 63; },
-        DiagnosticOrigin.ConstantEval => { return 65; },
+        DiagnosticOrigin::Contract => { return 63; },
+        DiagnosticOrigin::ConstantEval => { return 65; },
 
-        DiagnosticOrigin.Hir => { return 70; },
-        DiagnosticOrigin.Ir => { return 80; },
-        DiagnosticOrigin.C17Backend => { return 90; },
-        DiagnosticOrigin.CCompiler => { return 100; },
-        DiagnosticOrigin.Linker => { return 110; },
+        DiagnosticOrigin::Hir => { return 70; },
+        DiagnosticOrigin::Ir => { return 80; },
+        DiagnosticOrigin::C17Backend => { return 90; },
+        DiagnosticOrigin::CCompiler => { return 100; },
+        DiagnosticOrigin::Linker => { return 110; },
 
-        DiagnosticOrigin.Runtime => { return 120; },
-        DiagnosticOrigin.Driver => { return 130; },
-        DiagnosticOrigin.Internal => { return 140; },
+        DiagnosticOrigin::Runtime => { return 120; },
+        DiagnosticOrigin::Driver => { return 130; },
+        DiagnosticOrigin::Internal => { return 140; },
 
-        DiagnosticOrigin.Scanner => { return 150; },
-        DiagnosticOrigin.Codegen => { return 150; },
-        DiagnosticOrigin.Unknown => { return 150; }
+        DiagnosticOrigin::Scanner => { return 150; },
+        DiagnosticOrigin::Codegen => { return 150; },
+        DiagnosticOrigin::Unknown => { return 150; }
     }
 }
 
@@ -2088,7 +2088,7 @@ export proc diagnostic_engine_finalize(
     engine: &mut DiagnosticEngine
 ) -> Status {
     if not diagnostic_engine_valid(engine) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     let bag: &mut DiagnosticBag =
@@ -2099,7 +2099,7 @@ export proc diagnostic_engine_finalize(
             bag,
             engine.policy.suppress_cascades
         ) {
-            return Status.ErrorInvalidState;
+            return Status::ErrorInvalidState;
         }
 
         diagnostic_engine_refresh_relation_statistics(
@@ -2110,14 +2110,14 @@ export proc diagnostic_engine_finalize(
     if not diagnostic_engine_relations_valid(
         bag
     ) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     if engine.policy.sort_before_render {
         if not diagnostic_engine_sort(
             engine
         ) {
-            return Status.ErrorInvalidState;
+            return Status::ErrorInvalidState;
         }
     }
 
@@ -2199,17 +2199,17 @@ export proc diagnostic_engine_status(
     engine: &DiagnosticEngine
 ) -> Status {
     if not diagnostic_engine_valid(engine) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     let bag: &DiagnosticBag =
         engine.bag;
 
     if diagnostic_has_errors(bag) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 /// -------------------------------------------------------------------------

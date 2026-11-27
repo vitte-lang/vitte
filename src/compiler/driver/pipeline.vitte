@@ -258,21 +258,21 @@ export form NativePipelineResult {
 
 proc native_pipeline_parser_severity(kind: ParserDiagnosticKind) -> CliDiagnosticSeverity {
     match kind {
-        case ParserDiagnosticKind::Note => return CliDiagnosticSeverity.Note;
-        case ParserDiagnosticKind::Help => return CliDiagnosticSeverity.Help;
-        case ParserDiagnosticKind::Warning => return CliDiagnosticSeverity.Warning;
-        case ParserDiagnosticKind::Error => return CliDiagnosticSeverity.Error;
-        else => return CliDiagnosticSeverity.Error;
+        case ParserDiagnosticKind::Note => return CliDiagnosticSeverity::Note;
+        case ParserDiagnosticKind::Help => return CliDiagnosticSeverity::Help;
+        case ParserDiagnosticKind::Warning => return CliDiagnosticSeverity::Warning;
+        case ParserDiagnosticKind::Error => return CliDiagnosticSeverity::Error;
+        else => return CliDiagnosticSeverity::Error;
     }
 }
 
 proc native_pipeline_sema_severity(kind: SemaDiagnosticKind) -> CliDiagnosticSeverity {
     match kind {
-        case SemaDiagnosticKind::Note => return CliDiagnosticSeverity.Note;
-        case SemaDiagnosticKind::Help => return CliDiagnosticSeverity.Help;
-        case SemaDiagnosticKind::Warning => return CliDiagnosticSeverity.Warning;
-        case SemaDiagnosticKind::Error => return CliDiagnosticSeverity.Error;
-        else => return CliDiagnosticSeverity.Error;
+        case SemaDiagnosticKind::Note => return CliDiagnosticSeverity::Note;
+        case SemaDiagnosticKind::Help => return CliDiagnosticSeverity::Help;
+        case SemaDiagnosticKind::Warning => return CliDiagnosticSeverity::Warning;
+        case SemaDiagnosticKind::Error => return CliDiagnosticSeverity::Error;
+        else => return CliDiagnosticSeverity::Error;
     }
 }
 
@@ -508,10 +508,10 @@ proc native_pipeline_string_contains(text: string, needle: string) -> bool {
 
 proc native_pipeline_codegen_error(error: string) -> CodegenError {
     if error == "generated C17 source exceeds the configured output limit" {
-        return CodegenError.OutputLimit;
+        return CodegenError::OutputLimit;
     }
     if error == "the native pipeline currently emits only the C17 backend" {
-        return CodegenError.Unsupported;
+        return CodegenError::Unsupported;
     }
     if native_pipeline_string_contains(error, "unsupported") or
        native_pipeline_string_contains(error, "not supported") or
@@ -522,16 +522,16 @@ proc native_pipeline_codegen_error(error: string) -> CodegenError {
        native_pipeline_string_contains(error, "must be lowered") or
        native_pipeline_string_contains(error, "cannot be lowered") or
        native_pipeline_string_contains(error, "needs task lowering") {
-        return CodegenError.Unsupported;
+        return CodegenError::Unsupported;
     }
-    return CodegenError.Backend;
+    return CodegenError::Backend;
 }
 
 proc native_pipeline_codegen_origin(error: string) -> CliDiagnosticOrigin {
     if error == "generated C17 source exceeds the configured output limit" {
-        return CliDiagnosticOrigin.Io;
+        return CliDiagnosticOrigin::Io;
     }
-    return CliDiagnosticOrigin.C17Backend;
+    return CliDiagnosticOrigin::C17Backend;
 }
 
 form NativePipelineEmitResult {
@@ -570,35 +570,35 @@ proc native_pipeline_sema_failure(error: SemaError, initialization: bool) -> Nat
         return native_pipeline_emit_failure(
             "semantic analysis could not acquire required resources",
             native_pipeline_c_string("VITTE_INFRA_E_RESOURCE"),
-            CliDiagnosticOrigin.Internal,
-            CodegenError.OutOfMemory
+            CliDiagnosticOrigin::Internal,
+            CodegenError::OutOfMemory
         );
     }
-    if error == SemaError.OutOfMemory or error == SemaError.Overflow or
-       error == SemaError.TypeLimit or error == SemaError.DiagnosticLimit or
-       error == SemaError.RecursionLimit {
+    if error == SemaError::OutOfMemory or error == SemaError::Overflow or
+       error == SemaError::TypeLimit or error == SemaError::DiagnosticLimit or
+       error == SemaError::RecursionLimit {
         return native_pipeline_emit_failure(
             "compiler resource failure during semantic analysis",
             native_pipeline_c_string("VITTE_INFRA_E_RESOURCE"),
-            CliDiagnosticOrigin.Internal,
-            CodegenError.OutOfMemory
+            CliDiagnosticOrigin::Internal,
+            CodegenError::OutOfMemory
         );
     }
-    if error == SemaError.InvalidAst or error == SemaError.InvalidScope or
-       error == SemaError.InvalidType or error == SemaError.Validation or
-       error == SemaError.Corruption {
+    if error == SemaError::InvalidAst or error == SemaError::InvalidScope or
+       error == SemaError::InvalidType or error == SemaError::Validation or
+       error == SemaError::Corruption {
         return native_pipeline_emit_failure(
             "compiler invariant failed during semantic analysis",
             native_pipeline_c_string("VITTE_INFRA_E_INVARIANT"),
-            CliDiagnosticOrigin.Internal,
-            CodegenError.Corruption
+            CliDiagnosticOrigin::Internal,
+            CodegenError::Corruption
         );
     }
     return native_pipeline_emit_failure(
         "internal compiler failure during semantic analysis",
         native_pipeline_c_string("VITTE_INFRA_E_INTERNAL"),
-        CliDiagnosticOrigin.Internal,
-        CodegenError.Internal
+        CliDiagnosticOrigin::Internal,
+        CodegenError::Internal
     );
 }
 
@@ -633,110 +633,110 @@ proc native_pipeline_ir_error_description(error: IRError) -> string {
 }
 
 proc native_pipeline_ir_error_help(error: IRError, verification: bool) -> string {
-    if error == IRError.Unsupported {
+    if error == IRError::Unsupported {
         return "This construct is not supported by native IR lowering yet. Use a supported construct, or report the missing feature with a minimal example."
     }
-    if error == IRError.Limit or error == IRError.OutOfMemory or error == IRError.Overflow {
+    if error == IRError::Limit or error == IRError::OutOfMemory or error == IRError::Overflow {
         return "Reduce the source size or compilation workload, then retry. If the input is small and reproducible, report the compiler version and this IR error."
     }
-    if verification or error == IRError.InvalidCfg or error == IRError.InvalidPhi or
-       error == IRError.InvalidInstruction or error == IRError.Corruption or
-       error == IRError.MissingTerminator or error == IRError.TerminatedBlock {
+    if verification or error == IRError::InvalidCfg or error == IRError::InvalidPhi or
+       error == IRError::InvalidInstruction or error == IRError::Corruption or
+       error == IRError::MissingTerminator or error == IRError::TerminatedBlock {
         return "The compiler generated IR that failed an internal invariant. Report the smallest reproducing source, compiler version, and this error name."
     }
-    if error == IRError.TypeMismatch or error == IRError.InvalidType or error == IRError.InvalidValue {
+    if error == IRError::TypeMismatch or error == IRError::InvalidType or error == IRError::InvalidValue {
         return "Check that the source types and operations are valid. If they are, report the smallest reproducing source and this IR error as a compiler bug."
     }
     return "Report the smallest reproducing source, compiler version, and this IR error so the failing compiler phase can be diagnosed."
 }
 
 proc native_pipeline_hir_failure(error: HIRError, validation: bool) -> NativePipelineEmitResult {
-    let effective_error: HIRError = if error == HIRError.None {
-        if validation { HIRError.Validation } else { HIRError.Internal }
+    let effective_error: HIRError = if error == HIRError::None {
+        if validation { HIRError::Validation } else { HIRError::Internal }
     } else { error };
-    if effective_error == HIRError.Unsupported {
+    if effective_error == HIRError::Unsupported {
         return native_pipeline_emit_failure(
             "source construct is not supported by HIR lowering",
             native_pipeline_c_string("VITTE_HIR_E_UNSUPPORTED"),
-            CliDiagnosticOrigin.Hir,
-            CodegenError.Unsupported
+            CliDiagnosticOrigin::Hir,
+            CodegenError::Unsupported
         );
     }
-    if effective_error == HIRError.OutOfMemory or effective_error == HIRError.Overflow or
-       effective_error == HIRError.TooManyNodes or effective_error == HIRError.TooManySymbols or
-       effective_error == HIRError.TooManyTypes or effective_error == HIRError.StringLimit or
-       effective_error == HIRError.RecursionLimit {
+    if effective_error == HIRError::OutOfMemory or effective_error == HIRError::Overflow or
+       effective_error == HIRError::TooManyNodes or effective_error == HIRError::TooManySymbols or
+       effective_error == HIRError::TooManyTypes or effective_error == HIRError::StringLimit or
+       effective_error == HIRError::RecursionLimit {
         return native_pipeline_emit_failure(
             "compiler resource failure during HIR lowering",
             native_pipeline_c_string("VITTE_INFRA_E_RESOURCE"),
-            CliDiagnosticOrigin.Internal,
-            CodegenError.OutOfMemory
+            CliDiagnosticOrigin::Internal,
+            CodegenError::OutOfMemory
         );
     }
-    if effective_error == HIRError.Internal or effective_error == HIRError.InvalidContext or
-       effective_error == HIRError.InvalidState or effective_error == HIRError.InvalidArgument {
+    if effective_error == HIRError::Internal or effective_error == HIRError::InvalidContext or
+       effective_error == HIRError::InvalidState or effective_error == HIRError::InvalidArgument {
         return native_pipeline_emit_failure(
             "internal compiler failure during HIR lowering",
             native_pipeline_c_string("VITTE_INFRA_E_INTERNAL"),
-            CliDiagnosticOrigin.Internal,
-            CodegenError.Internal
+            CliDiagnosticOrigin::Internal,
+            CodegenError::Internal
         );
     }
-    if validation or effective_error == HIRError.Validation or effective_error == HIRError.Corruption {
+    if validation or effective_error == HIRError::Validation or effective_error == HIRError::Corruption {
         return native_pipeline_emit_failure(
             "compiler produced invalid HIR",
             native_pipeline_c_string("VITTE_HIR_E_INVALID"),
-            CliDiagnosticOrigin.Hir,
-            CodegenError.Corruption
+            CliDiagnosticOrigin::Hir,
+            CodegenError::Corruption
         );
     }
     return native_pipeline_emit_failure(
         "HIR lowering failed",
         native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
-        CliDiagnosticOrigin.Hir,
-        CodegenError.Backend
+        CliDiagnosticOrigin::Hir,
+        CodegenError::Backend
     );
 }
 
 proc native_pipeline_ir_failure(error: IRError, verification: bool) -> NativePipelineEmitResult {
-    let effective_error: IRError = if error == IRError.None {
-        if verification { IRError.Validation } else { IRError.Internal }
+    let effective_error: IRError = if error == IRError::None {
+        if verification { IRError::Validation } else { IRError::Internal }
     } else { error };
-    if effective_error == IRError.Unsupported {
+    if effective_error == IRError::Unsupported {
         return native_pipeline_emit_failure(
             "source construct is not supported by IR lowering",
             native_pipeline_c_string("VITTE_IR_E_UNSUPPORTED"),
-            CliDiagnosticOrigin.Ir,
-            CodegenError.Unsupported
+            CliDiagnosticOrigin::Ir,
+            CodegenError::Unsupported
         );
     }
-    if effective_error == IRError.OutOfMemory or effective_error == IRError.Overflow or
-       effective_error == IRError.Limit {
+    if effective_error == IRError::OutOfMemory or effective_error == IRError::Overflow or
+       effective_error == IRError::Limit {
         return native_pipeline_emit_failure(
             "compiler resource failure during IR lowering",
             native_pipeline_c_string("VITTE_INFRA_E_RESOURCE"),
-            CliDiagnosticOrigin.Internal,
-            CodegenError.OutOfMemory
+            CliDiagnosticOrigin::Internal,
+            CodegenError::OutOfMemory
         );
     }
-    if effective_error == IRError.Internal or effective_error == IRError.InvalidContext or
-       effective_error == IRError.InvalidState or effective_error == IRError.InvalidArgument {
+    if effective_error == IRError::Internal or effective_error == IRError::InvalidContext or
+       effective_error == IRError::InvalidState or effective_error == IRError::InvalidArgument {
         return native_pipeline_emit_failure(
             "internal compiler failure during IR lowering",
             native_pipeline_c_string("VITTE_INFRA_E_INTERNAL"),
-            CliDiagnosticOrigin.Internal,
-            CodegenError.Internal
+            CliDiagnosticOrigin::Internal,
+            CodegenError::Internal
         );
     }
-    if verification or effective_error == IRError.Validation or effective_error == IRError.Corruption or
-       effective_error == IRError.InvalidCfg or effective_error == IRError.InvalidPhi or
-       effective_error == IRError.InvalidInstruction or effective_error == IRError.MissingTerminator or
-       effective_error == IRError.TerminatedBlock {
+    if verification or effective_error == IRError::Validation or effective_error == IRError::Corruption or
+       effective_error == IRError::InvalidCfg or effective_error == IRError::InvalidPhi or
+       effective_error == IRError::InvalidInstruction or effective_error == IRError::MissingTerminator or
+       effective_error == IRError::TerminatedBlock {
         let mut result = native_pipeline_emit_failure(
             "IR verification failed",
             native_pipeline_c_string("VITTE_IR_E_VERIFY"),
-            CliDiagnosticOrigin.Ir,
-            CodegenError.Corruption
+            CliDiagnosticOrigin::Ir,
+            CodegenError::Corruption
         );
         set result.help = native_pipeline_ir_error_help(effective_error, true);
         return result;
@@ -744,8 +744,8 @@ proc native_pipeline_ir_failure(error: IRError, verification: bool) -> NativePip
     let mut result = native_pipeline_emit_failure(
         "IR lowering failed",
         native_pipeline_c_string("VITTE_IR_E_LOWERING"),
-        CliDiagnosticOrigin.Ir,
-        CodegenError.Backend
+        CliDiagnosticOrigin::Ir,
+        CodegenError::Backend
     );
     set result.help = native_pipeline_ir_error_help(effective_error, false);
     return result;
@@ -971,20 +971,20 @@ proc native_pipeline_parser_delimiter_related(
     }
 
     let expected = (*parser_diagnostic).expected;
-    let mut opener_kind: TokenKind = TokenKind.Invalid;
+    let mut opener_kind: TokenKind = TokenKind::Invalid;
     let token_index = native_pipeline_parser_token_index(parser, parser_diagnostic);
     if token_index == usize.MAX { return false; }
 
     let mut opener: *const ParserToken = null;
-    let expected_is_closer = expected == TokenKind.RightParen or
-        expected == TokenKind.RightBracket or expected == TokenKind.RightBrace or
-        expected == TokenKind.Greater;
+    let expected_is_closer = expected == TokenKind::RightParen or
+        expected == TokenKind::RightBracket or expected == TokenKind::RightBrace or
+        expected == TokenKind::Greater;
     if expected_is_closer {
         match expected {
-            case TokenKind::RightParen => set opener_kind = TokenKind.LeftParen,
-            case TokenKind::RightBracket => set opener_kind = TokenKind.LeftBracket,
-            case TokenKind::RightBrace => set opener_kind = TokenKind.LeftBrace,
-            case TokenKind::Greater => set opener_kind = TokenKind.Less,
+            case TokenKind::RightParen => set opener_kind = TokenKind::LeftParen,
+            case TokenKind::RightBracket => set opener_kind = TokenKind::LeftBracket,
+            case TokenKind::RightBrace => set opener_kind = TokenKind::LeftBrace,
+            case TokenKind::Greater => set opener_kind = TokenKind::Less,
             else => return false
         }
         let mut nesting: usize = 0;
@@ -992,8 +992,8 @@ proc native_pipeline_parser_delimiter_related(
         while scan_index != 0 {
             set scan_index -= 1;
             let token = &(*parser).tokens[scan_index];
-            if expected == TokenKind.Greater and
-               (*token).kind == TokenKind.ShiftRight {
+            if expected == TokenKind::Greater and
+               (*token).kind == TokenKind::ShiftRight {
                 set nesting += 2;
             } elif (*token).kind == expected {
                 set nesting += 1;
@@ -1005,11 +1005,11 @@ proc native_pipeline_parser_delimiter_related(
                 set nesting -= 1;
             }
         }
-    } elif (*parser_diagnostic).found == TokenKind.RightParen or
-           (*parser_diagnostic).found == TokenKind.RightBracket or
-           (*parser_diagnostic).found == TokenKind.RightBrace or
-           (*parser_diagnostic).found == TokenKind.Greater or
-           (*parser_diagnostic).found == TokenKind.ShiftRight {
+    } elif (*parser_diagnostic).found == TokenKind::RightParen or
+           (*parser_diagnostic).found == TokenKind::RightBracket or
+           (*parser_diagnostic).found == TokenKind::RightBrace or
+           (*parser_diagnostic).found == TokenKind::Greater or
+           (*parser_diagnostic).found == TokenKind::ShiftRight {
         let mut paren_nesting: usize = 0;
         let mut bracket_nesting: usize = 0;
         let mut brace_nesting: usize = 0;
@@ -1024,7 +1024,7 @@ proc native_pipeline_parser_delimiter_related(
                         set paren_nesting -= 1;
                     } else {
                         set opener = token;
-                        set opener_kind = TokenKind.LeftParen;
+                        set opener_kind = TokenKind::LeftParen;
                         break;
                     }
                 },
@@ -1034,7 +1034,7 @@ proc native_pipeline_parser_delimiter_related(
                         set bracket_nesting -= 1;
                     } else {
                         set opener = token;
-                        set opener_kind = TokenKind.LeftBracket;
+                        set opener_kind = TokenKind::LeftBracket;
                         break;
                     }
                 },
@@ -1044,7 +1044,7 @@ proc native_pipeline_parser_delimiter_related(
                         set brace_nesting -= 1;
                     } else {
                         set opener = token;
-                        set opener_kind = TokenKind.LeftBrace;
+                        set opener_kind = TokenKind::LeftBrace;
                         break;
                     }
                 },
@@ -1062,11 +1062,11 @@ proc native_pipeline_parser_delimiter_related(
         let found_name = vitte_token_kind_name((*parser_diagnostic).found);
         set *related_label = "opening `" + opener_name +
             "` does not match closing `" + found_name + "`";
-    } elif (*parser_diagnostic).found == TokenKind.RightParen or
-          (*parser_diagnostic).found == TokenKind.RightBracket or
-          (*parser_diagnostic).found == TokenKind.RightBrace or
-          (*parser_diagnostic).found == TokenKind.Greater or
-          (*parser_diagnostic).found == TokenKind.ShiftRight {
+    } elif (*parser_diagnostic).found == TokenKind::RightParen or
+          (*parser_diagnostic).found == TokenKind::RightBracket or
+          (*parser_diagnostic).found == TokenKind::RightBrace or
+          (*parser_diagnostic).found == TokenKind::Greater or
+          (*parser_diagnostic).found == TokenKind::ShiftRight {
         if (*parser_diagnostic).found != expected {
             let found_name = vitte_token_kind_name((*parser_diagnostic).found);
             set *related_label = "opening `" + opener_name +
@@ -1117,7 +1117,7 @@ proc native_pipeline_parser_duplicate_form_field_related(
     related_end_column: *mut usize
 ) -> bool {
     if parser == null or parser_diagnostic == null or
-       (*parser_diagnostic).error != ParserError.DuplicateFormField or
+       (*parser_diagnostic).error != ParserError::DuplicateFormField or
        not (*parser_diagnostic).span.valid or related_begin == null or
        related_end == null or related_start_line == null or
        related_start_column == null or related_end_line == null or
@@ -1125,17 +1125,17 @@ proc native_pipeline_parser_duplicate_form_field_related(
         return false;
     }
     let root = vitte_parser_get_node(parser, vitte_parser_root(parser));
-    if root == null or (*root).kind != ASTNodeKind.TranslationUnit {
+    if root == null or (*root).kind != ASTNodeKind::TranslationUnit {
         return false;
     }
     let mut declaration_index: usize = 0;
     while declaration_index < (*root).child_count {
         let declaration = vitte_parser_get_node(parser, (*root).children[declaration_index]);
-        if declaration != null and (*declaration).kind == ASTNodeKind.FormDecl {
+        if declaration != null and (*declaration).kind == ASTNodeKind::FormDecl {
             let mut field_index: usize = 1;
             while field_index < (*declaration).child_count {
                 let field = vitte_parser_get_node(parser, (*declaration).children[field_index]);
-                if field != null and (*field).kind == ASTNodeKind.FieldDecl and
+                if field != null and (*field).kind == ASTNodeKind::FieldDecl and
                    (*field).child_count != 0 {
                     let field_name = vitte_parser_get_node(parser, (*field).children[0]);
                     if field_name != null and (*field_name).span.valid and
@@ -1154,7 +1154,7 @@ proc native_pipeline_parser_duplicate_form_field_related(
                                 parser, (*declaration).children[previous_index]
                             );
                             if previous_field != null and
-                               (*previous_field).kind == ASTNodeKind.FieldDecl and
+                               (*previous_field).kind == ASTNodeKind::FieldDecl and
                                (*previous_field).child_count != 0 {
                                 let previous_name = vitte_parser_get_node(
                                     parser, (*previous_field).children[0]
@@ -1222,7 +1222,7 @@ proc native_pipeline_parser_duplicate_pick_variant_related(
     related_end_column: *mut usize
 ) -> bool {
     if parser == null or parser_diagnostic == null or
-       (*parser_diagnostic).error != ParserError.DuplicatePickVariant or
+       (*parser_diagnostic).error != ParserError::DuplicatePickVariant or
        not (*parser_diagnostic).span.valid or related_begin == null or
        related_end == null or related_start_line == null or
        related_start_column == null or related_end_line == null or
@@ -1230,17 +1230,17 @@ proc native_pipeline_parser_duplicate_pick_variant_related(
         return false;
     }
     let root = vitte_parser_get_node(parser, vitte_parser_root(parser));
-    if root == null or (*root).kind != ASTNodeKind.TranslationUnit {
+    if root == null or (*root).kind != ASTNodeKind::TranslationUnit {
         return false;
     }
     let mut declaration_index: usize = 0;
     while declaration_index < (*root).child_count {
         let declaration = vitte_parser_get_node(parser, (*root).children[declaration_index]);
-        if declaration != null and (*declaration).kind == ASTNodeKind.PickDecl {
+        if declaration != null and (*declaration).kind == ASTNodeKind::PickDecl {
             let mut variant_index: usize = 1;
             while variant_index < (*declaration).child_count {
                 let variant = vitte_parser_get_node(parser, (*declaration).children[variant_index]);
-                if variant != null and (*variant).kind == ASTNodeKind.VariantDecl and
+                if variant != null and (*variant).kind == ASTNodeKind::VariantDecl and
                    (*variant).child_count != 0 {
                     let variant_name = vitte_parser_get_node(parser, (*variant).children[0]);
                     if variant_name != null and (*variant_name).span.valid and
@@ -1259,7 +1259,7 @@ proc native_pipeline_parser_duplicate_pick_variant_related(
                                 parser, (*declaration).children[previous_index]
                             );
                             if previous_variant != null and
-                               (*previous_variant).kind == ASTNodeKind.VariantDecl and
+                               (*previous_variant).kind == ASTNodeKind::VariantDecl and
                                (*previous_variant).child_count != 0 {
                                 let previous_name = vitte_parser_get_node(
                                     parser, (*previous_variant).children[0]
@@ -1323,8 +1323,8 @@ proc native_pipeline_parser_inside_import(
     while index != 0 {
         set index -= 1;
         let kind = (*parser).tokens[index].kind;
-        if kind == TokenKind.Semicolon { return false; }
-        if kind == TokenKind.KwUse or kind == TokenKind.KwExport { return true; }
+        if kind == TokenKind::Semicolon { return false; }
+        if kind == TokenKind::KwUse or kind == TokenKind::KwExport { return true; }
     }
     return false;
 }
@@ -1337,17 +1337,17 @@ proc native_pipeline_parser_declaration_expects_block(
     while index != 0 {
         set index -= 1;
         let kind = (*parser).tokens[index].kind;
-        if kind == TokenKind.KwSpace or kind == TokenKind.KwForm or
-           kind == TokenKind.KwPick or kind == TokenKind.KwTrait or
-           kind == TokenKind.KwImpl or kind == TokenKind.KwProc or
-           kind == TokenKind.KwMacro or kind == TokenKind.KwTest {
+        if kind == TokenKind::KwSpace or kind == TokenKind::KwForm or
+           kind == TokenKind::KwPick or kind == TokenKind::KwTrait or
+           kind == TokenKind::KwImpl or kind == TokenKind::KwProc or
+           kind == TokenKind::KwMacro or kind == TokenKind::KwTest {
             return true;
         }
-        if kind == TokenKind.Semicolon or kind == TokenKind.LeftBrace or
-           kind == TokenKind.RightBrace or kind == TokenKind.KwIf or
-           kind == TokenKind.KwElse or kind == TokenKind.KwWhile or
-           kind == TokenKind.KwLoop or kind == TokenKind.KwMatch or
-           kind == TokenKind.KwUse {
+        if kind == TokenKind::Semicolon or kind == TokenKind::LeftBrace or
+           kind == TokenKind::RightBrace or kind == TokenKind::KwIf or
+           kind == TokenKind::KwElse or kind == TokenKind::KwWhile or
+           kind == TokenKind::KwLoop or kind == TokenKind::KwMatch or
+           kind == TokenKind::KwUse {
             return false;
         }
     }
@@ -1361,16 +1361,16 @@ proc native_pipeline_parser_advice(
     help: &mut string
 ) {
     if parser == null or parser_diagnostic == null or message == null or help == null or
-       (*parser_diagnostic).kind != ParserDiagnosticKind.Error {
+       (*parser_diagnostic).kind != ParserDiagnosticKind::Error {
         return;
     }
-    if (*parser_diagnostic).expected == TokenKind.Identifier and
+    if (*parser_diagnostic).expected == TokenKind::Identifier and
        vitte_token_kind_is_keyword((*parser_diagnostic).found) {
         set *message = "reserved word cannot be used as a name";
         set *help = "Rename this item; Vitte reserved words cannot be used as identifiers.";
         return;
     }
-    if (*parser_diagnostic).error == ParserError.Unsupported {
+    if (*parser_diagnostic).error == ParserError::Unsupported {
         set *message = "unsupported syntax in declaration position";
         set *help = "Use a declaration form supported by Vitte, such as `proc`, `form`, `pick`, `const`, or `type`.";
         return;
@@ -1381,8 +1381,8 @@ proc native_pipeline_parser_advice(
             let token_index = native_pipeline_parser_token_index(parser, parser_diagnostic);
             if token_index != usize.MAX and token_index + 1 < (*parser).token_count and
                native_pipeline_parser_inside_import(parser, token_index) and
-               (*parser).tokens[token_index].kind == TokenKind.ColonColon and
-               (*parser).tokens[token_index + 1].kind == TokenKind.Identifier {
+               (*parser).tokens[token_index].kind == TokenKind::ColonColon and
+               (*parser).tokens[token_index + 1].kind == TokenKind::Identifier {
                 set *help = "A `use` path names modules. If the final segment is an exported symbol, import it through a group, for example `use sample::math::{add};`; use `as local_name` inside the group to avoid a name conflict.";
                 return;
             }
@@ -1849,28 +1849,28 @@ proc native_pipeline_parser_advice(
     let token_index = native_pipeline_parser_token_index(parser, parser_diagnostic);
     if token_index != usize.MAX and token_index != 0 {
         let previous = (*parser).tokens[token_index - 1].kind;
-        if previous == TokenKind.KwReturn and
-           (*parser_diagnostic).error == ParserError.ExpectedExpression {
+        if previous == TokenKind::KwReturn and
+           (*parser_diagnostic).error == ParserError::ExpectedExpression {
             set *message = "expected an expression after `return`";
             set *help = "Write the return value after `return`, before the statement terminator.";
             return;
         }
-        if previous == TokenKind.Colon and
-           ((*parser_diagnostic).error == ParserError.ExpectedType or
-            (*parser_diagnostic).error == ParserError.ExpectedToken or
-            (*parser_diagnostic).error == ParserError.ExpectedIdentifier) {
+        if previous == TokenKind::Colon and
+           ((*parser_diagnostic).error == ParserError::ExpectedType or
+            (*parser_diagnostic).error == ParserError::ExpectedToken or
+            (*parser_diagnostic).error == ParserError::ExpectedIdentifier) {
             set *message = "expected a type after `:`";
             set *help = "Write a type expression after the colon, such as a built-in or visible declared type.";
             return;
         }
-        if previous == TokenKind.KwAs and
-           (*parser_diagnostic).error == ParserError.ExpectedIdentifier and
+        if previous == TokenKind::KwAs and
+           (*parser_diagnostic).error == ParserError::ExpectedIdentifier and
            native_pipeline_parser_inside_import(parser, token_index) {
             set *message = "expected a local name after `as`";
             set *help = "Provide the local name that should refer to the imported item.";
             return;
         }
-        if (*parser_diagnostic).expected == TokenKind.LeftBrace and
+        if (*parser_diagnostic).expected == TokenKind::LeftBrace and
            native_pipeline_parser_declaration_expects_block(parser, token_index) {
             set *message = "expected a block after this declaration";
             set *help = "Start the declaration body with `{` and close it with `}`.";
@@ -1992,7 +1992,7 @@ proc native_pipeline_sema_type_name_depth(
     if depth >= 16 {
         return vitte_sema_type_kind_name((*type_).kind);
     }
-    if (*type_).kind == SemaTypeKind.Reference {
+    if (*type_).kind == SemaTypeKind::Reference {
         let element_name = native_pipeline_sema_type_name_depth(
             sema,
             (*type_).element_type,
@@ -2001,7 +2001,7 @@ proc native_pipeline_sema_type_name_depth(
         if (*type_).is_mutable { return "&mut " + element_name; }
         return "&" + element_name;
     }
-    if (*type_).kind == SemaTypeKind.Pointer {
+    if (*type_).kind == SemaTypeKind::Pointer {
         let element_name = native_pipeline_sema_type_name_depth(
             sema,
             (*type_).element_type,
@@ -2010,23 +2010,23 @@ proc native_pipeline_sema_type_name_depth(
         if (*type_).is_mutable { return "*mut " + element_name; }
         return "*const " + element_name;
     }
-    if (*type_).kind == SemaTypeKind.Optional {
+    if (*type_).kind == SemaTypeKind::Optional {
         return "?" + native_pipeline_sema_type_name_depth(sema, (*type_).element_type, depth + 1);
     }
-    if (*type_).kind == SemaTypeKind.Array {
+    if (*type_).kind == SemaTypeKind::Array {
         return "[" + native_pipeline_sema_type_name_depth(sema, (*type_).element_type, depth + 1) +
             "; " + native_pipeline_size_to_string((*type_).array_length) + "]";
     }
-    if (*type_).kind == SemaTypeKind.Slice {
+    if (*type_).kind == SemaTypeKind::Slice {
         return "slice[" + native_pipeline_sema_type_name_depth(sema, (*type_).element_type, depth + 1) + "]";
     }
-    if (*type_).kind == SemaTypeKind.Range {
+    if (*type_).kind == SemaTypeKind::Range {
         return "Range[" + native_pipeline_sema_type_name_depth(sema, (*type_).element_type, depth + 1) + "]";
     }
-    if (*type_).kind == SemaTypeKind.Task {
+    if (*type_).kind == SemaTypeKind::Task {
         return "Task[" + native_pipeline_sema_type_name_depth(sema, (*type_).element_type, depth + 1) + "]";
     }
-    if (*type_).kind == SemaTypeKind.Function {
+    if (*type_).kind == SemaTypeKind::Function {
         let mut result: string = "proc(";
         let mut index: usize = 0;
         while index < (*type_).function_parameter_count {
@@ -2043,9 +2043,9 @@ proc native_pipeline_sema_type_name_depth(
             sema, (*type_).return_type, depth + 1);
         return result;
     }
-    if (*type_).kind == SemaTypeKind.Named or
-       (*type_).kind == SemaTypeKind.GenericParameter or
-       (*type_).kind == SemaTypeKind.Dyn {
+    if (*type_).kind == SemaTypeKind::Named or
+       (*type_).kind == SemaTypeKind::GenericParameter or
+       (*type_).kind == SemaTypeKind::Dyn {
         let symbol = if (*type_).symbol_id == 0 { null } else {
             vitte_scope_get_symbol((&((*sema).scopes)) as *const Scope, (*type_).symbol_id)
         };
@@ -2054,7 +2054,7 @@ proc native_pipeline_sema_type_name_depth(
         } else {
             vitte_sema_type_kind_name((*type_).kind)
         };
-        if (*type_).kind == SemaTypeKind.Dyn { set result = "dyn " + result; }
+        if (*type_).kind == SemaTypeKind::Dyn { set result = "dyn " + result; }
         if (*type_).generic_argument_count != 0 and (*type_).generic_arguments != null {
             set result += "[";
             let mut index: usize = 0;
@@ -2076,36 +2076,36 @@ proc native_pipeline_sema_type_name(sema: *const Sema, type_id: SemaTypeId) -> s
 }
 
 proc native_pipeline_sema_has_type_context(code: SemaDiagnosticCode) -> bool {
-    return code == SemaDiagnosticCode.TypeMismatch or
-        code == SemaDiagnosticCode.InvalidRequiresClause or
-        code == SemaDiagnosticCode.InvalidEnsuresClause or
-        code == SemaDiagnosticCode.InvalidCast or
-        code == SemaDiagnosticCode.NotAType or
-        code == SemaDiagnosticCode.NotAValue or
-        code == SemaDiagnosticCode.IncompleteType or
-        code == SemaDiagnosticCode.RecursiveType or
-        code == SemaDiagnosticCode.GenericBoundUnsatisfied or
-        code == SemaDiagnosticCode.GenericArgumentCount or
-        code == SemaDiagnosticCode.GenericArgumentKind or
-        code == SemaDiagnosticCode.GenericInferenceConflict or
-        code == SemaDiagnosticCode.TraitNotImplemented or
-        code == SemaDiagnosticCode.AmbiguousImpl or
-        code == SemaDiagnosticCode.ConflictingImpl or
-        code == SemaDiagnosticCode.MissingTraitMember or
-        code == SemaDiagnosticCode.InvalidTraitMember or
-        code == SemaDiagnosticCode.InvalidImplTarget or
-        code == SemaDiagnosticCode.InvalidWherePredicate or
-        code == SemaDiagnosticCode.AmbiguousMethod or
-        code == SemaDiagnosticCode.CannotInfer or
-        code == SemaDiagnosticCode.InvalidArgumentType or
-        code == SemaDiagnosticCode.ReturnTypeMismatch or
-        code == SemaDiagnosticCode.InvalidUnaryOperand or
-        code == SemaDiagnosticCode.InvalidBinaryOperands or
-        code == SemaDiagnosticCode.InvalidIndexType or
-        code == SemaDiagnosticCode.ConditionNotBool or
-        code == SemaDiagnosticCode.NotCallable or
-        code == SemaDiagnosticCode.NotIndexable or
-        code == SemaDiagnosticCode.UnknownMember;
+    return code == SemaDiagnosticCode::TypeMismatch or
+        code == SemaDiagnosticCode::InvalidRequiresClause or
+        code == SemaDiagnosticCode::InvalidEnsuresClause or
+        code == SemaDiagnosticCode::InvalidCast or
+        code == SemaDiagnosticCode::NotAType or
+        code == SemaDiagnosticCode::NotAValue or
+        code == SemaDiagnosticCode::IncompleteType or
+        code == SemaDiagnosticCode::RecursiveType or
+        code == SemaDiagnosticCode::GenericBoundUnsatisfied or
+        code == SemaDiagnosticCode::GenericArgumentCount or
+        code == SemaDiagnosticCode::GenericArgumentKind or
+        code == SemaDiagnosticCode::GenericInferenceConflict or
+        code == SemaDiagnosticCode::TraitNotImplemented or
+        code == SemaDiagnosticCode::AmbiguousImpl or
+        code == SemaDiagnosticCode::ConflictingImpl or
+        code == SemaDiagnosticCode::MissingTraitMember or
+        code == SemaDiagnosticCode::InvalidTraitMember or
+        code == SemaDiagnosticCode::InvalidImplTarget or
+        code == SemaDiagnosticCode::InvalidWherePredicate or
+        code == SemaDiagnosticCode::AmbiguousMethod or
+        code == SemaDiagnosticCode::CannotInfer or
+        code == SemaDiagnosticCode::InvalidArgumentType or
+        code == SemaDiagnosticCode::ReturnTypeMismatch or
+        code == SemaDiagnosticCode::InvalidUnaryOperand or
+        code == SemaDiagnosticCode::InvalidBinaryOperands or
+        code == SemaDiagnosticCode::InvalidIndexType or
+        code == SemaDiagnosticCode::ConditionNotBool or
+        code == SemaDiagnosticCode::NotCallable or
+        code == SemaDiagnosticCode::NotIndexable or
+        code == SemaDiagnosticCode::UnknownMember;
 }
 
 proc native_pipeline_sema_subject(source: str, span: ParserSpan) -> string {
@@ -2301,18 +2301,18 @@ proc native_pipeline_export_diagnostics(
         }
         let mut expected: *const char = null;
         let mut found: *const char = null;
-        if (*source_diagnostic).expected != TokenKind.Invalid {
+        if (*source_diagnostic).expected != TokenKind::Invalid {
             set expected = vitte_token_kind_name((*source_diagnostic).expected).as_ptr() as *const char;
         }
-        if (*source_diagnostic).found != TokenKind.Invalid {
-            set found = if (*source_diagnostic).found == TokenKind.Eof {
+        if (*source_diagnostic).found != TokenKind::Invalid {
+            set found = if (*source_diagnostic).found == TokenKind::Eof {
                 native_pipeline_c_string("end of file")
             } else {
                 vitte_token_kind_name((*source_diagnostic).found).as_ptr() as *const char
             };
         }
         let span = (*source_diagnostic).span;
-        let reserved_word_as_name = (*source_diagnostic).expected == TokenKind.Identifier and
+        let reserved_word_as_name = (*source_diagnostic).expected == TokenKind::Identifier and
             vitte_token_kind_is_keyword((*source_diagnostic).found);
         let parser_code = if reserved_word_as_name {
             "VITTE_PARSER_E_RESERVED_WORD_AS_NAME"
@@ -2321,7 +2321,7 @@ proc native_pipeline_export_diagnostics(
         };
         let parser_severity: CliDiagnosticSeverity = if parser_code == "VITTE_INFRA_E_INTERNAL" or
            parser_code == "VITTE_INFRA_E_INVARIANT" or parser_code == "VITTE_INFRA_E_RESOURCE" {
-            CliDiagnosticSeverity.Fatal
+            CliDiagnosticSeverity::Fatal
         } else {
             native_pipeline_parser_severity((*source_diagnostic).kind)
         };
@@ -2342,7 +2342,7 @@ proc native_pipeline_export_diagnostics(
             &mut related_end_line, &mut related_end_column,
             &mut related_label
         );
-        if not has_related and (*source_diagnostic).error == ParserError.DuplicatePickVariant {
+        if not has_related and (*source_diagnostic).error == ParserError::DuplicatePickVariant {
             set has_related = native_pipeline_parser_duplicate_pick_variant_related(
                 parser, source_diagnostic, file_id, source,
                 &mut related_begin, &mut related_end,
@@ -2364,20 +2364,20 @@ proc native_pipeline_export_diagnostics(
             set parser_details = "reserved word `";
             set parser_details += source.slice(span.begin, span.end);
             set parser_details += "` cannot be used as a name";
-        } elif (*source_diagnostic).expected != TokenKind.Invalid {
+        } elif (*source_diagnostic).expected != TokenKind::Invalid {
             set parser_details = "expected ";
             set parser_details += vitte_token_kind_name((*source_diagnostic).expected);
-            if (*source_diagnostic).found != TokenKind.Invalid {
+            if (*source_diagnostic).found != TokenKind::Invalid {
                 set parser_details += ", found ";
-                set parser_details += if (*source_diagnostic).found == TokenKind.Eof {
+                set parser_details += if (*source_diagnostic).found == TokenKind::Eof {
                     "end of file"
                 } else {
                     vitte_token_kind_name((*source_diagnostic).found)
                 };
             }
-        } elif (*source_diagnostic).found != TokenKind.Invalid {
+        } elif (*source_diagnostic).found != TokenKind::Invalid {
             set parser_details = "found ";
-            set parser_details += if (*source_diagnostic).found == TokenKind.Eof {
+            set parser_details += if (*source_diagnostic).found == TokenKind::Eof {
                 "end of file"
             } else {
                 vitte_token_kind_name((*source_diagnostic).found)
@@ -2390,7 +2390,7 @@ proc native_pipeline_export_diagnostics(
             (index + 1) as u64,
             native_pipeline_c_string(parser_code),
             parser_severity,
-            CliDiagnosticOrigin.Parser,
+            CliDiagnosticOrigin::Parser,
             native_pipeline_c_string(parser_message),
             if parser_details.length == 0 { null } else { native_pipeline_c_string(parser_details) },
             if parser_help.len() == 0 { null } else { native_pipeline_c_string(parser_help) },
@@ -2456,14 +2456,14 @@ proc native_pipeline_export_diagnostics(
                     (*source_diagnostic).found_type
                 );
             }
-            if (*source_diagnostic).code == SemaDiagnosticCode.InvalidUnaryOperand and
+            if (*source_diagnostic).code == SemaDiagnosticCode::InvalidUnaryOperand and
                found_type.length != 0 {
                 set details = native_pipeline_message3(
                     "operator does not support operand type ",
                     found_type,
                     ""
                 );
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidBinaryOperands and
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::InvalidBinaryOperands and
                    expected_type.length != 0 and found_type.length != 0 {
                 set details = native_pipeline_message5(
                     "operator does not support operand types ",
@@ -2475,7 +2475,7 @@ proc native_pipeline_export_diagnostics(
             } else {
                 set details = native_pipeline_type_details(expected_type, found_type);
             }
-            if (*source_diagnostic).code == SemaDiagnosticCode.GenericBoundUnsatisfied and
+            if (*source_diagnostic).code == SemaDiagnosticCode::GenericBoundUnsatisfied and
                expected_type.len() != 0 and found_type.len() != 0 {
                 set details = native_pipeline_message5(
                     "concrete type `",
@@ -2486,70 +2486,70 @@ proc native_pipeline_export_diagnostics(
                 );
             }
         }
-        let origin: CliDiagnosticOrigin = if (*source_diagnostic).code == SemaDiagnosticCode.InvalidRequiresClause or
-            (*source_diagnostic).code == SemaDiagnosticCode.InvalidEnsuresClause or
-            (*source_diagnostic).code == SemaDiagnosticCode.OldValueUnavailable or
-            (*source_diagnostic).code == SemaDiagnosticCode.ResultUnavailable {
-            CliDiagnosticOrigin.Contract
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.ConstantNotConstant or
-            (*source_diagnostic).code == SemaDiagnosticCode.ConstantOverflow or
-            (*source_diagnostic).code == SemaDiagnosticCode.ConstantDivideByZero or
-            (*source_diagnostic).code == SemaDiagnosticCode.ConstantRemainderByZero {
-            CliDiagnosticOrigin.ConstantEval
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName or
-            (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousName or
-            (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol or
-            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration or
-            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding or
-            (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration or
-            (*source_diagnostic).code == SemaDiagnosticCode.InvalidScope or
-            (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport {
-            CliDiagnosticOrigin.NameResolution
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateImport {
-            CliDiagnosticOrigin.Import
+        let origin: CliDiagnosticOrigin = if (*source_diagnostic).code == SemaDiagnosticCode::InvalidRequiresClause or
+            (*source_diagnostic).code == SemaDiagnosticCode::InvalidEnsuresClause or
+            (*source_diagnostic).code == SemaDiagnosticCode::OldValueUnavailable or
+            (*source_diagnostic).code == SemaDiagnosticCode::ResultUnavailable {
+            CliDiagnosticOrigin::Contract
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::ConstantNotConstant or
+            (*source_diagnostic).code == SemaDiagnosticCode::ConstantOverflow or
+            (*source_diagnostic).code == SemaDiagnosticCode::ConstantDivideByZero or
+            (*source_diagnostic).code == SemaDiagnosticCode::ConstantRemainderByZero {
+            CliDiagnosticOrigin::ConstantEval
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::UnresolvedName or
+            (*source_diagnostic).code == SemaDiagnosticCode::AmbiguousName or
+            (*source_diagnostic).code == SemaDiagnosticCode::PrivateSymbol or
+            (*source_diagnostic).code == SemaDiagnosticCode::DuplicateDeclaration or
+            (*source_diagnostic).code == SemaDiagnosticCode::DuplicateBinding or
+            (*source_diagnostic).code == SemaDiagnosticCode::ShadowedDeclaration or
+            (*source_diagnostic).code == SemaDiagnosticCode::InvalidScope or
+            (*source_diagnostic).code == SemaDiagnosticCode::InvalidExport {
+            CliDiagnosticOrigin::NameResolution
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::DuplicateImport {
+            CliDiagnosticOrigin::Import
         } else {
-            CliDiagnosticOrigin.TypeCheck
+            CliDiagnosticOrigin::TypeCheck
         };
         let mut message = native_pipeline_sema_message((*source_diagnostic).code);
         let mut message_owned = false;
         let mut subject: string = "";
         let mut subject_owned = false;
-        if (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName or
-            (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousName or
-            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateImport or
-            (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol or
-            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration or
-            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding or
-            (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport or
-            (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration or
-            (*source_diagnostic).code == SemaDiagnosticCode.UnknownType or
-            (*source_diagnostic).code == SemaDiagnosticCode.UnknownMember {
+        if (*source_diagnostic).code == SemaDiagnosticCode::UnresolvedName or
+            (*source_diagnostic).code == SemaDiagnosticCode::AmbiguousName or
+            (*source_diagnostic).code == SemaDiagnosticCode::DuplicateImport or
+            (*source_diagnostic).code == SemaDiagnosticCode::PrivateSymbol or
+            (*source_diagnostic).code == SemaDiagnosticCode::DuplicateDeclaration or
+            (*source_diagnostic).code == SemaDiagnosticCode::DuplicateBinding or
+            (*source_diagnostic).code == SemaDiagnosticCode::InvalidExport or
+            (*source_diagnostic).code == SemaDiagnosticCode::ShadowedDeclaration or
+            (*source_diagnostic).code == SemaDiagnosticCode::UnknownType or
+            (*source_diagnostic).code == SemaDiagnosticCode::UnknownMember {
             set subject = native_pipeline_sema_subject(source, span);
             set subject_owned = subject.length != 0;
         }
         if subject.len() != 0 {
-            if (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName {
+            if (*source_diagnostic).code == SemaDiagnosticCode::UnresolvedName {
                 set message = native_pipeline_message3("unknown symbol `", subject, "`");
                 set message_owned = true;
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::PrivateSymbol {
                 set message = native_pipeline_message3("symbol `", subject, "` is not visible here");
                 set message_owned = true;
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::DuplicateDeclaration {
                 set message = native_pipeline_message3("duplicate declaration of `", subject, "`");
                 set message_owned = true;
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::DuplicateBinding {
                 set message = native_pipeline_message3("duplicate binding of `", subject, "`");
                 set message_owned = true;
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::InvalidExport {
                 set message = native_pipeline_message3("invalid export target `", subject, "`");
                 set message_owned = true;
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::ShadowedDeclaration {
                 set message = native_pipeline_message3("declaration of `", subject, "` shadows an existing name");
                 set message_owned = true;
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.UnknownType {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::UnknownType {
                 set message = native_pipeline_message3("unknown type `", subject, "`");
                 set message_owned = true;
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.UnknownMember {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::UnknownMember {
                 if found_type.len() != 0 {
                     set message = native_pipeline_message5("type `", found_type, "` has no member `", subject, "`");
                 } else {
@@ -2558,27 +2558,27 @@ proc native_pipeline_export_diagnostics(
                 set message_owned = true;
             }
         }
-        if (*source_diagnostic).code == SemaDiagnosticCode.InvalidRequiresClause and found_type.len() != 0 {
+        if (*source_diagnostic).code == SemaDiagnosticCode::InvalidRequiresClause and found_type.len() != 0 {
             set message = native_pipeline_message3(
                 "requires clause has type `",
                 found_type,
                 "`; expected `bool`"
             );
             set message_owned = true;
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidEnsuresClause and found_type.len() != 0 {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::InvalidEnsuresClause and found_type.len() != 0 {
             set message = native_pipeline_message3(
                 "ensures clause has type `",
                 found_type,
                 "`; expected `bool`"
             );
             set message_owned = true;
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.NotCallable and found_type.len() != 0 {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::NotCallable and found_type.len() != 0 {
             set message = native_pipeline_message3("value of type `", found_type, "` is not callable");
             set message_owned = true;
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.NotIndexable and found_type.len() != 0 {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::NotIndexable and found_type.len() != 0 {
             set message = native_pipeline_message3("value of type `", found_type, "` cannot be indexed");
             set message_owned = true;
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.ConditionNotBool and found_type.len() != 0 {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::ConditionNotBool and found_type.len() != 0 {
             set message = native_pipeline_message3("condition has type `", found_type, "`; expected `bool`");
             set message_owned = true;
         }
@@ -2630,21 +2630,21 @@ proc native_pipeline_export_diagnostics(
         let mut related_end_line: usize = 0;
         let mut related_end_column: usize = 0;
         let mut related_label: *const char = null;
-        if (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol or
-           (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousName or
-           (*source_diagnostic).code == SemaDiagnosticCode.DuplicateImport or
-           (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration or
-           (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding or
-           (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport or
-           (*source_diagnostic).code == SemaDiagnosticCode.NotAType or
-           (*source_diagnostic).code == SemaDiagnosticCode.NotAValue or
-           (*source_diagnostic).code == SemaDiagnosticCode.CannotInfer or
-           (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration or
-           (*source_diagnostic).code == SemaDiagnosticCode.ReferenceEscape or
-           (*source_diagnostic).code == SemaDiagnosticCode.BorrowConflict or
-           (*source_diagnostic).code == SemaDiagnosticCode.BorrowedMutation or
-           (*source_diagnostic).code == SemaDiagnosticCode.MoveBorrowed or
-           (*source_diagnostic).code == SemaDiagnosticCode.UseAfterMove {
+        if (*source_diagnostic).code == SemaDiagnosticCode::PrivateSymbol or
+           (*source_diagnostic).code == SemaDiagnosticCode::AmbiguousName or
+           (*source_diagnostic).code == SemaDiagnosticCode::DuplicateImport or
+           (*source_diagnostic).code == SemaDiagnosticCode::DuplicateDeclaration or
+           (*source_diagnostic).code == SemaDiagnosticCode::DuplicateBinding or
+           (*source_diagnostic).code == SemaDiagnosticCode::InvalidExport or
+           (*source_diagnostic).code == SemaDiagnosticCode::NotAType or
+           (*source_diagnostic).code == SemaDiagnosticCode::NotAValue or
+           (*source_diagnostic).code == SemaDiagnosticCode::CannotInfer or
+           (*source_diagnostic).code == SemaDiagnosticCode::ShadowedDeclaration or
+           (*source_diagnostic).code == SemaDiagnosticCode::ReferenceEscape or
+           (*source_diagnostic).code == SemaDiagnosticCode::BorrowConflict or
+           (*source_diagnostic).code == SemaDiagnosticCode::BorrowedMutation or
+           (*source_diagnostic).code == SemaDiagnosticCode::MoveBorrowed or
+           (*source_diagnostic).code == SemaDiagnosticCode::UseAfterMove {
             let diagnostic_symbol: *const Symbol = if (*source_diagnostic).symbol_id == 0 {
                 null
             } else {
@@ -2653,7 +2653,7 @@ proc native_pipeline_export_diagnostics(
             if diagnostic_symbol != null {
                 set symbol = (*diagnostic_symbol).name as *const char;
             }
-            let related_symbol_id = if (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration and
+            let related_symbol_id = if (*source_diagnostic).code == SemaDiagnosticCode::ShadowedDeclaration and
                 diagnostic_symbol != null and (*diagnostic_symbol).shadowed_symbol != 0 {
                 (*diagnostic_symbol).shadowed_symbol
             } else {
@@ -2692,7 +2692,7 @@ proc native_pipeline_export_diagnostics(
                                     set related_label = native_pipeline_c_string("previous binding is here");
                                 },
                                 case SemaDiagnosticCode::InvalidExport => {
-                                    if (*declaration_symbol).kind == SymbolKind.Space {
+                                    if (*declaration_symbol).kind == SymbolKind::Space {
                                         set related_label = native_pipeline_c_string("imported module is bound here");
                                     } else {
                                         set related_label = native_pipeline_c_string("imported declaration originates here");
@@ -2735,7 +2735,7 @@ proc native_pipeline_export_diagnostics(
                 }
             }
         }
-        if (*source_diagnostic).type_context == SemaTypeContextKind.Argument {
+        if (*source_diagnostic).type_context == SemaTypeContextKind::Argument {
             probable_cause = native_pipeline_c_string("the argument does not satisfy the parameter type");
             let context_symbol: *const Symbol = if (*source_diagnostic).context_symbol_id == 0 {
                 null
@@ -2774,11 +2774,11 @@ proc native_pipeline_export_diagnostics(
                     }
                 }
             }
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Return {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Return {
             probable_cause = native_pipeline_c_string("the returned value does not satisfy the declared return type");
             set context_text = "return value / declared return type";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Assignment {
-            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.NotAssignable {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Assignment {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode::NotAssignable {
                 native_pipeline_c_string("the assignment target is immutable or not assignable")
             } else {
                 native_pipeline_c_string("the assigned value does not satisfy the target type")
@@ -2818,7 +2818,7 @@ proc native_pipeline_export_diagnostics(
                     }
                 }
             }
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Field {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Field {
             probable_cause = native_pipeline_c_string("the field value does not satisfy the declared field type");
             let field_declaration: *const ASTNode = vitte_parser_get_node(
                 (*sema).parser,
@@ -2873,118 +2873,118 @@ proc native_pipeline_export_diagnostics(
                     }
                 }
             }
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Condition {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Condition {
             probable_cause = native_pipeline_c_string("the condition must evaluate to a boolean value");
             set context_text = "condition / expected `bool`";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Cast {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Cast {
             probable_cause = native_pipeline_c_string("the source type cannot be converted to the requested target type");
             set context_text = "cast expression / source and target types";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Operands {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Operands {
             probable_cause = native_pipeline_c_string("the operator does not support these operand types");
             set context_text = "operator operands";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Call {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Call {
             probable_cause = native_pipeline_c_string("the call target does not have a callable type");
             set context_text = "call target / callable type";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Index {
-            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.InvalidIndexType {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Index {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode::InvalidIndexType {
                 native_pipeline_c_string("the index must have an integer type")
             } else {
                 native_pipeline_c_string("the indexed value does not support indexing")
             };
             set context_text = "indexed value / index expression";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Member {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Member {
             probable_cause = native_pipeline_c_string("the receiver type does not define this member");
             set context_text = "member access / receiver type";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Type {
-            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.IncompleteType {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Type {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode::IncompleteType {
                 native_pipeline_c_string("this operation requires a complete type definition")
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.RecursiveType {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::RecursiveType {
                 native_pipeline_c_string("the type alias expansion contains a recursive cycle")
             } else {
                 native_pipeline_c_string("the name resolves to a value, which cannot be used as a type")
             };
-            set context_text = if (*source_diagnostic).code == SemaDiagnosticCode.IncompleteType or
-                (*source_diagnostic).code == SemaDiagnosticCode.RecursiveType {
+            set context_text = if (*source_diagnostic).code == SemaDiagnosticCode::IncompleteType or
+                (*source_diagnostic).code == SemaDiagnosticCode::RecursiveType {
                 "type use / originating type declaration"
             } else {
                 "type expression / resolved name"
             };
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Value {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Value {
             probable_cause = native_pipeline_c_string("the name resolves to a type, which cannot be evaluated as a value");
             set context_text = "value expression / type name";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Inference {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Inference {
             probable_cause = native_pipeline_c_string("available information does not determine a unique type");
             set context_text = "type inference / unresolved expression or binding";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Bound {
-            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.InvalidWherePredicate {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Bound {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode::InvalidWherePredicate {
                 native_pipeline_c_string("the predicate does not refer to a declared type parameter and a valid trait bound")
             } else {
                 native_pipeline_c_string("the concrete type does not implement the required trait bound")
             };
-            set context_text = if (*source_diagnostic).code == SemaDiagnosticCode.InvalidWherePredicate {
+            set context_text = if (*source_diagnostic).code == SemaDiagnosticCode::InvalidWherePredicate {
                 "where predicate / generic declaration"
             } else {
                 "concrete type / required trait bound"
             };
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.GenericArgument {
-            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.GenericInferenceConflict {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::GenericArgument {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode::GenericInferenceConflict {
                 native_pipeline_c_string("two arguments require incompatible substitutions for one generic parameter")
             } else {
                 native_pipeline_c_string("generic arguments must match the declared parameter count, kinds and order")
             };
-            set context_text = if (*source_diagnostic).code == SemaDiagnosticCode.GenericInferenceConflict {
+            set context_text = if (*source_diagnostic).code == SemaDiagnosticCode::GenericInferenceConflict {
                 "conflicting arguments / inferred generic parameter"
             } else {
                 "generic arguments / declaration parameters"
             };
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.TraitMember {
-            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.MissingTraitMember {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::TraitMember {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode::MissingTraitMember {
                 native_pipeline_c_string("the trait declares a required member with no default implementation")
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousMethod {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::AmbiguousMethod {
                 native_pipeline_c_string("more than one visible implementation supplies this method")
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.AmbiguousImpl {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::AmbiguousImpl {
                 native_pipeline_c_string("more than one implementation satisfies this trait relation")
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.ConflictingImpl {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::ConflictingImpl {
                 native_pipeline_c_string("this implementation overlaps an existing implementation")
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.TraitNotImplemented {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::TraitNotImplemented {
                 native_pipeline_c_string("the concrete type has no implementation of the required trait")
-            } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidImplTarget {
+            } elif (*source_diagnostic).code == SemaDiagnosticCode::InvalidImplTarget {
                 native_pipeline_c_string("the impl header does not name a trait and target type in a supported form")
             } else {
                 native_pipeline_c_string("the implementation member does not satisfy the trait declaration")
             };
             set context_text = "trait / implementation candidate";
-        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Expression {
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind::Expression {
             probable_cause = native_pipeline_c_string("the expression's actual type does not satisfy the expected type");
             set context_text = "expression / expected type";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::UnresolvedName {
             probable_cause = native_pipeline_c_string("no declaration with this name is visible in the current scope");
             set context_text = "name resolution / visible declarations";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::PrivateSymbol {
             probable_cause = native_pipeline_c_string("the declaration exists but is private to another module");
             set context_text = "visibility / module boundary";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::DuplicateDeclaration {
             probable_cause = native_pipeline_c_string("another declaration with this name already exists in this scope");
             set context_text = "declaration / current scope";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.DuplicateBinding {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::DuplicateBinding {
             probable_cause = native_pipeline_c_string("another binding with this name already exists in this scope");
             set context_text = "binding / current scope";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidExport {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::InvalidExport {
             probable_cause = native_pipeline_c_string("the export target is missing or comes from an imported module");
             set context_text = "export / defining module";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.NotCallable {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::NotCallable {
             probable_cause = native_pipeline_c_string("the expression does not have a procedure or callable type");
             set context_text = "call target / callable type";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.NotIndexable {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::NotIndexable {
             probable_cause = native_pipeline_c_string("the value's type does not provide indexing");
             set context_text = "indexed value / index operation";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.InvalidIndexType {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::InvalidIndexType {
             probable_cause = native_pipeline_c_string("the index expression must use an unsigned integer type");
             set context_text = "index expression / expected `u64`";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.UnknownMember {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::UnknownMember {
             probable_cause = native_pipeline_c_string("the requested field or member is not defined for this type");
             set context_text = "member lookup / receiver type";
-        } elif (*source_diagnostic).code == SemaDiagnosticCode.UnknownType {
+        } elif (*source_diagnostic).code == SemaDiagnosticCode::UnknownType {
             probable_cause = native_pipeline_c_string("no visible type declaration has this name");
             set context_text = "type lookup / visible declarations";
         }
@@ -3061,15 +3061,15 @@ proc native_pipeline_export_diagnostics(
            diagnostic_code == "VITTE_IR_E_INVALID" or diagnostic_code == "VITTE_HIR_E_INVALID" or
            diagnostic_code == "VITTE_INFRA_E_INTERNAL" or diagnostic_code == "VITTE_INFRA_E_INVARIANT" or
            diagnostic_code == "VITTE_INFRA_E_RESOURCE" {
-            CliDiagnosticSeverity.Fatal
+            CliDiagnosticSeverity::Fatal
         } else {
-            CliDiagnosticSeverity.Error
+            CliDiagnosticSeverity::Error
         };
-        let mut codegen_message: string = if (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Ir {
+        let mut codegen_message: string = if (*codegen_output).diagnostic_origin == CliDiagnosticOrigin::Ir {
             (*codegen_output).error
-        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Hir {
+        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin::Hir {
             (*codegen_output).error
-        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Internal {
+        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin::Internal {
             (*codegen_output).error
         } elif diagnostic_code == "VITTE_BACKEND_E_UNSUPPORTED" {
             "C17 backend does not support this source construct"
@@ -3080,11 +3080,11 @@ proc native_pipeline_export_diagnostics(
         } else {
             "C17 code generation failed"
         };
-        let mut codegen_details: string = if (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Ir {
+        let mut codegen_details: string = if (*codegen_output).diagnostic_origin == CliDiagnosticOrigin::Ir {
             ""
-        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Hir {
+        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin::Hir {
             ""
-        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Internal {
+        } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin::Internal {
             ""
         } else {
             (*codegen_output).error
@@ -3103,12 +3103,12 @@ proc native_pipeline_export_diagnostics(
             set codegen_span_end = (*codegen_output).source_span.end;
         }
         if parser != null and
-           (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.C17Backend and
+           (*codegen_output).diagnostic_origin == CliDiagnosticOrigin::C17Backend and
            (*codegen_output).error == "macros must be expanded before C17 emission" {
             let mut node_index: usize = 0;
             while node_index < (*parser).node_count {
                 let node = &(*parser).nodes[node_index];
-                if (*node).kind == ASTNodeKind.MacroDecl {
+                if (*node).kind == ASTNodeKind::MacroDecl {
                     codegen_message = "macro declarations cannot be emitted by the C17 backend";
                     codegen_details = "expand or remove the macro declaration before compiling with the C17 backend";
                     codegen_has_span = (*node).span.valid;
@@ -3184,10 +3184,10 @@ proc native_pipeline_lexer_escape_bytes(source: str, begin: usize, end: usize, f
 }
 
 proc native_pipeline_unicode_encoding_context(error: UnicodeError) -> string {
-    if error == UnicodeError.TruncatedUtf8 { return "truncated UTF-8 sequence"; }
-    if error == UnicodeError.OverlongUtf8 { return "overlong UTF-8 encoding"; }
-    if error == UnicodeError.Surrogate { return "UTF-8 sequence encodes a surrogate value"; }
-    if error == UnicodeError.OutOfRange { return "UTF-8 sequence encodes a value above U+10FFFF"; }
+    if error == UnicodeError::TruncatedUtf8 { return "truncated UTF-8 sequence"; }
+    if error == UnicodeError::OverlongUtf8 { return "overlong UTF-8 encoding"; }
+    if error == UnicodeError::Surrogate { return "UTF-8 sequence encodes a surrogate value"; }
+    if error == UnicodeError::OutOfRange { return "UTF-8 sequence encodes a value above U+10FFFF"; }
     return "malformed UTF-8 sequence";
 }
 
@@ -3205,7 +3205,7 @@ proc native_pipeline_lexer_diagnostic_details(
     end: usize
 ) -> string {
     if begin > end or end > source.length { return vitte_lexer_error_name(error); }
-    if error == LexerError.InvalidUtf8 {
+    if error == LexerError::InvalidUtf8 {
         let decoded = vitte_unicode_decode_utf8(source, begin, source.length);
         return native_pipeline_unicode_encoding_context(decoded.error) + " `" +
             native_pipeline_lexer_escape_bytes(source, begin, end, true) +
@@ -3213,7 +3213,7 @@ proc native_pipeline_lexer_diagnostic_details(
             ", " + native_pipeline_u64_to_string(end as u64) +
             "); UTF-8 must encode Unicode scalar values only";
     }
-    if error == LexerError.InvalidIdentifier {
+    if error == LexerError::InvalidIdentifier {
         let decoded = vitte_unicode_decode_utf8(source, begin, source.length);
         let mut hex = native_pipeline_u64_to_hex(decoded.codepoint);
         while hex.length < 4 { set hex = "0" + hex; }
@@ -3222,29 +3222,29 @@ proc native_pipeline_lexer_diagnostic_details(
             native_pipeline_u64_to_string(begin as u64) + ", " +
             native_pipeline_u64_to_string(end as u64) + ")";
     }
-    if error == LexerError.InvalidCharacterLiteral {
+    if error == LexerError::InvalidCharacterLiteral {
         return "malformed character literal `" +
             native_pipeline_lexer_escape_bytes(source, begin, end, false) +
             "`; expected exactly one Unicode scalar value or one supported escape sequence at UTF-8 byte range [" +
             native_pipeline_u64_to_string(begin as u64) + ", " +
             native_pipeline_u64_to_string(end as u64) + ")";
     }
-    if error == LexerError.InvalidInteger or error == LexerError.InvalidFloat or
-       error == LexerError.InvalidNumericSeparator or error == LexerError.InvalidNumericBase or
-       error == LexerError.InvalidNumericSuffix or error == LexerError.InvalidExponent {
+    if error == LexerError::InvalidInteger or error == LexerError::InvalidFloat or
+       error == LexerError::InvalidNumericSeparator or error == LexerError::InvalidNumericBase or
+       error == LexerError::InvalidNumericSuffix or error == LexerError::InvalidExponent {
         let mut reason: string = "invalid numeric literal";
-        if error == LexerError.InvalidInteger { set reason = "malformed integer literal"; }
-        elif error == LexerError.InvalidFloat { set reason = "malformed floating-point literal"; }
-        elif error == LexerError.InvalidNumericSeparator { set reason = "invalid numeric separator in literal"; }
-        elif error == LexerError.InvalidNumericBase { set reason = "invalid digit or missing digits in based integer literal"; }
-        elif error == LexerError.InvalidNumericSuffix { set reason = "unsupported numeric suffix in literal"; }
-        elif error == LexerError.InvalidExponent { set reason = "invalid exponent in literal"; }
+        if error == LexerError::InvalidInteger { set reason = "malformed integer literal"; }
+        elif error == LexerError::InvalidFloat { set reason = "malformed floating-point literal"; }
+        elif error == LexerError::InvalidNumericSeparator { set reason = "invalid numeric separator in literal"; }
+        elif error == LexerError::InvalidNumericBase { set reason = "invalid digit or missing digits in based integer literal"; }
+        elif error == LexerError::InvalidNumericSuffix { set reason = "unsupported numeric suffix in literal"; }
+        elif error == LexerError::InvalidExponent { set reason = "invalid exponent in literal"; }
         return reason + " `" +
             native_pipeline_lexer_escape_bytes(source, begin, end, false) +
             "` at UTF-8 byte range [" + native_pipeline_u64_to_string(begin as u64) +
             ", " + native_pipeline_u64_to_string(end as u64) + ")";
     }
-    if error == LexerError.InvalidCharacter or error == LexerError.InvalidToken {
+    if error == LexerError::InvalidCharacter or error == LexerError::InvalidToken {
         return "invalid character `" +
             native_pipeline_lexer_escape_bytes(source, begin, end, false) +
             "` at UTF-8 byte range [" + native_pipeline_u64_to_string(begin as u64) +
@@ -3293,12 +3293,12 @@ proc native_pipeline_export_one_lexer_diagnostic(
     index: usize
 ) -> bool {
     if batch == null { return false; }
-    if error == LexerError.None { return true; }
+    if error == LexerError::None { return true; }
     let mut primary_end = span.end;
     if span.valid and span.begin <= source.length {
-        if error == LexerError.UnterminatedString and span.begin < source.length {
+        if error == LexerError::UnterminatedString and span.begin < source.length {
             set primary_end = span.begin + 1;
-        } elif error == LexerError.UnterminatedComment and source.length - span.begin >= 2 {
+        } elif error == LexerError::UnterminatedComment and source.length - span.begin >= 2 {
             set primary_end = span.begin + 2;
         }
     }
@@ -3309,30 +3309,30 @@ proc native_pipeline_export_one_lexer_diagnostic(
         span.end
     );
     if span.valid and span.begin <= span.end and span.end <= source.length {
-        if error == LexerError.InvalidEscape {
+        if error == LexerError::InvalidEscape {
             set details = "invalid escape sequence `";
             set details += source.slice(span.begin, span.end);
             set details += "`";
             set details += "; accepted forms: `\\\\`, `\\'`, `\\\"`, `\\0`, `\\a`, `\\b`, `\\f`, `\\n`, `\\r`, `\\t`, `\\v`, `\\xNN` (2 hex digits), `\\uNNNN` (4), and `\\UNNNNNNNN` (8)";
-        } elif error == LexerError.InvalidNumber {
+        } elif error == LexerError::InvalidNumber {
             set details = "invalid numeric literal `";
             set details += source.slice(span.begin, span.end);
             set details += "`";
-        } elif error == LexerError.InvalidInteger {
+        } elif error == LexerError::InvalidInteger {
             set details = "malformed integer literal `";
             set details += source.slice(span.begin, span.end);
             set details += "` at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
-        } elif error == LexerError.InvalidFloat {
+        } elif error == LexerError::InvalidFloat {
             set details = "malformed floating-point literal `";
             set details += source.slice(span.begin, span.end);
             set details += "` at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
-        } elif error == LexerError.InvalidCharacterLiteral {
+        } elif error == LexerError::InvalidCharacterLiteral {
             set details = native_pipeline_lexer_diagnostic_details(error, source, span.begin, span.end);
-        } elif error == LexerError.InvalidNumericSeparator {
+        } elif error == LexerError::InvalidNumericSeparator {
             set details = "invalid numeric separator in literal `";
             set details += source.slice(span.begin, span.end);
             set details += "`; underscores must occur singly between digits at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
-        } elif error == LexerError.InvalidNumericBase {
+        } elif error == LexerError::InvalidNumericBase {
             set details = "invalid digit or missing digits in based integer literal `";
             let mut expected: string = "`; expected digits valid for the literal's base";
             if span.end > span.begin + 1 {
@@ -3355,15 +3355,15 @@ proc native_pipeline_export_one_lexer_diagnostic(
             set details += ", ";
             set details += native_pipeline_u64_to_string(span.end as u64);
             set details += ")";
-        } elif error == LexerError.InvalidNumericSuffix {
+        } elif error == LexerError::InvalidNumericSuffix {
             set details = "unsupported numeric suffix in literal `";
             set details += source.slice(span.begin, span.end);
             set details += "`; Vitte numeric literals do not define suffixes at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
-        } elif error == LexerError.InvalidExponent {
+        } elif error == LexerError::InvalidExponent {
             set details = "invalid exponent in literal `";
             set details += source.slice(span.begin, span.end);
             set details += "`; decimal exponents use `e` and hexadecimal exponents use `p`, followed by decimal digits at UTF-8 byte range [" + native_pipeline_u64_to_string(span.begin as u64) + ", " + native_pipeline_u64_to_string(span.end as u64) + ")";
-        } elif error == LexerError.NumberOverflow {
+        } elif error == LexerError::NumberOverflow {
             set details = "integer literal `";
             set details += source.slice(span.begin, span.end);
             set details += "` exceeds the supported unsigned 64-bit range [0, 18446744073709551615] (u64) at UTF-8 byte range [";
@@ -3371,7 +3371,7 @@ proc native_pipeline_export_one_lexer_diagnostic(
             set details += ", ";
             set details += native_pipeline_u64_to_string(span.end as u64);
             set details += ")";
-        } elif error == LexerError.InvalidOperator {
+        } elif error == LexerError::InvalidOperator {
             set details = "invalid or incomplete operator/punctuation sequence `";
             set details += source.slice(span.begin, span.end);
             set details += "` is not a supported Vitte operator at UTF-8 byte range [";
@@ -3379,9 +3379,9 @@ proc native_pipeline_export_one_lexer_diagnostic(
             set details += ", ";
             set details += native_pipeline_u64_to_string(span.end as u64);
             set details += ")";
-        } elif error == LexerError.UnterminatedString {
+        } elif error == LexerError::UnterminatedString {
             set details = "string opened with `\"` here is missing its closing `\"` delimiter";
-        } elif error == LexerError.UnterminatedComment {
+        } elif error == LexerError::UnterminatedComment {
             set details = "block comment opened with `/*` here is missing its matching `*/` terminator";
         }
     }
@@ -3391,8 +3391,8 @@ proc native_pipeline_export_one_lexer_diagnostic(
         index,
         (index + 1) as u64,
         native_pipeline_c_string(native_pipeline_lexer_code(error)),
-        CliDiagnosticSeverity.Error,
-        CliDiagnosticOrigin.Lexer,
+        CliDiagnosticSeverity::Error,
+        CliDiagnosticOrigin::Lexer,
         native_pipeline_c_string("lexical analysis failed"),
         native_pipeline_c_string(details),
         null,
@@ -3425,7 +3425,7 @@ proc native_pipeline_export_lexer_diagnostic(
     let diagnostic_count: usize = vitte_lexer_diagnostic_count(lexer);
     if diagnostic_count == 0 {
         let error = vitte_lexer_last_error(lexer);
-        if error == LexerError.None { return true; }
+        if error == LexerError::None { return true; }
         let batch = vitte_cli_diagnostic_transport_create(1);
         if batch == null { return false; }
         if not native_pipeline_export_one_lexer_diagnostic(
@@ -3543,8 +3543,8 @@ export proc native_pipeline_emit_c17_unit(
         set backend.output = native_pipeline_emit_failure(
             "generated C17 source exceeds the configured output limit",
             native_pipeline_c_string("VITTE_BACKEND_E_OUTPUT"),
-            CliDiagnosticOrigin.Io,
-            CodegenError.OutputLimit
+            CliDiagnosticOrigin::Io,
+            CodegenError::OutputLimit
         );
         return false;
     }
@@ -3554,8 +3554,8 @@ export proc native_pipeline_emit_c17_unit(
         error: "",
         help: "",
         diagnostic_code: null,
-        diagnostic_origin: CliDiagnosticOrigin.Unknown,
-        codegen_error: CodegenError.None,
+        diagnostic_origin: CliDiagnosticOrigin::Unknown,
+        codegen_error: CodegenError::None,
         has_source_span: false,
         source_span: ParserSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, valid: false }
     };
@@ -3568,28 +3568,28 @@ proc native_pipeline_emit_c17(
     ast_fallback: bool,
     config: &CodegenConfig
 ) -> NativePipelineEmitResult {
-    if config.backend != CodegenBackendKind.C17 {
+    if config.backend != CodegenBackendKind::C17 {
         return native_pipeline_emit_failure(
             "the native pipeline currently emits only the C17 backend",
             native_pipeline_c_string("VITTE_BACKEND_E_UNSUPPORTED"),
-            CliDiagnosticOrigin.C17Backend,
-            CodegenError.Unsupported
+            CliDiagnosticOrigin::C17Backend,
+            CodegenError::Unsupported
         );
     }
 
     let failed_output = native_pipeline_emit_failure(
         "native code generation orchestration failed",
         native_pipeline_c_string("VITTE_BACKEND_E_CODEGEN"),
-        CliDiagnosticOrigin.C17Backend,
-        CodegenError.Backend
+        CliDiagnosticOrigin::C17Backend,
+        CodegenError::Backend
     );
     let mut codegen: Codegen = Codegen {};
     if not vitte_codegen_init(&mut codegen, config, null) {
         return native_pipeline_emit_failure(
             "native code generation initialization failed",
             native_pipeline_c_string("VITTE_BACKEND_E_CONFIG"),
-            CliDiagnosticOrigin.C17Backend,
-            CodegenError.InvalidConfig
+            CliDiagnosticOrigin::C17Backend,
+            CodegenError::InvalidConfig
         );
     }
 
@@ -3619,8 +3619,8 @@ proc native_pipeline_emit_c17(
     if not generated and output.error == failed_output.error {
         set output.error = "native code generation orchestration failed (error " +
             (codegen.last_error as u32).to_string() + ")";
-        set output.codegen_error = if codegen.last_error == CodegenError.None {
-            CodegenError.Backend
+        set output.codegen_error = if codegen.last_error == CodegenError::None {
+            CodegenError::Backend
         } else {
             codegen.last_error
         };
@@ -3641,8 +3641,8 @@ proc native_pipeline_form_supported(parser: &Parser, node: &ASTNode) -> bool {
     let mut index: usize = 1;
     while index < node.child_count {
         let part: *const ASTNode = vitte_parser_get_node(parser, node.children[index]);
-        if part == null or part.kind == ASTNodeKind.GenericParam or part.kind == ASTNodeKind.WhereClause { return false; }
-        if part.kind != ASTNodeKind.FieldDecl or part.child_count != 2 { return false; }
+        if part == null or part.kind == ASTNodeKind::GenericParam or part.kind == ASTNodeKind::WhereClause { return false; }
+        if part.kind != ASTNodeKind::FieldDecl or part.child_count != 2 { return false; }
         if not native_pipeline_form_field_type_supported(
             parser,
             part.children[1],
@@ -3659,8 +3659,8 @@ proc native_pipeline_form_named_type_supported(
     owner_name: *const ParserToken
 ) -> bool {
     if node == null or owner_name == null or
-       (node.kind != ASTNodeKind.Identifier and node.kind != ASTNodeKind.Path) or
-       (node.kind == ASTNodeKind.Path and node.child_count != 1) { return false; }
+       (node.kind != ASTNodeKind::Identifier and node.kind != ASTNodeKind::Path) or
+       (node.kind == ASTNodeKind::Path and node.child_count != 1) { return false; }
     let named_token: *const ParserToken = vitte_parser_node_token(parser, node);
     if named_token == null { return false; }
     let builtin = named_token.lexeme == "i64" or named_token.lexeme == "i32" or
@@ -3678,14 +3678,14 @@ proc native_pipeline_form_named_type_supported(
     let mut declaration_index: usize = 0;
     while declaration_index < parser.node_count {
         let declaration = &parser.nodes[declaration_index];
-        if (declaration.kind == ASTNodeKind.FormDecl or declaration.kind == ASTNodeKind.PickDecl) and declaration.child_count != 0 {
+        if (declaration.kind == ASTNodeKind::FormDecl or declaration.kind == ASTNodeKind::PickDecl) and declaration.child_count != 0 {
             let declaration_name: *const ASTNode = vitte_parser_get_node(parser, declaration.children[0]);
             let declaration_token: *const ParserToken = if declaration_name == null { null } else { vitte_parser_node_token(parser, declaration_name) };
             if declaration_token != null and declaration_token.length == named_token.length and declaration_token.lexeme == named_token.lexeme {
                 let mut part_index: usize = 1;
                 while part_index < declaration.child_count {
                     let part: *const ASTNode = vitte_parser_get_node(parser, declaration.children[part_index]);
-                    if part == null or part.kind == ASTNodeKind.GenericParam or part.kind == ASTNodeKind.WhereClause {
+                    if part == null or part.kind == ASTNodeKind::GenericParam or part.kind == ASTNodeKind::WhereClause {
                         return false;
                     }
                     set part_index += 1;
@@ -3705,24 +3705,24 @@ proc native_pipeline_form_field_type_supported(
 ) -> bool {
     let node: *const ASTNode = vitte_parser_get_node(parser, type_id);
     if node == null { return false; }
-    if node.kind == ASTNodeKind.TypeExpr {
+    if node.kind == ASTNodeKind::TypeExpr {
         return node.child_count == 1 and native_pipeline_form_field_type_supported(
             parser,
             node.children[0],
             owner_name
         );
     }
-    if node.kind == ASTNodeKind.PointerType or node.kind == ASTNodeKind.ReferenceType {
+    if node.kind == ASTNodeKind::PointerType or node.kind == ASTNodeKind::ReferenceType {
         return node.child_count == 1 and native_pipeline_form_field_type_supported(
             parser,
             node.children[0],
             owner_name
         );
     }
-    if node.kind == ASTNodeKind.ArrayType {
+    if node.kind == ASTNodeKind::ArrayType {
         if node.child_count != 2 { return false; }
         let length: *const ASTNode = vitte_parser_get_node(parser, node.children[0]);
-        if length == null or length.kind != ASTNodeKind.IntegerLiteral { return false; }
+        if length == null or length.kind != ASTNodeKind::IntegerLiteral { return false; }
         return native_pipeline_form_field_type_supported(
             parser,
             node.children[1],
@@ -3743,45 +3743,45 @@ proc native_pipeline_requires_ast_codegen(parser: &Parser) -> bool {
         // Function types are accepted by the parser and semantic analyzer, but
         // native HIR/IR lowering does not yet preserve callback parameter
         // values. The C17 AST backend supports these signatures and aliases.
-        if node.kind == ASTNodeKind.TypeExpr and
-           node.operator_kind == TokenKind.KwProc {
+        if node.kind == ASTNodeKind::TypeExpr and
+           node.operator_kind == TokenKind::KwProc {
             return true;
         }
         if (node.node_flags & PARSER_AST_FLAG_COMPTIME) != 0 {
             return true;
         }
-        if node.kind == ASTNodeKind.ExternProcDecl {
+        if node.kind == ASTNodeKind::ExternProcDecl {
             let declaration_token = vitte_parser_node_token(parser, node);
             if declaration_token != null and
                (*declaration_token).lexeme == "intrinsic" {
                 return true;
             }
         }
-        if node.kind == ASTNodeKind.FormDecl and not native_pipeline_form_supported(parser, node) { return true; }
-        if node.kind == ASTNodeKind.OpaqueDecl {
+        if node.kind == ASTNodeKind::FormDecl and not native_pipeline_form_supported(parser, node) { return true; }
+        if node.kind == ASTNodeKind::OpaqueDecl {
             let mut child_index: usize = 1;
             while child_index < node.child_count {
                 let child = vitte_parser_get_node(parser, node.children[child_index]);
-                if child != null and child.kind == ASTNodeKind.GenericParam {
+                if child != null and child.kind == ASTNodeKind::GenericParam {
                     return true;
                 }
                 set child_index += 1;
             }
         }
-        if node.kind == ASTNodeKind.TestDecl { return true; }
+        if node.kind == ASTNodeKind::TestDecl { return true; }
         // The native semantic analyzer does not yet resolve macro declarations;
         // route them through the C17 AST emitter, which reports the unsupported
         // expansion at the construct's source span.
-        if node.kind == ASTNodeKind.MacroDecl { return true; }
-        if node.kind == ASTNodeKind.AwaitExpr { return true; }
-        if (node.kind == ASTNodeKind.ProcDecl or node.kind == ASTNodeKind.ExternProcDecl) and
+        if node.kind == ASTNodeKind::MacroDecl { return true; }
+        if node.kind == ASTNodeKind::AwaitExpr { return true; }
+        if (node.kind == ASTNodeKind::ProcDecl or node.kind == ASTNodeKind::ExternProcDecl) and
            (node.node_flags & PARSER_AST_FLAG_ASYNC) != 0 {
             return true;
         }
-        if node.kind == ASTNodeKind.AssertStmt { return true; }
-        if node.kind == ASTNodeKind.DeferStmt { return true; }
-        if node.kind == ASTNodeKind.UnsafeBlock { return true; }
-        if node.kind == ASTNodeKind.AsmStmt { return true; }
+        if node.kind == ASTNodeKind::AssertStmt { return true; }
+        if node.kind == ASTNodeKind::DeferStmt { return true; }
+        if node.kind == ASTNodeKind::UnsafeBlock { return true; }
+        if node.kind == ASTNodeKind::AsmStmt { return true; }
         set index += 1;
     }
     return false;
@@ -3794,11 +3794,11 @@ proc native_pipeline_has_module_alias_import(parser: &Parser) -> bool {
     let mut index: usize = 0;
     while index < parser.node_count {
         let use_node = &parser.nodes[index];
-        if use_node.kind == ASTNodeKind.UseDecl and use_node.child_count == 2 {
+        if use_node.kind == ASTNodeKind::UseDecl and use_node.child_count == 2 {
             let path = vitte_parser_get_node(parser, use_node.children[0]);
             let alias = vitte_parser_get_node(parser, use_node.children[1]);
-            if path != null and path.kind == ASTNodeKind.Path and
-               alias != null and alias.kind == ASTNodeKind.Identifier {
+            if path != null and path.kind == ASTNodeKind::Path and
+               alias != null and alias.kind == ASTNodeKind::Identifier {
                 return true;
             }
         }
@@ -3812,9 +3812,9 @@ proc native_pipeline_has_print_call(parser: &Parser) -> bool {
     let mut index: usize = 0;
     while index < parser.node_count {
         let node = &parser.nodes[index];
-        if node.kind == ASTNodeKind.CallExpr and node.child_count != 0 {
+        if node.kind == ASTNodeKind::CallExpr and node.child_count != 0 {
             let callee = vitte_parser_get_node(parser, node.children[0]);
-            let name_node = if callee != null and callee.kind == ASTNodeKind.Path and
+            let name_node = if callee != null and callee.kind == ASTNodeKind::Path and
                 callee.child_count != 0 {
                 vitte_parser_get_node(parser, callee.children[callee.child_count - 1])
             } else {
@@ -3837,9 +3837,9 @@ proc native_pipeline_has_string_intrinsic_call(parser: &Parser) -> bool {
     let mut index: usize = 0;
     while index < parser.node_count {
         let node = &parser.nodes[index];
-        if node.kind == ASTNodeKind.CallExpr and node.child_count != 0 {
+        if node.kind == ASTNodeKind::CallExpr and node.child_count != 0 {
             let callee = vitte_parser_get_node(parser, node.children[0]);
-            let name_node = if callee != null and callee.kind == ASTNodeKind.Path and
+            let name_node = if callee != null and callee.kind == ASTNodeKind::Path and
                 callee.child_count != 0 {
                 vitte_parser_get_node(parser, callee.children[callee.child_count - 1])
             } else {
@@ -3865,9 +3865,9 @@ proc native_pipeline_has_pointer_intrinsic_call(parser: &Parser) -> bool {
     let mut index: usize = 0;
     while index < parser.node_count {
         let node = &parser.nodes[index];
-        if node.kind == ASTNodeKind.CallExpr and node.child_count != 0 {
+        if node.kind == ASTNodeKind::CallExpr and node.child_count != 0 {
             let callee = vitte_parser_get_node(parser, node.children[0]);
-            let name_node = if callee != null and callee.kind == ASTNodeKind.Path and
+            let name_node = if callee != null and callee.kind == ASTNodeKind::Path and
                 callee.child_count != 0 {
                 vitte_parser_get_node(parser, callee.children[callee.child_count - 1])
             } else {
@@ -3893,13 +3893,13 @@ proc native_pipeline_requires_generic_pick_ast_codegen(parser: &Parser) -> bool 
     let mut index: usize = 0;
     while index < parser.node_count {
         let node = &parser.nodes[index];
-        if node.kind == ASTNodeKind.PickDecl {
+        if node.kind == ASTNodeKind::PickDecl {
             let mut child_index: usize = 1;
             while child_index < node.child_count {
                 let child = vitte_parser_get_node(parser, node.children[child_index]);
                 if child != null and
-                   (child.kind == ASTNodeKind.GenericParam or
-                    child.kind == ASTNodeKind.WhereClause) {
+                   (child.kind == ASTNodeKind::GenericParam or
+                    child.kind == ASTNodeKind::WhereClause) {
                     return true;
                 }
                 set child_index += 1;
@@ -3915,11 +3915,11 @@ proc native_pipeline_has_generic_form_declaration(parser: &Parser) -> bool {
     let mut node_index: usize = 0;
     while node_index < parser.node_count {
         let declaration = &parser.nodes[node_index];
-        if declaration.kind == ASTNodeKind.FormDecl {
+        if declaration.kind == ASTNodeKind::FormDecl {
             let mut child_index: usize = 1;
             while child_index < declaration.child_count {
                 let child: *const ASTNode = vitte_parser_get_node(parser, declaration.children[child_index]);
-                if child != null and child.kind == ASTNodeKind.GenericParam { return true; }
+                if child != null and child.kind == ASTNodeKind::GenericParam { return true; }
                 set child_index += 1;
             }
         }
@@ -3937,12 +3937,12 @@ proc native_pipeline_requires_reference_codegen(parser: &Parser) -> bool {
     let mut index: usize = 0;
     while index < parser.node_count {
         let node = &parser.nodes[index];
-        if node.kind == ASTNodeKind.ReferenceType or node.kind == ASTNodeKind.TryExpr or
-           (node.kind == ASTNodeKind.BinaryExpr and
-            node.operator_kind == TokenKind.QuestionQuestion) {
+        if node.kind == ASTNodeKind::ReferenceType or node.kind == ASTNodeKind::TryExpr or
+           (node.kind == ASTNodeKind::BinaryExpr and
+            node.operator_kind == TokenKind::QuestionQuestion) {
             return true;
         }
-        if node.kind == ASTNodeKind.UnaryExpr and node.operator_kind == TokenKind.Amp { return true; }
+        if node.kind == ASTNodeKind::UnaryExpr and node.operator_kind == TokenKind::Amp { return true; }
         set index += 1;
     }
     return false;
@@ -3969,8 +3969,8 @@ proc native_pipeline_has_generic_proc_call(parser: &Parser) -> bool {
     let mut declaration_index: usize = 0;
     while declaration_index < parser.node_count {
         let declaration = &parser.nodes[declaration_index];
-        if (declaration.kind == ASTNodeKind.ProcDecl or
-            declaration.kind == ASTNodeKind.ExternProcDecl) and
+        if (declaration.kind == ASTNodeKind::ProcDecl or
+            declaration.kind == ASTNodeKind::ExternProcDecl) and
            declaration.child_count != 0 {
             let mut has_generic_parameter = false;
             let mut child_index: usize = 1;
@@ -3979,7 +3979,7 @@ proc native_pipeline_has_generic_proc_call(parser: &Parser) -> bool {
                     parser,
                     declaration.children[child_index]
                 );
-                if child != null and child.kind == ASTNodeKind.GenericParam {
+                if child != null and child.kind == ASTNodeKind::GenericParam {
                     set has_generic_parameter = true;
                     break;
                 }
@@ -3994,12 +3994,12 @@ proc native_pipeline_has_generic_proc_call(parser: &Parser) -> bool {
                     let mut call_index: usize = 0;
                     while call_index < parser.node_count {
                         let call = &parser.nodes[call_index];
-                        if call.kind == ASTNodeKind.CallExpr and call.child_count != 0 {
+                        if call.kind == ASTNodeKind::CallExpr and call.child_count != 0 {
                             let callee: *const ASTNode = vitte_parser_get_node(parser, call.children[0]);
                             if callee != null and
-                               (callee.kind == ASTNodeKind.Identifier or
-                                (callee.kind == ASTNodeKind.Path and callee.child_count != 0)) {
-                                let call_name_node = if callee.kind == ASTNodeKind.Path {
+                               (callee.kind == ASTNodeKind::Identifier or
+                                (callee.kind == ASTNodeKind::Path and callee.child_count != 0)) {
+                                let call_name_node = if callee.kind == ASTNodeKind::Path {
                                     vitte_parser_get_node(
                                         parser,
                                         callee.children[callee.child_count - 1]
@@ -4040,26 +4040,26 @@ proc native_pipeline_codegen_config(config: *const ConfigResolved) -> CodegenCon
     set codegen.null_checks = (*config).null_checks;
     set codegen.overflow_checks = (*config).overflow_checks;
 
-    if (*config).backend == ConfigBackend.C17 {
-        set codegen.backend = CodegenBackendKind.C17;
-    } else if (*config).backend == ConfigBackend.Native {
-        set codegen.backend = CodegenBackendKind.Native;
-    } else if (*config).backend == ConfigBackend.Bytecode {
-        set codegen.backend = CodegenBackendKind.Bytecode;
+    if (*config).backend == ConfigBackend::C17 {
+        set codegen.backend = CodegenBackendKind::C17;
+    } else if (*config).backend == ConfigBackend::Native {
+        set codegen.backend = CodegenBackendKind::Native;
+    } else if (*config).backend == ConfigBackend::Bytecode {
+        set codegen.backend = CodegenBackendKind::Bytecode;
     }
 
-    if (*config).optimization == ConfigOptimization.None {
-        set codegen.optimization = CodegenOptimization.None;
-    } else if (*config).optimization == ConfigOptimization.Debug {
-        set codegen.optimization = CodegenOptimization.Debug;
-    } else if (*config).optimization == ConfigOptimization.Balanced {
-        set codegen.optimization = CodegenOptimization.Balanced;
-    } else if (*config).optimization == ConfigOptimization.Speed {
-        set codegen.optimization = CodegenOptimization.Speed;
-    } else if (*config).optimization == ConfigOptimization.Size {
-        set codegen.optimization = CodegenOptimization.Size;
-    } else if (*config).optimization == ConfigOptimization.Aggressive {
-        set codegen.optimization = CodegenOptimization.Aggressive;
+    if (*config).optimization == ConfigOptimization::None {
+        set codegen.optimization = CodegenOptimization::None;
+    } else if (*config).optimization == ConfigOptimization::Debug {
+        set codegen.optimization = CodegenOptimization::Debug;
+    } else if (*config).optimization == ConfigOptimization::Balanced {
+        set codegen.optimization = CodegenOptimization::Balanced;
+    } else if (*config).optimization == ConfigOptimization::Speed {
+        set codegen.optimization = CodegenOptimization::Speed;
+    } else if (*config).optimization == ConfigOptimization::Size {
+        set codegen.optimization = CodegenOptimization::Size;
+    } else if (*config).optimization == ConfigOptimization::Aggressive {
+        set codegen.optimization = CodegenOptimization::Aggressive;
     }
     return codegen;
 }
@@ -4166,19 +4166,19 @@ proc native_pipeline_run_with_config(
     if diagnostics != null { set *diagnostics = null; }
     if diagnostic_count != null { set *diagnostic_count = 0; }
     if action > NATIVE_FRONTEND_ACTION_EMIT_AST_FINGERPRINT {
-        return native_pipeline_result(Status.ErrorInvalidArgument, NativePipelinePhase.None, LexerError.InvalidArgument, 0, 0, false);
+        return native_pipeline_result(Status::ErrorInvalidArgument, NativePipelinePhase::None, LexerError::InvalidArgument, 0, 0, false);
     }
     if config != null and not vitte_config_is_valid(config) {
-        return native_pipeline_result(Status.ErrorInvalidArgument, NativePipelinePhase.None, LexerError.InvalidArgument, 0, 0, false);
+        return native_pipeline_result(Status::ErrorInvalidArgument, NativePipelinePhase::None, LexerError::InvalidArgument, 0, 0, false);
     }
     let native_config: ConfigResolved = if config == null { vitte_config_resolved_default() } else { (*config).resolved };
     let native_codegen_config = native_pipeline_codegen_config(&native_config);
 
     if source == null and source_length != 0 {
         return native_pipeline_result(
-            Status.ErrorInvalidArgument,
-            NativePipelinePhase.None,
-            LexerError.InvalidArgument,
+            Status::ErrorInvalidArgument,
+            NativePipelinePhase::None,
+            LexerError::InvalidArgument,
             0,
             0,
             false
@@ -4188,9 +4188,9 @@ proc native_pipeline_run_with_config(
     let source_text: str = if source == null { "" } else { source? };
     if source_length > source_text.length {
         return native_pipeline_result(
-            Status.ErrorInvalidArgument,
-            NativePipelinePhase.SourceRegistered,
-            LexerError.InvalidArgument,
+            Status::ErrorInvalidArgument,
+            NativePipelinePhase::SourceRegistered,
+            LexerError::InvalidArgument,
             0,
             0,
             false
@@ -4200,9 +4200,9 @@ proc native_pipeline_run_with_config(
     // The bootstrap parser stores source file IDs as uint32_t.
     if file_id > 4294967295 {
         return native_pipeline_result(
-            Status.ErrorInvalidArgument,
-            NativePipelinePhase.SourceRegistered,
-            LexerError.InvalidArgument,
+            Status::ErrorInvalidArgument,
+            NativePipelinePhase::SourceRegistered,
+            LexerError::InvalidArgument,
             0,
             0,
             false
@@ -4227,15 +4227,15 @@ proc native_pipeline_run_with_config(
         );
         vitte_lexer_destroy(&mut lexer);
 
-        let status: Status = if lexer_error == LexerError.OutOfMemory {
-            Status.ErrorOutOfMemory
+        let status: Status = if lexer_error == LexerError::OutOfMemory {
+            Status::ErrorOutOfMemory
         } else {
-            Status.ErrorParse
+            Status::ErrorParse
         };
 
         return native_pipeline_result(
             status,
-            NativePipelinePhase.SourceRegistered,
+            NativePipelinePhase::SourceRegistered,
             lexer_error,
             0,
             0,
@@ -4256,15 +4256,15 @@ proc native_pipeline_run_with_config(
         );
         vitte_lexer_destroy(&mut lexer);
 
-        let status: Status = if lexer_error == LexerError.OutOfMemory {
-            Status.ErrorOutOfMemory
+        let status: Status = if lexer_error == LexerError::OutOfMemory {
+            Status::ErrorOutOfMemory
         } else {
-            Status.ErrorParse
+            Status::ErrorParse
         };
 
         return native_pipeline_result(
             status,
-            NativePipelinePhase.SourceRegistered,
+            NativePipelinePhase::SourceRegistered,
             lexer_error,
             token_count,
             0,
@@ -4286,8 +4286,8 @@ proc native_pipeline_run_with_config(
         vitte_lexer_destroy(&mut lexer);
 
         return native_pipeline_result(
-            Status.ErrorInternal,
-            NativePipelinePhase.SourceRegistered,
+            Status::ErrorInternal,
+            NativePipelinePhase::SourceRegistered,
             lexer_error,
             token_count,
             0,
@@ -4301,7 +4301,7 @@ proc native_pipeline_run_with_config(
     if parser_tokens.len() != token_count {
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
-        return native_pipeline_result(Status.ErrorOutOfMemory, NativePipelinePhase.Lexed, LexerError.OutOfMemory, token_count, lexer_hash, false);
+        return native_pipeline_result(Status::ErrorOutOfMemory, NativePipelinePhase::Lexed, LexerError::OutOfMemory, token_count, lexer_hash, false);
     }
     let mut parser: Parser = Parser {};
     if not vitte_parser_init(&mut parser, parser_tokens.as_ptr(), parser_tokens.len()) {
@@ -4311,7 +4311,7 @@ proc native_pipeline_run_with_config(
         vitte_parser_destroy(&mut parser);
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
-        let mut result = native_pipeline_result(Status.ErrorParse, NativePipelinePhase.Lexed, LexerError.None, token_count, lexer_hash, false);
+        let mut result = native_pipeline_result(Status::ErrorParse, NativePipelinePhase::Lexed, LexerError::None, token_count, lexer_hash, false);
         set result.parser_error = parser_error;
         set result.parser_code = parser_code;
         set result.parser_detail = parser_detail;
@@ -4339,7 +4339,7 @@ proc native_pipeline_run_with_config(
         vitte_parser_destroy(&mut parser);
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
-        let mut result = native_pipeline_result(Status.ErrorParse, NativePipelinePhase.Lexed, LexerError.None, token_count, lexer_hash, false);
+        let mut result = native_pipeline_result(Status::ErrorParse, NativePipelinePhase::Lexed, LexerError::None, token_count, lexer_hash, false);
         set result.parser_error = parser_error;
         set result.parser_code = native_pipeline_parser_code(parser_error_kind);
         set result.parser_detail = parser_detail;
@@ -4352,9 +4352,9 @@ proc native_pipeline_run_with_config(
     if action == NATIVE_FRONTEND_ACTION_EMIT_AST_FINGERPRINT {
         let fingerprint_text: string = native_pipeline_u64_to_string(parser_hash);
         let mut result = native_pipeline_result(
-            Status.Ok,
-            NativePipelinePhase.Parsed,
-            LexerError.None,
+            Status::Ok,
+            NativePipelinePhase::Parsed,
+            LexerError::None,
             token_count,
             lexer_hash,
             true
@@ -4411,9 +4411,9 @@ proc native_pipeline_run_with_config(
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
         let mut result = native_pipeline_result(
-            if failure.codegen_error == CodegenError.OutOfMemory { Status.ErrorOutOfMemory } else { Status.ErrorInternal },
-            NativePipelinePhase.Parsed,
-            LexerError.None,
+            if failure.codegen_error == CodegenError::OutOfMemory { Status::ErrorOutOfMemory } else { Status::ErrorInternal },
+            NativePipelinePhase::Parsed,
+            LexerError::None,
             token_count,
             lexer_hash,
             false
@@ -4478,9 +4478,9 @@ proc native_pipeline_run_with_config(
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
         let mut result = native_pipeline_result(
-            if has_source_error { Status.ErrorParse } elif failure.codegen_error == CodegenError.OutOfMemory { Status.ErrorOutOfMemory } else { Status.ErrorInternal },
-            NativePipelinePhase.Parsed,
-            LexerError.None,
+            if has_source_error { Status::ErrorParse } elif failure.codegen_error == CodegenError::OutOfMemory { Status::ErrorOutOfMemory } else { Status::ErrorInternal },
+            NativePipelinePhase::Parsed,
+            LexerError::None,
             token_count,
             lexer_hash,
             false
@@ -4513,9 +4513,9 @@ proc native_pipeline_run_with_config(
             deallocate(parser_tokens.as_ptr() as *mut u8);
             vitte_lexer_destroy(&mut lexer);
             return native_pipeline_result(
-                Status.ErrorOutOfMemory,
-                NativePipelinePhase.Analyzed,
-                LexerError.OutOfMemory,
+                Status::ErrorOutOfMemory,
+                NativePipelinePhase::Analyzed,
+                LexerError::OutOfMemory,
                 token_count,
                 lexer_hash,
                 false
@@ -4526,9 +4526,9 @@ proc native_pipeline_run_with_config(
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
         let mut result = native_pipeline_result(
-            Status.Ok,
-            NativePipelinePhase.Analyzed,
-            LexerError.None,
+            Status::Ok,
+            NativePipelinePhase::Analyzed,
+            LexerError::None,
             token_count,
             lexer_hash,
             true
@@ -4548,8 +4548,8 @@ proc native_pipeline_run_with_config(
         let failure = native_pipeline_emit_failure(
             "the backend received an invalid or incompatible compilation configuration",
             native_pipeline_c_string("VITTE_BACKEND_E_CONFIG"),
-            CliDiagnosticOrigin.C17Backend,
-            CodegenError.InvalidConfig
+            CliDiagnosticOrigin::C17Backend,
+            CodegenError::InvalidConfig
         );
         let diagnostics_exported = native_pipeline_export_diagnostics(
             &parser,
@@ -4566,9 +4566,9 @@ proc native_pipeline_run_with_config(
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
         let mut result = native_pipeline_result(
-            if diagnostics_exported { Status.ErrorBackend } else { Status.ErrorOutOfMemory },
-            NativePipelinePhase.Analyzed,
-            LexerError.None,
+            if diagnostics_exported { Status::ErrorBackend } else { Status::ErrorOutOfMemory },
+            NativePipelinePhase::Analyzed,
+            LexerError::None,
             token_count,
             lexer_hash,
             false
@@ -4578,7 +4578,7 @@ proc native_pipeline_run_with_config(
         set result.parser_diagnostic_count = parser_diagnostics;
         set result.sema_diagnostic_count = sema_diagnostics;
         set result.parser_fingerprint = parser_hash;
-        set result.codegen_error = CodegenError.InvalidConfig as u32;
+        set result.codegen_error = CodegenError::InvalidConfig as u32;
         set result.codegen_detail = failure.error;
         set result.native_parser_attempted = true;
         set result.native_parser_succeeded = true;
@@ -4596,12 +4596,12 @@ proc native_pipeline_run_with_config(
     let mut ir_function_count: usize = 0;
     let mut hir_hash: u64 = 0;
     let mut ir_hash: u64 = 0;
-    let mut phase: NativePipelinePhase = NativePipelinePhase.Analyzed;
+    let mut phase: NativePipelinePhase = NativePipelinePhase::Analyzed;
     let mut output = native_pipeline_emit_failure(
         "native HIR lowering could not start",
         native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
-        CliDiagnosticOrigin.Hir,
-        CodegenError.Backend
+        CliDiagnosticOrigin::Hir,
+        CodegenError::Backend
     );
     if vitte_hir_init(&mut hir) {
         set hir_initialized = true;
@@ -4613,7 +4613,7 @@ proc native_pipeline_run_with_config(
             } else {
                 set output = native_pipeline_hir_failure(hir.last_error, false);
             }
-        } elif not vitte_hir_is_valid(&hir) or not vitte_hir_validate(&mut hir) or hir.state != HIRState.Validated {
+        } elif not vitte_hir_is_valid(&hir) or not vitte_hir_validate(&mut hir) or hir.state != HIRState::Validated {
             set hir_error = hir.last_error as u32;
             if action == NATIVE_FRONTEND_ACTION_COMPILE and
                (ast_fallback or generic_proc_c17_fallback) {
@@ -4625,7 +4625,7 @@ proc native_pipeline_run_with_config(
             let hir_statistics: HIRStats = vitte_hir_stats(&hir);
             set hir_node_count = hir_statistics.nodes_created as usize;
             set hir_hash = vitte_hir_fingerprint(&mut hir);
-            set phase = NativePipelinePhase.HirLowered;
+            set phase = NativePipelinePhase::HirLowered;
 
             if not vitte_ir_init(&mut ir) {
                 set ir_error = ir.last_error as u32;
@@ -4640,7 +4640,7 @@ proc native_pipeline_run_with_config(
                     } else {
                         set output = native_pipeline_ir_failure(ir.last_error, false);
                     }
-                } elif not vitte_ir_is_valid(&ir) or not vitte_ir_validate(&mut ir) or ir.state != IRState.Sealed {
+                } elif not vitte_ir_is_valid(&ir) or not vitte_ir_validate(&mut ir) or ir.state != IRState::Sealed {
                     set ir_error = ir.last_error as u32;
                     if action == NATIVE_FRONTEND_ACTION_COMPILE and
                        (ast_fallback or generic_proc_c17_fallback) {
@@ -4652,7 +4652,7 @@ proc native_pipeline_run_with_config(
                     let ir_statistics: IRStats = vitte_ir_stats(&ir);
                     set ir_function_count = ir_statistics.functions_created as usize;
                     set ir_hash = vitte_ir_fingerprint(&mut ir);
-                    set phase = NativePipelinePhase.IrLowered;
+                    set phase = NativePipelinePhase::IrLowered;
                     if action == NATIVE_FRONTEND_ACTION_EMIT_IR {
                         set output = NativePipelineEmitResult {
                             success: true,
@@ -4660,8 +4660,8 @@ proc native_pipeline_run_with_config(
                             error: "",
                             help: "",
                             diagnostic_code: null,
-                            diagnostic_origin: CliDiagnosticOrigin.Unknown,
-                            codegen_error: CodegenError.None,
+                            diagnostic_origin: CliDiagnosticOrigin::Unknown,
+                            codegen_error: CodegenError::None,
                             has_source_span: false,
                             source_span: ParserSpan { file_id: 0, begin: 0, end: 0, line: 0, column: 0, valid: false }
                         };
@@ -4699,7 +4699,7 @@ proc native_pipeline_run_with_config(
         vitte_parser_destroy(&mut parser);
         deallocate(parser_tokens.as_ptr() as *mut u8);
         vitte_lexer_destroy(&mut lexer);
-        return native_pipeline_result(Status.ErrorOutOfMemory, phase, LexerError.OutOfMemory, token_count, lexer_hash, false);
+        return native_pipeline_result(Status::ErrorOutOfMemory, phase, LexerError::OutOfMemory, token_count, lexer_hash, false);
     }
     if ir_initialized { vitte_ir_destroy(&mut ir); }
     if hir_initialized { vitte_hir_destroy(&mut hir); }
@@ -4708,9 +4708,9 @@ proc native_pipeline_run_with_config(
     deallocate(parser_tokens.as_ptr() as *mut u8);
     vitte_lexer_destroy(&mut lexer);
     let mut result = native_pipeline_result(
-        if output.success { Status.Ok } else { Status.ErrorBackend },
-        if output.success { NativePipelinePhase.Generated } else { phase },
-        LexerError.None,
+        if output.success { Status::Ok } else { Status::ErrorBackend },
+        if output.success { NativePipelinePhase::Generated } else { phase },
+        LexerError::None,
         token_count,
         lexer_hash,
         output.success
@@ -4729,7 +4729,7 @@ proc native_pipeline_run_with_config(
     set result.codegen_error = output.codegen_error as u32;
     set result.codegen_detail = output.error;
     set result.codegen_help = output.help;
-    if ir_error != 0 and output.diagnostic_origin == CliDiagnosticOrigin.Ir {
+    if ir_error != 0 and output.diagnostic_origin == CliDiagnosticOrigin::Ir {
         set result.ir_diagnostic_code = native_pipeline_cstring(output.diagnostic_code);
     }
     if output.success {

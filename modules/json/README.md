@@ -33,7 +33,7 @@ suggestion is intentionally empty when the module cannot infer a safe fix.
 Suggestions describe the correction; they do not modify the input
 automatically. If lexing fails during `parse` or `parse_with_limits`, the
 parser preserves the lexer message, detail, suggestion, and span, and sets
-`report.error` to `JsonParserError.InvalidTokenStream`. Call `lex` or
+`report.error` to `JsonParserError::InvalidTokenStream`. Call `lex` or
 `lex_with_limits` directly when the specific `JsonLexerError` is needed.
 
 For untrusted or size-constrained input, configure both lexer and parser

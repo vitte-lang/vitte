@@ -409,8 +409,8 @@ pub proc vitte_c17_options_optimizes_for_speed(
     }
 
     return
-        options.optimization == C17Optimization.Speed  or
-        options.optimization == C17Optimization.Aggressive;
+        options.optimization == C17Optimization::Speed  or
+        options.optimization == C17Optimization::Aggressive;
 }
 
 pub proc vitte_c17_options_optimizes_for_size(
@@ -420,7 +420,7 @@ pub proc vitte_c17_options_optimizes_for_size(
         return false;
     }
 
-    return options.optimization == C17Optimization.Size;
+    return options.optimization == C17Optimization::Size;
 }
 
 /* ============================================================
@@ -671,7 +671,7 @@ pub proc vitte_c17_options_stats(
     set stats.hash = vitte_c17_options_hash(options);
 
     set stats.valid =
-        vitte_c17_options_validate(options) == C17OptionsError.None;
+        vitte_c17_options_validate(options) == C17OptionsError::None;
 
     set stats.has_sanitizer =
         vitte_c17_options_has_sanitizer(options);
@@ -693,7 +693,7 @@ pub proc vitte_c17_options_last_error(
     options: &C17Options
 ) -> C17OptionsError {
     if options.magic != OPTIONS_MAGIC {
-        return C17OptionsError.InvalidOptions;
+        return C17OptionsError::InvalidOptions;
     }
 
     return options.last_error;
@@ -703,7 +703,7 @@ pub proc vitte_c17_options_clear_error(
     options: &mut C17Options
 ) {
     if options.magic == OPTIONS_MAGIC {
-        set options.last_error = C17OptionsError.None;
+        set options.last_error = C17OptionsError::None;
     }
 }
 
@@ -786,11 +786,11 @@ proc vitte_c17_options_fail(
 pub proc vitte_c17_options_default() -> C17Options {
     return C17Options {
         magic: OPTIONS_MAGIC,
-        profile: C17Profile.Default,
-        dialect: C17Dialect.C17,
-        optimization: C17Optimization.None,
-        runtime_mode: C17RuntimeMode.Auto,
-        last_error: C17OptionsError.None,
+        profile: C17Profile::Default,
+        dialect: C17Dialect::C17,
+        optimization: C17Optimization::None,
+        runtime_mode: C17RuntimeMode::Auto,
+        last_error: C17OptionsError::None,
         indent_width: OPTIONS_DEFAULT_INDENT_WIDTH,
         pretty: true,
         emit_comments: true,
@@ -843,10 +843,10 @@ pub proc vitte_c17_options_is_valid(options: &C17Options) -> bool {
     if options.magic != OPTIONS_MAGIC {
         return false;
     }
-    if options.profile < C17Profile.Default or options.profile >= C17Profile.Count or
-       options.dialect <= C17Dialect.Invalid or options.dialect >= C17Dialect.Count or
-       options.optimization <= C17Optimization.Invalid or options.optimization >= C17Optimization.Count or
-       options.runtime_mode <= C17RuntimeMode.Invalid or options.runtime_mode >= C17RuntimeMode.Count {
+    if options.profile < C17Profile::Default or options.profile >= C17Profile::Count or
+       options.dialect <= C17Dialect::Invalid or options.dialect >= C17Dialect::Count or
+       options.optimization <= C17Optimization::Invalid or options.optimization >= C17Optimization::Count or
+       options.runtime_mode <= C17RuntimeMode::Invalid or options.runtime_mode >= C17RuntimeMode::Count {
         return false;
     }
     return true;
@@ -854,7 +854,7 @@ pub proc vitte_c17_options_is_valid(options: &C17Options) -> bool {
 
 pub proc vitte_c17_options_validate(options: &C17Options) -> C17OptionsError {
     if not vitte_c17_options_is_valid(options) {
-        return C17OptionsError.InvalidOptions;
+        return C17OptionsError::InvalidOptions;
     }
     if options.indent_width > OPTIONS_MAX_INDENT_WIDTH or
        options.max_indent_depth == 0 or
@@ -862,29 +862,29 @@ pub proc vitte_c17_options_validate(options: &C17Options) -> C17OptionsError {
        options.max_identifier_bytes == 0 or
        options.max_identifier_bytes > OPTIONS_MAX_IDENTIFIER_BYTES or
        options.max_errors == 0 {
-        return C17OptionsError.InvalidLimit;
+        return C17OptionsError::InvalidLimit;
     }
     if (options.strict_c17 and options.allow_extensions) or
-       (options.dialect == C17Dialect.C17 and options.allow_extensions) or
-       (options.dialect == C17Dialect.GNU17 and options.strict_c17) or
+       (options.dialect == C17Dialect::C17 and options.allow_extensions) or
+       (options.dialect == C17Dialect::GNU17 and options.strict_c17) or
        (options.hosted == options.freestanding) {
-        return C17OptionsError.Conflict;
+        return C17OptionsError::Conflict;
     }
-    if options.freestanding and options.runtime_mode == C17RuntimeMode.Embedded {
-        return C17OptionsError.Conflict;
+    if options.freestanding and options.runtime_mode == C17RuntimeMode::Embedded {
+        return C17OptionsError::Conflict;
     }
-    if (options.runtime_mode == C17RuntimeMode.None or
-        options.runtime_mode == C17RuntimeMode.External) and options.emit_runtime {
-        return C17OptionsError.Conflict;
+    if (options.runtime_mode == C17RuntimeMode::None or
+        options.runtime_mode == C17RuntimeMode::External) and options.emit_runtime {
+        return C17OptionsError::Conflict;
     }
     if options.sanitize_thread and
        (options.sanitize_address or options.sanitize_leak) {
-        return C17OptionsError.Conflict;
+        return C17OptionsError::Conflict;
     }
     if options.native_lto and vitte_c17_options_has_sanitizer(options) {
-        return C17OptionsError.Conflict;
+        return C17OptionsError::Conflict;
     }
-    return C17OptionsError.None;
+    return C17OptionsError::None;
 }
 
 pub proc vitte_c17_options_init(options: &mut C17Options, profile: C17Profile) -> bool {
@@ -896,11 +896,11 @@ pub proc vitte_c17_options_destroy(options: &mut C17Options) {
     if options.magic == OPTIONS_MAGIC {
         set *options = C17Options {
             magic: OPTIONS_DEAD_MAGIC,
-            profile: C17Profile.Default,
-            dialect: C17Dialect.Invalid,
-            optimization: C17Optimization.Invalid,
-            runtime_mode: C17RuntimeMode.Invalid,
-            last_error: C17OptionsError.None,
+            profile: C17Profile::Default,
+            dialect: C17Dialect::Invalid,
+            optimization: C17Optimization::Invalid,
+            runtime_mode: C17RuntimeMode::Invalid,
+            last_error: C17OptionsError::None,
             indent_width: 0,
             pretty: false,
             emit_comments: false,
@@ -959,13 +959,13 @@ pub proc vitte_c17_options_apply_profile(
     }
     vitte_c17_options_set_defaults(options);
     set options.profile = profile;
-    if profile < C17Profile.Default or profile >= C17Profile.Count {
-        return vitte_c17_options_fail(options, C17OptionsError.InvalidProfile);
+    if profile < C17Profile::Default or profile >= C17Profile::Count {
+        return vitte_c17_options_fail(options, C17OptionsError::InvalidProfile);
     }
     match profile {
         case C17Profile::Default => {},
         case C17Profile::Debug => {
-            set options.optimization = C17Optimization.Debug;
+            set options.optimization = C17Optimization::Debug;
             set options.emit_debug_comments = true;
             set options.debug_info = true;
             set options.emit_line_directives = true;
@@ -973,20 +973,20 @@ pub proc vitte_c17_options_apply_profile(
             set options.native_frame_pointer = true;
         },
         case C17Profile::Release => {
-            set options.optimization = C17Optimization.Speed;
+            set options.optimization = C17Optimization::Speed;
             set options.emit_comments = false;
             set options.native_lto = true;
             set options.assertions = false;
         },
         case C17Profile::Size => {
-            set options.optimization = C17Optimization.Size;
+            set options.optimization = C17Optimization::Size;
             set options.pretty = false;
             set options.emit_comments = false;
             set options.native_lto = true;
             set options.assertions = false;
         },
         case C17Profile::Sanitize => {
-            set options.optimization = C17Optimization.Debug;
+            set options.optimization = C17Optimization::Debug;
             set options.emit_debug_comments = true;
             set options.debug_info = true;
             set options.emit_line_directives = true;
@@ -996,10 +996,10 @@ pub proc vitte_c17_options_apply_profile(
             set options.sanitize_undefined = true;
         },
         case C17Profile::Freestanding => {
-            set options.optimization = C17Optimization.Balanced;
+            set options.optimization = C17Optimization::Balanced;
             set options.freestanding = true;
             set options.hosted = false;
-            set options.runtime_mode = C17RuntimeMode.None;
+            set options.runtime_mode = C17RuntimeMode::None;
             set options.emit_runtime = false;
             set options.runtime_checks = false;
             set options.bounds_checks = false;
@@ -1007,9 +1007,9 @@ pub proc vitte_c17_options_apply_profile(
             set options.overflow_checks = false;
             set options.assertions = false;
         }
-        case C17Profile::Count => return vitte_c17_options_fail(options, C17OptionsError.InvalidProfile);
+        case C17Profile::Count => return vitte_c17_options_fail(options, C17OptionsError::InvalidProfile);
     }
-    set options.last_error = C17OptionsError.None;
+    set options.last_error = C17OptionsError::None;
     return true;
 }
 
@@ -1027,7 +1027,7 @@ pub proc vitte_c17_options_normalize(options: &mut C17Options) -> bool {
             set options.allow_extensions = true;
         },
         case C17Dialect::Invalid | C17Dialect::Count =>
-            return vitte_c17_options_fail(options, C17OptionsError.InvalidDialect);
+            return vitte_c17_options_fail(options, C17OptionsError::InvalidDialect);
     }
     if options.freestanding {
         set options.hosted = false;
@@ -1039,9 +1039,9 @@ pub proc vitte_c17_options_normalize(options: &mut C17Options) -> bool {
         case C17RuntimeMode::Embedded => set options.emit_runtime = true,
         case C17RuntimeMode::External | C17RuntimeMode::None => set options.emit_runtime = false,
         case C17RuntimeMode::Invalid | C17RuntimeMode::Count =>
-            return vitte_c17_options_fail(options, C17OptionsError.InvalidRuntime);
+            return vitte_c17_options_fail(options, C17OptionsError::InvalidRuntime);
     }
-    if options.runtime_mode == C17RuntimeMode.None {
+    if options.runtime_mode == C17RuntimeMode::None {
         set options.runtime_checks = false;
         set options.bounds_checks = false;
         set options.null_checks = false;
@@ -1073,14 +1073,14 @@ pub proc vitte_c17_options_normalize(options: &mut C17Options) -> bool {
         set options.max_errors = OPTIONS_DEFAULT_MAX_ERRORS;
     }
     set options.last_error = vitte_c17_options_validate(options);
-    return options.last_error == C17OptionsError.None;
+    return options.last_error == C17OptionsError::None;
 }
 
 pub proc vitte_c17_options_to_backend_config(
     options: &C17Options,
     config: &mut C17BackendConfig
 ) -> bool {
-    if vitte_c17_options_validate(options) != C17OptionsError.None {
+    if vitte_c17_options_validate(options) != C17OptionsError::None {
         return false;
     }
     set *config = vitte_c17_backend_config_default();
@@ -1110,15 +1110,15 @@ pub proc vitte_c17_options_to_backend_config(
  * ============================================================ */
 
 pub proc vitte_c17_options_has_error(options: &C17Options) -> bool {
-    return options.magic == OPTIONS_MAGIC and options.last_error != C17OptionsError.None;
+    return options.magic == OPTIONS_MAGIC and options.last_error != C17OptionsError::None;
 }
 
 pub proc vitte_c17_options_is_debug(options: &C17Options) -> bool {
-    return options.magic == OPTIONS_MAGIC and options.profile == C17Profile.Debug;
+    return options.magic == OPTIONS_MAGIC and options.profile == C17Profile::Debug;
 }
 
 pub proc vitte_c17_options_is_release(options: &C17Options) -> bool {
-    return options.magic == OPTIONS_MAGIC and options.profile == C17Profile.Release;
+    return options.magic == OPTIONS_MAGIC and options.profile == C17Profile::Release;
 }
 
 pub proc vitte_c17_options_is_freestanding(options: &C17Options) -> bool {
@@ -1130,24 +1130,24 @@ pub proc vitte_c17_options_is_hosted(options: &C17Options) -> bool {
 }
 
 pub proc vitte_c17_options_uses_external_runtime(options: &C17Options) -> bool {
-    return options.magic == OPTIONS_MAGIC and options.runtime_mode == C17RuntimeMode.External;
+    return options.magic == OPTIONS_MAGIC and options.runtime_mode == C17RuntimeMode::External;
 }
 
 pub proc vitte_c17_options_embeds_runtime(options: &C17Options) -> bool {
-    return options.magic == OPTIONS_MAGIC and options.runtime_mode == C17RuntimeMode.Embedded;
+    return options.magic == OPTIONS_MAGIC and options.runtime_mode == C17RuntimeMode::Embedded;
 }
 
 pub proc vitte_c17_options_has_runtime(options: &C17Options) -> bool {
-    return options.magic == OPTIONS_MAGIC and options.runtime_mode != C17RuntimeMode.None;
+    return options.magic == OPTIONS_MAGIC and options.runtime_mode != C17RuntimeMode::None;
 }
 
 pub proc vitte_c17_options_uses_strict_c17(options: &C17Options) -> bool {
-    return options.magic == OPTIONS_MAGIC and options.dialect == C17Dialect.C17 and
+    return options.magic == OPTIONS_MAGIC and options.dialect == C17Dialect::C17 and
         options.strict_c17 and not options.allow_extensions;
 }
 
 pub proc vitte_c17_options_uses_gnu17(options: &C17Options) -> bool {
-    return options.magic == OPTIONS_MAGIC and options.dialect == C17Dialect.GNU17;
+    return options.magic == OPTIONS_MAGIC and options.dialect == C17Dialect::GNU17;
 }
 
 pub proc vitte_c17_options_has_address_sanitizer(options: &C17Options) -> bool {

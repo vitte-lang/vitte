@@ -149,11 +149,11 @@ export proc vitte_diagnostic_applicability_name(applicability: DiagnosticApplica
 }
 
 export proc vitte_diagnostic_applicability_machine_applicable(applicability: DiagnosticApplicability) -> bool {
-    return applicability == DiagnosticApplicability.Machine;
+    return applicability == DiagnosticApplicability::Machine;
 }
 
 export proc vitte_diagnostic_applicability_requires_review(applicability: DiagnosticApplicability) -> bool {
-    return applicability != DiagnosticApplicability.Machine;
+    return applicability != DiagnosticApplicability::Machine;
 }
 
 export proc vitte_diagnostic_suggestion_init(suggestion: *DiagnosticSuggestion) {
@@ -165,8 +165,8 @@ export proc vitte_diagnostic_suggestion_init(suggestion: *DiagnosticSuggestion) 
         has_span: false,
         replacement: "",
         has_replacement: false,
-        applicability: DiagnosticApplicability.Manual,
-        confidence: DiagnosticConfidence.None,
+        applicability: DiagnosticApplicability::Manual,
+        confidence: DiagnosticConfidence::None,
         preferred: false
     };
 }
@@ -182,11 +182,11 @@ export proc vitte_diagnostic_suggestion_set(
     replacement: ?string,
     applicability: DiagnosticApplicability
 ) -> Status {
-    if suggestion == null { return Status.ErrorInvalidArgument; }
+    if suggestion == null { return Status::ErrorInvalidArgument; }
     vitte_diagnostic_suggestion_init(suggestion);
     set (*suggestion).message = message;
     if span != null {
-        if not span_valid(&*span) { return Status.ErrorInvalidArgument; }
+        if not span_valid(&*span) { return Status::ErrorInvalidArgument; }
         set (*suggestion).span = *span;
         set (*suggestion).has_span = true;
     }
@@ -195,7 +195,7 @@ export proc vitte_diagnostic_suggestion_set(
         set (*suggestion).has_replacement = true;
     }
     set (*suggestion).applicability = applicability;
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_suggestion_is_valid(suggestion: *const DiagnosticSuggestion) -> bool {
@@ -259,35 +259,35 @@ export proc vitte_diagnostic_suggestion_find(diagnostic_value: *const Diagnostic
 
 export proc vitte_diagnostic_add_suggestion_object(diagnostic_value: *Diagnostic, suggestion: *const DiagnosticSuggestion) -> Status {
     if diagnostic_value == null or suggestion == null or not vitte_diagnostic_suggestion_is_valid(suggestion) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
-    if vitte_diagnostic_suggestion_find(diagnostic_value, suggestion) != SUGGESTION_INDEX_NONE { return Status.Ok; }
-    if (*diagnostic_value).suggestions.len() >= SUGGESTION_MAX_COUNT { return Status.ErrorInvalidState; }
+    if vitte_diagnostic_suggestion_find(diagnostic_value, suggestion) != SUGGESTION_INDEX_NONE { return Status::Ok; }
+    if (*diagnostic_value).suggestions.len() >= SUGGESTION_MAX_COUNT { return Status::ErrorInvalidState; }
     let mut item = *suggestion;
     if item.suggestion_id == 0 { set item.suggestion_id = ((*diagnostic_value).suggestions.len() + 1) as u64; }
-    if not (*diagnostic_value).suggestions.push(item) { return Status.ErrorOutOfMemory; }
+    if not (*diagnostic_value).suggestions.push(item) { return Status::ErrorOutOfMemory; }
     if vitte_diagnostic_suggestion_has_edit(&item) and
-       item.applicability == DiagnosticApplicability.Machine {
+       item.applicability == DiagnosticApplicability::Machine {
         set (*diagnostic_value).has_machine_fix = true;
     }
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_suggest(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan, replacement: ?string, applicability: DiagnosticApplicability) -> Status {
-    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
+    if diagnostic_value == null { return Status::ErrorInvalidArgument; }
     if replacement == null {
         return if diagnostic_add_suggestion(&mut *diagnostic_value, message, span, null, applicability) {
-            Status.Ok
-        } else { Status.ErrorInvalidArgument };
+            Status::Ok
+        } else { Status::ErrorInvalidArgument };
     }
     let mut replacement_value = replacement?;
     return if diagnostic_add_suggestion(&mut *diagnostic_value, message, span, &replacement_value, applicability) {
-        Status.Ok
-    } else { Status.ErrorInvalidArgument };
+        Status::Ok
+    } else { Status::ErrorInvalidArgument };
 }
 
 export proc vitte_diagnostic_suggest_insert(diagnostic_value: *Diagnostic, message: string, position: *const AstSpan, text: string, applicability: DiagnosticApplicability) -> Status {
-    if position == null or not span_valid(&*position) { return Status.ErrorInvalidArgument; }
+    if position == null or not span_valid(&*position) { return Status::ErrorInvalidArgument; }
     let mut insertion = *position;
     set insertion.end_offset = insertion.start_offset;
     set insertion.end = insertion.begin;
@@ -297,29 +297,29 @@ export proc vitte_diagnostic_suggest_insert(diagnostic_value: *Diagnostic, messa
 }
 
 export proc vitte_diagnostic_suggest_replace(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan, replacement: string, applicability: DiagnosticApplicability) -> Status {
-    if span == null or not span_valid(&*span) { return Status.ErrorInvalidArgument; }
+    if span == null or not span_valid(&*span) { return Status::ErrorInvalidArgument; }
     return vitte_diagnostic_suggest(diagnostic_value, message, span, replacement, applicability);
 }
 
 export proc vitte_diagnostic_suggest_delete(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan, applicability: DiagnosticApplicability) -> Status {
-    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
-    if span == null or not span_valid(&*span) { return Status.ErrorInvalidArgument; }
+    if diagnostic_value == null { return Status::ErrorInvalidArgument; }
+    if span == null or not span_valid(&*span) { return Status::ErrorInvalidArgument; }
     let mut empty = "";
     return if diagnostic_add_suggestion(&mut *diagnostic_value, message, span, &empty, applicability) {
-        Status.Ok
-    } else { Status.ErrorInvalidArgument };
+        Status::Ok
+    } else { Status::ErrorInvalidArgument };
 }
 
 export proc vitte_diagnostic_suggest_machine_replace(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan, replacement: string) -> Status {
-    return vitte_diagnostic_suggest_replace(diagnostic_value, message, span, replacement, DiagnosticApplicability.Machine);
+    return vitte_diagnostic_suggest_replace(diagnostic_value, message, span, replacement, DiagnosticApplicability::Machine);
 }
 
 export proc vitte_diagnostic_suggest_machine_insert(diagnostic_value: *Diagnostic, message: string, position: *const AstSpan, text: string) -> Status {
-    return vitte_diagnostic_suggest_insert(diagnostic_value, message, position, text, DiagnosticApplicability.Machine);
+    return vitte_diagnostic_suggest_insert(diagnostic_value, message, position, text, DiagnosticApplicability::Machine);
 }
 
 export proc vitte_diagnostic_suggest_machine_delete(diagnostic_value: *Diagnostic, message: string, span: *const AstSpan) -> Status {
-    return vitte_diagnostic_suggest_delete(diagnostic_value, message, span, DiagnosticApplicability.Machine);
+    return vitte_diagnostic_suggest_delete(diagnostic_value, message, span, DiagnosticApplicability::Machine);
 }
 
 export proc vitte_diagnostic_suggestion_at(diagnostic_value: *const Diagnostic, index: usize) -> *const DiagnosticSuggestion {
@@ -338,16 +338,16 @@ export proc vitte_diagnostic_suggestion_count(diagnostic_value: *const Diagnosti
 }
 
 export proc vitte_diagnostic_suggestion_remove(diagnostic_value: *Diagnostic, index: usize) -> Status {
-    if diagnostic_value == null or index >= (*diagnostic_value).suggestions.len() { return Status.ErrorInvalidArgument; }
+    if diagnostic_value == null or index >= (*diagnostic_value).suggestions.len() { return Status::ErrorInvalidArgument; }
     let mut retained: [DiagnosticSuggestion] = [];
     let mut cursor: usize = 0;
     while cursor < (*diagnostic_value).suggestions.len() {
-        if cursor != index and not retained.push((*diagnostic_value).suggestions[cursor]) { return Status.ErrorOutOfMemory; }
+        if cursor != index and not retained.push((*diagnostic_value).suggestions[cursor]) { return Status::ErrorOutOfMemory; }
         set cursor += 1;
     }
     set (*diagnostic_value).suggestions = retained;
     set (*diagnostic_value).has_machine_fix = vitte_diagnostic_machine_suggestion_count(diagnostic_value) != 0;
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_suggestion_clear(diagnostic_value: *Diagnostic) {
@@ -380,7 +380,7 @@ export proc vitte_diagnostic_suggestions_deduplicate(diagnostic_value: *Diagnost
         let mut other = index + 1;
         while other < (*diagnostic_value).suggestions.len() {
             if vitte_diagnostic_suggestion_equal(&(*diagnostic_value).suggestions[index], &(*diagnostic_value).suggestions[other]) {
-                if vitte_diagnostic_suggestion_remove(diagnostic_value, other) == Status.Ok { set removed += 1; continue; }
+                if vitte_diagnostic_suggestion_remove(diagnostic_value, other) == Status::Ok { set removed += 1; continue; }
             }
             set other += 1;
         }
@@ -414,7 +414,7 @@ export proc vitte_diagnostic_machine_suggestion_count(diagnostic_value: *const D
     let mut index: usize = 0;
     while index < (*diagnostic_value).suggestions.len() {
         let suggestion = &(*diagnostic_value).suggestions[index];
-        if vitte_diagnostic_suggestion_has_edit(suggestion) and (*suggestion).applicability == DiagnosticApplicability.Machine { set count += 1; }
+        if vitte_diagnostic_suggestion_has_edit(suggestion) and (*suggestion).applicability == DiagnosticApplicability::Machine { set count += 1; }
         set index += 1;
     }
     return count;
@@ -432,7 +432,7 @@ export proc vitte_diagnostic_suggestions_machine_safe(diagnostic_value: *const D
         let suggestion = &(*diagnostic_value).suggestions[index];
         if vitte_diagnostic_suggestion_has_edit(suggestion) {
             set found = true;
-            if (*suggestion).applicability != DiagnosticApplicability.Machine { return false; }
+            if (*suggestion).applicability != DiagnosticApplicability::Machine { return false; }
         }
         set index += 1;
     }
@@ -446,35 +446,35 @@ export proc vitte_diagnostic_fix_plan_init(plan: *DiagnosticFixPlan) {
 
 export proc vitte_diagnostic_fix_plan_add(plan: *DiagnosticFixPlan, suggestion: *const DiagnosticSuggestion) -> Status {
     if plan == null or suggestion == null or not vitte_diagnostic_suggestion_is_valid(suggestion) or
-       not vitte_diagnostic_suggestion_has_edit(suggestion) { return Status.ErrorInvalidArgument; }
-    if (*plan).count != (*plan).edits.len() { return Status.ErrorInvalidState; }
+       not vitte_diagnostic_suggestion_has_edit(suggestion) { return Status::ErrorInvalidArgument; }
+    if (*plan).count != (*plan).edits.len() { return Status::ErrorInvalidState; }
     let mut index: usize = 0;
     while index < (*plan).edits.len() {
-        if vitte_diagnostic_suggestion_equal(&(*plan).edits[index], suggestion) { return Status.Ok; }
+        if vitte_diagnostic_suggestion_equal(&(*plan).edits[index], suggestion) { return Status::Ok; }
         if vitte_diagnostic_suggestion_conflicts(&(*plan).edits[index], suggestion) { set (*plan).conflict_free = false; }
         set index += 1;
     }
-    if (*plan).count >= SUGGESTION_MAX_COUNT { return Status.ErrorInvalidState; }
-    if not (*plan).edits.push(*suggestion) { return Status.ErrorOutOfMemory; }
+    if (*plan).count >= SUGGESTION_MAX_COUNT { return Status::ErrorInvalidState; }
+    if not (*plan).edits.push(*suggestion) { return Status::ErrorOutOfMemory; }
     set (*plan).count = (*plan).edits.len();
-    if (*suggestion).applicability != DiagnosticApplicability.Machine { set (*plan).machine_applicable = false; }
-    return Status.Ok;
+    if (*suggestion).applicability != DiagnosticApplicability::Machine { set (*plan).machine_applicable = false; }
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_build_fix_plan(diagnostic_value: *const Diagnostic, machine_only: bool, plan: *DiagnosticFixPlan) -> Status {
-    if diagnostic_value == null or plan == null { return Status.ErrorInvalidArgument; }
+    if diagnostic_value == null or plan == null { return Status::ErrorInvalidArgument; }
     vitte_diagnostic_fix_plan_init(plan);
     let mut index: usize = 0;
     while index < (*diagnostic_value).suggestions.len() {
         let suggestion = &(*diagnostic_value).suggestions[index];
         if vitte_diagnostic_suggestion_has_edit(suggestion) and
-           (not machine_only or (*suggestion).applicability == DiagnosticApplicability.Machine) {
+           (not machine_only or (*suggestion).applicability == DiagnosticApplicability::Machine) {
             let status = vitte_diagnostic_fix_plan_add(plan, suggestion);
-            if status != Status.Ok { return status; }
+            if status != Status::Ok { return status; }
         }
         set index += 1;
     }
-    return Status.Ok;
+    return Status::Ok;
 }
 
 proc fix_plan_apply_compare(left: *const DiagnosticSuggestion, right: *const DiagnosticSuggestion) -> i32 {
@@ -518,7 +518,7 @@ export proc vitte_diagnostic_fix_plan_validate(plan: *const DiagnosticFixPlan) -
             set result.valid = false; set result.invalid_count += 1;
             if result.first_invalid_index == SUGGESTION_INDEX_NONE { set result.first_invalid_index = index; }
         }
-        if (*item).applicability != DiagnosticApplicability.Machine { set result.machine_applicable = false; }
+        if (*item).applicability != DiagnosticApplicability::Machine { set result.machine_applicable = false; }
         let mut other = index + 1;
         while other < (*plan).edits.len() {
             if vitte_diagnostic_suggestion_conflicts(item, &(*plan).edits[other]) {
@@ -591,7 +591,7 @@ export proc vitte_diagnostic_suggestions_validate(diagnostic_value: *const Diagn
             set result.valid = false; set result.invalid_count += 1;
             if result.first_invalid_index == SUGGESTION_INDEX_NONE { set result.first_invalid_index = index; }
         }
-        if (*item).applicability == DiagnosticApplicability.Machine { set result.machine_applicable_count += 1; }
+        if (*item).applicability == DiagnosticApplicability::Machine { set result.machine_applicable_count += 1; }
         if vitte_diagnostic_suggestion_is_insertion(item) { set result.insertion_count += 1; }
         elif vitte_diagnostic_suggestion_is_deletion(item) { set result.deletion_count += 1; }
         elif vitte_diagnostic_suggestion_is_replacement(item) { set result.replacement_count += 1; }
@@ -634,19 +634,19 @@ export proc vitte_diagnostic_suggestion_component_name() -> string { return "dia
 export proc vitte_diagnostic_suggestion_capacity() -> usize { return SUGGESTION_MAX_COUNT; }
 
 export proc vitte_diagnostic_suggestion_is_machine_applicable(suggestion: *const DiagnosticSuggestion) -> bool {
-    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability.Machine;
+    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability::Machine;
 }
 
 export proc vitte_diagnostic_suggestion_is_manual(suggestion: *const DiagnosticSuggestion) -> bool {
-    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability.Manual;
+    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability::Manual;
 }
 
 export proc vitte_diagnostic_suggestion_has_placeholders(suggestion: *const DiagnosticSuggestion) -> bool {
-    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability.Placeholders;
+    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability::Placeholders;
 }
 
 export proc vitte_diagnostic_suggestion_is_uncertain(suggestion: *const DiagnosticSuggestion) -> bool {
-    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability.Maybe;
+    return suggestion != null and (*suggestion).applicability == DiagnosticApplicability::Maybe;
 }
 
 export proc vitte_diagnostic_fix_plan_empty(plan: *const DiagnosticFixPlan) -> bool {

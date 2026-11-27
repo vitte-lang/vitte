@@ -73,8 +73,8 @@ proc cli_entry_write_error(text: string) {
 
 proc cli_entry_diagnostic_color(cli: *Cli) -> bool {
     let mode = vitte_cli_selected_color_mode(cli);
-    if mode == CliColorMode.Always { return true; }
-    if mode == CliColorMode.Never { return false; }
+    if mode == CliColorMode::Always { return true; }
+    if mode == CliColorMode::Never { return false; }
     return vitte_native_stderr_is_terminal();
 }
 
@@ -178,7 +178,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
 
     if not vitte_cli_parse(&mut cli, argc, argv) {
         let error = vitte_cli_last_error(&cli);
-        if error == CliError.UnknownCommand {
+        if error == CliError::UnknownCommand {
             vitte_cli_destroy(&mut cli);
             return cli_entry_unavailable("vitte: command is not available in the native driver");
         }
@@ -216,7 +216,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
     }
 
     let command = vitte_cli_selected_command(&cli);
-    if command == CliCommand.Build and argc > 1 and
+    if command == CliCommand::Build and argc > 1 and
        cli_entry_argument(argv, 1) == "compile" {
         let compile_options = VITTE_CLI_SEEN_COLOR | VITTE_CLI_SEEN_EMIT_C |
             VITTE_CLI_SEEN_OUTPUT | VITTE_CLI_SEEN_QUIET |
@@ -259,7 +259,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         return status;
     }
 
-    if command == CliCommand.Check {
+    if command == CliCommand::Check {
         let diagnostic_format = vitte_cli_selected_diagnostic_format(&cli) as u32;
         let diagnostic_color = cli_entry_diagnostic_color(&cli);
         let input = vitte_cli_input_at(&cli, 0);
@@ -277,10 +277,10 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         return status;
     }
 
-    if command == CliCommand.Lex or command == CliCommand.Parse {
+    if command == CliCommand::Lex or command == CliCommand::Parse {
         let input = vitte_cli_input_at(&cli, 0);
         if input == null {
-            cli_entry_puts(if command == CliCommand.Lex {
+            cli_entry_puts(if command == CliCommand::Lex {
                 "vitte lex: expected a source file"
             } else {
                 "vitte parse: expected a source file"
@@ -288,7 +288,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
             vitte_cli_destroy(&mut cli);
             return 2;
         }
-        let status = if command == CliCommand.Lex {
+        let status = if command == CliCommand::Lex {
             vitte_api_lex_path(input?)
         } else {
             vitte_api_parse_path(input?)
@@ -297,7 +297,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         return status;
     }
 
-    if command == CliCommand.Completion {
+    if command == CliCommand::Completion {
         let input = vitte_cli_input_at(&cli, 0);
         if input == null {
             cli_entry_puts("vitte completion: expected bash, zsh or fish");
@@ -315,7 +315,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         return 0;
     }
 
-    if command == CliCommand.Explain {
+    if command == CliCommand::Explain {
         if vitte_cli_input_count(&cli) != 1 {
             cli_entry_write_error("vitte explain: expected one diagnostic code\n");
             vitte_cli_destroy(&mut cli);
@@ -335,14 +335,14 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
             return 2;
         }
         let format = vitte_cli_selected_diagnostic_format(&cli);
-        if format != CliDiagnosticFormat.Default and
-           format != CliDiagnosticFormat.Terminal and
-           format != CliDiagnosticFormat.Json {
+        if format != CliDiagnosticFormat::Default and
+           format != CliDiagnosticFormat::Terminal and
+           format != CliDiagnosticFormat::Json {
             cli_entry_write_error("vitte explain: supports terminal or JSON output; use --diagnostic=json\n");
             vitte_cli_destroy(&mut cli);
             return 2;
         }
-        let output = cli_entry_explain(registry_value, format == CliDiagnosticFormat.Json);
+        let output = cli_entry_explain(registry_value, format == CliDiagnosticFormat::Json);
         if output == "" {
             cli_entry_write_error("vitte explain: unable to format diagnostic explanation\n");
             vitte_cli_destroy(&mut cli);
@@ -353,7 +353,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         return 0;
     }
 
-    if command == CliCommand.Install {
+    if command == CliCommand::Install {
         let install_options = VITTE_CLI_SEEN_PACKAGE_VERSION | VITTE_CLI_SEEN_GLOBAL |
             VITTE_CLI_SEEN_QUIET | VITTE_CLI_SEEN_VERBOSE;
         if (vitte_cli_seen_options(&cli) & ~install_options) != 0 {
@@ -382,7 +382,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         return status;
     }
 
-    if command == CliCommand.Build or command == CliCommand.Run {
+    if command == CliCommand::Build or command == CliCommand::Run {
         let allowed_options = VITTE_CLI_SEEN_COLOR | VITTE_CLI_SEEN_OUTPUT |
             VITTE_CLI_SEEN_QUIET | VITTE_CLI_SEEN_VERBOSE |
             VITTE_CLI_SEEN_DIAGNOSTICS;
@@ -397,7 +397,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
             return 2;
         }
         let selected_output = vitte_cli_selected_output(&cli);
-        if command == CliCommand.Run and selected_output != null {
+        if command == CliCommand::Run and selected_output != null {
             vitte_cli_destroy(&mut cli);
             return cli_entry_unavailable("vitte run: selecting an output path is not supported");
         }
@@ -421,7 +421,7 @@ proc cli_entry_run_parsed(argc: i32, argv: *const string) -> i32 {
         let status = vitte_api_build_path(
             input?,
             output_path,
-            command == CliCommand.Run,
+            command == CliCommand::Run,
             vitte_cli_selected_diagnostic_format(&cli) as u32,
             cli_entry_diagnostic_color(&cli),
             run_argument_count as i32,

@@ -417,7 +417,7 @@ proc pool_set_error(
 
 pub proc pool_last_error(pool: &Pool) -> PoolError {
     if not pool_magic_valid(pool) {
-        return PoolError.InvalidPool;
+        return PoolError::InvalidPool;
     }
 
     return pool.last_error;
@@ -428,7 +428,7 @@ pub proc pool_clear_error(pool: &mut Pool) {
         return;
     }
 
-    set pool.last_error = PoolError.None;
+    set pool.last_error = PoolError::None;
 }
 
 /* ========================================================================= */
@@ -825,7 +825,7 @@ proc pool_rebuild_free_list(pool: &mut Pool) -> bool {
             pool,
             &pool.pages[page_index]
         ) {
-            pool_set_error(pool, PoolError.Corruption);
+            pool_set_error(pool, PoolError::Corruption);
             return false;
         }
 
@@ -928,7 +928,7 @@ proc pool_create_page(
     }
 
     if requested_slot_count == 0 {
-        pool_set_error(pool, PoolError.InvalidArgument);
+        pool_set_error(pool, PoolError::InvalidArgument);
         return false;
     }
 
@@ -940,7 +940,7 @@ proc pool_create_page(
 
     if pool.config.max_objects != POOL_MAX_SIZE {
         if pool.capacity > pool.config.max_objects {
-            pool_set_error(pool, PoolError.Corruption);
+            pool_set_error(pool, PoolError::Corruption);
             return false;
         }
 
@@ -948,7 +948,7 @@ proc pool_create_page(
             pool.config.max_objects - pool.capacity;
 
         if remaining == 0 {
-            pool_set_error(pool, PoolError.LimitExceeded);
+            pool_set_error(pool, PoolError::LimitExceeded);
             return false;
         }
 
@@ -960,7 +960,7 @@ proc pool_create_page(
     let layout = pool_compute_page_layout(pool, slot_count);
 
     if layout == null {
-        pool_set_error(pool, PoolError.Overflow);
+        pool_set_error(pool, PoolError::Overflow);
         return false;
     }
 
@@ -979,18 +979,18 @@ proc pool_create_page(
     if new_capacity == null  or 
        new_reserved == null  or 
        new_free_count == null {
-        pool_set_error(pool, PoolError.Overflow);
+        pool_set_error(pool, PoolError::Overflow);
         return false;
     }
 
     if pool.page_count == POOL_MAX_SIZE {
-        pool_set_error(pool, PoolError.Overflow);
+        pool_set_error(pool, PoolError::Overflow);
         return false;
     }
 
     if pool.config.max_reserved_bytes != POOL_MAX_SIZE  and 
        new_reserved? > pool.config.max_reserved_bytes {
-        pool_set_error(pool, PoolError.LimitExceeded);
+        pool_set_error(pool, PoolError::LimitExceeded);
         return false;
     }
 
@@ -998,7 +998,7 @@ proc pool_create_page(
         pool_mul_checked(slot_count, pool.slot_size);
 
     if storage_size == null {
-        pool_set_error(pool, PoolError.Overflow);
+        pool_set_error(pool, PoolError::Overflow);
         return false;
     }
 
@@ -1019,7 +1019,7 @@ proc pool_create_page(
     let mut initialize_index: usize = 0;
     while initialize_index < bitmap_size {
         if not bitmap.push(0 as u8) {
-            pool_set_error(pool, PoolError.OutOfMemory);
+            pool_set_error(pool, PoolError::OutOfMemory);
             return false;
         }
 
@@ -1029,7 +1029,7 @@ proc pool_create_page(
     set initialize_index = 0;
     while initialize_index < storage_byte_count {
         if not storage.push(0 as u8) {
-            pool_set_error(pool, PoolError.OutOfMemory);
+            pool_set_error(pool, PoolError::OutOfMemory);
             return false;
         }
 
@@ -1186,7 +1186,7 @@ pub proc pool_init(
 
         generation: 1,
 
-        last_error: PoolError.None,
+        last_error: PoolError::None,
     };
 }
 
@@ -1253,7 +1253,7 @@ pub proc pool_destroy(pool: &mut Pool) {
     set pool.generation = 0;
     set pool.next_page_id = 0;
 
-    set pool.last_error = PoolError.InvalidPool;
+    set pool.last_error = PoolError::InvalidPool;
     set pool.magic = POOL_DEAD_MAGIC;
 }
 
@@ -1277,7 +1277,7 @@ pub proc pool_reserve(
 
     if pool.config.max_objects != POOL_MAX_SIZE  and 
        minimum_capacity > pool.config.max_objects {
-        pool_set_error(pool, PoolError.LimitExceeded);
+        pool_set_error(pool, PoolError::LimitExceeded);
         return false;
     }
 
@@ -1285,7 +1285,7 @@ pub proc pool_reserve(
         let mut page_size = pool_next_page_size(pool);
 
         if page_size == 0 {
-            pool_set_error(pool, PoolError.LimitExceeded);
+            pool_set_error(pool, PoolError::LimitExceeded);
             return false;
         }
 
@@ -1359,14 +1359,14 @@ pub proc pool_alloc(pool: &mut Pool) -> ?PoolHandle {
 
     if pool.free_list.length == 0 {
         if pool.free_count != 0 {
-            pool_set_error(pool, PoolError.Corruption);
+            pool_set_error(pool, PoolError::Corruption);
             return null;
         }
 
         let page_size = pool_next_page_size(pool);
 
         if page_size == 0 {
-            pool_set_error(pool, PoolError.LimitExceeded);
+            pool_set_error(pool, PoolError::LimitExceeded);
             return null;
         }
 
@@ -1377,7 +1377,7 @@ pub proc pool_alloc(pool: &mut Pool) -> ?PoolHandle {
 
     if pool.free_count == 0  or 
        pool.free_list.length == 0 {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return null;
     }
 
@@ -1388,35 +1388,35 @@ pub proc pool_alloc(pool: &mut Pool) -> ?PoolHandle {
         pool_find_page_index(pool, node.page_id);
 
     if page_index == null {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return null;
     }
 
     if not pool_free_node_valid(pool, node) {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return null;
     }
 
     if pool.pages[page_index?].live_count >=
        pool.pages[page_index?].slot_count {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return null;
     }
 
     if pool.live_count >= pool.capacity {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return null;
     }
 
     let popped = pool_pop_free(pool);
 
     if popped == null {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return null;
     }
 
     if not pool_free_node_equal(popped?, node) {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return null;
     }
 
@@ -1427,7 +1427,7 @@ pub proc pool_alloc(pool: &mut Pool) -> ?PoolHandle {
 
         set pool.free_count = pool.free_count + 1;
 
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return null;
     }
 
@@ -1479,7 +1479,7 @@ pub proc pool_calloc(pool: &mut Pool) -> ?PoolHandle {
         pool_find_handle_page(pool, handle?);
 
     if page_index == null {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return null;
     }
 
@@ -1512,12 +1512,12 @@ pub proc pool_free(
         pool_find_handle_page(pool, handle);
 
     if page_index == null {
-        pool_set_error(pool, PoolError.ForeignPointer);
+        pool_set_error(pool, PoolError::ForeignPointer);
         return false;
     }
 
     if handle.generation != pool.generation {
-        pool_set_error(pool, PoolError.ForeignPointer);
+        pool_set_error(pool, PoolError::ForeignPointer);
         return false;
     }
 
@@ -1525,19 +1525,19 @@ pub proc pool_free(
         &pool.pages[page_index?],
         handle.slot_index
     ) {
-        pool_set_error(pool, PoolError.DoubleFree);
+        pool_set_error(pool, PoolError::DoubleFree);
         return false;
     }
 
     if pool.pages[page_index?].live_count == 0  or 
        pool.live_count == 0  or 
        pool.free_count >= pool.capacity {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return false;
     }
 
     if not pool_bitmap_clear(pool, page_index? as i64, handle.slot_index) {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return false;
     }
 
@@ -1594,7 +1594,7 @@ pub proc pool_reset(pool: &mut Pool) {
             pool,
             &pool.pages[index]
         ) {
-            pool_set_error(pool, PoolError.Corruption);
+            pool_set_error(pool, PoolError::Corruption);
             return;
         }
 
@@ -1635,7 +1635,7 @@ pub proc pool_reset(pool: &mut Pool) {
     }
 
     if pool.free_count != pool.capacity {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return;
     }
 
@@ -1664,7 +1664,7 @@ pub proc pool_trim(pool: &mut Pool) -> usize {
             pool,
             &pool.pages[index]
         ) {
-            pool_set_error(pool, PoolError.Corruption);
+            pool_set_error(pool, PoolError::Corruption);
             return 0;
         }
 
@@ -1711,7 +1711,7 @@ pub proc pool_trim(pool: &mut Pool) -> usize {
         if pool.capacity < page_capacity  or 
            pool.reserved_bytes < page_reserved  or 
            pool.page_count == 0 {
-            pool_set_error(pool, PoolError.Corruption);
+            pool_set_error(pool, PoolError::Corruption);
             break;
         }
 
@@ -1735,12 +1735,12 @@ pub proc pool_trim(pool: &mut Pool) -> usize {
     }
 
     if pool.live_count > pool.capacity {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return removed;
     }
 
     if pool.free_count != pool.capacity - pool.live_count {
-        pool_set_error(pool, PoolError.Corruption);
+        pool_set_error(pool, PoolError::Corruption);
         return removed;
     }
 
@@ -1756,7 +1756,7 @@ pub proc pool_reset_and_trim(pool: &mut Pool) {
 
     pool_reset(pool);
 
-    if pool.last_error != PoolError.None {
+    if pool.last_error != PoolError::None {
         return;
     }
 
@@ -2181,17 +2181,17 @@ pub proc pool_has_pages(pool: &Pool) -> bool {
 }
 
 pub proc pool_has_error(pool: &Pool) -> bool {
-    return pool_is_valid(pool)  and pool_last_error(pool) != PoolError.None;
+    return pool_is_valid(pool)  and pool_last_error(pool) != PoolError::None;
 }
 
 pub proc pool_out_of_memory(pool: &Pool) -> bool {
     return pool_is_valid(pool)  and
-           pool_last_error(pool) == PoolError.OutOfMemory;
+           pool_last_error(pool) == PoolError::OutOfMemory;
 }
 
 pub proc pool_limit_exceeded(pool: &Pool) -> bool {
     return pool_is_valid(pool)  and
-           pool_last_error(pool) == PoolError.LimitExceeded;
+           pool_last_error(pool) == PoolError::LimitExceeded;
 }
 
 pub proc pool_is_full(pool: &Pool) -> bool {

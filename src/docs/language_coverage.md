@@ -10,7 +10,7 @@ La grammaire décrit les formes reconnues, pas une garantie de compilation. Pour
 
 Les cas disponibles couvrent notamment les procédures, constantes et statiques, alias, formes et choix, imports, génériques et implémentations testés, tableaux, opérateurs, contrôle de flux, `match`, contrats, `defer`, `assert` et génération C17. Les tâches `async`/`await` n’offrent qu’une exécution différée puis synchrone au premier `await`; les macros et déplacements partiels restent expérimentaux. Consultez la ligne exacte de chaque construction avant de l’utiliser.
 
-Pour les choix (`pick`), les constructeurs de valeurs peuvent s’écrire `State.Ready`, tandis qu’un motif de branche `match` s’écrit `State::Ready`. Le test [native_frontend_subset_test.py](../tests/native_frontend_subset_test.py) couvre les deux formes. La grammaire exige les parenthèses dans `assert(condition);`; `assert condition;` n’est pas une syntaxe Vitte prise en charge.
+Pour les choix (`pick`), les constructeurs de valeurs et les motifs de branche `match` s’écrivent tous deux `State::Ready`. Le test [native_frontend_subset_test.py](../tests/native_frontend_subset_test.py) couvre cette syntaxe. La grammaire exige les parenthèses dans `assert(condition);`; `assert condition;` n’est pas une syntaxe Vitte prise en charge.
 
 ## Limites à conserver dans la documentation
 

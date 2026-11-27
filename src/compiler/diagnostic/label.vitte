@@ -68,8 +68,8 @@ proc label_text_compare(left: string, right: string) -> i32 {
 }
 
 proc label_style_rank(style: DiagnosticLabelStyle) -> usize {
-    if style == DiagnosticLabelStyle.Primary { return 0; }
-    if style == DiagnosticLabelStyle.Secondary { return 1; }
+    if style == DiagnosticLabelStyle::Primary { return 0; }
+    if style == DiagnosticLabelStyle::Secondary { return 1; }
     return 2;
 }
 
@@ -92,19 +92,19 @@ proc label_equal_semantics(left: &DiagnosticLabel, right: &DiagnosticLabel) -> b
 }
 
 export proc vitte_diagnostic_label_style_is_valid(style: DiagnosticLabelStyle) -> bool {
-    return style == DiagnosticLabelStyle.Primary or style == DiagnosticLabelStyle.Secondary;
+    return style == DiagnosticLabelStyle::Primary or style == DiagnosticLabelStyle::Secondary;
 }
 
 export proc vitte_diagnostic_label_style_name(style: DiagnosticLabelStyle) -> string {
-    if style == DiagnosticLabelStyle.Primary { return "primary"; }
-    if style == DiagnosticLabelStyle.Secondary { return "secondary"; }
+    if style == DiagnosticLabelStyle::Primary { return "primary"; }
+    if style == DiagnosticLabelStyle::Secondary { return "secondary"; }
     return "unknown";
 }
 
 export proc vitte_diagnostic_label_init(label: *mut DiagnosticLabel) {
     if label == null { return; }
     set *label = DiagnosticLabel {
-        style: DiagnosticLabelStyle.Secondary,
+        style: DiagnosticLabelStyle::Secondary,
         span: AstSpan {},
         message: ""
     };
@@ -118,13 +118,13 @@ export proc vitte_diagnostic_label_set(
 ) -> Status {
     if label == null or not vitte_diagnostic_label_style_is_valid(style) or
        not label_span_is_valid(span) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
     let text: string = if message == null { "" } else {
         string.from_bytes(message as *mut u8, cstring_length(message))
     };
     set *label = DiagnosticLabel { style: style, span: *span, message: text };
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_label_is_valid(label: *const DiagnosticLabel) -> bool {
@@ -234,7 +234,7 @@ export proc vitte_diagnostic_label_add(
 ) -> Status {
     if diagnostic_value == null or not vitte_diagnostic_label_style_is_valid(style) or
        not label_span_is_valid(span) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
     let mut candidate: DiagnosticLabel = DiagnosticLabel {
         style: style,
@@ -249,18 +249,18 @@ export proc vitte_diagnostic_label_add(
         if vitte_diagnostic_label_equal(
             existing as *const DiagnosticLabel,
             &candidate as *const DiagnosticLabel
-        ) { return Status.Ok; }
+        ) { return Status::Ok; }
         if label_equal_semantics(existing, &candidate) {
-            if style == DiagnosticLabelStyle.Primary {
-                set existing.style = DiagnosticLabelStyle.Primary;
+            if style == DiagnosticLabelStyle::Primary {
+                set existing.style = DiagnosticLabelStyle::Primary;
             }
-            return Status.Ok;
+            return Status::Ok;
         }
         set index += 1;
     }
-    if (*diagnostic_value).labels.len() >= LABEL_MAX_COUNT { return Status.ErrorUnsupported; }
-    if not (*diagnostic_value).labels.push(candidate) { return Status.ErrorOutOfMemory; }
-    return Status.Ok;
+    if (*diagnostic_value).labels.len() >= LABEL_MAX_COUNT { return Status::ErrorUnsupported; }
+    if not (*diagnostic_value).labels.push(candidate) { return Status::ErrorOutOfMemory; }
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_label_add_primary(
@@ -268,7 +268,7 @@ export proc vitte_diagnostic_label_add_primary(
     span: *const AstSpan,
     message: *const u8
 ) -> Status {
-    return vitte_diagnostic_label_add(diagnostic_value, DiagnosticLabelStyle.Primary, span, message);
+    return vitte_diagnostic_label_add(diagnostic_value, DiagnosticLabelStyle::Primary, span, message);
 }
 
 export proc vitte_diagnostic_label_add_secondary(
@@ -276,7 +276,7 @@ export proc vitte_diagnostic_label_add_secondary(
     span: *const AstSpan,
     message: *const u8
 ) -> Status {
-    return vitte_diagnostic_label_add(diagnostic_value, DiagnosticLabelStyle.Secondary, span, message);
+    return vitte_diagnostic_label_add(diagnostic_value, DiagnosticLabelStyle::Secondary, span, message);
 }
 
 export proc vitte_diagnostic_label_at(
@@ -310,18 +310,18 @@ export proc vitte_diagnostic_label_count_style(
 }
 
 export proc vitte_diagnostic_label_primary_count(diagnostic_value: *const Diagnostic) -> usize {
-    return vitte_diagnostic_label_count_style(diagnostic_value, DiagnosticLabelStyle.Primary);
+    return vitte_diagnostic_label_count_style(diagnostic_value, DiagnosticLabelStyle::Primary);
 }
 
 export proc vitte_diagnostic_label_secondary_count(diagnostic_value: *const Diagnostic) -> usize {
-    return vitte_diagnostic_label_count_style(diagnostic_value, DiagnosticLabelStyle.Secondary);
+    return vitte_diagnostic_label_count_style(diagnostic_value, DiagnosticLabelStyle::Secondary);
 }
 
 export proc vitte_diagnostic_label_primary(diagnostic_value: *const Diagnostic) -> *const DiagnosticLabel {
     if diagnostic_value == null { return null; }
     let mut index: usize = 0;
     while index < (*diagnostic_value).labels.len() {
-        if (*diagnostic_value).labels[index].style == DiagnosticLabelStyle.Primary {
+        if (*diagnostic_value).labels[index].style == DiagnosticLabelStyle::Primary {
             return &(*diagnostic_value).labels[index] as *const DiagnosticLabel;
         }
         set index += 1;
@@ -330,15 +330,15 @@ export proc vitte_diagnostic_label_primary(diagnostic_value: *const Diagnostic) 
 }
 
 export proc vitte_diagnostic_label_remove(diagnostic_value: *mut Diagnostic, index: usize) -> Status {
-    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return Status.ErrorInvalidArgument; }
+    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return Status::ErrorInvalidArgument; }
     let mut retained: [DiagnosticLabel] = [];
     let mut cursor: usize = 0;
     while cursor < (*diagnostic_value).labels.len() {
-        if cursor != index { if not retained.push((*diagnostic_value).labels[cursor]) { return Status.ErrorOutOfMemory; } }
+        if cursor != index { if not retained.push((*diagnostic_value).labels[cursor]) { return Status::ErrorOutOfMemory; } }
         set cursor += 1;
     }
     set (*diagnostic_value).labels = retained;
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_label_clear(diagnostic_value: *mut Diagnostic) {
@@ -363,8 +363,8 @@ export proc vitte_diagnostic_label_sort(diagnostic_value: *mut Diagnostic) {
 }
 
 export proc vitte_diagnostic_label_normalize(diagnostic_value: *mut Diagnostic) -> Status {
-    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
-    if (*diagnostic_value).labels.len() > LABEL_MAX_COUNT { return Status.ErrorInvalidState; }
+    if diagnostic_value == null { return Status::ErrorInvalidArgument; }
+    if (*diagnostic_value).labels.len() > LABEL_MAX_COUNT { return Status::ErrorInvalidState; }
     let mut normalized: [DiagnosticLabel] = [];
     let mut index: usize = 0;
     while index < (*diagnostic_value).labels.len() {
@@ -377,57 +377,57 @@ export proc vitte_diagnostic_label_normalize(diagnostic_value: *mut Diagnostic) 
             set cursor += 1;
         }
         if duplicate < normalized.len() {
-            if candidate.style == DiagnosticLabelStyle.Primary {
-                set normalized[duplicate].style = DiagnosticLabelStyle.Primary;
+            if candidate.style == DiagnosticLabelStyle::Primary {
+                set normalized[duplicate].style = DiagnosticLabelStyle::Primary;
             }
         } else if normalized.len() < LABEL_MAX_COUNT {
-            if not normalized.push(candidate) { return Status.ErrorOutOfMemory; }
+            if not normalized.push(candidate) { return Status::ErrorOutOfMemory; }
         }
         set index += 1;
     }
     set (*diagnostic_value).labels = normalized;
     vitte_diagnostic_label_sort(diagnostic_value);
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_label_promote(diagnostic_value: *mut Diagnostic, index: usize) -> Status {
-    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return Status.ErrorInvalidArgument; }
-    set (*diagnostic_value).labels[index].style = DiagnosticLabelStyle.Primary;
-    return Status.Ok;
+    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return Status::ErrorInvalidArgument; }
+    set (*diagnostic_value).labels[index].style = DiagnosticLabelStyle::Primary;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_label_demote(diagnostic_value: *mut Diagnostic, index: usize) -> Status {
-    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return Status.ErrorInvalidArgument; }
-    set (*diagnostic_value).labels[index].style = DiagnosticLabelStyle.Secondary;
-    return Status.Ok;
+    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return Status::ErrorInvalidArgument; }
+    set (*diagnostic_value).labels[index].style = DiagnosticLabelStyle::Secondary;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_label_ensure_primary(diagnostic_value: *mut Diagnostic) -> Status {
-    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
-    if (*diagnostic_value).labels.len() == 0 { return Status.Ok; }
-    if vitte_diagnostic_label_primary(diagnostic_value as *const Diagnostic) != null { return Status.Ok; }
+    if diagnostic_value == null { return Status::ErrorInvalidArgument; }
+    if (*diagnostic_value).labels.len() == 0 { return Status::Ok; }
+    if vitte_diagnostic_label_primary(diagnostic_value as *const Diagnostic) != null { return Status::Ok; }
     vitte_diagnostic_label_sort(diagnostic_value);
-    set (*diagnostic_value).labels[0].style = DiagnosticLabelStyle.Primary;
-    return Status.Ok;
+    set (*diagnostic_value).labels[0].style = DiagnosticLabelStyle::Primary;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_label_enforce_single_primary(diagnostic_value: *mut Diagnostic) -> Status {
-    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
+    if diagnostic_value == null { return Status::ErrorInvalidArgument; }
     vitte_diagnostic_label_sort(diagnostic_value);
     let mut found_primary = false;
     let mut index: usize = 0;
     while index < (*diagnostic_value).labels.len() {
-        if (*diagnostic_value).labels[index].style == DiagnosticLabelStyle.Primary {
-            if found_primary { set (*diagnostic_value).labels[index].style = DiagnosticLabelStyle.Secondary; }
+        if (*diagnostic_value).labels[index].style == DiagnosticLabelStyle::Primary {
+            if found_primary { set (*diagnostic_value).labels[index].style = DiagnosticLabelStyle::Secondary; }
             else { set found_primary = true; }
         }
         set index += 1;
     }
     if not found_primary and (*diagnostic_value).labels.len() != 0 {
-        set (*diagnostic_value).labels[0].style = DiagnosticLabelStyle.Primary;
+        set (*diagnostic_value).labels[0].style = DiagnosticLabelStyle::Primary;
     }
     vitte_diagnostic_label_sort(diagnostic_value);
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_diagnostic_label_find_covering(
@@ -453,7 +453,7 @@ export proc vitte_diagnostic_label_find_nearest(
     span: *const AstSpan
 ) -> *const DiagnosticLabel {
     if diagnostic_value == null or not label_span_is_valid(span) { return null; }
-    let query = DiagnosticLabel { style: DiagnosticLabelStyle.Secondary, span: *span, message: "" };
+    let query = DiagnosticLabel { style: DiagnosticLabelStyle::Secondary, span: *span, message: "" };
     let mut best: *const DiagnosticLabel = null;
     let mut best_distance: usize = VITTE_DIAGNOSTIC_LABEL_DISTANCE_INVALID;
     let mut index: usize = 0;
@@ -462,8 +462,8 @@ export proc vitte_diagnostic_label_find_nearest(
         let distance = vitte_diagnostic_label_distance(candidate, &query);
         if distance < best_distance or
            (distance == best_distance and best != null and
-            (*candidate).style == DiagnosticLabelStyle.Primary and
-            (*best).style != DiagnosticLabelStyle.Primary) {
+            (*candidate).style == DiagnosticLabelStyle::Primary and
+            (*best).style != DiagnosticLabelStyle::Primary) {
             set best = candidate;
             set best_distance = distance;
         }

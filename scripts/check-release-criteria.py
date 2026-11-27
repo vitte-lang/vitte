@@ -362,12 +362,12 @@ def check_frontend_paths() -> None:
         "node.attribute_count != 0",
         "PARSER_AST_FLAG_COMPTIME",
         '(*declaration_token).lexeme == "intrinsic"',
-        "ASTNodeKind.AwaitExpr",
+        "ASTNodeKind::AwaitExpr",
         "PARSER_AST_FLAG_ASYNC",
-        "ASTNodeKind.AssertStmt",
-        "ASTNodeKind.DeferStmt",
-        "ASTNodeKind.UnsafeBlock",
-        "ASTNodeKind.AsmStmt",
+        "ASTNodeKind::AssertStmt",
+        "ASTNodeKind::DeferStmt",
+        "ASTNodeKind::UnsafeBlock",
+        "ASTNodeKind::AsmStmt",
     )
     for marker in ast_markers:
         if marker not in fallback_body:

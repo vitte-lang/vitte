@@ -173,12 +173,12 @@ pub proc vitte_c17_module_init(
     config: ?&C17ModuleConfig,
 ) -> bool {
     if name.len() == 0 or name.len() > MODULE_MAX_NAME_BYTES { return false; }
-    if module.magic == MODULE_MAGIC { return module_fail(module, C17ModuleError.InvalidState); }
+    if module.magic == MODULE_MAGIC { return module_fail(module, C17ModuleError::InvalidState); }
     let mut effective = vitte_c17_module_config_default();
     if config != null { set effective = *config?; }
     set module.magic = MODULE_MAGIC;
-    set module.state = C17ModuleState.Building;
-    set module.last_error = C17ModuleError.None;
+    set module.state = C17ModuleState::Building;
+    set module.last_error = C17ModuleError::None;
     set module.config = effective;
     set module.name = name.to_string();
     set module.source_file_id = 0;
@@ -201,8 +201,8 @@ pub proc vitte_c17_module_init(
 
 pub proc vitte_c17_module_is_valid(module: &C17Module) -> bool {
     return module.magic == MODULE_MAGIC and module.name.len() != 0 and
-        module.state >= C17ModuleState.Building and
-        module.state < C17ModuleState.Destroyed;
+        module.state >= C17ModuleState::Building and
+        module.state < C17ModuleState::Destroyed;
 }
 
 pub proc vitte_c17_module_validate(module: &C17Module) -> bool {
@@ -228,7 +228,7 @@ pub proc vitte_c17_module_validate(module: &C17Module) -> bool {
     while index < module.includes.len() {
         let include = &module.includes[index];
         if include.path.len() == 0 or
-           include.kind <= C17IncludeKind.Invalid or include.kind >= C17IncludeKind.Count { return false; }
+           include.kind <= C17IncludeKind::Invalid or include.kind >= C17IncludeKind::Count { return false; }
         let mut other = index + 1;
         while other < module.includes.len() {
             if include.kind == module.includes[other].kind and include.path == module.includes[other].path { return false; }
@@ -241,7 +241,7 @@ pub proc vitte_c17_module_validate(module: &C17Module) -> bool {
     while index < module.symbols.len() {
         let symbol = &module.symbols[index];
         if symbol.name.len() == 0 or
-           symbol.kind <= C17SymbolKind.Invalid or symbol.kind >= C17SymbolKind.Count { return false; }
+           symbol.kind <= C17SymbolKind::Invalid or symbol.kind >= C17SymbolKind::Count { return false; }
         set index += 1;
     }
 
@@ -261,18 +261,18 @@ pub proc vitte_c17_module_validate(module: &C17Module) -> bool {
     index = 0;
     while index < module.fragments.len() {
         let fragment = &module.fragments[index];
-        if fragment.section <= C17Section.None or fragment.section >= C17Section.Count { return false; }
+        if fragment.section <= C17Section::None or fragment.section >= C17Section::Count { return false; }
         if total > usize.MAX - fragment.text.len() { return false; }
         set total += fragment.text.len();
         set index += 1;
     }
     if module.fragment_bytes != usize.MAX and total != module.fragment_bytes { return false; }
-    if module.state == C17ModuleState.Emitted and module.stats.emitted_fragments > module.fragments.len() { return false; }
+    if module.state == C17ModuleState::Emitted and module.stats.emitted_fragments > module.fragments.len() { return false; }
     return true;
 }
 
 pub proc vitte_c17_module_set_source(module: &mut C17Module, file_id: u32, path: string) -> bool {
-    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState.Building or
+    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState::Building or
        path.len() > MODULE_MAX_PATH_BYTES { return false; }
     set module.source_file_id = file_id;
     set module.source_path = path.to_string();
@@ -280,20 +280,20 @@ pub proc vitte_c17_module_set_source(module: &mut C17Module, file_id: u32, path:
 }
 
 pub proc vitte_c17_module_add_dependency(module: &mut C17Module, name: string, public_dependency: bool) -> bool {
-    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState.Building or
+    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState::Building or
        name.len() == 0 or name.len() > MODULE_MAX_NAME_BYTES { return false; }
     let mut index: usize = 0;
     while index < module.dependencies.len() {
         if module.dependencies[index].name == name {
             if public_dependency { set module.dependencies[index].public_dependency = true; }
             if module.config.deduplicate_dependencies { return true; }
-            return module_fail(module, C17ModuleError.Duplicate);
+            return module_fail(module, C17ModuleError::Duplicate);
         }
         set index += 1;
     }
-    if module.dependencies.len() == usize.MAX { return module_fail(module, C17ModuleError.Overflow); }
+    if module.dependencies.len() == usize.MAX { return module_fail(module, C17ModuleError::Overflow); }
     if not module.dependencies.push(C17ModuleDependency { name: name.to_string(), public_dependency: public_dependency }) {
-        return module_fail(module, C17ModuleError.OutOfMemory);
+        return module_fail(module, C17ModuleError::OutOfMemory);
     }
     return true;
 }
@@ -309,20 +309,20 @@ pub proc vitte_c17_module_find_dependency(module: &C17Module, name: string) -> ?
 }
 
 pub proc vitte_c17_module_add_include(module: &mut C17Module, kind: C17IncludeKind, path: string) -> bool {
-    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState.Building or
+    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState::Building or
        path.len() == 0 or path.len() > MODULE_MAX_PATH_BYTES or
-       kind <= C17IncludeKind.Invalid or kind >= C17IncludeKind.Count { return false; }
+       kind <= C17IncludeKind::Invalid or kind >= C17IncludeKind::Count { return false; }
     let mut index: usize = 0;
     while index < module.includes.len() {
         if module.includes[index].kind == kind and module.includes[index].path == path {
             if module.config.deduplicate_includes { return true; }
-            return module_fail(module, C17ModuleError.Duplicate);
+            return module_fail(module, C17ModuleError::Duplicate);
         }
         set index += 1;
     }
-    if module.includes.len() == usize.MAX { return module_fail(module, C17ModuleError.Overflow); }
+    if module.includes.len() == usize.MAX { return module_fail(module, C17ModuleError::Overflow); }
     if not module.includes.push(C17ModuleInclude { kind: kind, path: path.to_string() }) {
-        return module_fail(module, C17ModuleError.OutOfMemory);
+        return module_fail(module, C17ModuleError::OutOfMemory);
     }
     return true;
 }
@@ -334,9 +334,9 @@ pub proc vitte_c17_module_add_symbol(
     exported: bool,
     source_id: u64,
 ) -> bool {
-    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState.Building or
+    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState::Building or
        name.len() == 0 or name.len() > MODULE_MAX_NAME_BYTES or
-       kind <= C17SymbolKind.Invalid or kind >= C17SymbolKind.Count { return false; }
+       kind <= C17SymbolKind::Invalid or kind >= C17SymbolKind::Count { return false; }
     let mut index: usize = 0;
     while index < module.symbols.len() {
         if module.symbols[index].name == name {
@@ -344,14 +344,14 @@ pub proc vitte_c17_module_add_symbol(
                 if exported { set module.symbols[index].exported = true; }
                 return true;
             }
-            if module.config.reject_duplicate_symbols { return module_fail(module, C17ModuleError.Conflict); }
+            if module.config.reject_duplicate_symbols { return module_fail(module, C17ModuleError::Conflict); }
             break;
         }
         set index += 1;
     }
-    if module.symbols.len() == usize.MAX { return module_fail(module, C17ModuleError.Overflow); }
+    if module.symbols.len() == usize.MAX { return module_fail(module, C17ModuleError::Overflow); }
     if not module.symbols.push(C17ModuleSymbol { kind: kind, name: name.to_string(), exported: exported, source_id: source_id }) {
-        return module_fail(module, C17ModuleError.OutOfMemory);
+        return module_fail(module, C17ModuleError::OutOfMemory);
     }
     return true;
 }
@@ -367,16 +367,16 @@ pub proc vitte_c17_module_find_symbol(module: &C17Module, name: string) -> ?&C17
 }
 
 pub proc vitte_c17_module_require_feature(module: &mut C17Module, name: string) -> bool {
-    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState.Building or
+    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState::Building or
        name.len() == 0 or name.len() > MODULE_MAX_NAME_BYTES { return false; }
     let mut index: usize = 0;
     while index < module.features.len() {
         if module.features[index].name == name { return true; }
         set index += 1;
     }
-    if module.features.len() == usize.MAX { return module_fail(module, C17ModuleError.Overflow); }
+    if module.features.len() == usize.MAX { return module_fail(module, C17ModuleError::Overflow); }
     if not module.features.push(C17ModuleFeature { name: name.to_string() }) {
-        return module_fail(module, C17ModuleError.OutOfMemory);
+        return module_fail(module, C17ModuleError::OutOfMemory);
     }
     return true;
 }
@@ -392,39 +392,39 @@ pub proc vitte_c17_module_has_feature(module: &C17Module, name: string) -> bool 
 }
 
 pub proc vitte_c17_module_require_runtime(module: &mut C17Module, requirement: C17RuntimeRequirement) -> bool {
-    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState.Building or
-       requirement <= C17RuntimeRequirement.None or requirement >= C17RuntimeRequirement.Count { return false; }
-    if (requirement as u32) >= 64 { return module_fail(module, C17ModuleError.Overflow); }
+    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState::Building or
+       requirement <= C17RuntimeRequirement::None or requirement >= C17RuntimeRequirement::Count { return false; }
+    if (requirement as u32) >= 64 { return module_fail(module, C17ModuleError::Overflow); }
     set module.runtime_requirements |= 1 << (requirement as u32);
     return true;
 }
 
 pub proc vitte_c17_module_requires_runtime(module: &C17Module, requirement: C17RuntimeRequirement) -> bool {
-    if not vitte_c17_module_is_valid(module) or requirement <= C17RuntimeRequirement.None or
-       requirement >= C17RuntimeRequirement.Count or (requirement as u32) >= 64 { return false; }
+    if not vitte_c17_module_is_valid(module) or requirement <= C17RuntimeRequirement::None or
+       requirement >= C17RuntimeRequirement::Count or (requirement as u32) >= 64 { return false; }
     return (module.runtime_requirements & (1 << (requirement as u32))) != 0;
 }
 
 pub proc vitte_c17_module_add_fragment(module: &mut C17Module, section: C17Section, text: string, source_id: u64) -> bool {
-    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState.Building or
-       section <= C17Section.None or section >= C17Section.Count or
+    if not vitte_c17_module_is_valid(module) or module.state != C17ModuleState::Building or
+       section <= C17Section::None or section >= C17Section::Count or
        text.len() > MODULE_MAX_FRAGMENT_BYTES { return false; }
     if module.config.reject_duplicate_fragments {
         let mut index: usize = 0;
         while index < module.fragments.len() {
             if module.fragments[index].section == section and module.fragments[index].text == text {
-                return module_fail(module, C17ModuleError.Duplicate);
+                return module_fail(module, C17ModuleError::Duplicate);
             }
             set index += 1;
         }
     }
-    if module.fragments.len() == usize.MAX { return module_fail(module, C17ModuleError.Overflow); }
+    if module.fragments.len() == usize.MAX { return module_fail(module, C17ModuleError::Overflow); }
     if not module.fragments.push(C17ModuleFragment {
         section: section,
         text: text.to_string(),
         source_id: source_id,
         sequence: module.next_fragment_sequence,
-    }) { return module_fail(module, C17ModuleError.OutOfMemory); }
+    }) { return module_fail(module, C17ModuleError::OutOfMemory); }
     set module.next_fragment_sequence = module.next_fragment_sequence.wrapping_add(1);
     set module.fragment_bytes = module_saturating_add(module.fragment_bytes, text.len());
     return true;
@@ -526,16 +526,16 @@ proc module_sort(module: &mut C17Module) {
 
 pub proc vitte_c17_module_seal(module: &mut C17Module) -> bool {
     if not vitte_c17_module_is_valid(module) { return false; }
-    if module.state == C17ModuleState.Sealed { return true; }
-    if module.state != C17ModuleState.Building { return module_fail(module, C17ModuleError.InvalidState); }
+    if module.state == C17ModuleState::Sealed { return true; }
+    if module.state != C17ModuleState::Building { return module_fail(module, C17ModuleError::InvalidState); }
     module_sort(module);
-    set module.state = C17ModuleState.Sealed;
-    set module.last_error = C17ModuleError.None;
+    set module.state = C17ModuleState::Sealed;
+    set module.last_error = C17ModuleError::None;
     return true;
 }
 
 pub proc vitte_c17_module_section_fragment_count(module: &C17Module, section: C17Section) -> usize {
-    if not vitte_c17_module_is_valid(module) or section <= C17Section.None or section >= C17Section.Count { return 0; }
+    if not vitte_c17_module_is_valid(module) or section <= C17Section::None or section >= C17Section::Count { return 0; }
     let mut count: usize = 0;
     let mut index: usize = 0;
     while index < module.fragments.len() {
@@ -576,7 +576,7 @@ proc module_emit_feature(backend: &mut C17Backend, feature: &C17ModuleFeature) -
 
 proc module_emit_feature_section(module: &C17Module, backend: &mut C17Backend) -> bool {
     if module.features.len() == 0 and not module.config.emit_empty_sections { return true; }
-    if not vitte_c17_backend_begin_section(backend, C17Section.FeatureMacros) { return false; }
+    if not vitte_c17_backend_begin_section(backend, C17Section::FeatureMacros) { return false; }
     let mut index: usize = 0;
     while index < module.features.len() {
         if not module_emit_feature(backend, &module.features[index]) { return false; }
@@ -587,7 +587,7 @@ proc module_emit_feature_section(module: &C17Module, backend: &mut C17Backend) -
 
 proc module_emit_include(backend: &mut C17Backend, include: &C17ModuleInclude) -> bool {
     if not vitte_c17_backend_write(backend, "#include ") { return false; }
-    if include.kind == C17IncludeKind.System {
+    if include.kind == C17IncludeKind::System {
         if not vitte_c17_backend_write_char(backend, '<') or
            not vitte_c17_backend_write(backend, include.path) or
            not vitte_c17_backend_write_char(backend, '>') { return false; }
@@ -601,7 +601,7 @@ proc module_emit_include(backend: &mut C17Backend, include: &C17ModuleInclude) -
 
 proc module_emit_include_section(module: &C17Module, backend: &mut C17Backend) -> bool {
     if module.includes.len() == 0 and not module.config.emit_empty_sections { return true; }
-    if not vitte_c17_backend_begin_section(backend, C17Section.Includes) { return false; }
+    if not vitte_c17_backend_begin_section(backend, C17Section::Includes) { return false; }
     let mut index: usize = 0;
     while index < module.includes.len() {
         if not module_emit_include(backend, &module.includes[index]) { return false; }
@@ -636,18 +636,18 @@ proc module_emit_fragment_section(module: &mut C17Module, backend: &mut C17Backe
 }
 
 proc module_output_failure(module: &mut C17Module) -> bool {
-    set module.state = C17ModuleState.Failed;
-    set module.last_error = C17ModuleError.Output;
+    set module.state = C17ModuleState::Failed;
+    set module.last_error = C17ModuleError::Output;
     return false;
 }
 
 pub proc vitte_c17_module_emit(module: &mut C17Module, backend: &mut C17Backend) -> bool {
     if not vitte_c17_module_is_valid(module) or not vitte_c17_backend_is_valid(backend) { return false; }
-    if module.state == C17ModuleState.Building and not vitte_c17_module_seal(module) { return false; }
-    if module.state != C17ModuleState.Sealed { return module_fail(module, C17ModuleError.InvalidState); }
-    if not vitte_c17_backend_is_generating(backend) { return module_fail(module, C17ModuleError.InvalidState); }
+    if module.state == C17ModuleState::Building and not vitte_c17_module_seal(module) { return false; }
+    if module.state != C17ModuleState::Sealed { return module_fail(module, C17ModuleError::InvalidState); }
+    if not vitte_c17_backend_is_generating(backend) { return module_fail(module, C17ModuleError::InvalidState); }
 
-    set module.state = C17ModuleState.Emitting;
+    set module.state = C17ModuleState::Emitting;
     set module.stats = C17ModuleStats {
         dependency_count: 0, include_count: 0, symbol_count: 0, feature_count: 0,
         fragment_count: 0, fragment_bytes: 0, emitted_fragments: 0,
@@ -658,16 +658,16 @@ pub proc vitte_c17_module_emit(module: &mut C17Module, backend: &mut C17Backend)
        not module_emit_include_section(module, backend) { return module_output_failure(module); }
 
     let sections: [C17Section; 10] = [
-        C17Section.ForwardDeclarations,
-        C17Section.TypeDeclarations,
-        C17Section.GlobalDeclarations,
-        C17Section.RuntimeDeclarations,
-        C17Section.FunctionDeclarations,
-        C17Section.RuntimeDefinitions,
-        C17Section.GlobalDefinitions,
-        C17Section.FunctionDefinitions,
-        C17Section.Entry,
-        C17Section.Epilogue,
+        C17Section::ForwardDeclarations,
+        C17Section::TypeDeclarations,
+        C17Section::GlobalDeclarations,
+        C17Section::RuntimeDeclarations,
+        C17Section::FunctionDeclarations,
+        C17Section::RuntimeDefinitions,
+        C17Section::GlobalDefinitions,
+        C17Section::FunctionDefinitions,
+        C17Section::Entry,
+        C17Section::Epilogue,
     ];
     let mut index: usize = 0;
     while index < 10 {
@@ -680,8 +680,8 @@ pub proc vitte_c17_module_emit(module: &mut C17Module, backend: &mut C17Backend)
     set module.stats.feature_count = module.features.len();
     set module.stats.fragment_count = module.fragments.len();
     set module.stats.fragment_bytes = module.fragment_bytes;
-    set module.state = C17ModuleState.Emitted;
-    set module.last_error = C17ModuleError.None;
+    set module.state = C17ModuleState::Emitted;
+    set module.last_error = C17ModuleError::None;
     return true;
 }
 
@@ -711,7 +711,7 @@ pub proc vitte_c17_module_destroy(module: &mut C17Module) {
     set module.name = "";
     set module.source_path = null;
     set module.runtime_requirements = 0;
-    set module.state = C17ModuleState.Destroyed;
+    set module.state = C17ModuleState::Destroyed;
     set module.magic = MODULE_DEAD_MAGIC;
 }
 
@@ -736,12 +736,12 @@ pub proc vitte_c17_module_source_file_id(module: &C17Module) -> u32 {
 }
 
 pub proc vitte_c17_module_state(module: &C17Module) -> C17ModuleState {
-    if module.magic != MODULE_MAGIC { return C17ModuleState.Uninitialized; }
+    if module.magic != MODULE_MAGIC { return C17ModuleState::Uninitialized; }
     return module.state;
 }
 
 pub proc vitte_c17_module_last_error(module: &C17Module) -> C17ModuleError {
-    if module.magic != MODULE_MAGIC { return C17ModuleError.InvalidModule; }
+    if module.magic != MODULE_MAGIC { return C17ModuleError::InvalidModule; }
     return module.last_error;
 }
 
@@ -770,7 +770,7 @@ pub proc vitte_c17_module_feature_count(module: &C17Module) -> usize { return mo
 pub proc vitte_c17_module_fragment_count(module: &C17Module) -> usize { return module.fragments.len(); }
 pub proc vitte_c17_module_runtime_mask(module: &C17Module) -> u64 { return module.runtime_requirements; }
 pub proc vitte_c17_runtime_requirement_fits_mask(requirement: C17RuntimeRequirement) -> bool {
-    return requirement > C17RuntimeRequirement.None and requirement < C17RuntimeRequirement.Count and (requirement as u32) < 64;
+    return requirement > C17RuntimeRequirement::None and requirement < C17RuntimeRequirement::Count and (requirement as u32) < 64;
 }
 
 pub proc vitte_c17_module_dependency_at(module: &C17Module, index: usize) -> ?&C17ModuleDependency {
@@ -794,9 +794,9 @@ pub proc vitte_c17_module_fragment_at(module: &C17Module, index: usize) -> ?&C17
     return &module.fragments[index];
 }
 
-pub proc vitte_c17_module_is_building(module: &C17Module) -> bool { return module.state == C17ModuleState.Building; }
-pub proc vitte_c17_module_is_sealed(module: &C17Module) -> bool { return module.state == C17ModuleState.Sealed; }
-pub proc vitte_c17_module_is_emitting(module: &C17Module) -> bool { return module.state == C17ModuleState.Emitting; }
-pub proc vitte_c17_module_is_emitted(module: &C17Module) -> bool { return module.state == C17ModuleState.Emitted; }
-pub proc vitte_c17_module_has_failed(module: &C17Module) -> bool { return module.state == C17ModuleState.Failed; }
-pub proc vitte_c17_module_has_error(module: &C17Module) -> bool { return module.last_error != C17ModuleError.None; }
+pub proc vitte_c17_module_is_building(module: &C17Module) -> bool { return module.state == C17ModuleState::Building; }
+pub proc vitte_c17_module_is_sealed(module: &C17Module) -> bool { return module.state == C17ModuleState::Sealed; }
+pub proc vitte_c17_module_is_emitting(module: &C17Module) -> bool { return module.state == C17ModuleState::Emitting; }
+pub proc vitte_c17_module_is_emitted(module: &C17Module) -> bool { return module.state == C17ModuleState::Emitted; }
+pub proc vitte_c17_module_has_failed(module: &C17Module) -> bool { return module.state == C17ModuleState::Failed; }
+pub proc vitte_c17_module_has_error(module: &C17Module) -> bool { return module.last_error != C17ModuleError::None; }

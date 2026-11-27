@@ -354,14 +354,14 @@ export proc context_is_compiling(
     context: ?&Context
 ) -> bool {
     return magic_valid(context)  and 
-           context.state == ContextState.Compiling;
+           context.state == ContextState::Compiling;
 }
 
 export proc context_has_failed(
     context: ?&Context
 ) -> bool {
     return magic_valid(context)  and 
-           context.state == ContextState.Failed;
+           context.state == ContextState::Failed;
 }
 
 
@@ -401,7 +401,7 @@ proc invalid_argument(
 ) -> Status {
     return context_fail(
         context,
-        Status.ErrorInvalidArgument,
+        Status::ErrorInvalidArgument,
         "VITTE_CONTEXT_INVALID_ARGUMENT",
         message
     );
@@ -413,7 +413,7 @@ proc invalid_state(
 ) -> Status {
     return context_fail(
         context,
-        Status.ErrorInvalidState,
+        Status::ErrorInvalidState,
         "VITTE_CONTEXT_INVALID_STATE",
         message
     );
@@ -424,7 +424,7 @@ proc out_of_memory(
 ) -> Status {
     return context_fail(
         context,
-        Status.ErrorOutOfMemory,
+        Status::ErrorOutOfMemory,
         "VITTE_CONTEXT_OUT_OF_MEMORY",
         "out of memory"
     );
@@ -436,7 +436,7 @@ proc internal_error(
 ) -> Status {
     return context_fail(
         context,
-        Status.ErrorInternal,
+        Status::ErrorInternal,
         "VITTE_CONTEXT_INTERNAL",
         message
     );
@@ -452,7 +452,7 @@ proc reserve_sources(
     required: usize
 ) -> Status {
     if required <= context.source_capacity {
-        return Status.Ok;
+        return Status::Ok;
     }
 
     if required > CONTEXT_MAX_SOURCE_COUNT {
@@ -511,7 +511,7 @@ proc reserve_sources(
 
     set context.source_capacity = capacity;
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 
@@ -587,7 +587,7 @@ export proc context_init(
 ) -> Status {
     set *context = Context {
         magic: CONTEXT_MAGIC,
-        state: ContextState.Uninitialized,
+        state: ContextState::Uninitialized,
 
         generation: 0,
         next_source_id: 1,
@@ -620,7 +620,7 @@ export proc context_init(
             CONTEXT_INITIAL_DIAGNOSTIC_CAPACITY
         );
 
-    if diagnostic_status != Status.Ok {
+    if diagnostic_status != Status::Ok {
         set context.magic = 0;
 
         return diagnostic_status;
@@ -632,7 +632,7 @@ export proc context_init(
             CONTEXT_INITIAL_SOURCE_CAPACITY
         );
 
-    if reserve_status != Status.Ok {
+    if reserve_status != Status::Ok {
         diagnostic_bag_reset(
             &mut context.diagnostics
         );
@@ -643,9 +643,9 @@ export proc context_init(
     }
 
     set context.state =
-        ContextState.Ready;
+        ContextState::Ready;
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 
@@ -677,7 +677,7 @@ export proc context_destroy(
     );
 
     set context.state =
-        ContextState.Destroyed;
+        ContextState::Destroyed;
 
     set context.magic =
         CONTEXT_DEAD_MAGIC;
@@ -705,19 +705,19 @@ export proc context_begin_compilation(
     context: &mut Context
 ) -> Status {
     if not magic_valid(context) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     if context.state ==
-       ContextState.Compiling {
+       ContextState::Compiling {
         return invalid_state(
             context,
             "context is already compiling"
         );
     }
 
-    if context.state != ContextState.Ready  and 
-       context.state != ContextState.Failed {
+    if context.state != ContextState::Ready  and
+       context.state != ContextState::Failed {
         return invalid_state(
             context,
             "context cannot begin compilation in current state"
@@ -733,7 +733,7 @@ export proc context_begin_compilation(
     set context.compilation_count += 1;
 
     set context.state =
-        ContextState.Compiling;
+        ContextState::Compiling;
 
     set context.cancel_requested = false;
 
@@ -744,18 +744,18 @@ export proc context_begin_compilation(
     clear_sources(context);
     reset_diagnostics(context);
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc context_end_compilation(
     context: &mut Context
 ) -> Status {
     if not magic_valid(context) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     if context.state !=
-       ContextState.Compiling {
+       ContextState::Compiling {
         return invalid_state(
             context,
             "context is not compiling"
@@ -766,17 +766,17 @@ export proc context_end_compilation(
         diagnostic_error_count(
             &context.diagnostics
         ) != 0  or 
-        context.last_error.status != Status.Ok  or 
+        context.last_error.status != Status::Ok  or
         context.cancel_requested;
 
     if failed {
         set context.state =
-            ContextState.Failed;
+            ContextState::Failed;
 
         set context.failed_compilation_count += 1;
     } else {
         set context.state =
-            ContextState.Ready;
+            ContextState::Ready;
 
         set context.successful_compilation_count += 1;
     }
@@ -796,11 +796,11 @@ export proc context_abort_compilation(
     message: ?str
 ) -> Status {
     if not magic_valid(context) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     if context.state !=
-       ContextState.Compiling {
+       ContextState::Compiling {
         return invalid_state(
             context,
             "cannot abort a context that is not compiling"
@@ -810,9 +810,9 @@ export proc context_abort_compilation(
     let mut failure_status: Status =
         status;
 
-    if failure_status == Status.Ok {
+    if failure_status == Status::Ok {
         set failure_status =
-            Status.ErrorInternal;
+            Status::ErrorInternal;
     }
 
     context_fail(
@@ -823,7 +823,7 @@ export proc context_abort_compilation(
     );
 
     set context.state =
-        ContextState.Failed;
+        ContextState::Failed;
 
     set context.failed_compilation_count += 1;
 
@@ -859,16 +859,16 @@ export proc context_check_cancel(
     context: &mut Context
 ) -> Status {
     if not magic_valid(context) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     if not context.cancel_requested {
-        return Status.Ok;
+        return Status::Ok;
     }
 
     return context_fail(
         context,
-        Status.ErrorInvalidState,
+        Status::ErrorInvalidState,
         "VITTE_CONTEXT_CANCELLED",
         "compilation cancelled"
     );
@@ -922,7 +922,7 @@ proc validate_source_input(
         );
     }
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 
@@ -943,11 +943,11 @@ export proc context_add_source(
     }
 
     if not magic_valid(context) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     if context.state !=
-       ContextState.Compiling {
+       ContextState::Compiling {
         return invalid_state(
             context,
             "sources can only be added during compilation"
@@ -962,7 +962,7 @@ export proc context_add_source(
             length
         );
 
-    if validation_status != Status.Ok {
+    if validation_status != Status::Ok {
         return validation_status;
     }
 
@@ -997,7 +997,7 @@ export proc context_add_source(
             context.source_count + 1
         );
 
-    if reserve_status != Status.Ok {
+    if reserve_status != Status::Ok {
         return reserve_status;
     }
 
@@ -1059,7 +1059,7 @@ export proc context_add_source(
         set *output = source_id;
     }
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 
@@ -1356,13 +1356,13 @@ export proc context_set_failure(
     message: ?str
 ) -> Status {
     if not magic_valid(context) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
-    if status == Status.Ok {
+    if status == Status::Ok {
         return invalid_argument(
             context,
-            "failure status cannot be Status.Ok"
+            "failure status cannot be Status::Ok"
         );
     }
 
@@ -1385,11 +1385,11 @@ export proc context_reset(
     context: &mut Context
 ) -> Status {
     if not magic_valid(context) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     if context.state ==
-       ContextState.Compiling {
+       ContextState::Compiling {
         return invalid_state(
             context,
             "cannot reset context during compilation"
@@ -1404,11 +1404,11 @@ export proc context_reset(
     );
 
     set context.state =
-        ContextState.Ready;
+        ContextState::Ready;
 
     set context.cancel_requested = false;
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 
@@ -1575,11 +1575,11 @@ export proc context_release_unused_memory(
     context: &mut Context
 ) -> Status {
     if not magic_valid(context) {
-        return Status.ErrorInvalidState;
+        return Status::ErrorInvalidState;
     }
 
     if context.state ==
-       ContextState.Compiling {
+       ContextState::Compiling {
         return invalid_state(
             context,
             "cannot release context memory during compilation"
@@ -1592,12 +1592,12 @@ export proc context_release_unused_memory(
 
         set context.source_capacity = 0;
 
-        return Status.Ok;
+        return Status::Ok;
     }
 
     if context.source_capacity ==
        context.source_count {
-        return Status.Ok;
+        return Status::Ok;
     }
 
     let mut bytes: usize = 0;
@@ -1623,7 +1623,7 @@ export proc context_release_unused_memory(
     set context.source_capacity =
         context.sources.capacity;
 
-    return Status.Ok;
+    return Status::Ok;
 }
 
 
@@ -1635,7 +1635,7 @@ export proc context_is_ready(
     context: ?&Context
 ) -> bool {
     return magic_valid(context)  and
-           context.state == ContextState.Ready;
+           context.state == ContextState::Ready;
 }
 
 export proc context_has_sources(

@@ -196,14 +196,14 @@ const TYPE_U64_MAX: u64 = 18446744073709551615;
 
 proc type_sat_add(left: u64, right: u64) -> u64 { if left > TYPE_U64_MAX - right { return TYPE_U64_MAX; } return left + right; }
 proc type_context_valid(context: *const TypeContext) -> bool {
-    return context != null and (*context).magic == TYPE_MAGIC and (*context).state > TypeState.Invalid and (*context).state < TypeState.Destroyed and
+    return context != null and (*context).magic == TYPE_MAGIC and (*context).state > TypeState::Invalid and (*context).state < TypeState::Destroyed and
            (*context).type_count <= (*context).type_capacity and (*context).parameter_count <= (*context).parameter_capacity and
            ((*context).type_capacity == 0 or (*context).types != null) and ((*context).parameter_capacity == 0 or (*context).parameters != null) and
            (*context).max_types != 0 and (*context).max_parameters != 0;
 }
 proc type_set_error(context: *mut TypeContext, error: TypeError) { if context != null and (*context).magic == TYPE_MAGIC { set (*context).last_error = error; } }
 proc type_fail(context: *mut TypeContext, error: TypeError) -> bool {
-    if context != null and (*context).magic == TYPE_MAGIC { set (*context).last_error = error; set (*context).state = TypeState.Failed; set (*context).stats.failures = type_sat_add((*context).stats.failures, 1); }
+    if context != null and (*context).magic == TYPE_MAGIC { set (*context).last_error = error; set (*context).state = TypeState::Failed; set (*context).stats.failures = type_sat_add((*context).stats.failures, 1); }
     return false;
 }
 proc type_grow(current: usize, required: usize, result: *mut usize) -> bool {
@@ -213,20 +213,20 @@ proc type_grow(current: usize, required: usize, result: *mut usize) -> bool {
 }
 proc type_reserve_types(context: *mut TypeContext, required: usize) -> bool {
     if required <= (*context).type_capacity { return true; }
-    if required > (*context).max_types { type_set_error(context, TypeError.TypeLimit); return false; }
-    let mut capacity: usize = 0; if not type_grow((*context).type_capacity, required, &mut capacity) or capacity > TYPE_SIZE_MAX / sizeof(Type) { type_set_error(context, TypeError.Overflow); return false; }
-    let replacement = allocate(capacity * sizeof(Type)); if replacement == null { set (*context).stats.allocation_failures = type_sat_add((*context).stats.allocation_failures, 1); type_set_error(context, TypeError.OutOfMemory); return false; }
+    if required > (*context).max_types { type_set_error(context, TypeError::TypeLimit); return false; }
+    let mut capacity: usize = 0; if not type_grow((*context).type_capacity, required, &mut capacity) or capacity > TYPE_SIZE_MAX / sizeof(Type) { type_set_error(context, TypeError::Overflow); return false; }
+    let replacement = allocate(capacity * sizeof(Type)); if replacement == null { set (*context).stats.allocation_failures = type_sat_add((*context).stats.allocation_failures, 1); type_set_error(context, TypeError::OutOfMemory); return false; }
     fill(replacement, 0, capacity * sizeof(Type)); if (*context).type_count != 0 { copy(replacement, (*context).types as *const u8, (*context).type_count * sizeof(Type)); }
     if (*context).types != null { deallocate((*context).types as *mut u8); set (*context).stats.reallocations = type_sat_add((*context).stats.reallocations, 1); } else { set (*context).stats.allocations = type_sat_add((*context).stats.allocations, 1); }
     set (*context).types = replacement as usize as *Type; set (*context).type_capacity = capacity; return true;
 }
 proc type_reserve_parameters(context: *mut TypeContext, required: usize) -> bool {
     if required <= (*context).parameter_capacity { return true; }
-    if required > (*context).max_parameters { type_set_error(context, TypeError.ParameterLimit); return false; }
-    let mut capacity: usize = 0; if not type_grow((*context).parameter_capacity, required, &mut capacity) or capacity > TYPE_SIZE_MAX / sizeof(TypeId) { type_set_error(context, TypeError.Overflow); return false; }
+    if required > (*context).max_parameters { type_set_error(context, TypeError::ParameterLimit); return false; }
+    let mut capacity: usize = 0; if not type_grow((*context).parameter_capacity, required, &mut capacity) or capacity > TYPE_SIZE_MAX / sizeof(TypeId) { type_set_error(context, TypeError::Overflow); return false; }
     if capacity > (*context).max_parameters { set capacity = (*context).max_parameters; }
-    if capacity < required { type_set_error(context, TypeError.ParameterLimit); return false; }
-    let replacement = allocate(capacity * sizeof(TypeId)); if replacement == null { set (*context).stats.allocation_failures = type_sat_add((*context).stats.allocation_failures, 1); type_set_error(context, TypeError.OutOfMemory); return false; }
+    if capacity < required { type_set_error(context, TypeError::ParameterLimit); return false; }
+    let replacement = allocate(capacity * sizeof(TypeId)); if replacement == null { set (*context).stats.allocation_failures = type_sat_add((*context).stats.allocation_failures, 1); type_set_error(context, TypeError::OutOfMemory); return false; }
     fill(replacement, 0, capacity * sizeof(TypeId)); if (*context).parameter_count != 0 { copy(replacement, (*context).parameters as *const u8, (*context).parameter_count * sizeof(TypeId)); }
     if (*context).parameters != null { deallocate((*context).parameters as *mut u8); set (*context).stats.reallocations = type_sat_add((*context).stats.reallocations, 1); } else { set (*context).stats.allocations = type_sat_add((*context).stats.allocations, 1); }
     set (*context).parameters = replacement as usize as *TypeId; set (*context).parameter_capacity = capacity; return true;
@@ -277,20 +277,20 @@ proc type_descriptor_matches(type_: *const Type, descriptor: *const TypeDescript
     return true;
 }
 proc type_intern_internal(context: *mut TypeContext, descriptor: *const TypeDescriptor, out_type_id: *mut TypeId) -> bool {
-    if out_type_id == null { type_set_error(context, TypeError.InvalidArgument); return false; }
+    if out_type_id == null { type_set_error(context, TypeError::InvalidArgument); return false; }
     set *out_type_id = 0;
-    if not type_context_valid(context) { type_set_error(context, TypeError.InvalidContext); return false; }
-    if not type_descriptor_valid(context as *const TypeContext, descriptor) { type_set_error(context, TypeError.InvalidDescriptor); return false; }
+    if not type_context_valid(context) { type_set_error(context, TypeError::InvalidContext); return false; }
+    if not type_descriptor_valid(context as *const TypeContext, descriptor) { type_set_error(context, TypeError::InvalidDescriptor); return false; }
     let hash = type_hash_descriptor(descriptor); let mut index: usize = 0;
     while index < (*context).type_count {
         let candidate = (&((*context).types[index])) as *const Type;
         if (*candidate).structural_hash == hash and type_descriptor_matches(candidate, descriptor) {
-            set (*context).stats.intern_hits = type_sat_add((*context).stats.intern_hits, 1); set *out_type_id = (*candidate).id; set (*context).last_error = TypeError.None; return true;
+            set (*context).stats.intern_hits = type_sat_add((*context).stats.intern_hits, 1); set *out_type_id = (*candidate).id; set (*context).last_error = TypeError::None; return true;
         }
         set index += 1;
     }
-    if (*context).type_count >= (*context).max_types { type_set_error(context, TypeError.TypeLimit); return false; }
-    if (*descriptor).parameter_count > (*context).max_parameters - (*context).parameter_count { type_set_error(context, TypeError.ParameterLimit); return false; }
+    if (*context).type_count >= (*context).max_types { type_set_error(context, TypeError::TypeLimit); return false; }
+    if (*descriptor).parameter_count > (*context).max_parameters - (*context).parameter_count { type_set_error(context, TypeError::ParameterLimit); return false; }
     let required = (*context).type_count + 1; let parameter_offset = (*context).parameter_count;
     if not type_reserve_types(context, required) or not type_reserve_parameters(context, parameter_offset + (*descriptor).parameter_count) { return false; }
     let item = (&((*context).types[required - 1])) as *mut Type; fill(item as *mut u8, 0, sizeof(Type));
@@ -299,19 +299,19 @@ proc type_intern_internal(context: *mut TypeContext, descriptor: *const TypeDesc
     set (*item).array_length = (*descriptor).array_length; set (*item).symbol_id = (*descriptor).symbol_id; set (*item).generic_index = (*descriptor).generic_index;
     set (*item).name_length = (*descriptor).name_length; set (*item).parameter_count = (*descriptor).parameter_count; set (*item).parameter_offset = parameter_offset; set (*item).structural_hash = hash;
     if (*descriptor).name_length != 0 {
-        let name_storage = allocate((*descriptor).name_length + 1); if name_storage == null { set (*context).stats.allocation_failures = type_sat_add((*context).stats.allocation_failures, 1); type_set_error(context, TypeError.OutOfMemory); return false; }
+        let name_storage = allocate((*descriptor).name_length + 1); if name_storage == null { set (*context).stats.allocation_failures = type_sat_add((*context).stats.allocation_failures, 1); type_set_error(context, TypeError::OutOfMemory); return false; }
         copy(name_storage, (*descriptor).name, (*descriptor).name_length); set name_storage[(*descriptor).name_length] = 0; set (*item).name = name_storage;
     }
     if (*descriptor).parameter_count != 0 {
         let parameter_storage = allocate((*descriptor).parameter_count * sizeof(TypeId));
-        if parameter_storage == null { deallocate((*item).name as *mut u8); set (*context).stats.allocation_failures = type_sat_add((*context).stats.allocation_failures, 1); type_set_error(context, TypeError.OutOfMemory); return false; }
+        if parameter_storage == null { deallocate((*item).name as *mut u8); set (*context).stats.allocation_failures = type_sat_add((*context).stats.allocation_failures, 1); type_set_error(context, TypeError::OutOfMemory); return false; }
         copy(parameter_storage, (*descriptor).parameters as *const u8, (*descriptor).parameter_count * sizeof(TypeId));
         set (*item).parameters = parameter_storage as usize as *TypeId;
         copy(pointer.add_bytes((*context).parameters as *mut u8, parameter_offset * sizeof(TypeId)), (*descriptor).parameters as *const u8, (*descriptor).parameter_count * sizeof(TypeId));
         set (*context).parameter_count = parameter_offset + (*descriptor).parameter_count;
     }
     set (*context).type_count = required; set (*context).stats.types_created = type_sat_add((*context).stats.types_created, 1);
-    set (*context).generation = type_sat_add((*context).generation, 1); set *out_type_id = (*item).id; set (*context).last_error = TypeError.None; return true;
+    set (*context).generation = type_sat_add((*context).generation, 1); set *out_type_id = (*item).id; set (*context).last_error = TypeError::None; return true;
 }
 proc type_blank_descriptor(kind: TypeKind) -> TypeDescriptor {
     return TypeDescriptor { kind: kind, type_flags: 0, element_type: 0, return_type: 0, array_length: 0, symbol_id: 0, generic_index: 0, name: null, name_length: 0, parameters: null, parameter_count: 0 };
@@ -330,19 +330,19 @@ export proc vitte_type_kind_name(kind: TypeKind) -> string {
 }
 export proc vitte_type_conversion_kind_name(kind: TypeConversionKind) -> string { match kind { case TypeConversionKind::Incompatible => return "incompatible"; case TypeConversionKind::Exact => return "exact"; case TypeConversionKind::Safe => return "safe"; case TypeConversionKind::Lossy => return "lossy"; case TypeConversionKind::Count => return "count"; } }
 export proc vitte_type_init(context: *mut TypeContext) -> bool {
-    if context == null { return false; } fill(context as *mut u8, 0, sizeof(TypeContext)); set (*context).magic = TYPE_MAGIC; set (*context).state = TypeState.Building;
+    if context == null { return false; } fill(context as *mut u8, 0, sizeof(TypeContext)); set (*context).magic = TYPE_MAGIC; set (*context).state = TypeState::Building;
     set (*context).max_types = TYPE_DEFAULT_MAX_TYPES; set (*context).max_parameters = TYPE_DEFAULT_MAX_PARAMETERS; set (*context).generation = 1;
-    if not type_make_builtin(context, TypeKind.Error, "<error>", ((&(*context).type_error)) as *mut TypeId) or not type_make_builtin(context, TypeKind.Void, "void", ((&(*context).type_void)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.Never, "never", ((&(*context).type_never)) as *mut TypeId) or not type_make_builtin(context, TypeKind.Bool, "bool", ((&(*context).type_bool)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.I8, "i8", ((&(*context).type_i8)) as *mut TypeId) or not type_make_builtin(context, TypeKind.I16, "i16", ((&(*context).type_i16)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.I32, "i32", ((&(*context).type_i32)) as *mut TypeId) or not type_make_builtin(context, TypeKind.I64, "i64", ((&(*context).type_i64)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.Isize, "isize", ((&(*context).type_isize)) as *mut TypeId) or not type_make_builtin(context, TypeKind.U8, "u8", ((&(*context).type_u8)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.U16, "u16", ((&(*context).type_u16)) as *mut TypeId) or not type_make_builtin(context, TypeKind.U32, "u32", ((&(*context).type_u32)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.U64, "u64", ((&(*context).type_u64)) as *mut TypeId) or not type_make_builtin(context, TypeKind.Usize, "usize", ((&(*context).type_usize)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.F32, "f32", ((&(*context).type_f32)) as *mut TypeId) or not type_make_builtin(context, TypeKind.F64, "f64", ((&(*context).type_f64)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.Char, "char", ((&(*context).type_char)) as *mut TypeId) or not type_make_builtin(context, TypeKind.String, "string", ((&(*context).type_string)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.Null, "null", ((&(*context).type_null)) as *mut TypeId) { return false; }
-    set (*context).state = TypeState.Ready; set (*context).last_error = TypeError.None; return true;
+    if not type_make_builtin(context, TypeKind::Error, "<error>", ((&(*context).type_error)) as *mut TypeId) or not type_make_builtin(context, TypeKind::Void, "void", ((&(*context).type_void)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::Never, "never", ((&(*context).type_never)) as *mut TypeId) or not type_make_builtin(context, TypeKind::Bool, "bool", ((&(*context).type_bool)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::I8, "i8", ((&(*context).type_i8)) as *mut TypeId) or not type_make_builtin(context, TypeKind::I16, "i16", ((&(*context).type_i16)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::I32, "i32", ((&(*context).type_i32)) as *mut TypeId) or not type_make_builtin(context, TypeKind::I64, "i64", ((&(*context).type_i64)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::Isize, "isize", ((&(*context).type_isize)) as *mut TypeId) or not type_make_builtin(context, TypeKind::U8, "u8", ((&(*context).type_u8)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::U16, "u16", ((&(*context).type_u16)) as *mut TypeId) or not type_make_builtin(context, TypeKind::U32, "u32", ((&(*context).type_u32)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::U64, "u64", ((&(*context).type_u64)) as *mut TypeId) or not type_make_builtin(context, TypeKind::Usize, "usize", ((&(*context).type_usize)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::F32, "f32", ((&(*context).type_f32)) as *mut TypeId) or not type_make_builtin(context, TypeKind::F64, "f64", ((&(*context).type_f64)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::Char, "char", ((&(*context).type_char)) as *mut TypeId) or not type_make_builtin(context, TypeKind::String, "string", ((&(*context).type_string)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::Null, "null", ((&(*context).type_null)) as *mut TypeId) { return false; }
+    set (*context).state = TypeState::Ready; set (*context).last_error = TypeError::None; return true;
 }
 export proc vitte_type_reset(context: *mut TypeContext) -> bool {
     if not type_context_valid(context) { return false; }
@@ -353,57 +353,57 @@ export proc vitte_type_reset(context: *mut TypeContext) -> bool {
     set (*context).type_i8 = 0; set (*context).type_i16 = 0; set (*context).type_i32 = 0; set (*context).type_i64 = 0; set (*context).type_isize = 0;
     set (*context).type_u8 = 0; set (*context).type_u16 = 0; set (*context).type_u32 = 0; set (*context).type_u64 = 0; set (*context).type_usize = 0;
     set (*context).type_f32 = 0; set (*context).type_f64 = 0; set (*context).type_char = 0; set (*context).type_string = 0; set (*context).type_null = 0;
-    set (*context).max_types = max_types; set (*context).max_parameters = max_parameters; set (*context).generation = type_sat_add(generation, 1); set (*context).state = TypeState.Building;
+    set (*context).max_types = max_types; set (*context).max_parameters = max_parameters; set (*context).generation = type_sat_add(generation, 1); set (*context).state = TypeState::Building;
     return vitte_type_init_builtins_internal(context);
 }
 proc vitte_type_init_builtins_internal(context: *mut TypeContext) -> bool {
-    if not type_make_builtin(context, TypeKind.Error, "<error>", ((&(*context).type_error)) as *mut TypeId) or not type_make_builtin(context, TypeKind.Void, "void", ((&(*context).type_void)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.Never, "never", ((&(*context).type_never)) as *mut TypeId) or not type_make_builtin(context, TypeKind.Bool, "bool", ((&(*context).type_bool)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.I8, "i8", ((&(*context).type_i8)) as *mut TypeId) or not type_make_builtin(context, TypeKind.I16, "i16", ((&(*context).type_i16)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.I32, "i32", ((&(*context).type_i32)) as *mut TypeId) or not type_make_builtin(context, TypeKind.I64, "i64", ((&(*context).type_i64)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.Isize, "isize", ((&(*context).type_isize)) as *mut TypeId) or not type_make_builtin(context, TypeKind.U8, "u8", ((&(*context).type_u8)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.U16, "u16", ((&(*context).type_u16)) as *mut TypeId) or not type_make_builtin(context, TypeKind.U32, "u32", ((&(*context).type_u32)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.U64, "u64", ((&(*context).type_u64)) as *mut TypeId) or not type_make_builtin(context, TypeKind.Usize, "usize", ((&(*context).type_usize)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.F32, "f32", ((&(*context).type_f32)) as *mut TypeId) or not type_make_builtin(context, TypeKind.F64, "f64", ((&(*context).type_f64)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.Char, "char", ((&(*context).type_char)) as *mut TypeId) or not type_make_builtin(context, TypeKind.String, "string", ((&(*context).type_string)) as *mut TypeId) or
-       not type_make_builtin(context, TypeKind.Null, "null", ((&(*context).type_null)) as *mut TypeId) { return false; }
-    set (*context).state = TypeState.Ready; set (*context).last_error = TypeError.None; return true;
+    if not type_make_builtin(context, TypeKind::Error, "<error>", ((&(*context).type_error)) as *mut TypeId) or not type_make_builtin(context, TypeKind::Void, "void", ((&(*context).type_void)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::Never, "never", ((&(*context).type_never)) as *mut TypeId) or not type_make_builtin(context, TypeKind::Bool, "bool", ((&(*context).type_bool)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::I8, "i8", ((&(*context).type_i8)) as *mut TypeId) or not type_make_builtin(context, TypeKind::I16, "i16", ((&(*context).type_i16)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::I32, "i32", ((&(*context).type_i32)) as *mut TypeId) or not type_make_builtin(context, TypeKind::I64, "i64", ((&(*context).type_i64)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::Isize, "isize", ((&(*context).type_isize)) as *mut TypeId) or not type_make_builtin(context, TypeKind::U8, "u8", ((&(*context).type_u8)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::U16, "u16", ((&(*context).type_u16)) as *mut TypeId) or not type_make_builtin(context, TypeKind::U32, "u32", ((&(*context).type_u32)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::U64, "u64", ((&(*context).type_u64)) as *mut TypeId) or not type_make_builtin(context, TypeKind::Usize, "usize", ((&(*context).type_usize)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::F32, "f32", ((&(*context).type_f32)) as *mut TypeId) or not type_make_builtin(context, TypeKind::F64, "f64", ((&(*context).type_f64)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::Char, "char", ((&(*context).type_char)) as *mut TypeId) or not type_make_builtin(context, TypeKind::String, "string", ((&(*context).type_string)) as *mut TypeId) or
+       not type_make_builtin(context, TypeKind::Null, "null", ((&(*context).type_null)) as *mut TypeId) { return false; }
+    set (*context).state = TypeState::Ready; set (*context).last_error = TypeError::None; return true;
 }
 export proc vitte_type_destroy(context: *mut TypeContext) {
     if context == null { return; }
     if (*context).magic == TYPE_MAGIC { let mut index: usize = 0; while index < (*context).type_count { deallocate((*context).types[index].name); deallocate((*context).types[index].parameters as *mut u8); set index += 1; } deallocate((*context).types as *mut u8); deallocate((*context).parameters as *mut u8); }
-    fill(context as *mut u8, 0, sizeof(TypeContext)); set (*context).magic = TYPE_DEAD_MAGIC; set (*context).state = TypeState.Destroyed;
+    fill(context as *mut u8, 0, sizeof(TypeContext)); set (*context).magic = TYPE_DEAD_MAGIC; set (*context).state = TypeState::Destroyed;
 }
 export proc vitte_type_is_valid(context: *const TypeContext) -> bool { return type_context_valid(context); }
-export proc vitte_type_last_error(context: *const TypeContext) -> TypeError { if not type_context_valid(context) { return TypeError.InvalidContext; } return (*context).last_error; }
+export proc vitte_type_last_error(context: *const TypeContext) -> TypeError { if not type_context_valid(context) { return TypeError::InvalidContext; } return (*context).last_error; }
 export proc vitte_type_generation(context: *const TypeContext) -> u64 { if not type_context_valid(context) { return 0; } return (*context).generation; }
-export proc vitte_type_set_limits(context: *mut TypeContext, max_types: usize, max_parameters: usize) -> bool { if not type_context_valid(context) or max_types == 0 or max_parameters == 0 or max_types < (*context).type_count or max_parameters < (*context).parameter_count { type_set_error(context, TypeError.InvalidArgument); return false; } set (*context).max_types = max_types; set (*context).max_parameters = max_parameters; set (*context).last_error = TypeError.None; return true; }
-export proc vitte_type_freeze(context: *mut TypeContext) -> bool { if not type_context_valid(context) or ((*context).state != TypeState.Ready and (*context).state != TypeState.Building) { type_set_error(context, TypeError.InvalidState); return false; } if not vitte_type_validate(context) { return false; } set (*context).state = TypeState.Frozen; set (*context).stats.freezes = type_sat_add((*context).stats.freezes, 1); return true; }
+export proc vitte_type_set_limits(context: *mut TypeContext, max_types: usize, max_parameters: usize) -> bool { if not type_context_valid(context) or max_types == 0 or max_parameters == 0 or max_types < (*context).type_count or max_parameters < (*context).parameter_count { type_set_error(context, TypeError::InvalidArgument); return false; } set (*context).max_types = max_types; set (*context).max_parameters = max_parameters; set (*context).last_error = TypeError::None; return true; }
+export proc vitte_type_freeze(context: *mut TypeContext) -> bool { if not type_context_valid(context) or ((*context).state != TypeState::Ready and (*context).state != TypeState::Building) { type_set_error(context, TypeError::InvalidState); return false; } if not vitte_type_validate(context) { return false; } set (*context).state = TypeState::Frozen; set (*context).stats.freezes = type_sat_add((*context).stats.freezes, 1); return true; }
 export proc vitte_type_get(context: *const TypeContext, type_id: TypeId) -> *const Type { return type_get(context, type_id); }
-export proc vitte_type_intern(context: *mut TypeContext, descriptor: *const TypeDescriptor, out_type_id: *mut TypeId) -> bool { if not type_context_valid(context) or (*context).state == TypeState.Frozen { type_set_error(context, TypeError.InvalidState); return false; } let ok = type_intern_internal(context, descriptor, out_type_id); if ok and (*context).state == TypeState.Building { set (*context).state = TypeState.Ready; } return ok; }
-export proc vitte_type_pointer(context: *mut TypeContext, element_type: TypeId, is_mutable: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.Pointer); set d.element_type = element_type; if is_mutable { set d.type_flags = TYPE_FLAG_MUTABLE; } return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_reference(context: *mut TypeContext, element_type: TypeId, is_mutable: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.Reference); set d.element_type = element_type; if is_mutable { set d.type_flags = TYPE_FLAG_MUTABLE; } return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_array(context: *mut TypeContext, element_type: TypeId, array_length: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.Array); set d.element_type = element_type; set d.array_length = array_length; return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_slice(context: *mut TypeContext, element_type: TypeId, is_mutable: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.Slice); set d.element_type = element_type; if is_mutable { set d.type_flags = TYPE_FLAG_MUTABLE; } return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_range(context: *mut TypeContext, element_type: TypeId, inclusive: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.Range); set d.element_type = element_type; if inclusive { set d.type_flags = TYPE_FLAG_INCLUSIVE; } return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_tuple(context: *mut TypeContext, elements: *const TypeId, element_count: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.Tuple); set d.parameters = elements; set d.parameter_count = element_count; return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_function(context: *mut TypeContext, parameters: *const TypeId, parameter_count: usize, return_type: TypeId, variadic: bool, is_async: bool, is_unsafe: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.Function); set d.parameters = parameters; set d.parameter_count = parameter_count; set d.return_type = return_type; if variadic { set d.type_flags = d.type_flags | TYPE_FLAG_VARIADIC; } if is_async { set d.type_flags = d.type_flags | TYPE_FLAG_ASYNC; } if is_unsafe { set d.type_flags = d.type_flags | TYPE_FLAG_UNSAFE; } return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_named(context: *mut TypeContext, symbol_id: u64, name: *const u8, name_length: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.Named); set d.symbol_id = symbol_id; set d.name = name; set d.name_length = name_length; return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_generic_parameter(context: *mut TypeContext, symbol_id: u64, name: *const u8, name_length: usize, generic_index: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.GenericParameter); set d.symbol_id = symbol_id; set d.name = name; set d.name_length = name_length; set d.generic_index = generic_index; set d.type_flags = TYPE_FLAG_GENERIC; return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_dyn(context: *mut TypeContext, trait_symbol_id: u64, name: *const u8, name_length: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind.Dyn); set d.symbol_id = trait_symbol_id; set d.name = name; set d.name_length = name_length; return vitte_type_intern(context, &d, out_type_id); }
-export proc vitte_type_is_error(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind.Error; }
-export proc vitte_type_is_void(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind.Void; }
-export proc vitte_type_is_never(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind.Never; }
-export proc vitte_type_is_bool(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind.Bool; }
+export proc vitte_type_intern(context: *mut TypeContext, descriptor: *const TypeDescriptor, out_type_id: *mut TypeId) -> bool { if not type_context_valid(context) or (*context).state == TypeState::Frozen { type_set_error(context, TypeError::InvalidState); return false; } let ok = type_intern_internal(context, descriptor, out_type_id); if ok and (*context).state == TypeState::Building { set (*context).state = TypeState::Ready; } return ok; }
+export proc vitte_type_pointer(context: *mut TypeContext, element_type: TypeId, is_mutable: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::Pointer); set d.element_type = element_type; if is_mutable { set d.type_flags = TYPE_FLAG_MUTABLE; } return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_reference(context: *mut TypeContext, element_type: TypeId, is_mutable: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::Reference); set d.element_type = element_type; if is_mutable { set d.type_flags = TYPE_FLAG_MUTABLE; } return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_array(context: *mut TypeContext, element_type: TypeId, array_length: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::Array); set d.element_type = element_type; set d.array_length = array_length; return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_slice(context: *mut TypeContext, element_type: TypeId, is_mutable: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::Slice); set d.element_type = element_type; if is_mutable { set d.type_flags = TYPE_FLAG_MUTABLE; } return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_range(context: *mut TypeContext, element_type: TypeId, inclusive: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::Range); set d.element_type = element_type; if inclusive { set d.type_flags = TYPE_FLAG_INCLUSIVE; } return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_tuple(context: *mut TypeContext, elements: *const TypeId, element_count: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::Tuple); set d.parameters = elements; set d.parameter_count = element_count; return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_function(context: *mut TypeContext, parameters: *const TypeId, parameter_count: usize, return_type: TypeId, variadic: bool, is_async: bool, is_unsafe: bool, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::Function); set d.parameters = parameters; set d.parameter_count = parameter_count; set d.return_type = return_type; if variadic { set d.type_flags = d.type_flags | TYPE_FLAG_VARIADIC; } if is_async { set d.type_flags = d.type_flags | TYPE_FLAG_ASYNC; } if is_unsafe { set d.type_flags = d.type_flags | TYPE_FLAG_UNSAFE; } return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_named(context: *mut TypeContext, symbol_id: u64, name: *const u8, name_length: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::Named); set d.symbol_id = symbol_id; set d.name = name; set d.name_length = name_length; return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_generic_parameter(context: *mut TypeContext, symbol_id: u64, name: *const u8, name_length: usize, generic_index: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::GenericParameter); set d.symbol_id = symbol_id; set d.name = name; set d.name_length = name_length; set d.generic_index = generic_index; set d.type_flags = TYPE_FLAG_GENERIC; return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_dyn(context: *mut TypeContext, trait_symbol_id: u64, name: *const u8, name_length: usize, out_type_id: *mut TypeId) -> bool { let mut d = type_blank_descriptor(TypeKind::Dyn); set d.symbol_id = trait_symbol_id; set d.name = name; set d.name_length = name_length; return vitte_type_intern(context, &d, out_type_id); }
+export proc vitte_type_is_error(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind::Error; }
+export proc vitte_type_is_void(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind::Void; }
+export proc vitte_type_is_never(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind::Never; }
+export proc vitte_type_is_bool(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind::Bool; }
 export proc vitte_type_is_integer(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and vitte_type_kind_is_integer((*t).kind); }
 export proc vitte_type_is_signed_integer(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and vitte_type_kind_is_signed_integer((*t).kind); }
 export proc vitte_type_is_unsigned_integer(context: *const TypeContext, type_id: TypeId) -> bool { return vitte_type_is_integer(context, type_id) and not vitte_type_is_signed_integer(context, type_id); }
 export proc vitte_type_is_float(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and vitte_type_kind_is_float((*t).kind); }
 export proc vitte_type_is_numeric(context: *const TypeContext, type_id: TypeId) -> bool { return vitte_type_is_integer(context, type_id) or vitte_type_is_float(context, type_id); }
-export proc vitte_type_is_scalar(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); if t == null { return false; } return vitte_type_is_numeric(context, type_id) or (*t).kind == TypeKind.Bool or (*t).kind == TypeKind.Char or (*t).kind == TypeKind.Pointer or (*t).kind == TypeKind.Reference or (*t).kind == TypeKind.Null; }
+export proc vitte_type_is_scalar(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); if t == null { return false; } return vitte_type_is_numeric(context, type_id) or (*t).kind == TypeKind::Bool or (*t).kind == TypeKind::Char or (*t).kind == TypeKind::Pointer or (*t).kind == TypeKind::Reference or (*t).kind == TypeKind::Null; }
 export proc vitte_type_is_pointer_like(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and vitte_type_kind_is_pointer_like((*t).kind); }
 export proc vitte_type_is_sequence(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and vitte_type_kind_is_sequence((*t).kind); }
-export proc vitte_type_is_callable(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind.Function; }
+export proc vitte_type_is_callable(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and (*t).kind == TypeKind::Function; }
 export proc vitte_type_is_aggregate(context: *const TypeContext, type_id: TypeId) -> bool { let t = type_get(context, type_id); return t != null and vitte_type_kind_is_aggregate((*t).kind); }
 proc type_structural_equal_recursive(context: *const TypeContext, left: TypeId, right: TypeId, depth: usize) -> bool {
     if depth > TYPE_DEFAULT_MAX_COMPARISON_DEPTH { return false; }
@@ -418,29 +418,29 @@ proc type_structural_equal_recursive(context: *const TypeContext, left: TypeId, 
 export proc vitte_type_equal(context: *const TypeContext, left: TypeId, right: TypeId) -> bool { return type_context_valid(context) and left != 0 and left == right and type_get(context, left) != null; }
 export proc vitte_type_structural_equal(context: *const TypeContext, left: TypeId, right: TypeId) -> bool { return type_structural_equal_recursive(context, left, right, 0); }
 export proc vitte_type_conversion(context: *const TypeContext, destination_id: TypeId, source_id: TypeId) -> TypeConversionKind {
-    let d = type_get(context, destination_id); let s = type_get(context, source_id); if d == null or s == null { return TypeConversionKind.Incompatible; }
-    if (*d).kind == TypeKind.Error or (*s).kind == TypeKind.Error { return TypeConversionKind.Safe; }
-    if destination_id == source_id { return TypeConversionKind.Exact; }
-    if (*s).kind == TypeKind.Never { return TypeConversionKind.Safe; }
-    if (*s).kind == TypeKind.Null { if (*d).kind == TypeKind.Pointer or (*d).kind == TypeKind.Reference or (*d).kind == TypeKind.Dyn { return TypeConversionKind.Safe; } return TypeConversionKind.Incompatible; }
-    if (*d).kind == (*s).kind and ((*d).kind == TypeKind.Pointer or (*d).kind == TypeKind.Reference or (*d).kind == TypeKind.Slice) and type_structural_equal_recursive(context, (*d).element_type, (*s).element_type, 0) {
-        if ((*d).type_flags & TYPE_FLAG_MUTABLE) != 0 and ((*s).type_flags & TYPE_FLAG_MUTABLE) == 0 { return TypeConversionKind.Incompatible; }
-        if ((*d).type_flags & TYPE_FLAG_MUTABLE) == ((*s).type_flags & TYPE_FLAG_MUTABLE) { return TypeConversionKind.Exact; } return TypeConversionKind.Safe;
+    let d = type_get(context, destination_id); let s = type_get(context, source_id); if d == null or s == null { return TypeConversionKind::Incompatible; }
+    if (*d).kind == TypeKind::Error or (*s).kind == TypeKind::Error { return TypeConversionKind::Safe; }
+    if destination_id == source_id { return TypeConversionKind::Exact; }
+    if (*s).kind == TypeKind::Never { return TypeConversionKind::Safe; }
+    if (*s).kind == TypeKind::Null { if (*d).kind == TypeKind::Pointer or (*d).kind == TypeKind::Reference or (*d).kind == TypeKind::Dyn { return TypeConversionKind::Safe; } return TypeConversionKind::Incompatible; }
+    if (*d).kind == (*s).kind and ((*d).kind == TypeKind::Pointer or (*d).kind == TypeKind::Reference or (*d).kind == TypeKind::Slice) and type_structural_equal_recursive(context, (*d).element_type, (*s).element_type, 0) {
+        if ((*d).type_flags & TYPE_FLAG_MUTABLE) != 0 and ((*s).type_flags & TYPE_FLAG_MUTABLE) == 0 { return TypeConversionKind::Incompatible; }
+        if ((*d).type_flags & TYPE_FLAG_MUTABLE) == ((*s).type_flags & TYPE_FLAG_MUTABLE) { return TypeConversionKind::Exact; } return TypeConversionKind::Safe;
     }
-    if vitte_type_is_integer(context, destination_id) and vitte_type_is_integer(context, source_id) { if vitte_type_kind_is_signed_integer((*d).kind) == vitte_type_kind_is_signed_integer((*s).kind) { return TypeConversionKind.Safe; } return TypeConversionKind.Lossy; }
-    if (*d).kind == TypeKind.F64 and (*s).kind == TypeKind.F32 { return TypeConversionKind.Safe; }
-    if (*d).kind == TypeKind.Slice and (*s).kind == TypeKind.Array and type_structural_equal_recursive(context, (*d).element_type, (*s).element_type, 0) { return TypeConversionKind.Safe; }
-    if vitte_type_is_numeric(context, destination_id) and vitte_type_is_numeric(context, source_id) { return TypeConversionKind.Lossy; }
-    return TypeConversionKind.Incompatible;
+    if vitte_type_is_integer(context, destination_id) and vitte_type_is_integer(context, source_id) { if vitte_type_kind_is_signed_integer((*d).kind) == vitte_type_kind_is_signed_integer((*s).kind) { return TypeConversionKind::Safe; } return TypeConversionKind::Lossy; }
+    if (*d).kind == TypeKind::F64 and (*s).kind == TypeKind::F32 { return TypeConversionKind::Safe; }
+    if (*d).kind == TypeKind::Slice and (*s).kind == TypeKind::Array and type_structural_equal_recursive(context, (*d).element_type, (*s).element_type, 0) { return TypeConversionKind::Safe; }
+    if vitte_type_is_numeric(context, destination_id) and vitte_type_is_numeric(context, source_id) { return TypeConversionKind::Lossy; }
+    return TypeConversionKind::Incompatible;
 }
-export proc vitte_type_assignable(context: *const TypeContext, destination_id: TypeId, source_id: TypeId) -> bool { let c = vitte_type_conversion(context, destination_id, source_id); return c == TypeConversionKind.Exact or c == TypeConversionKind.Safe; }
+export proc vitte_type_assignable(context: *const TypeContext, destination_id: TypeId, source_id: TypeId) -> bool { let c = vitte_type_conversion(context, destination_id, source_id); return c == TypeConversionKind::Exact or c == TypeConversionKind::Safe; }
 export proc vitte_type_compatible(context: *const TypeContext, left: TypeId, right: TypeId) -> bool { return vitte_type_assignable(context, left, right) or vitte_type_assignable(context, right, left); }
 proc type_integer_bits(kind: TypeKind) -> u32 { match kind { case TypeKind::I8 | TypeKind::U8 => return 8; case TypeKind::I16 | TypeKind::U16 => return 16; case TypeKind::I32 | TypeKind::U32 => return 32; case TypeKind::I64 | TypeKind::U64 | TypeKind::Isize | TypeKind::Usize => return 64; case _ => return 0; } }
 proc type_integer_for_bits(context: *const TypeContext, bits: u32, signed: bool) -> TypeId { if signed { if bits <= 8 { return (*context).type_i8; } if bits <= 16 { return (*context).type_i16; } if bits <= 32 { return (*context).type_i32; } return (*context).type_i64; } if bits <= 8 { return (*context).type_u8; } if bits <= 16 { return (*context).type_u16; } if bits <= 32 { return (*context).type_u32; } return (*context).type_u64; }
 export proc vitte_type_common_numeric(context: *const TypeContext, left_id: TypeId, right_id: TypeId) -> TypeId {
     let left = type_get(context, left_id); let right = type_get(context, right_id); if left == null or right == null or not vitte_type_is_numeric(context, left_id) or not vitte_type_is_numeric(context, right_id) { return 0; }
-    if left_id == right_id { return left_id; } if (*left).kind == TypeKind.F64 or (*right).kind == TypeKind.F64 { return (*context).type_f64; }
-    if (*left).kind == TypeKind.F32 or (*right).kind == TypeKind.F32 { return (*context).type_f32; }
+    if left_id == right_id { return left_id; } if (*left).kind == TypeKind::F64 or (*right).kind == TypeKind::F64 { return (*context).type_f64; }
+    if (*left).kind == TypeKind::F32 or (*right).kind == TypeKind::F32 { return (*context).type_f32; }
     let lb = type_integer_bits((*left).kind); let rb = type_integer_bits((*right).kind); let ls = vitte_type_kind_is_signed_integer((*left).kind); let rs = vitte_type_kind_is_signed_integer((*right).kind);
     if ls == rs { if lb >= rb { return type_integer_for_bits(context, lb, ls); } return type_integer_for_bits(context, rb, rs); }
     if ls and lb > rb { return type_integer_for_bits(context, lb, true); } if rs and rb > lb { return type_integer_for_bits(context, rb, true); }
@@ -451,14 +451,14 @@ export proc vitte_type_return(context: *const TypeContext, type_id: TypeId) -> T
 export proc vitte_type_parameter_count(context: *const TypeContext, type_id: TypeId) -> usize { let t = type_get(context, type_id); if t == null { return 0; } return (*t).parameter_count; }
 export proc vitte_type_parameter(context: *const TypeContext, type_id: TypeId, index: usize) -> TypeId { let t = type_get(context, type_id); if t == null or index >= (*t).parameter_count { return 0; } return (*t).parameters[index]; }
 export proc vitte_type_validate(context: *mut TypeContext) -> bool {
-    if not type_context_valid(context) { type_set_error(context, TypeError.InvalidContext); return false; }
+    if not type_context_valid(context) { type_set_error(context, TypeError::InvalidContext); return false; }
     set (*context).stats.validation_runs = type_sat_add((*context).stats.validation_runs, 1);
     let mut index: usize = 0; while index < (*context).type_count {
-        let t = &(*context).types[index]; if t.id != (index + 1) as TypeId or not vitte_type_kind_is_valid(t.kind) or (t.name_length != 0 and t.name == null) or (t.parameter_count != 0 and t.parameters == null) or t.parameter_offset + t.parameter_count > (*context).parameter_count { set (*context).stats.validation_failures = type_sat_add((*context).stats.validation_failures, 1); type_set_error(context, TypeError.Validation); return false; }
-        let mut p: usize = 0; while p < t.parameter_count { if t.parameters[p] == 0 or t.parameters[p] > (*context).type_count as TypeId { set (*context).stats.validation_failures = type_sat_add((*context).stats.validation_failures, 1); type_set_error(context, TypeError.Validation); return false; } set p += 1; }
+        let t = &(*context).types[index]; if t.id != (index + 1) as TypeId or not vitte_type_kind_is_valid(t.kind) or (t.name_length != 0 and t.name == null) or (t.parameter_count != 0 and t.parameters == null) or t.parameter_offset + t.parameter_count > (*context).parameter_count { set (*context).stats.validation_failures = type_sat_add((*context).stats.validation_failures, 1); type_set_error(context, TypeError::Validation); return false; }
+        let mut p: usize = 0; while p < t.parameter_count { if t.parameters[p] == 0 or t.parameters[p] > (*context).type_count as TypeId { set (*context).stats.validation_failures = type_sat_add((*context).stats.validation_failures, 1); type_set_error(context, TypeError::Validation); return false; } set p += 1; }
         set index += 1;
     }
-    set (*context).last_error = TypeError.None; return true;
+    set (*context).last_error = TypeError::None; return true;
 }
 export proc vitte_type_fingerprint(context: *mut TypeContext) -> u64 {
     if not type_context_valid(context) { return 0; } set (*context).stats.hash_runs = type_sat_add((*context).stats.hash_runs, 1);
@@ -477,24 +477,24 @@ export proc vitte_type_api_version() -> u32 { return TYPE_API_VERSION; }
 
 export proc vitte_type_id_is_valid(type_id: TypeId) -> bool { return type_id != TYPE_INVALID_ID; }
 export proc vitte_type_symbol_id_is_valid(symbol_id: TypeSymbolId) -> bool { return symbol_id != TYPE_INVALID_SYMBOL_ID; }
-export proc vitte_type_error_is_valid(error: TypeError) -> bool { return error >= TypeError.None and error < TypeError.Count; }
-export proc vitte_type_state_is_valid(state: TypeState) -> bool { return state > TypeState.Invalid and state < TypeState.Count; }
-export proc vitte_type_kind_is_valid(kind: TypeKind) -> bool { return kind > TypeKind.Invalid and kind < TypeKind.Count; }
+export proc vitte_type_error_is_valid(error: TypeError) -> bool { return error >= TypeError::None and error < TypeError::Count; }
+export proc vitte_type_state_is_valid(state: TypeState) -> bool { return state > TypeState::Invalid and state < TypeState::Count; }
+export proc vitte_type_kind_is_valid(kind: TypeKind) -> bool { return kind > TypeKind::Invalid and kind < TypeKind::Count; }
 
 export proc vitte_type_is_ready(context: *const TypeContext) -> bool {
-    return context != null and (*context).magic == TYPE_MAGIC and (*context).state == TypeState.Ready;
+    return context != null and (*context).magic == TYPE_MAGIC and (*context).state == TypeState::Ready;
 }
 export proc vitte_type_is_building(context: *const TypeContext) -> bool {
-    return context != null and (*context).magic == TYPE_MAGIC and (*context).state == TypeState.Building;
+    return context != null and (*context).magic == TYPE_MAGIC and (*context).state == TypeState::Building;
 }
 export proc vitte_type_is_frozen(context: *const TypeContext) -> bool {
-    return context != null and (*context).magic == TYPE_MAGIC and (*context).state == TypeState.Frozen;
+    return context != null and (*context).magic == TYPE_MAGIC and (*context).state == TypeState::Frozen;
 }
 export proc vitte_type_has_failed(context: *const TypeContext) -> bool {
-    return context != null and (*context).magic == TYPE_MAGIC and (*context).state == TypeState.Failed;
+    return context != null and (*context).magic == TYPE_MAGIC and (*context).state == TypeState::Failed;
 }
 export proc vitte_type_is_destroyed(context: *const TypeContext) -> bool {
-    return context != null and (*context).magic == TYPE_DEAD_MAGIC and (*context).state == TypeState.Destroyed;
+    return context != null and (*context).magic == TYPE_DEAD_MAGIC and (*context).state == TypeState::Destroyed;
 }
 export proc vitte_type_count(context: *const TypeContext) -> usize {
     if context == null { return 0; }
@@ -518,7 +518,7 @@ export proc vitte_type_is_builtin_entry(type_: *const Type) -> bool { return vit
 export proc vitte_type_is_canonical_entry(type_: *const Type) -> bool { return vitte_type_has_flag(type_, TYPE_FLAG_CANONICAL); }
 export proc vitte_type_is_generic_entry(type_: *const Type) -> bool { return vitte_type_has_flag(type_, TYPE_FLAG_GENERIC); }
 export proc vitte_type_range_is_inclusive(type_: *const Type) -> bool {
-    return type_ != null and (*type_).kind == TypeKind.Range and vitte_type_has_flag(type_, TYPE_FLAG_INCLUSIVE);
+    return type_ != null and (*type_).kind == TypeKind::Range and vitte_type_has_flag(type_, TYPE_FLAG_INCLUSIVE);
 }
 export proc vitte_type_has_element(type_: *const Type) -> bool { return type_ != null and (*type_).element_type != TYPE_INVALID_ID; }
 export proc vitte_type_has_return_type(type_: *const Type) -> bool { return type_ != null and (*type_).return_type != TYPE_INVALID_ID; }
@@ -529,23 +529,23 @@ export proc vitte_type_has_parameters(type_: *const Type) -> bool {
 }
 
 export proc vitte_type_kind_is_signed_integer(kind: TypeKind) -> bool {
-    return kind == TypeKind.I8 or kind == TypeKind.I16 or kind == TypeKind.I32 or kind == TypeKind.I64 or kind == TypeKind.Isize;
+    return kind == TypeKind::I8 or kind == TypeKind::I16 or kind == TypeKind::I32 or kind == TypeKind::I64 or kind == TypeKind::Isize;
 }
 export proc vitte_type_kind_is_unsigned_integer(kind: TypeKind) -> bool {
-    return kind == TypeKind.U8 or kind == TypeKind.U16 or kind == TypeKind.U32 or kind == TypeKind.U64 or kind == TypeKind.Usize;
+    return kind == TypeKind::U8 or kind == TypeKind::U16 or kind == TypeKind::U32 or kind == TypeKind::U64 or kind == TypeKind::Usize;
 }
 export proc vitte_type_kind_is_integer(kind: TypeKind) -> bool {
     return vitte_type_kind_is_signed_integer(kind) or vitte_type_kind_is_unsigned_integer(kind);
 }
-export proc vitte_type_kind_is_float(kind: TypeKind) -> bool { return kind == TypeKind.F32 or kind == TypeKind.F64; }
+export proc vitte_type_kind_is_float(kind: TypeKind) -> bool { return kind == TypeKind::F32 or kind == TypeKind::F64; }
 export proc vitte_type_kind_is_numeric(kind: TypeKind) -> bool { return vitte_type_kind_is_integer(kind) or vitte_type_kind_is_float(kind); }
-export proc vitte_type_kind_is_pointer_like(kind: TypeKind) -> bool { return kind == TypeKind.Pointer or kind == TypeKind.Reference; }
+export proc vitte_type_kind_is_pointer_like(kind: TypeKind) -> bool { return kind == TypeKind::Pointer or kind == TypeKind::Reference; }
 export proc vitte_type_kind_is_sequence(kind: TypeKind) -> bool {
-    return kind == TypeKind.Array or kind == TypeKind.Slice or kind == TypeKind.String;
+    return kind == TypeKind::Array or kind == TypeKind::Slice or kind == TypeKind::String;
 }
 export proc vitte_type_kind_is_aggregate(kind: TypeKind) -> bool {
-    return kind == TypeKind.Array or kind == TypeKind.Slice or kind == TypeKind.Tuple or
-           kind == TypeKind.Named or kind == TypeKind.Dyn or kind == TypeKind.String;
+    return kind == TypeKind::Array or kind == TypeKind::Slice or kind == TypeKind::Tuple or
+           kind == TypeKind::Named or kind == TypeKind::Dyn or kind == TypeKind::String;
 }
 
 export proc vitte_type_builtin_error(context: *const TypeContext) -> TypeId { if context == null { return 0; } return (*context).type_error; }

@@ -85,7 +85,7 @@ const SOURCE_MAP_FNV_OFFSET: u64 = 1469598103934665603;
 const SOURCE_MAP_FNV_PRIME: u64 = 1099511628211;
 
 proc source_map_kind_valid(kind: SourceMapKind) -> bool {
-    return kind >= SourceMapKind.Exact and kind <= SourceMapKind.Generated;
+    return kind >= SourceMapKind::Exact and kind <= SourceMapKind::Generated;
 }
 
 proc source_map_span_valid(span: *const AstSpan) -> bool {
@@ -307,47 +307,47 @@ export proc vitte_source_map_at_mut(map: *mut SourceMap, index: usize) -> *mut S
 }
 
 export proc vitte_source_map_add_entry(map: *mut SourceMap, entry_value: *const SourceMapEntry) -> Status {
-    if map == null or not source_map_entry_valid(entry_value) { return Status.ErrorInvalidArgument; }
+    if map == null or not source_map_entry_valid(entry_value) { return Status::ErrorInvalidArgument; }
     let mut index: usize = 0;
     while index < (*map).entries.len() {
-        if source_map_entry_equal(&(*map).entries[index], entry_value) { return Status.Ok; }
+        if source_map_entry_equal(&(*map).entries[index], entry_value) { return Status::Ok; }
         set index += 1;
     }
     if (*map).entries.len() == 0 and not (*map).entries.reserve(SOURCE_MAP_INITIAL_CAPACITY) {
-        return Status.ErrorOutOfMemory;
+        return Status::ErrorOutOfMemory;
     }
-    if not (*map).entries.push(*entry_value) { return Status.ErrorOutOfMemory; }
+    if not (*map).entries.push(*entry_value) { return Status::ErrorOutOfMemory; }
     set (*map).count = (*map).entries.len();
     set (*map).capacity = (*map).entries.capacity();
     set (*map).normalized = false;
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_source_map_add(map: *mut SourceMap, kind: SourceMapKind, generated: *const AstSpan, original: *const AstSpan) -> Status {
     if map == null or generated == null or original == null or not source_map_kind_valid(kind) {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
     let candidate = SourceMapEntry { kind: kind, generated: *generated, original: *original };
     return vitte_source_map_add_entry(map, &candidate);
 }
 
 export proc vitte_source_map_remove(map: *mut SourceMap, index: usize) -> Status {
-    if map == null or index >= (*map).entries.len() { return Status.ErrorInvalidArgument; }
+    if map == null or index >= (*map).entries.len() { return Status::ErrorInvalidArgument; }
     let mut retained: [SourceMapEntry] = [];
     let mut cursor: usize = 0;
     while cursor < (*map).entries.len() {
-        if cursor != index and not retained.push((*map).entries[cursor]) { return Status.ErrorOutOfMemory; }
+        if cursor != index and not retained.push((*map).entries[cursor]) { return Status::ErrorOutOfMemory; }
         set cursor += 1;
     }
     set (*map).entries = retained;
     set (*map).count = (*map).entries.len();
     set (*map).capacity = (*map).entries.capacity();
     set (*map).normalized = false;
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_source_map_normalize(map: *mut SourceMap) -> Status {
-    if map == null { return Status.ErrorInvalidArgument; }
+    if map == null { return Status::ErrorInvalidArgument; }
     let mut index: usize = 1;
     while index < (*map).entries.len() {
         let key = (*map).entries[index];
@@ -364,14 +364,14 @@ export proc vitte_source_map_normalize(map: *mut SourceMap) -> Status {
     index = 0;
     while index < (*map).entries.len() {
         let duplicate = unique.len() != 0 and source_map_entry_equal(&unique[unique.len() - 1], &(*map).entries[index]);
-        if not duplicate and not unique.push((*map).entries[index]) { return Status.ErrorOutOfMemory; }
+        if not duplicate and not unique.push((*map).entries[index]) { return Status::ErrorOutOfMemory; }
         set index += 1;
     }
     set (*map).entries = unique;
     set (*map).count = (*map).entries.len();
     set (*map).capacity = (*map).entries.capacity();
     set (*map).normalized = true;
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_source_map_find_offset(map: *const SourceMap, generated_source_id: SourceId, generated_source_name: *const u8, generated_offset: usize) -> *const SourceMapEntry {
@@ -479,7 +479,7 @@ export proc vitte_source_map_trace(map: *const SourceMap, start: *const AstSpan,
     if trace != null {
         set *trace = SourceMapTrace {};
         let invalid = ast_span_invalid();
-        let empty_step = SourceMapTraceStep { kind: SourceMapKind.Exact, generated: invalid, original: invalid };
+        let empty_step = SourceMapTraceStep { kind: SourceMapKind::Exact, generated: invalid, original: invalid };
         let mut slot: usize = 0;
         while slot < VITTE_SOURCE_MAP_TRACE_CAPACITY { set (*trace).steps[slot] = empty_step; set slot += 1; }
     }
@@ -604,25 +604,25 @@ export proc vitte_source_map_kind_name(kind: SourceMapKind) -> *const u8 {
 }
 
 export proc vitte_source_map_merge(destination: *mut SourceMap, source: *const SourceMap) -> Status {
-    if destination == null or source == null { return Status.ErrorInvalidArgument; }
-    if destination == source { return Status.Ok; }
+    if destination == null or source == null { return Status::ErrorInvalidArgument; }
+    if destination == source { return Status::Ok; }
     let mut index: usize = 0;
     while index < (*source).entries.len() {
         let status = vitte_source_map_add_entry(destination, &(*source).entries[index]);
-        if status != Status.Ok { return status; }
+        if status != Status::Ok { return status; }
         set index += 1;
     }
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_source_map_copy(destination: *mut SourceMap, source: *const SourceMap) -> Status {
-    if destination == null or source == null { return Status.ErrorInvalidArgument; }
-    if destination == source { return Status.Ok; }
+    if destination == null or source == null { return Status::ErrorInvalidArgument; }
+    if destination == source { return Status::Ok; }
     set (*destination).entries = (*source).entries;
     set (*destination).count = (*destination).entries.len();
     set (*destination).capacity = (*destination).entries.capacity();
     set (*destination).normalized = (*source).normalized;
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_source_map_swap(left: *mut SourceMap, right: *mut SourceMap) {
@@ -660,22 +660,22 @@ export proc vitte_source_map_original_source_count(map: *const SourceMap) -> usi
 }
 
 export proc vitte_source_map_visit(map: *const SourceMap, visitor: ?SourceMapVisitor, user_data: *mut u8) -> Status {
-    if map == null or visitor == null { return Status.ErrorInvalidArgument; }
+    if map == null or visitor == null { return Status::ErrorInvalidArgument; }
     let callback = visitor?;
     let mut index: usize = 0;
     while index < (*map).entries.len() {
         if not callback(&(*map).entries[index], index, user_data) { break; }
         set index += 1;
     }
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_source_map_shrink_to_fit(map: *mut SourceMap) -> Status {
-    if map == null { return Status.ErrorInvalidArgument; }
+    if map == null { return Status::ErrorInvalidArgument; }
     (*map).entries.shrink_to_fit();
     set (*map).count = (*map).entries.len();
     set (*map).capacity = (*map).entries.capacity();
-    return Status.Ok;
+    return Status::Ok;
 }
 
 export proc vitte_source_map_component_name() -> string {
@@ -710,7 +710,7 @@ export proc vitte_source_map_add_exact(
     generated: *const AstSpan,
     original: *const AstSpan
 ) -> Status {
-    return vitte_source_map_add(map, SourceMapKind.Exact, generated, original);
+    return vitte_source_map_add(map, SourceMapKind::Exact, generated, original);
 }
 
 export proc vitte_source_map_add_token(
@@ -718,7 +718,7 @@ export proc vitte_source_map_add_token(
     generated: *const AstSpan,
     original: *const AstSpan
 ) -> Status {
-    return vitte_source_map_add(map, SourceMapKind.Token, generated, original);
+    return vitte_source_map_add(map, SourceMapKind::Token, generated, original);
 }
 
 export proc vitte_source_map_add_expression(
@@ -726,7 +726,7 @@ export proc vitte_source_map_add_expression(
     generated: *const AstSpan,
     original: *const AstSpan
 ) -> Status {
-    return vitte_source_map_add(map, SourceMapKind.Expression, generated, original);
+    return vitte_source_map_add(map, SourceMapKind::Expression, generated, original);
 }
 
 export proc vitte_source_map_add_statement(
@@ -734,7 +734,7 @@ export proc vitte_source_map_add_statement(
     generated: *const AstSpan,
     original: *const AstSpan
 ) -> Status {
-    return vitte_source_map_add(map, SourceMapKind.Statement, generated, original);
+    return vitte_source_map_add(map, SourceMapKind::Statement, generated, original);
 }
 
 export proc vitte_source_map_add_declaration(
@@ -742,7 +742,7 @@ export proc vitte_source_map_add_declaration(
     generated: *const AstSpan,
     original: *const AstSpan
 ) -> Status {
-    return vitte_source_map_add(map, SourceMapKind.Declaration, generated, original);
+    return vitte_source_map_add(map, SourceMapKind::Declaration, generated, original);
 }
 
 export proc vitte_source_map_add_synthetic(
@@ -750,7 +750,7 @@ export proc vitte_source_map_add_synthetic(
     generated: *const AstSpan,
     original: *const AstSpan
 ) -> Status {
-    return vitte_source_map_add(map, SourceMapKind.Synthetic, generated, original);
+    return vitte_source_map_add(map, SourceMapKind::Synthetic, generated, original);
 }
 
 export proc vitte_source_map_add_lowered(
@@ -758,7 +758,7 @@ export proc vitte_source_map_add_lowered(
     generated: *const AstSpan,
     original: *const AstSpan
 ) -> Status {
-    return vitte_source_map_add(map, SourceMapKind.Lowered, generated, original);
+    return vitte_source_map_add(map, SourceMapKind::Lowered, generated, original);
 }
 
 export proc vitte_source_map_add_generated(
@@ -766,5 +766,5 @@ export proc vitte_source_map_add_generated(
     generated: *const AstSpan,
     original: *const AstSpan
 ) -> Status {
-    return vitte_source_map_add(map, SourceMapKind.Generated, generated, original);
+    return vitte_source_map_add(map, SourceMapKind::Generated, generated, original);
 }

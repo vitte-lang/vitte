@@ -126,8 +126,8 @@ proc scanner_hash_u64(hash: u64, value: u64) -> u64 {
 
 proc scanner_context_valid(scanner: *Scanner) -> bool {
     if scanner == null || (*scanner).magic != SCANNER_MAGIC { return false; }
-    return (*scanner).state != ScannerState.Invalid &&
-           (*scanner).state != ScannerState.Destroyed &&
+    return (*scanner).state != ScannerState::Invalid &&
+           (*scanner).state != ScannerState::Destroyed &&
            (*scanner).source_length <= (*scanner).max_source_bytes &&
            ((*scanner).source != null || (*scanner).source_length == 0);
 }
@@ -135,7 +135,7 @@ proc scanner_context_valid(scanner: *Scanner) -> bool {
 proc scanner_fail(scanner: *mut Scanner, error: ScannerError) -> bool {
     if scanner != null && (*scanner).magic == SCANNER_MAGIC {
         set (*scanner).last_error = error;
-        set (*scanner).state = ScannerState.Failed;
+        set (*scanner).state = ScannerState::Failed;
         set (*scanner).stats.failures = scanner_sat_add((*scanner).stats.failures, 1);
     }
     return false;
@@ -222,7 +222,7 @@ export proc vitte_scanner_state_name(state: ScannerState) -> string {
 
 export proc vitte_scanner_init(scanner: *mut Scanner, source: string, source_length: usize, file_id: u32) -> bool {
     if scanner == null { return false; }
-    set *scanner = Scanner { magic: SCANNER_MAGIC, state: ScannerState.Ready, last_error: ScannerError.None,
+    set *scanner = Scanner { magic: SCANNER_MAGIC, state: ScannerState::Ready, last_error: ScannerError::None,
         source: source.as_ptr() as *u8, source_length: source_length, file_id: file_id,
         offset: 0, line: 1, column: 1, display_column: 1, line_start_offset: 0,
         tab_width: 4, max_source_bytes: SCANNER_DEFAULT_MAX_SOURCE_BYTES,
@@ -231,16 +231,16 @@ export proc vitte_scanner_init(scanner: *mut Scanner, source: string, source_len
             invalid_utf8_sequences: 0, boms_skipped: 0, restores: 0, utf8_validation_runs: 0,
             utf8_validation_failures: 0, validation_runs: 0, validation_failures: 0, hash_runs: 0, failures: 0
         }, generation: 1 };
-    if (source_length > 0 && source.as_ptr() == null) { return scanner_fail(scanner, ScannerError.InvalidArgument); }
-    if source_length > (*scanner).max_source_bytes { return scanner_fail(scanner, ScannerError.SourceTooLarge); }
+    if (source_length > 0 && source.as_ptr() == null) { return scanner_fail(scanner, ScannerError::InvalidArgument); }
+    if source_length > (*scanner).max_source_bytes { return scanner_fail(scanner, ScannerError::SourceTooLarge); }
     if (*scanner).skip_utf8_bom && scanner_has_bom(scanner) { set (*scanner).offset = 3; set (*scanner).line_start_offset = 3; set (*scanner).stats.boms_skipped = 1; }
-    if (*scanner).offset >= source_length { set (*scanner).state = ScannerState.Done; }
+    if (*scanner).offset >= source_length { set (*scanner).state = ScannerState::Done; }
     return true;
 }
 
 export proc vitte_scanner_reset(scanner: *mut Scanner, source: string, source_length: usize, file_id: u32) -> bool {
     if not scanner_context_valid(scanner) { return false; }
-    if (*scanner).state == ScannerState.Scanning { return scanner_fail(scanner, ScannerError.InvalidState); }
+    if (*scanner).state == ScannerState::Scanning { return scanner_fail(scanner, ScannerError::InvalidState); }
     let tab_width = (*scanner).tab_width;
     let max_source_bytes = (*scanner).max_source_bytes;
     let strict_utf8 = (*scanner).strict_utf8;
@@ -250,38 +250,38 @@ export proc vitte_scanner_reset(scanner: *mut Scanner, source: string, source_le
     set (*scanner).tab_width = tab_width; set (*scanner).max_source_bytes = max_source_bytes;
     set (*scanner).strict_utf8 = strict_utf8; set (*scanner).skip_utf8_bom = skip_utf8_bom;
     set (*scanner).generation = generation;
-    set (*scanner).offset = 0; set (*scanner).line_start_offset = 0; set (*scanner).stats.boms_skipped = 0; set (*scanner).state = ScannerState.Ready;
-    if source_length > max_source_bytes { return scanner_fail(scanner, ScannerError.SourceTooLarge); }
+    set (*scanner).offset = 0; set (*scanner).line_start_offset = 0; set (*scanner).stats.boms_skipped = 0; set (*scanner).state = ScannerState::Ready;
+    if source_length > max_source_bytes { return scanner_fail(scanner, ScannerError::SourceTooLarge); }
     if skip_utf8_bom && scanner_has_bom(scanner) { set (*scanner).offset = 3; set (*scanner).line_start_offset = 3; set (*scanner).stats.boms_skipped = 1; }
-    if (*scanner).offset >= source_length { set (*scanner).state = ScannerState.Done; }
+    if (*scanner).offset >= source_length { set (*scanner).state = ScannerState::Done; }
     return true;
 }
 
 export proc vitte_scanner_destroy(scanner: *mut Scanner) {
     if scanner == null { return; }
-    set (*scanner).magic = SCANNER_DEAD_MAGIC; set (*scanner).state = ScannerState.Destroyed;
-    set (*scanner).source = null; set (*scanner).source_length = 0; set (*scanner).last_error = ScannerError.None;
+    set (*scanner).magic = SCANNER_DEAD_MAGIC; set (*scanner).state = ScannerState::Destroyed;
+    set (*scanner).source = null; set (*scanner).source_length = 0; set (*scanner).last_error = ScannerError::None;
 }
 
 export proc vitte_scanner_set_tab_width(scanner: *mut Scanner, tab_width: usize) -> bool {
     if not scanner_context_valid(scanner) { return false; }
-    if tab_width == 0 || tab_width > SCANNER_MAX_TAB_WIDTH { return scanner_fail(scanner, ScannerError.InvalidArgument); }
-    set (*scanner).tab_width = tab_width; set (*scanner).last_error = ScannerError.None; return true;
+    if tab_width == 0 || tab_width > SCANNER_MAX_TAB_WIDTH { return scanner_fail(scanner, ScannerError::InvalidArgument); }
+    set (*scanner).tab_width = tab_width; set (*scanner).last_error = ScannerError::None; return true;
 }
 
 export proc vitte_scanner_set_max_source_bytes(scanner: *mut Scanner, max_source_bytes: usize) -> bool {
     if not scanner_context_valid(scanner) { return false; }
-    if max_source_bytes == 0 || (*scanner).source_length > max_source_bytes { return scanner_fail(scanner, ScannerError.InvalidArgument); }
-    set (*scanner).max_source_bytes = max_source_bytes; set (*scanner).last_error = ScannerError.None; return true;
+    if max_source_bytes == 0 || (*scanner).source_length > max_source_bytes { return scanner_fail(scanner, ScannerError::InvalidArgument); }
+    set (*scanner).max_source_bytes = max_source_bytes; set (*scanner).last_error = ScannerError::None; return true;
 }
 
 export proc vitte_scanner_set_strict_utf8(scanner: *mut Scanner, strict_utf8: bool) -> bool {
     if not scanner_context_valid(scanner) { return false; }
-    set (*scanner).strict_utf8 = strict_utf8; set (*scanner).last_error = ScannerError.None; return true;
+    set (*scanner).strict_utf8 = strict_utf8; set (*scanner).last_error = ScannerError::None; return true;
 }
 
 export proc vitte_scanner_is_valid(scanner: *Scanner) -> bool { return scanner_context_valid(scanner); }
-export proc vitte_scanner_last_error(scanner: *Scanner) -> ScannerError { if scanner == null || (*scanner).magic != SCANNER_MAGIC { return ScannerError.InvalidContext; } return (*scanner).last_error; }
+export proc vitte_scanner_last_error(scanner: *Scanner) -> ScannerError { if scanner == null || (*scanner).magic != SCANNER_MAGIC { return ScannerError::InvalidContext; } return (*scanner).last_error; }
 export proc vitte_scanner_generation(scanner: *Scanner) -> u64 { if not scanner_context_valid(scanner) { return 0; } return (*scanner).generation; }
 export proc vitte_scanner_is_eof(scanner: *Scanner) -> bool { return scanner_context_valid(scanner) && (*scanner).offset >= (*scanner).source_length; }
 export proc vitte_scanner_remaining(scanner: *Scanner) -> usize { if not scanner_context_valid(scanner) || (*scanner).offset >= (*scanner).source_length { return 0; } return (*scanner).source_length - (*scanner).offset; }
@@ -324,11 +324,11 @@ export proc vitte_scanner_current_codepoint(scanner: *Scanner, codepoint: *mut u
 
 export proc vitte_scanner_advance(scanner: *mut Scanner, codepoint: *mut u32) -> bool {
     if not scanner_context_valid(scanner) { return false; }
-    if (*scanner).offset >= (*scanner).source_length { set (*scanner).state = ScannerState.Done; set (*scanner).last_error = ScannerError.EndOfInput; return false; }
+    if (*scanner).offset >= (*scanner).source_length { set (*scanner).state = ScannerState::Done; set (*scanner).last_error = ScannerError::EndOfInput; return false; }
     let offset = (*scanner).offset; let first = (*scanner).source[offset];
     if first == 10 || first == 13 {
         let width: usize = if first == 13 && offset + 1 < (*scanner).source_length && (*scanner).source[offset + 1] == 10 { 2 as usize } else { 1 as usize };
-        if (*scanner).line == usize.MAX { return scanner_fail(scanner, ScannerError.Overflow); }
+        if (*scanner).line == usize.MAX { return scanner_fail(scanner, ScannerError::Overflow); }
         set (*scanner).offset += width; set (*scanner).line += 1; set (*scanner).column = 1;
         set (*scanner).display_column = 1; set (*scanner).line_start_offset = (*scanner).offset;
         set (*scanner).stats.newlines = scanner_sat_add((*scanner).stats.newlines, 1);
@@ -340,15 +340,15 @@ export proc vitte_scanner_advance(scanner: *mut Scanner, codepoint: *mut u32) ->
         let mut value: u32 = 0; let mut width: usize = 0;
         if not scanner_decode(scanner, offset, &mut value, &mut width) {
             set (*scanner).stats.invalid_utf8_sequences = scanner_sat_add((*scanner).stats.invalid_utf8_sequences, 1);
-            if (*scanner).strict_utf8 { return scanner_fail(scanner, ScannerError.InvalidUtf8); }
+            if (*scanner).strict_utf8 { return scanner_fail(scanner, ScannerError::InvalidUtf8); }
             set value = SCANNER_UTF8_REPLACEMENT; set width = 1;
         }
-        if (*scanner).column == usize.MAX || (*scanner).display_column == usize.MAX { return scanner_fail(scanner, ScannerError.Overflow); }
+        if (*scanner).column == usize.MAX || (*scanner).display_column == usize.MAX { return scanner_fail(scanner, ScannerError::Overflow); }
         set (*scanner).offset += width; set (*scanner).column += 1;
         if value == 9 {
             let display_zero = (*scanner).display_column - 1;
             let next_stop = (display_zero / (*scanner).tab_width) + 1;
-            if next_stop > (usize.MAX - 1) / (*scanner).tab_width { return scanner_fail(scanner, ScannerError.Overflow); }
+            if next_stop > (usize.MAX - 1) / (*scanner).tab_width { return scanner_fail(scanner, ScannerError::Overflow); }
             set (*scanner).display_column = next_stop * (*scanner).tab_width + 1;
             set (*scanner).stats.tabs = scanner_sat_add((*scanner).stats.tabs, 1);
         } else { set (*scanner).display_column += 1; }
@@ -356,8 +356,8 @@ export proc vitte_scanner_advance(scanner: *mut Scanner, codepoint: *mut u32) ->
         set (*scanner).stats.codepoints_consumed = scanner_sat_add((*scanner).stats.codepoints_consumed, 1);
         if codepoint != null { set *codepoint = value; }
     }
-    set (*scanner).last_error = ScannerError.None;
-    set (*scanner).state = if (*scanner).offset >= (*scanner).source_length { ScannerState.Done } else { ScannerState.Ready };
+    set (*scanner).last_error = ScannerError::None;
+    set (*scanner).state = if (*scanner).offset >= (*scanner).source_length { ScannerState::Done } else { ScannerState::Ready };
     return true;
 }
 
@@ -399,11 +399,11 @@ export proc vitte_scanner_checkpoint(scanner: *Scanner) -> ScannerCheckpoint {
 }
 
 export proc vitte_scanner_restore(scanner: *mut Scanner, checkpoint: ScannerCheckpoint) -> bool {
-    if not scanner_context_valid(scanner) || not checkpoint.valid || checkpoint.generation != (*scanner).generation || checkpoint.offset > (*scanner).source_length { return scanner_fail(scanner, ScannerError.InvalidCheckpoint); }
-    let mut reconstructed: ScannerPosition; if not vitte_scanner_position_at(scanner, checkpoint.offset, &mut reconstructed) || reconstructed.line != checkpoint.line || reconstructed.column != checkpoint.column || reconstructed.display_column != checkpoint.display_column || reconstructed.line_start_offset != checkpoint.line_start_offset { return scanner_fail(scanner, ScannerError.InvalidCheckpoint); }
+    if not scanner_context_valid(scanner) || not checkpoint.valid || checkpoint.generation != (*scanner).generation || checkpoint.offset > (*scanner).source_length { return scanner_fail(scanner, ScannerError::InvalidCheckpoint); }
+    let mut reconstructed: ScannerPosition; if not vitte_scanner_position_at(scanner, checkpoint.offset, &mut reconstructed) || reconstructed.line != checkpoint.line || reconstructed.column != checkpoint.column || reconstructed.display_column != checkpoint.display_column || reconstructed.line_start_offset != checkpoint.line_start_offset { return scanner_fail(scanner, ScannerError::InvalidCheckpoint); }
     set (*scanner).offset = checkpoint.offset; set (*scanner).line = checkpoint.line; set (*scanner).column = checkpoint.column; set (*scanner).display_column = checkpoint.display_column; set (*scanner).line_start_offset = checkpoint.line_start_offset;
-    set (*scanner).state = if checkpoint.offset >= (*scanner).source_length { ScannerState.Done } else { ScannerState.Ready };
-    set (*scanner).last_error = ScannerError.None; set (*scanner).stats.restores = scanner_sat_add((*scanner).stats.restores, 1); return true;
+    set (*scanner).state = if checkpoint.offset >= (*scanner).source_length { ScannerState::Done } else { ScannerState::Ready };
+    set (*scanner).last_error = ScannerError::None; set (*scanner).stats.restores = scanner_sat_add((*scanner).stats.restores, 1); return true;
 }
 
 export proc vitte_scanner_span_from_positions(begin: ScannerPosition, end: ScannerPosition) -> ScannerSpan {
@@ -459,16 +459,16 @@ export proc vitte_scanner_validate_utf8(scanner: *mut Scanner) -> bool {
     if not scanner_context_valid(scanner) { return false; }
     set (*scanner).stats.utf8_validation_runs = scanner_sat_add((*scanner).stats.utf8_validation_runs, 1);
     let mut offset: usize = if (*scanner).skip_utf8_bom && scanner_has_bom(scanner) { 3 as usize } else { 0 as usize };
-    while offset < (*scanner).source_length { let mut value: u32 = 0; let mut width: usize = 0; if not scanner_decode(scanner, offset, &mut value, &mut width) { set (*scanner).stats.utf8_validation_failures = scanner_sat_add((*scanner).stats.utf8_validation_failures, 1); set (*scanner).last_error = ScannerError.InvalidUtf8; return false; } set offset += width; }
-    set (*scanner).last_error = ScannerError.None; return true;
+    while offset < (*scanner).source_length { let mut value: u32 = 0; let mut width: usize = 0; if not scanner_decode(scanner, offset, &mut value, &mut width) { set (*scanner).stats.utf8_validation_failures = scanner_sat_add((*scanner).stats.utf8_validation_failures, 1); set (*scanner).last_error = ScannerError::InvalidUtf8; return false; } set offset += width; }
+    set (*scanner).last_error = ScannerError::None; return true;
 }
 
 export proc vitte_scanner_validate(scanner: *mut Scanner) -> bool {
     if not scanner_context_valid(scanner) { return false; }
     set (*scanner).stats.validation_runs = scanner_sat_add((*scanner).stats.validation_runs, 1);
-    let mut position: ScannerPosition; if not vitte_scanner_position_at(scanner, (*scanner).offset, &mut position) { set (*scanner).stats.validation_failures = scanner_sat_add((*scanner).stats.validation_failures, 1); return scanner_fail(scanner, ScannerError.Validation); }
-    if position.line != (*scanner).line || position.column != (*scanner).column || position.display_column != (*scanner).display_column || position.line_start_offset != (*scanner).line_start_offset { set (*scanner).stats.validation_failures = scanner_sat_add((*scanner).stats.validation_failures, 1); return scanner_fail(scanner, ScannerError.Corruption); }
-    set (*scanner).last_error = ScannerError.None; return true;
+    let mut position: ScannerPosition; if not vitte_scanner_position_at(scanner, (*scanner).offset, &mut position) { set (*scanner).stats.validation_failures = scanner_sat_add((*scanner).stats.validation_failures, 1); return scanner_fail(scanner, ScannerError::Validation); }
+    if position.line != (*scanner).line || position.column != (*scanner).column || position.display_column != (*scanner).display_column || position.line_start_offset != (*scanner).line_start_offset { set (*scanner).stats.validation_failures = scanner_sat_add((*scanner).stats.validation_failures, 1); return scanner_fail(scanner, ScannerError::Corruption); }
+    set (*scanner).last_error = ScannerError::None; return true;
 }
 
 export proc vitte_scanner_source_fingerprint(scanner: *mut Scanner) -> u64 {

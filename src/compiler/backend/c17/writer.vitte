@@ -132,7 +132,7 @@ proc writer_initialize(writer: &mut C17Writer, kind: C17WriterKind, config: ?&C1
     let effective = if config == null { vitte_c17_writer_config_default() } else { *config? };
     if not writer_config_valid(&effective) { return false; }
     set *writer = C17Writer {
-        magic: WRITER_MAGIC, kind: kind, config: effective, last_error: C17WriterError.None,
+        magic: WRITER_MAGIC, kind: kind, config: effective, last_error: C17WriterError::None,
         system_error: 0, write_fn: null, flush_fn: null, user_data: null, data: "",
         memory_capacity: 0, close_on_destroy: false, bytes_written: 0, line: 1, column: 1,
         maximum_line: 1, maximum_column: 1, indent_level: 0, maximum_indent: 0,
@@ -153,8 +153,8 @@ export form C17PathSink {
 
 proc writer_error(writer: &mut C17Writer, error: C17WriterError) -> bool {
     if writer.magic == WRITER_MAGIC {
-        if writer.last_error == C17WriterError.None { set writer.last_error = error; }
-        if error != C17WriterError.None { set writer.failed = true; }
+        if writer.last_error == C17WriterError::None { set writer.last_error = error; }
+        if error != C17WriterError::None { set writer.failed = true; }
     }
     return false;
 }
@@ -236,7 +236,7 @@ proc c17_path_sink_flush(user_data: *u8) -> bool {
         bytes.as_ptr() as *mut u8,
         bytes.len()
     );
-    if result.error != FilesystemError.None {
+    if result.error != FilesystemError::None {
         set sink.failed = true;
         return false;
     }
@@ -276,7 +276,7 @@ pub proc vitte_c17_writer_init_callback(
     config: ?&C17WriterConfig
 ) -> bool {
     if write_fn == null { return false; }
-    if not writer_initialize(writer, C17WriterKind.Callback, config) { return false; }
+    if not writer_initialize(writer, C17WriterKind::Callback, config) { return false; }
     set writer.write_fn = write_fn;
     set writer.flush_fn = flush_fn;
     set writer.user_data = user_data;
@@ -307,7 +307,7 @@ pub proc vitte_c17_writer_init_file(
         stream,
         config
     ) { return false; }
-    set writer.kind = C17WriterKind.File;
+    set writer.kind = C17WriterKind::File;
     set writer.close_on_destroy = close_on_destroy;
     return true;
 }
@@ -316,19 +316,19 @@ pub proc vitte_c17_writer_init_memory(
     writer: &mut C17Writer,
     config: ?&C17WriterConfig
 ) -> bool {
-    if not writer_initialize(writer, C17WriterKind.Memory, config) { return false; }
+    if not writer_initialize(writer, C17WriterKind::Memory, config) { return false; }
     if not writer_memory_reserve_internal(writer, 0) { return false; }
     return true;
 }
 
 pub proc vitte_c17_writer_is_valid(writer: &C17Writer) -> bool {
-    return writer.magic == WRITER_MAGIC and writer.kind > C17WriterKind.Invalid and
-        writer.kind < C17WriterKind.Count and writer_config_valid(&writer.config) and
-        (writer.kind != C17WriterKind.Callback or writer.write_fn != null) and
-        ((writer.kind != C17WriterKind.Callback and writer.kind != C17WriterKind.File) or
+    return writer.magic == WRITER_MAGIC and writer.kind > C17WriterKind::Invalid and
+        writer.kind < C17WriterKind::Count and writer_config_valid(&writer.config) and
+        (writer.kind != C17WriterKind::Callback or writer.write_fn != null) and
+        ((writer.kind != C17WriterKind::Callback and writer.kind != C17WriterKind::File) or
          writer.data.len() <= writer.config.buffer_capacity) and
-        (writer.kind != C17WriterKind.File or (writer.write_fn != null and writer.flush_fn != null and writer.user_data != null)) and
-        (writer.kind != C17WriterKind.Memory or (writer.data.len() < usize.MAX and writer.memory_capacity >= writer.data.len() + 1));
+        (writer.kind != C17WriterKind::File or (writer.write_fn != null and writer.flush_fn != null and writer.user_data != null)) and
+        (writer.kind != C17WriterKind::Memory or (writer.data.len() < usize.MAX and writer.memory_capacity >= writer.data.len() + 1));
 }
 
 pub proc vitte_c17_writer_validate(writer: &C17Writer) -> bool {
@@ -338,20 +338,20 @@ pub proc vitte_c17_writer_validate(writer: &C17Writer) -> bool {
        (writer.config.max_output_bytes != 0 and writer.bytes_written > writer.config.max_output_bytes) or
        (writer.config.max_lines != 0 and writer.line > writer.config.max_lines) or
        (writer.config.max_column != 0 and writer.column > writer.config.max_column) or
-       (writer.failed and writer.last_error == C17WriterError.None) or
-       (writer.cancelled and writer.last_error == C17WriterError.None) {
+       (writer.failed and writer.last_error == C17WriterError::None) or
+       (writer.cancelled and writer.last_error == C17WriterError::None) {
         return false;
     }
-    if (writer.kind == C17WriterKind.Callback or writer.kind == C17WriterKind.File) and writer.write_fn == null {
+    if (writer.kind == C17WriterKind::Callback or writer.kind == C17WriterKind::File) and writer.write_fn == null {
         return false;
     }
-    if (writer.kind == C17WriterKind.Callback or writer.kind == C17WriterKind.File) and
+    if (writer.kind == C17WriterKind::Callback or writer.kind == C17WriterKind::File) and
        (writer.data.len() > writer.config.buffer_capacity or
        (writer.config.buffer_capacity == 0 and writer.data.len() != 0)) { return false; }
-    if writer.kind == C17WriterKind.Memory and writer.bytes_written != writer.data.len() {
+    if writer.kind == C17WriterKind::Memory and writer.bytes_written != writer.data.len() {
         return false;
     }
-    if writer.kind == C17WriterKind.Memory and
+    if writer.kind == C17WriterKind::Memory and
        (writer.memory_capacity == 0 or writer.memory_capacity <= writer.data.len()) { return false; }
     return true;
 }
@@ -367,10 +367,10 @@ proc writer_hash_bytes(hash: u64, bytes: &[u8]) -> u64 {
 }
 
 proc writer_flush_buffer(writer: &mut C17Writer) -> bool {
-    if (writer.kind != C17WriterKind.Callback and writer.kind != C17WriterKind.File) or writer.data.len() == 0 { return true; }
+    if (writer.kind != C17WriterKind::Callback and writer.kind != C17WriterKind::File) or writer.data.len() == 0 { return true; }
     let callback = writer.write_fn?;
     let succeeded = callback(writer.user_data, writer.data.as_ptr(), writer.data.len());
-    if succeeded == false { return writer_error(writer, C17WriterError.Output); }
+    if succeeded == false { return writer_error(writer, C17WriterError::Output); }
     set writer.data = "";
     return true;
 }
@@ -384,8 +384,8 @@ proc writer_string_reserve(data: &mut string, capacity: usize) -> bool {
 }
 
 proc writer_memory_reserve_internal(writer: &mut C17Writer, required: usize) -> bool {
-    if writer.kind != C17WriterKind.Memory { return writer_error(writer, C17WriterError.NotMemoryWriter); }
-    if required == usize.MAX { return writer_error(writer, C17WriterError.Overflow); }
+    if writer.kind != C17WriterKind::Memory { return writer_error(writer, C17WriterError::NotMemoryWriter); }
+    if required == usize.MAX { return writer_error(writer, C17WriterError::Overflow); }
     let needed = required + 1;
     if needed <= writer.memory_capacity { return true; }
     let mut capacity = if writer.memory_capacity == 0 { writer.config.memory_initial_capacity } else { writer.memory_capacity };
@@ -394,49 +394,49 @@ proc writer_memory_reserve_internal(writer: &mut C17Writer, required: usize) -> 
         if capacity > usize.MAX / 2 { capacity = needed; break; }
         set capacity *= 2;
     }
-    if capacity < needed or not writer_string_reserve(&mut writer.data, capacity) { return writer_error(writer, C17WriterError.OutOfMemory); }
+    if capacity < needed or not writer_string_reserve(&mut writer.data, capacity) { return writer_error(writer, C17WriterError::OutOfMemory); }
     set writer.memory_capacity = capacity;
     return true;
 }
 
 proc writer_emit(writer: &mut C17Writer, text: string) -> bool {
     if not vitte_c17_writer_is_valid(writer) {
-        return writer_error(writer, C17WriterError.InvalidWriter);
+        return writer_error(writer, C17WriterError::InvalidWriter);
     }
     if writer.cancelled {
-        return writer_error(writer, C17WriterError.Cancelled);
+        return writer_error(writer, C17WriterError::Cancelled);
     }
     if writer.failed {
-        return writer_error(writer, C17WriterError.InvalidState);
+        return writer_error(writer, C17WriterError::InvalidState);
     }
-    if writer.bytes_written > usize.MAX - text.len() { return writer_error(writer, C17WriterError.Overflow); }
+    if writer.bytes_written > usize.MAX - text.len() { return writer_error(writer, C17WriterError::Overflow); }
     if writer.config.max_output_bytes != 0 and
        (writer.bytes_written > writer.config.max_output_bytes or
        text.len() > writer.config.max_output_bytes - writer.bytes_written) {
-        return writer_error(writer, C17WriterError.OutputLimit);
+        return writer_error(writer, C17WriterError::OutputLimit);
     }
-    if writer.kind == C17WriterKind.Memory {
+    if writer.kind == C17WriterKind::Memory {
         if not writer_memory_reserve_internal(writer, writer.data.len() + text.len()) { return false; }
         set writer.data += text;
-    } elif writer.kind == C17WriterKind.Callback or writer.kind == C17WriterKind.File {
+    } elif writer.kind == C17WriterKind::Callback or writer.kind == C17WriterKind::File {
         let capacity = writer.config.buffer_capacity;
         if capacity == 0 {
             let callback = writer.write_fn?;
             let succeeded = callback(writer.user_data, text.as_ptr(), text.len());
-            if succeeded == false { return writer_error(writer, C17WriterError.Output); }
+            if succeeded == false { return writer_error(writer, C17WriterError::Output); }
         } else {
             if text.len() > capacity - writer.data.len() and not writer_flush_buffer(writer) { return false; }
             if text.len() >= capacity {
                 let callback = writer.write_fn?;
                 let succeeded = callback(writer.user_data, text.as_ptr(), text.len());
-                if succeeded == false { return writer_error(writer, C17WriterError.Output); }
+                if succeeded == false { return writer_error(writer, C17WriterError::Output); }
             } else {
-                if not writer_string_reserve(&mut writer.data, writer.data.len() + text.len()) { return writer_error(writer, C17WriterError.OutOfMemory); }
+                if not writer_string_reserve(&mut writer.data, writer.data.len() + text.len()) { return writer_error(writer, C17WriterError::OutOfMemory); }
                 set writer.data += text;
             }
         }
     } else {
-        return writer_error(writer, C17WriterError.Output);
+        return writer_error(writer, C17WriterError::Output);
     }
     set writer.bytes_written += text.len();
     if writer.config.track_hash {
@@ -451,19 +451,19 @@ proc writer_emit_indent(writer: &mut C17Writer) -> bool {
     }
     if writer.indent_level > writer.config.max_indent or
        writer.indent_level > usize.MAX / writer.config.indent_width {
-        if writer.indent_level > writer.config.max_indent { return writer_error(writer, C17WriterError.IndentLimit); }
-        return writer_error(writer, C17WriterError.Overflow);
+        if writer.indent_level > writer.config.max_indent { return writer_error(writer, C17WriterError::IndentLimit); }
+        return writer_error(writer, C17WriterError::Overflow);
     }
     let spaces: usize = writer.indent_level * writer.config.indent_width;
-    if writer.column > usize.MAX - spaces { return writer_error(writer, C17WriterError.Overflow); }
+    if writer.column > usize.MAX - spaces { return writer_error(writer, C17WriterError::Overflow); }
     if writer.config.max_output_bytes != 0 and
        (writer.bytes_written > writer.config.max_output_bytes or
        spaces > writer.config.max_output_bytes - writer.bytes_written) {
-        return writer_error(writer, C17WriterError.OutputLimit);
+        return writer_error(writer, C17WriterError::OutputLimit);
     }
     if writer.config.max_column != 0 and
        (writer.column > writer.config.max_column or spaces > writer.config.max_column - writer.column) {
-        return writer_error(writer, C17WriterError.ColumnLimit);
+        return writer_error(writer, C17WriterError::ColumnLimit);
     }
     let mut indent: string = "";
     let mut index: usize = 0;
@@ -478,9 +478,9 @@ proc writer_emit_indent(writer: &mut C17Writer) -> bool {
 pub proc vitte_c17_writer_write_n(writer: &mut C17Writer, data: string, length: usize) -> bool {
     if not vitte_c17_writer_is_valid(writer) { return false; }
     if writer.failed { return false; }
-    if writer.cancelled { return writer_error(writer, C17WriterError.Cancelled); }
+    if writer.cancelled { return writer_error(writer, C17WriterError::Cancelled); }
     if length > data.len() {
-        return writer_error(writer, C17WriterError.InvalidArgument);
+        return writer_error(writer, C17WriterError::InvalidArgument);
     }
     if length == 0 { return true; }
     let bytes = data.as_bytes();
@@ -500,13 +500,13 @@ pub proc vitte_c17_writer_write_n(writer: &mut C17Writer, data: string, length: 
         }
         if not writer_emit_indent(writer) { return false; }
         if byte == 10 {
-            if writer.line == usize.MAX { return writer_error(writer, C17WriterError.Overflow); }
+            if writer.line == usize.MAX { return writer_error(writer, C17WriterError::Overflow); }
             let next_line = writer.line + 1;
-            if writer.config.max_lines != 0 and next_line > writer.config.max_lines { return writer_error(writer, C17WriterError.LineLimit); }
+            if writer.config.max_lines != 0 and next_line > writer.config.max_lines { return writer_error(writer, C17WriterError::LineLimit); }
         } else {
-            if writer.column == usize.MAX { return writer_error(writer, C17WriterError.Overflow); }
+            if writer.column == usize.MAX { return writer_error(writer, C17WriterError::Overflow); }
             let next_column = writer.column + 1;
-            if writer.config.max_column != 0 and next_column > writer.config.max_column { return writer_error(writer, C17WriterError.ColumnLimit); }
+            if writer.config.max_column != 0 and next_column > writer.config.max_column { return writer_error(writer, C17WriterError::ColumnLimit); }
         }
         if not writer_emit(writer, string.from_byte(byte)) {
             return false;
@@ -518,7 +518,7 @@ pub proc vitte_c17_writer_write_n(writer: &mut C17Writer, data: string, length: 
             set writer.maximum_line = writer_max(writer.maximum_line, writer.line);
             set writer.column = 1;
             set writer.at_line_start = true;
-            if writer.config.flush_on_newline and (writer.kind == C17WriterKind.Callback or writer.kind == C17WriterKind.File) {
+            if writer.config.flush_on_newline and (writer.kind == C17WriterKind::Callback or writer.kind == C17WriterKind::File) {
                 if not vitte_c17_writer_flush(writer) { return false; }
             }
         } else {
@@ -542,7 +542,7 @@ pub proc vitte_c17_writer_write_char(writer: &mut C17Writer, character: char) ->
 pub proc vitte_c17_writer_repeat(writer: &mut C17Writer, character: char, count: usize) -> bool {
     if not vitte_c17_writer_is_valid(writer) { return false; }
     if writer.failed { return false; }
-    if writer.cancelled { return writer_error(writer, C17WriterError.Cancelled); }
+    if writer.cancelled { return writer_error(writer, C17WriterError::Cancelled); }
     let mut index: usize = 0;
     while index < count {
         if not vitte_c17_writer_write_char(writer, character) { return false; }
@@ -576,40 +576,40 @@ pub proc vitte_c17_writer_blank_line(writer: &mut C17Writer) -> bool {
 }
 
 pub proc vitte_c17_writer_indent(writer: &mut C17Writer) -> bool {
-    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError.InvalidWriter); }
+    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError::InvalidWriter); }
     if writer.failed { return false; }
-    if writer.indent_level >= writer.config.max_indent { return writer_error(writer, C17WriterError.IndentLimit); }
-    if writer.indent_level == usize.MAX { return writer_error(writer, C17WriterError.Overflow); }
+    if writer.indent_level >= writer.config.max_indent { return writer_error(writer, C17WriterError::IndentLimit); }
+    if writer.indent_level == usize.MAX { return writer_error(writer, C17WriterError::Overflow); }
     set writer.indent_level += 1;
     set writer.maximum_indent = writer_max(writer.maximum_indent, writer.indent_level);
     return true;
 }
 
 pub proc vitte_c17_writer_dedent(writer: &mut C17Writer) -> bool {
-    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError.InvalidWriter); }
+    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError::InvalidWriter); }
     if writer.failed { return false; }
-    if writer.indent_level == 0 { return writer_error(writer, C17WriterError.InvalidState); }
+    if writer.indent_level == 0 { return writer_error(writer, C17WriterError::InvalidState); }
     set writer.indent_level -= 1;
     return true;
 }
 
 pub proc vitte_c17_writer_set_indent(writer: &mut C17Writer, level: usize) -> bool {
-    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError.InvalidWriter); }
+    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError::InvalidWriter); }
     if writer.failed { return false; }
-    if level > writer.config.max_indent { return writer_error(writer, C17WriterError.IndentLimit); }
+    if level > writer.config.max_indent { return writer_error(writer, C17WriterError::IndentLimit); }
     set writer.indent_level = level;
     set writer.maximum_indent = writer_max(writer.maximum_indent, level);
     return true;
 }
 
 pub proc vitte_c17_writer_flush(writer: &mut C17Writer) -> bool {
-    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError.InvalidWriter); }
+    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError::InvalidWriter); }
     if writer.failed { return false; }
     if not writer_flush_buffer(writer) { return false; }
     if writer.flush_fn != null {
         let callback = writer.flush_fn?;
         let succeeded = callback(writer.user_data);
-        if succeeded == false { return writer_error(writer, C17WriterError.Output); }
+        if succeeded == false { return writer_error(writer, C17WriterError::Output); }
     }
     return true;
 }
@@ -617,12 +617,12 @@ pub proc vitte_c17_writer_flush(writer: &mut C17Writer) -> bool {
 pub proc vitte_c17_writer_cancel(writer: &mut C17Writer) {
     if writer.magic == WRITER_MAGIC {
         set writer.cancelled = true;
-        if writer.last_error == C17WriterError.None { set writer.last_error = C17WriterError.Cancelled; }
+        if writer.last_error == C17WriterError::None { set writer.last_error = C17WriterError::Cancelled; }
     }
 }
 
 pub proc vitte_c17_writer_memory_data(writer: &C17Writer) -> string {
-    if writer.kind != C17WriterKind.Memory or not vitte_c17_writer_is_valid(writer) { return ""; }
+    if writer.kind != C17WriterKind::Memory or not vitte_c17_writer_is_valid(writer) { return ""; }
     return writer.data;
 }
 
@@ -631,13 +631,13 @@ pub proc vitte_c17_writer_memory_length(writer: &C17Writer) -> usize {
 }
 
 pub proc vitte_c17_writer_memory_capacity(writer: &C17Writer) -> usize {
-    if writer.kind != C17WriterKind.Memory or not vitte_c17_writer_is_valid(writer) { return 0; }
+    if writer.kind != C17WriterKind::Memory or not vitte_c17_writer_is_valid(writer) { return 0; }
     return writer.memory_capacity;
 }
 
 pub proc vitte_c17_writer_memory_reserve(writer: &mut C17Writer, capacity: usize) -> bool {
     if not vitte_c17_writer_is_valid(writer) { return false; }
-    if writer.kind != C17WriterKind.Memory { return writer_error(writer, C17WriterError.NotMemoryWriter); }
+    if writer.kind != C17WriterKind::Memory { return writer_error(writer, C17WriterError::NotMemoryWriter); }
     return writer_memory_reserve_internal(writer, capacity);
 }
 
@@ -654,24 +654,24 @@ proc writer_recompute_memory_state(writer: &mut C17Writer) -> bool {
     let mut i: usize = 0;
     while i < bytes.len() {
         if writer.config.track_hash { set writer.hash = (writer.hash ^ (bytes[i] as u64)).wrapping_mul(WRITER_HASH_PRIME); }
-        if writer.bytes_written == usize.MAX { return writer_error(writer, C17WriterError.Overflow); }
+        if writer.bytes_written == usize.MAX { return writer_error(writer, C17WriterError::Overflow); }
         set writer.bytes_written += 1;
         if bytes[i] == 10 {
-            if writer.line == usize.MAX { return writer_error(writer, C17WriterError.Overflow); }
+            if writer.line == usize.MAX { return writer_error(writer, C17WriterError::Overflow); }
             set writer.line += 1;
             set writer.column = 1;
             set writer.maximum_line = writer_max(writer.maximum_line, writer.line);
             set writer.at_line_start = true;
             if writer.config.max_lines != 0 and writer.line > writer.config.max_lines {
-                return writer_error(writer, C17WriterError.LineLimit);
+                return writer_error(writer, C17WriterError::LineLimit);
             }
         } else {
             set writer.at_line_start = false;
-            if writer.column == usize.MAX { return writer_error(writer, C17WriterError.Overflow); }
+            if writer.column == usize.MAX { return writer_error(writer, C17WriterError::Overflow); }
             set writer.column += 1;
             set writer.maximum_column = writer_max(writer.maximum_column, writer.column);
             if writer.config.max_column != 0 and writer.column > writer.config.max_column {
-                return writer_error(writer, C17WriterError.ColumnLimit);
+                return writer_error(writer, C17WriterError::ColumnLimit);
             }
         }
         set i += 1;
@@ -681,20 +681,20 @@ proc writer_recompute_memory_state(writer: &mut C17Writer) -> bool {
 
 pub proc vitte_c17_writer_memory_truncate(writer: &mut C17Writer, length: usize) -> bool {
     if not vitte_c17_writer_is_valid(writer) { return false; }
-    if writer.kind != C17WriterKind.Memory { return writer_error(writer, C17WriterError.NotMemoryWriter); }
-    if length > writer.data.len() { return writer_error(writer, C17WriterError.InvalidArgument); }
+    if writer.kind != C17WriterKind::Memory { return writer_error(writer, C17WriterError::NotMemoryWriter); }
+    if length > writer.data.len() { return writer_error(writer, C17WriterError::InvalidArgument); }
     let mut truncated: string = string.with_capacity(length);
     let bytes = writer.data.as_bytes();
     let mut index: usize = 0;
     while index < length { set truncated += string.from_byte(bytes[index]); set index += 1; }
     set writer.data = truncated;
-    set writer.failed = false; set writer.cancelled = false; set writer.last_error = C17WriterError.None;
+    set writer.failed = false; set writer.cancelled = false; set writer.last_error = C17WriterError::None;
     return writer_recompute_memory_state(writer);
 }
 
 pub proc vitte_c17_writer_memory_detach(writer: &mut C17Writer, length: ?&mut usize) -> string {
     if not vitte_c17_writer_is_valid(writer) { return ""; }
-    if writer.kind != C17WriterKind.Memory { return ""; }
+    if writer.kind != C17WriterKind::Memory { return ""; }
     if length != null { set *length? = writer.data.len(); }
     let result = writer.data;
     set writer.data = if writer.memory_capacity == 0 { "" } else { string.with_capacity(writer.memory_capacity) };
@@ -707,14 +707,14 @@ pub proc vitte_c17_writer_memory_detach(writer: &mut C17Writer, length: ?&mut us
     set writer.maximum_indent = 0;
     set writer.at_line_start = true;
     set writer.last_was_cr = false;
-    set writer.failed = false; set writer.cancelled = false; set writer.last_error = C17WriterError.None; set writer.system_error = 0;
+    set writer.failed = false; set writer.cancelled = false; set writer.last_error = C17WriterError::None; set writer.system_error = 0;
     set writer.hash = WRITER_HASH_OFFSET;
     if writer.generation != 18446744073709551615 { set writer.generation += 1; }
     return result;
 }
 
 pub proc vitte_c17_writer_checkpoint(writer: &C17Writer) -> C17WriterCheckpoint {
-    if not vitte_c17_writer_is_valid(writer) or writer.kind != C17WriterKind.Memory {
+    if not vitte_c17_writer_is_valid(writer) or writer.kind != C17WriterKind::Memory {
         return C17WriterCheckpoint { valid: false, generation: 0, length: 0, bytes_written: 0, line: 0, column: 0, maximum_line: 0, maximum_column: 0, indent_level: 0, maximum_indent: 0, at_line_start: false, last_was_cr: false, hash: 0 };
     }
     return C17WriterCheckpoint { valid: true, generation: writer.generation, length: writer.data.len(), bytes_written: writer.bytes_written, line: writer.line, column: writer.column, maximum_line: writer.maximum_line, maximum_column: writer.maximum_column, indent_level: writer.indent_level, maximum_indent: writer.maximum_indent, at_line_start: writer.at_line_start, last_was_cr: writer.last_was_cr, hash: writer.hash };
@@ -722,10 +722,10 @@ pub proc vitte_c17_writer_checkpoint(writer: &C17Writer) -> C17WriterCheckpoint 
 
 pub proc vitte_c17_writer_rollback(writer: &mut C17Writer, checkpoint: &C17WriterCheckpoint) -> bool {
     if not vitte_c17_writer_is_valid(writer) { return false; }
-    if writer.kind != C17WriterKind.Memory { return writer_error(writer, C17WriterError.NotMemoryWriter); }
+    if writer.kind != C17WriterKind::Memory { return writer_error(writer, C17WriterError::NotMemoryWriter); }
     if not checkpoint.valid or checkpoint.generation != writer.generation or
        not vitte_c17_writer_memory_truncate(writer, checkpoint.length) {
-        return writer_error(writer, C17WriterError.InvalidCheckpoint);
+        return writer_error(writer, C17WriterError::InvalidCheckpoint);
     }
     set writer.bytes_written = checkpoint.bytes_written;
     set writer.line = checkpoint.line;
@@ -759,22 +759,22 @@ pub proc vitte_c17_writer_comment(writer: &mut C17Writer, text: string) -> bool 
 
 pub proc vitte_c17_writer_stats(writer: &C17Writer) -> C17WriterStats {
     if not vitte_c17_writer_is_valid(writer) {
-        return C17WriterStats { valid: false, kind: C17WriterKind.Invalid, bytes_written: 0, line: 0, column: 0, maximum_line: 0, maximum_column: 0, indent_level: 0, maximum_indent: 0, buffered_bytes: 0, memory_length: 0, memory_capacity: 0, hash: 0, failed: false, cancelled: false, generation: 0 };
+        return C17WriterStats { valid: false, kind: C17WriterKind::Invalid, bytes_written: 0, line: 0, column: 0, maximum_line: 0, maximum_column: 0, indent_level: 0, maximum_indent: 0, buffered_bytes: 0, memory_length: 0, memory_capacity: 0, hash: 0, failed: false, cancelled: false, generation: 0 };
     }
     let valid = vitte_c17_writer_validate(writer);
     let mut memory_length: usize = 0;
     let mut memory_capacity: usize = 0;
-    if writer.kind == C17WriterKind.Memory {
+    if writer.kind == C17WriterKind::Memory {
         set memory_length = writer.data.len();
         set memory_capacity = vitte_c17_writer_memory_capacity(writer);
     }
-    let buffered_bytes = if writer.kind == C17WriterKind.Callback or writer.kind == C17WriterKind.File { writer.data.len() } else { 0 as usize };
+    let buffered_bytes = if writer.kind == C17WriterKind::Callback or writer.kind == C17WriterKind::File { writer.data.len() } else { 0 as usize };
     let hash = if writer.config.track_hash { writer.hash } else { 0 as u64 };
     return C17WriterStats { valid: valid, kind: writer.kind, bytes_written: writer.bytes_written, line: writer.line, column: writer.column, maximum_line: writer.maximum_line, maximum_column: writer.maximum_column, indent_level: writer.indent_level, maximum_indent: writer.maximum_indent, buffered_bytes: buffered_bytes, memory_length: memory_length, memory_capacity: memory_capacity, hash: hash, failed: writer.failed, cancelled: writer.cancelled, generation: writer.generation };
 }
 
 pub proc vitte_c17_writer_last_error(writer: &C17Writer) -> C17WriterError {
-    if not vitte_c17_writer_is_valid(writer) { return C17WriterError.InvalidWriter; }
+    if not vitte_c17_writer_is_valid(writer) { return C17WriterError::InvalidWriter; }
     return writer.last_error;
 }
 
@@ -785,14 +785,14 @@ pub proc vitte_c17_writer_system_error(writer: &C17Writer) -> i64 {
 
 pub proc vitte_c17_writer_clear_error(writer: &mut C17Writer) {
     if writer.magic == WRITER_MAGIC and not writer.failed and not writer.cancelled {
-        set writer.last_error = C17WriterError.None;
+        set writer.last_error = C17WriterError::None;
         set writer.system_error = 0;
     }
 }
 
 /// Reset writer state and clear its output buffer; bytes already delivered to a sink cannot be undone.
 pub proc vitte_c17_writer_reset(writer: &mut C17Writer) -> bool {
-    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError.InvalidWriter); }
+    if not vitte_c17_writer_is_valid(writer) { return writer_error(writer, C17WriterError::InvalidWriter); }
     set writer.data = "";
     set writer.bytes_written = 0;
     set writer.line = 1;
@@ -805,7 +805,7 @@ pub proc vitte_c17_writer_reset(writer: &mut C17Writer) -> bool {
     set writer.last_was_cr = false;
     set writer.failed = false;
     set writer.cancelled = false;
-    set writer.last_error = C17WriterError.None;
+    set writer.last_error = C17WriterError::None;
     set writer.system_error = 0;
     set writer.hash = WRITER_HASH_OFFSET;
     if writer.generation != 18446744073709551615 { set writer.generation += 1; }
@@ -816,14 +816,14 @@ pub proc vitte_c17_writer_destroy(writer: &mut C17Writer) -> bool {
     if not vitte_c17_writer_is_valid(writer) { return false; }
     let mut success = true;
     if not writer.failed and not writer.cancelled and not vitte_c17_writer_flush(writer) { set success = false; }
-    if writer.kind == C17WriterKind.File and writer.close_on_destroy and writer.user_data != null {
+    if writer.kind == C17WriterKind::File and writer.close_on_destroy and writer.user_data != null {
         if fclose(writer.user_data as *mut u8) != 0 { set success = false; }
     }
     set writer.data = "";
     set *writer = C17Writer {
-        magic: WRITER_DEAD_MAGIC, kind: C17WriterKind.Invalid,
+        magic: WRITER_DEAD_MAGIC, kind: C17WriterKind::Invalid,
         config: C17WriterConfig { indent_width: 0, max_indent: 0, max_output_bytes: 0, max_lines: 0, max_column: 0, buffer_capacity: 0, memory_initial_capacity: 0, auto_indent: false, normalize_newlines: false, flush_on_newline: false, track_hash: false },
-        last_error: C17WriterError.None, system_error: 0, write_fn: null, flush_fn: null, user_data: null,
+        last_error: C17WriterError::None, system_error: 0, write_fn: null, flush_fn: null, user_data: null,
         data: "", memory_capacity: 0, close_on_destroy: false, bytes_written: 0, line: 0, column: 0,
         maximum_line: 0, maximum_column: 0, indent_level: 0, maximum_indent: 0,
         at_line_start: false, last_was_cr: false, failed: false, cancelled: false,
@@ -833,20 +833,20 @@ pub proc vitte_c17_writer_destroy(writer: &mut C17Writer) -> bool {
 }
 
 pub proc vitte_c17_writer_at_line_start(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.at_line_start; }
-pub proc vitte_c17_writer_buffered_bytes(writer: &C17Writer) -> usize { if writer.magic != WRITER_MAGIC or (writer.kind != C17WriterKind.Callback and writer.kind != C17WriterKind.File) { return 0; } return writer.data.len(); }
+pub proc vitte_c17_writer_buffered_bytes(writer: &C17Writer) -> usize { if writer.magic != WRITER_MAGIC or (writer.kind != C17WriterKind::Callback and writer.kind != C17WriterKind::File) { return 0; } return writer.data.len(); }
 pub proc vitte_c17_writer_bytes_written(writer: &C17Writer) -> usize { if writer.magic != WRITER_MAGIC { return 0; } return writer.bytes_written; }
 pub proc vitte_c17_writer_column(writer: &C17Writer) -> usize { if writer.magic != WRITER_MAGIC { return 0; } return writer.column; }
 pub proc vitte_c17_writer_generation(writer: &C17Writer) -> u64 { if writer.magic != WRITER_MAGIC { return 0; } return writer.generation; }
-pub proc vitte_c17_writer_has_buffered_output(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and (writer.kind == C17WriterKind.Callback or writer.kind == C17WriterKind.File) and writer.data.len() != 0; }
-pub proc vitte_c17_writer_has_error(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.last_error != C17WriterError.None; }
+pub proc vitte_c17_writer_has_buffered_output(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and (writer.kind == C17WriterKind::Callback or writer.kind == C17WriterKind::File) and writer.data.len() != 0; }
+pub proc vitte_c17_writer_has_error(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.last_error != C17WriterError::None; }
 pub proc vitte_c17_writer_has_failed(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.failed; }
 pub proc vitte_c17_writer_has_output_limit(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.config.max_output_bytes != 0; }
 pub proc vitte_c17_writer_hash(writer: &C17Writer) -> u64 { if writer.magic != WRITER_MAGIC or not writer.config.track_hash { return 0; } return writer.hash; }
 pub proc vitte_c17_writer_indent_level(writer: &C17Writer) -> usize { if writer.magic != WRITER_MAGIC { return 0; } return writer.indent_level; }
 pub proc vitte_c17_writer_indent_width(writer: &C17Writer) -> usize { if writer.magic != WRITER_MAGIC { return 0; } return writer.config.indent_width; }
-pub proc vitte_c17_writer_is_callback(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.kind == C17WriterKind.Callback; }
-pub proc vitte_c17_writer_is_file(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.kind == C17WriterKind.File; }
-pub proc vitte_c17_writer_is_memory(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.kind == C17WriterKind.Memory; }
+pub proc vitte_c17_writer_is_callback(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.kind == C17WriterKind::Callback; }
+pub proc vitte_c17_writer_is_file(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.kind == C17WriterKind::File; }
+pub proc vitte_c17_writer_is_memory(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.kind == C17WriterKind::Memory; }
 pub proc vitte_c17_writer_is_usable(writer: &C17Writer) -> bool { return vitte_c17_writer_is_valid(writer) and not writer.failed and not writer.cancelled; }
 pub proc vitte_c17_writer_is_cancelled(writer: &C17Writer) -> bool { return writer.magic == WRITER_MAGIC and writer.cancelled; }
 pub proc vitte_c17_writer_line(writer: &C17Writer) -> usize { if writer.magic != WRITER_MAGIC { return 0; } return writer.line; }

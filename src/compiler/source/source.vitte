@@ -119,8 +119,8 @@ proc source_context_valid(context: ?&SourceContext) -> bool {
     if context == null  or  context.magic != SOURCE_MAGIC {
         return false;
     }
-    return context.state == SourceState.Ready  or
-           context.state == SourceState.Failed;
+    return context.state == SourceState::Ready  or
+           context.state == SourceState::Failed;
 }
 
 proc source_fail(context: ?&mut SourceContext, error: SourceError) -> bool {
@@ -128,8 +128,8 @@ proc source_fail(context: ?&mut SourceContext, error: SourceError) -> bool {
         let context_value = context?;
         if context_value.magic != SOURCE_MAGIC { return false; }
         set context_value.last_error = error;
-        if error != SourceError.None {
-            set context_value.state = SourceState.Failed;
+        if error != SourceError::None {
+            set context_value.state = SourceState::Failed;
         }
     }
     return false;
@@ -139,8 +139,8 @@ proc source_ready(context: ?&mut SourceContext) -> bool {
     if not source_context_valid(context) {
         return false;
     }
-    if context.state != SourceState.Ready {
-        return source_fail(context, SourceError.InvalidState);
+    if context.state != SourceState::Ready {
+        return source_fail(context, SourceError::InvalidState);
     }
     return true;
 }
@@ -162,7 +162,7 @@ proc source_decode(data: string, length: usize, offset: usize, codepoint: &mut u
         return false;
     }
     let decoded = vitte_unicode_decode_utf8(data, offset, length);
-    if decoded.error != UnicodeError.None  or  decoded.length == 0 {
+    if decoded.error != UnicodeError::None  or  decoded.length == 0 {
         return false;
     }
     set *codepoint = decoded.codepoint;
@@ -373,8 +373,8 @@ export proc vitte_source_state_name(state: SourceState) -> string {
 export proc vitte_source_init(context: &mut SourceContext) -> bool {
     set *context = SourceContext {
         magic: SOURCE_MAGIC,
-        state: SourceState.Ready,
-        last_error: SourceError.None,
+        state: SourceState::Ready,
+        last_error: SourceError::None,
         sources: [],
         source_count: 0,
         source_capacity: 0,
@@ -385,8 +385,8 @@ export proc vitte_source_init(context: &mut SourceContext) -> bool {
     };
     if not context.sources.reserve(8) {
         set context.stats.allocation_failures = 1;
-        set context.state = SourceState.Failed;
-        set context.last_error = SourceError.OutOfMemory;
+        set context.state = SourceState::Failed;
+        set context.last_error = SourceError::OutOfMemory;
         return false;
     }
     set context.stats.allocations = 1;
@@ -403,22 +403,22 @@ export proc vitte_source_reset(context: &mut SourceContext) -> bool {
     }
     context.sources.clear();
     set context.source_count = 0;
-    set context.state = SourceState.Ready;
-    set context.last_error = SourceError.None;
+    set context.state = SourceState::Ready;
+    set context.last_error = SourceError::None;
     set context.stats.resets = source_stats_increment(context.stats.resets, 1);
     return true;
 }
 
 export proc vitte_source_destroy(context: &mut SourceContext) {
-    if context.magic == SOURCE_DEAD_MAGIC  and  context.state == SourceState.Destroyed {
+    if context.magic == SOURCE_DEAD_MAGIC  and  context.state == SourceState::Destroyed {
         return;
     }
     set context.sources = [];
     set context.source_count = 0;
     set context.source_capacity = 0;
     set context.magic = SOURCE_DEAD_MAGIC;
-    set context.state = SourceState.Destroyed;
-    set context.last_error = SourceError.None;
+    set context.state = SourceState::Destroyed;
+    set context.last_error = SourceError::None;
     set context.max_sources = 0;
     set context.max_source_bytes = 0;
     set context.generation = 0;
@@ -431,7 +431,7 @@ export proc vitte_source_is_valid(context: ?&SourceContext) -> bool {
 
 export proc vitte_source_last_error(context: ?&SourceContext) -> SourceError {
     if not source_context_valid(context) {
-        return SourceError.InvalidContext;
+        return SourceError::InvalidContext;
     }
     return context.last_error;
 }
@@ -446,12 +446,12 @@ export proc vitte_source_generation(context: ?&SourceContext) -> u64 {
 export proc vitte_source_set_limits(context: &mut SourceContext, max_sources: usize, max_source_bytes: usize) -> bool {
     if not source_ready(context) { return false; }
     if max_sources == 0  or  max_source_bytes == 0  or  max_sources < context.source_count {
-        set context.last_error = SourceError.InvalidArgument;
+        set context.last_error = SourceError::InvalidArgument;
         return false;
     }
     set context.max_sources = max_sources;
     set context.max_source_bytes = max_source_bytes;
-    set context.last_error = SourceError.None;
+    set context.last_error = SourceError::None;
     return true;
 }
 
@@ -460,15 +460,15 @@ export proc vitte_source_add(context: &mut SourceContext, name: string, path: st
     if not source_ready(context) { return false; }
     let input_data: string = data;
     if length > input_data.length {
-        set context.last_error = SourceError.InvalidArgument;
+        set context.last_error = SourceError::InvalidArgument;
         return false;
     }
     if length > context.max_source_bytes {
-        return source_fail(context, SourceError.SourceTooLarge);
+        return source_fail(context, SourceError::SourceTooLarge);
     }
     if context.source_count >= context.max_sources  or
        context.source_count as u64 >= SOURCE_ID_MAX {
-        return source_fail(context, SourceError.SourceLimit);
+        return source_fail(context, SourceError::SourceLimit);
     }
     let actual_name: string = name;
     let actual_path: string = path;
@@ -477,7 +477,7 @@ export proc vitte_source_add(context: &mut SourceContext, name: string, path: st
         while index < context.source_count {
             let existing = &context.sources[index];
             if existing.path == actual_path {
-                set context.last_error = SourceError.DuplicatePath;
+                set context.last_error = SourceError::DuplicatePath;
                 return false;
             }
             set index += 1;
@@ -485,12 +485,12 @@ export proc vitte_source_add(context: &mut SourceContext, name: string, path: st
     }
     let source_data: string = input_data.slice(0, length);
     if not source_validate_bytes(source_data, length) {
-        set context.last_error = SourceError.InvalidUtf8;
+        set context.last_error = SourceError::InvalidUtf8;
         return false;
     }
     let line_offsets = source_build_line_offsets(source_data, length);
     if line_offsets.length == 0 {
-        set context.last_error = SourceError.OutOfMemory;
+        set context.last_error = SourceError::OutOfMemory;
         return false;
     }
     let required: usize = context.source_count + 1;
@@ -498,13 +498,13 @@ export proc vitte_source_add(context: &mut SourceContext, name: string, path: st
         let mut capacity: usize = if context.source_capacity == 0 { 8 as usize } else { context.source_capacity };
         while capacity < required {
             if capacity > SOURCE_SIZE_MAX_VALUE / 2 {
-                return source_fail(context, SourceError.Overflow);
+                return source_fail(context, SourceError::Overflow);
             }
             set capacity *= 2;
         }
         if not context.sources.reserve(capacity) {
             context.stats.allocation_failures = source_stats_increment(context.stats.allocation_failures, 1);
-            return source_fail(context, SourceError.OutOfMemory);
+            return source_fail(context, SourceError::OutOfMemory);
         }
         if context.source_capacity != 0 {
             set context.stats.reallocations = source_stats_increment(context.stats.reallocations, 1);
@@ -526,14 +526,14 @@ export proc vitte_source_add(context: &mut SourceContext, name: string, path: st
     };
     if not context.sources.push(source_entry) {
         context.stats.allocation_failures = source_stats_increment(context.stats.allocation_failures, 1);
-        return source_fail(context, SourceError.OutOfMemory);
+        return source_fail(context, SourceError::OutOfMemory);
     }
     set context.source_count += 1;
     set context.stats.sources_added = source_stats_increment(context.stats.sources_added, 1);
     set context.stats.allocations = source_stats_increment(context.stats.allocations, 4);
     set context.stats.bytes_added = source_stats_increment(context.stats.bytes_added, length as u64);
     set context.stats.lines_indexed = source_stats_increment(context.stats.lines_indexed, source_entry.line_count as u64);
-    set context.last_error = SourceError.None;
+    set context.last_error = SourceError::None;
     if out_source_id != null { let output = out_source_id?; set *output = source_entry.id; }
     return true;
 }
@@ -749,9 +749,9 @@ export proc vitte_source_validate(context: &mut SourceContext) -> bool {
     }
     if failure {
         set context.stats.validation_failures = source_stats_increment(context.stats.validation_failures, 1);
-        return source_fail(context, SourceError.Validation);
+        return source_fail(context, SourceError::Validation);
     }
-    set context.last_error = SourceError.None;
+    set context.last_error = SourceError::None;
     return true;
 }
 

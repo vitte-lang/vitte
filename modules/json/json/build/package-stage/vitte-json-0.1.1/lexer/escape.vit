@@ -106,7 +106,7 @@ form JsonEscapeDecodeResult {
 
 proc empty_escape() -> JsonEscape {
     return JsonEscape {
-        kind: JsonEscapeKind.None,
+        kind: JsonEscapeKind::None,
 
         scalar: 0,
 
@@ -124,7 +124,7 @@ proc escape_success(
 
         value: value,
 
-        error: JsonEscapeError.None,
+        error: JsonEscapeError::None,
 
         error_span: empty_span(),
     };
@@ -155,7 +155,7 @@ proc decode_success(
 
         text: text,
 
-        error: JsonEscapeError.None,
+        error: JsonEscapeError::None,
 
         error_span: empty_span(),
 
@@ -194,42 +194,42 @@ export proc escape_error_name(
     error: JsonEscapeError
 ) -> string {
     if error ==
-       JsonEscapeError.None {
+       JsonEscapeError::None {
         return "none";
     }
 
     if error ==
-       JsonEscapeError.UnexpectedEnd {
+       JsonEscapeError::UnexpectedEnd {
         return "unexpected end of escape sequence";
     }
 
     if error ==
-       JsonEscapeError.InvalidEscape {
+       JsonEscapeError::InvalidEscape {
         return "invalid JSON escape sequence";
     }
 
     if error ==
-       JsonEscapeError.InvalidHexDigit {
+       JsonEscapeError::InvalidHexDigit {
         return "invalid hexadecimal digit in Unicode escape";
     }
 
     if error ==
-       JsonEscapeError.IncompleteUnicodeEscape {
+       JsonEscapeError::IncompleteUnicodeEscape {
         return "incomplete JSON Unicode escape";
     }
 
     if error ==
-       JsonEscapeError.UnexpectedLowSurrogate {
+       JsonEscapeError::UnexpectedLowSurrogate {
         return "unexpected UTF-16 low surrogate";
     }
 
     if error ==
-       JsonEscapeError.MissingLowSurrogate {
+       JsonEscapeError::MissingLowSurrogate {
         return "missing UTF-16 low surrogate";
     }
 
     if error ==
-       JsonEscapeError.InvalidLowSurrogate {
+       JsonEscapeError::InvalidLowSurrogate {
         return "invalid UTF-16 low surrogate";
     }
 
@@ -244,47 +244,47 @@ proc kind_name(
     kind: JsonEscapeKind
 ) -> string {
     if kind ==
-       JsonEscapeKind.None {
+       JsonEscapeKind::None {
         return "none";
     }
 
     if kind ==
-       JsonEscapeKind.Quote {
+       JsonEscapeKind::Quote {
         return "quote";
     }
 
     if kind ==
-       JsonEscapeKind.Backslash {
+       JsonEscapeKind::Backslash {
         return "backslash";
     }
 
     if kind ==
-       JsonEscapeKind.Slash {
+       JsonEscapeKind::Slash {
         return "slash";
     }
 
     if kind ==
-       JsonEscapeKind.Backspace {
+       JsonEscapeKind::Backspace {
         return "backspace";
     }
 
     if kind ==
-       JsonEscapeKind.FormFeed {
+       JsonEscapeKind::FormFeed {
         return "form-feed";
     }
 
     if kind ==
-       JsonEscapeKind.Newline {
+       JsonEscapeKind::Newline {
         return "newline";
     }
 
     if kind ==
-       JsonEscapeKind.CarriageReturn {
+       JsonEscapeKind::CarriageReturn {
         return "carriage-return";
     }
 
     if kind ==
-       JsonEscapeKind.Tab {
+       JsonEscapeKind::Tab {
         return "tab";
     }
 
@@ -587,80 +587,80 @@ proc simple_escape_kind(
     value: char
 ) -> JsonEscapeKind {
     if value == '"' {
-        return JsonEscapeKind.Quote;
+        return JsonEscapeKind::Quote;
     }
 
     if value == '\\' {
-        return JsonEscapeKind.Backslash;
+        return JsonEscapeKind::Backslash;
     }
 
     if value == '/' {
-        return JsonEscapeKind.Slash;
+        return JsonEscapeKind::Slash;
     }
 
     if value == 'b' {
-        return JsonEscapeKind.Backspace;
+        return JsonEscapeKind::Backspace;
     }
 
     if value == 'f' {
-        return JsonEscapeKind.FormFeed;
+        return JsonEscapeKind::FormFeed;
     }
 
     if value == 'n' {
-        return JsonEscapeKind.Newline;
+        return JsonEscapeKind::Newline;
     }
 
     if value == 'r' {
-        return JsonEscapeKind.CarriageReturn;
+        return JsonEscapeKind::CarriageReturn;
     }
 
     if value == 't' {
-        return JsonEscapeKind.Tab;
+        return JsonEscapeKind::Tab;
     }
 
-    return JsonEscapeKind.None;
+    return JsonEscapeKind::None;
 }
 
 proc simple_escape_scalar(
     kind: JsonEscapeKind
 ) -> u64 {
     if kind ==
-       JsonEscapeKind.Quote {
+       JsonEscapeKind::Quote {
         return '"' as u64;
     }
 
     if kind ==
-       JsonEscapeKind.Backslash {
+       JsonEscapeKind::Backslash {
         return '\\' as u64;
     }
 
     if kind ==
-       JsonEscapeKind.Slash {
+       JsonEscapeKind::Slash {
         return '/' as u64;
     }
 
     if kind ==
-       JsonEscapeKind.Backspace {
+       JsonEscapeKind::Backspace {
         return 8;
     }
 
     if kind ==
-       JsonEscapeKind.FormFeed {
+       JsonEscapeKind::FormFeed {
         return 12;
     }
 
     if kind ==
-       JsonEscapeKind.Newline {
+       JsonEscapeKind::Newline {
         return 10;
     }
 
     if kind ==
-       JsonEscapeKind.CarriageReturn {
+       JsonEscapeKind::CarriageReturn {
         return 13;
     }
 
     if kind ==
-       JsonEscapeKind.Tab {
+       JsonEscapeKind::Tab {
         return 9;
     }
 
@@ -677,7 +677,7 @@ proc validate_hex4(
 ) -> JsonEscapeError {
     if index + JSON_ESCAPE_HEX_DIGITS >
        source.length {
-        return JsonEscapeError.IncompleteUnicodeEscape;
+        return JsonEscapeError::IncompleteUnicodeEscape;
     }
 
     let mut cursor: usize =
@@ -691,13 +691,13 @@ proc validate_hex4(
           end {
         if not is_hex_digit(
             source[cursor]) {
-            return JsonEscapeError.InvalidHexDigit;
+            return JsonEscapeError::InvalidHexDigit;
         }
 
         set cursor += 1;
     }
 
-    return JsonEscapeError.None;
+    return JsonEscapeError::None;
 }
 
 /// -------------------------------------------------------------------------
@@ -713,7 +713,7 @@ export proc decode_escape(
     if index >=
        source.length {
         return escape_failure(
-            JsonEscapeError.UnexpectedEnd,
+            JsonEscapeError::UnexpectedEnd,
             source_span(
                 source,
                 index,
@@ -722,7 +722,7 @@ export proc decode_escape(
 
     if source[index] != '\\' {
         return escape_failure(
-            JsonEscapeError.InvalidEscape,
+            JsonEscapeError::InvalidEscape,
             source_span(
                 source,
                 index,
@@ -732,7 +732,7 @@ export proc decode_escape(
     if index + 1 >=
        source.length {
         return escape_failure(
-            JsonEscapeError.UnexpectedEnd,
+            JsonEscapeError::UnexpectedEnd,
             source_span(
                 source,
                 index,
@@ -747,7 +747,7 @@ export proc decode_escape(
             marker);
 
     if simple_kind !=
-       JsonEscapeKind.None {
+       JsonEscapeKind::None {
         return escape_success(
             JsonEscape {
                 kind: simple_kind,
@@ -768,7 +768,7 @@ export proc decode_escape(
 
     if marker != 'u' {
         return escape_failure(
-            JsonEscapeError.InvalidEscape,
+            JsonEscapeError::InvalidEscape,
             source_span(
                 source,
                 index,
@@ -785,7 +785,7 @@ export proc decode_escape(
                 first_digits);
 
     if first_validation !=
-       JsonEscapeError.None {
+       JsonEscapeError::None {
         let mut failure_end: usize =
             source.length;
 
@@ -813,7 +813,7 @@ export proc decode_escape(
     if is_low_surrogate(
         first) {
         return escape_failure(
-            JsonEscapeError.UnexpectedLowSurrogate,
+            JsonEscapeError::UnexpectedLowSurrogate,
             source_span(
                 source,
                 index,
@@ -825,7 +825,7 @@ export proc decode_escape(
         if not is_valid_unicode_scalar(
             first) {
             return escape_failure(
-                JsonEscapeError.InvalidUnicodeScalar,
+                JsonEscapeError::InvalidUnicodeScalar,
                 source_span(
                     source,
                     index,
@@ -835,7 +835,7 @@ export proc decode_escape(
         return escape_success(
             JsonEscape {
                 kind:
-                    JsonEscapeKind.Unicode,
+                    JsonEscapeKind::Unicode,
 
                 scalar:
                     first,
@@ -857,7 +857,7 @@ export proc decode_escape(
     if second_escape + 1 >=
        source.length {
         return escape_failure(
-            JsonEscapeError.MissingLowSurrogate,
+            JsonEscapeError::MissingLowSurrogate,
             source_span(
                 source,
                 index,
@@ -876,7 +876,7 @@ export proc decode_escape(
         }
 
         return escape_failure(
-            JsonEscapeError.MissingLowSurrogate,
+            JsonEscapeError::MissingLowSurrogate,
             source_span(
                 source,
                 index,
@@ -893,7 +893,7 @@ export proc decode_escape(
                 second_digits);
 
     if second_validation !=
-       JsonEscapeError.None {
+       JsonEscapeError::None {
         return escape_failure(
             second_validation,
             source_span(
@@ -910,7 +910,7 @@ export proc decode_escape(
     if not is_low_surrogate(
         second) {
         return escape_failure(
-            JsonEscapeError.InvalidLowSurrogate,
+            JsonEscapeError::InvalidLowSurrogate,
             source_span(
                 source,
                 second_escape,
@@ -925,7 +925,7 @@ export proc decode_escape(
     if not is_valid_unicode_scalar(
         scalar) {
         return escape_failure(
-            JsonEscapeError.InvalidUnicodeScalar,
+            JsonEscapeError::InvalidUnicodeScalar,
             source_span(
                 source,
                 index,
@@ -935,7 +935,7 @@ export proc decode_escape(
     return escape_success(
         JsonEscape {
             kind:
-                JsonEscapeKind.Unicode,
+                JsonEscapeKind::Unicode,
 
             scalar:
                 scalar,
@@ -959,7 +959,7 @@ export proc escape_text(
     value: &JsonEscape
 ) -> string {
     if value.kind ==
-       JsonEscapeKind.None {
+       JsonEscapeKind::None {
         return "";
     }
 
@@ -1022,7 +1022,7 @@ proc decode(
             set escape_count += 1;
 
             if result.value.kind ==
-               JsonEscapeKind.Unicode {
+               JsonEscapeKind::Unicode {
                 set unicode_escape_count += 1;
             }
 
@@ -1037,7 +1037,7 @@ proc decode(
 
         if scalar < 0x20 {
             return decode_failure(
-                JsonEscapeError.InvalidEscape,
+                JsonEscapeError::InvalidEscape,
                 source_span(
                     source,
                     index,
@@ -1049,7 +1049,7 @@ proc decode(
         if not is_valid_unicode_scalar(
             scalar) {
             return decode_failure(
-                JsonEscapeError.InvalidUnicodeScalar,
+                JsonEscapeError::InvalidUnicodeScalar,
                 source_span(
                     source,
                     index,
@@ -1149,7 +1149,7 @@ proc count_unicode_escapes(
             }
 
             if decoded.value.kind ==
-               JsonEscapeKind.Unicode {
+               JsonEscapeKind::Unicode {
                 set result += 1;
             }
 
@@ -1174,7 +1174,7 @@ proc is_simple_escape_marker(
 ) -> bool {
     return simple_escape_kind(
         value) !=
-        JsonEscapeKind.None;
+        JsonEscapeKind::None;
 }
 
 proc is_unicode_escape_at(
@@ -1309,7 +1309,7 @@ test "json lexer escape quote" {
     assert result.ok;
 
     assert result.value.kind ==
-        JsonEscapeKind.Quote;
+        JsonEscapeKind::Quote;
 
     assert result.value.scalar ==
         '"' as u64;
@@ -1327,7 +1327,7 @@ test "json lexer escape backslash" {
     assert result.ok;
 
     assert result.value.kind ==
-        JsonEscapeKind.Backslash;
+        JsonEscapeKind::Backslash;
 
     assert result.value.scalar ==
         '\\' as u64;
@@ -1343,7 +1343,7 @@ test "json lexer escape slash" {
     assert result.ok;
 
     assert result.value.kind ==
-        JsonEscapeKind.Slash;
+        JsonEscapeKind::Slash;
 
     assert result.value.scalar ==
         '/' as u64;
@@ -1423,7 +1423,7 @@ test "json lexer escape bmp unicode" {
     assert result.ok;
 
     assert result.value.kind ==
-        JsonEscapeKind.Unicode;
+        JsonEscapeKind::Unicode;
 
     assert result.value.scalar ==
         0x41;
@@ -1454,7 +1454,7 @@ test "json lexer escape surrogate pair" {
     assert result.ok;
 
     assert result.value.kind ==
-        JsonEscapeKind.Unicode;
+        JsonEscapeKind::Unicode;
 
     assert result.value.scalar ==
         0x1F600;
@@ -1476,7 +1476,7 @@ test "json lexer escape invalid marker" {
     assert not result.ok;
 
     assert result.error ==
-        JsonEscapeError.InvalidEscape;
+        JsonEscapeError::InvalidEscape;
 }
 
 test "json lexer escape incomplete unicode" {
@@ -1489,7 +1489,7 @@ test "json lexer escape incomplete unicode" {
     assert not result.ok;
 
     assert result.error ==
-        JsonEscapeError.IncompleteUnicodeEscape;
+        JsonEscapeError::IncompleteUnicodeEscape;
 }
 
 test "json lexer escape invalid hexadecimal" {
@@ -1502,7 +1502,7 @@ test "json lexer escape invalid hexadecimal" {
     assert not result.ok;
 
     assert result.error ==
-        JsonEscapeError.InvalidHexDigit;
+        JsonEscapeError::InvalidHexDigit;
 }
 
 test "json lexer escape unexpected low surrogate" {
@@ -1515,7 +1515,7 @@ test "json lexer escape unexpected low surrogate" {
     assert not result.ok;
 
     assert result.error ==
-        JsonEscapeError.UnexpectedLowSurrogate;
+        JsonEscapeError::UnexpectedLowSurrogate;
 }
 
 test "json lexer escape missing low surrogate" {
@@ -1528,7 +1528,7 @@ test "json lexer escape missing low surrogate" {
     assert not result.ok;
 
     assert result.error ==
-        JsonEscapeError.MissingLowSurrogate;
+        JsonEscapeError::MissingLowSurrogate;
 }
 
 test "json lexer escape invalid low surrogate" {
@@ -1541,7 +1541,7 @@ test "json lexer escape invalid low surrogate" {
     assert not result.ok;
 
     assert result.error ==
-        JsonEscapeError.InvalidLowSurrogate;
+        JsonEscapeError::InvalidLowSurrogate;
 }
 
 /// -------------------------------------------------------------------------

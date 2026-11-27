@@ -121,7 +121,7 @@ proc integer(
     value: i64
 ) -> JsonNumber {
     return JsonNumber {
-        kind: JsonNumberKind.Integer,
+        kind: JsonNumberKind::Integer,
         integer_value: value,
         float_value: ZERO_F64,
     };
@@ -131,7 +131,7 @@ proc float(
     value: f64
 ) -> JsonNumber {
     return JsonNumber {
-        kind: JsonNumberKind.Float,
+        kind: JsonNumberKind::Float,
         integer_value: ZERO_I64,
         float_value: value,
     };
@@ -169,14 +169,14 @@ proc is_integer(
     number: &JsonNumber
 ) -> bool {
     return number.kind ==
-         JsonNumberKind.Integer;
+         JsonNumberKind::Integer;
 }
 
 proc is_float(
     number: &JsonNumber
 ) -> bool {
     return number.kind ==
-         JsonNumberKind.Float;
+         JsonNumberKind::Float;
 }
 
 proc as_integer(
@@ -836,7 +836,7 @@ proc parse_success(
     return JsonNumberParseResult {
         ok: true,
         value: value,
-        error: JsonNumberParseError.None,
+        error: JsonNumberParseError::None,
         offset: offset,
     };
 }
@@ -866,7 +866,7 @@ proc scan_number(
 ) -> JsonNumberParseResult {
     if text.length == 0 {
         return parse_error(
-            JsonNumberParseError.Empty,
+            JsonNumberParseError::Empty,
             0);
     }
 
@@ -877,14 +877,14 @@ proc scan_number(
 
         if index >= text.length {
             return parse_error(
-                JsonNumberParseError.MissingInteger,
+                JsonNumberParseError::MissingInteger,
                 index);
         }
     }
 
     if index >= text.length {
         return parse_error(
-            JsonNumberParseError.MissingInteger,
+            JsonNumberParseError::MissingInteger,
             index);
     }
 
@@ -895,7 +895,7 @@ proc scan_number(
             if valid_digit(
                 text[index]) {
                 return parse_error(
-                    JsonNumberParseError.InvalidLeadingZero,
+                    JsonNumberParseError::InvalidLeadingZero,
                     index);
             }
         }
@@ -903,7 +903,7 @@ proc scan_number(
         if not valid_nonzero_digit(
             text[index]) {
             return parse_error(
-                JsonNumberParseError.MissingInteger,
+                JsonNumberParseError::MissingInteger,
                 index);
         }
 
@@ -920,7 +920,7 @@ proc scan_number(
         if index >= text.length ||
            not valid_digit(text[index]) {
             return parse_error(
-                JsonNumberParseError.MissingFraction,
+                JsonNumberParseError::MissingFraction,
                 index);
         }
 
@@ -944,7 +944,7 @@ proc scan_number(
         if index >= text.length ||
            not valid_digit(text[index]) {
             return parse_error(
-                JsonNumberParseError.MissingExponent,
+                JsonNumberParseError::MissingExponent,
                 index);
         }
 
@@ -956,7 +956,7 @@ proc scan_number(
 
     if index != text.length {
         return parse_error(
-            JsonNumberParseError.TrailingCharacters,
+            JsonNumberParseError::TrailingCharacters,
             index);
     }
 
@@ -1053,7 +1053,7 @@ proc parse_integer(
 
     if not is_integer_syntax(text) {
         return parse_error(
-            JsonNumberParseError.InvalidCharacter,
+            JsonNumberParseError::InvalidCharacter,
             0);
     }
 
@@ -1292,52 +1292,52 @@ proc parse_error_name(
     error: JsonNumberParseError
 ) -> string {
     if error ==
-       JsonNumberParseError.None {
+       JsonNumberParseError::None {
         return "none";
     }
 
     if error ==
-       JsonNumberParseError.Empty {
+       JsonNumberParseError::Empty {
         return "empty";
     }
 
     if error ==
-       JsonNumberParseError.InvalidCharacter {
+       JsonNumberParseError::InvalidCharacter {
         return "invalid character";
     }
 
     if error ==
-       JsonNumberParseError.InvalidSign {
+       JsonNumberParseError::InvalidSign {
         return "invalid sign";
     }
 
     if error ==
-       JsonNumberParseError.InvalidLeadingZero {
+       JsonNumberParseError::InvalidLeadingZero {
         return "invalid leading zero";
     }
 
     if error ==
-       JsonNumberParseError.MissingInteger {
+       JsonNumberParseError::MissingInteger {
         return "missing integer";
     }
 
     if error ==
-       JsonNumberParseError.MissingFraction {
+       JsonNumberParseError::MissingFraction {
         return "missing fraction";
     }
 
     if error ==
-       JsonNumberParseError.MissingExponent {
+       JsonNumberParseError::MissingExponent {
         return "missing exponent";
     }
 
     if error ==
-       JsonNumberParseError.IntegerOverflow {
+       JsonNumberParseError::IntegerOverflow {
         return "integer overflow";
     }
 
     if error ==
-       JsonNumberParseError.ExponentOverflow {
+       JsonNumberParseError::ExponentOverflow {
         return "exponent overflow";
     }
 
@@ -1348,12 +1348,12 @@ proc validate(
     number: &JsonNumber
 ) -> bool {
     if number.kind ==
-       JsonNumberKind.Integer {
+       JsonNumberKind::Integer {
         return true;
     }
 
     if number.kind ==
-       JsonNumberKind.Float {
+       JsonNumberKind::Float {
         return true;
     }
 
@@ -1421,7 +1421,7 @@ proc test_negate() -> bool {
     return equals(
         &negative,
         &JsonNumber {
-            kind: JsonNumberKind.Integer,
+            kind: JsonNumberKind::Integer,
             integer_value: -42,
             float_value: 0.0,
         });
@@ -1437,7 +1437,7 @@ proc test_absolute() -> bool {
     return equals(
         &result,
         &JsonNumber {
-            kind: JsonNumberKind.Integer,
+            kind: JsonNumberKind::Integer,
             integer_value: 42,
             float_value: 0.0,
         });
@@ -1753,7 +1753,7 @@ proc test_parse_error_leading_zero() -> bool {
 
     return not result.ok &&
          result.error ==
-             JsonNumberParseError.InvalidLeadingZero;
+             JsonNumberParseError::InvalidLeadingZero;
 }
 
 proc test_parse_error_fraction() -> bool {
@@ -1762,7 +1762,7 @@ proc test_parse_error_fraction() -> bool {
 
     return not result.ok &&
          result.error ==
-             JsonNumberParseError.MissingFraction;
+             JsonNumberParseError::MissingFraction;
 }
 
 proc test_parse_error_exponent() -> bool {
@@ -1771,7 +1771,7 @@ proc test_parse_error_exponent() -> bool {
 
     return not result.ok &&
          result.error ==
-             JsonNumberParseError.MissingExponent;
+             JsonNumberParseError::MissingExponent;
 }
 
 proc test_power() -> bool {

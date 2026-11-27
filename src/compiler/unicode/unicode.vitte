@@ -77,18 +77,18 @@ export form UnicodeStats {
 }
 
 export proc vitte_unicode_error_name(error: UnicodeError) -> string {
-    if error == UnicodeError.None { return "none"; }
-    if error == UnicodeError.InvalidArgument { return "invalid_argument"; }
-    if error == UnicodeError.EndOfInput { return "end_of_input"; }
-    if error == UnicodeError.InvalidUtf8 { return "invalid_utf8"; }
-    if error == UnicodeError.TruncatedUtf8 { return "truncated_utf8"; }
-    if error == UnicodeError.OverlongUtf8 { return "overlong_utf8"; }
-    if error == UnicodeError.Surrogate { return "surrogate"; }
-    if error == UnicodeError.OutOfRange { return "out_of_range"; }
-    if error == UnicodeError.InvalidUtf16 { return "invalid_utf16"; }
-    if error == UnicodeError.OutputTooSmall { return "output_too_small"; }
-    if error == UnicodeError.Overflow { return "overflow"; }
-    if error == UnicodeError.Count { return "count"; }
+    if error == UnicodeError::None { return "none"; }
+    if error == UnicodeError::InvalidArgument { return "invalid_argument"; }
+    if error == UnicodeError::EndOfInput { return "end_of_input"; }
+    if error == UnicodeError::InvalidUtf8 { return "invalid_utf8"; }
+    if error == UnicodeError::TruncatedUtf8 { return "truncated_utf8"; }
+    if error == UnicodeError::OverlongUtf8 { return "overlong_utf8"; }
+    if error == UnicodeError::Surrogate { return "surrogate"; }
+    if error == UnicodeError::OutOfRange { return "out_of_range"; }
+    if error == UnicodeError::InvalidUtf16 { return "invalid_utf16"; }
+    if error == UnicodeError::OutputTooSmall { return "output_too_small"; }
+    if error == UnicodeError::Overflow { return "overflow"; }
+    if error == UnicodeError::Count { return "count"; }
     return "unknown";
 }
 
@@ -108,101 +108,101 @@ export proc vitte_unicode_is_surrogate(codepoint: u64) -> bool {
 /// the start of `input`. Invalid sequences consume one byte, as in stage zero.
 export proc vitte_unicode_decode_utf8(input: string, offset: usize, length: usize) -> UnicodeResult {
     if length > len(input) as u64  or  offset > length {
-        return unicode_result(UnicodeError.InvalidArgument, 0xfffd, 0);
+        return unicode_result(UnicodeError::InvalidArgument, 0xfffd, 0);
     }
     if offset == length {
-        return unicode_result(UnicodeError.EndOfInput, 0xfffd, 0);
+        return unicode_result(UnicodeError::EndOfInput, 0xfffd, 0);
     }
     let b0: u64 = (input[offset] as u8) as u64;
-    if b0 <= 0x7f { return unicode_result(UnicodeError.None, b0, 1); }
+    if b0 <= 0x7f { return unicode_result(UnicodeError::None, b0, 1); }
 
     if unicode_in_range(b0, 0xc2, 0xdf) {
-        if length - offset < 2 { return unicode_result(UnicodeError.TruncatedUtf8, 0xfffd, 1); }
+        if length - offset < 2 { return unicode_result(UnicodeError::TruncatedUtf8, 0xfffd, 1); }
         let b1: u64 = (input[offset + 1] as u8) as u64;
         if not unicode_is_continuation(b1) {
-            return unicode_result(UnicodeError.InvalidUtf8, 0xfffd, 1);
+            return unicode_result(UnicodeError::InvalidUtf8, 0xfffd, 1);
         }
-        return unicode_result(UnicodeError.None, ((b0 & 0x1f) << 6) | (b1 & 0x3f), 2);
+        return unicode_result(UnicodeError::None, ((b0 & 0x1f) << 6) | (b1 & 0x3f), 2);
     }
 
     if unicode_in_range(b0, 0xe0, 0xef) {
-        if length - offset < 3 { return unicode_result(UnicodeError.TruncatedUtf8, 0xfffd, 1); }
+        if length - offset < 3 { return unicode_result(UnicodeError::TruncatedUtf8, 0xfffd, 1); }
         let b1: u64 = (input[offset + 1] as u8) as u64;
         let b2: u64 = (input[offset + 2] as u8) as u64;
         if not unicode_is_continuation(b1)  or  not unicode_is_continuation(b2) {
-            return unicode_result(UnicodeError.InvalidUtf8, 0xfffd, 1);
+            return unicode_result(UnicodeError::InvalidUtf8, 0xfffd, 1);
         }
         if b0 == 0xe0  and  b1 < 0xa0 {
-            return unicode_result(UnicodeError.OverlongUtf8, 0xfffd, 1);
+            return unicode_result(UnicodeError::OverlongUtf8, 0xfffd, 1);
         }
         if b0 == 0xed  and  b1 >= 0xa0 {
-            return unicode_result(UnicodeError.Surrogate, 0xfffd, 1);
+            return unicode_result(UnicodeError::Surrogate, 0xfffd, 1);
         }
         let codepoint: u64 = ((b0 & 0x0f) << 12) |
                              ((b1 & 0x3f) << 6) | (b2 & 0x3f);
         if not vitte_unicode_is_scalar(codepoint) {
-            return unicode_result(UnicodeError.Surrogate, 0xfffd, 1);
+            return unicode_result(UnicodeError::Surrogate, 0xfffd, 1);
         }
-        return unicode_result(UnicodeError.None, codepoint, 3);
+        return unicode_result(UnicodeError::None, codepoint, 3);
     }
 
     if unicode_in_range(b0, 0xf0, 0xf4) {
-        if length - offset < 4 { return unicode_result(UnicodeError.TruncatedUtf8, 0xfffd, 1); }
+        if length - offset < 4 { return unicode_result(UnicodeError::TruncatedUtf8, 0xfffd, 1); }
         let b1: u64 = (input[offset + 1] as u8) as u64;
         let b2: u64 = (input[offset + 2] as u8) as u64;
         let b3: u64 = (input[offset + 3] as u8) as u64;
         if not unicode_is_continuation(b1)  or  not unicode_is_continuation(b2)  or 
            not unicode_is_continuation(b3) {
-            return unicode_result(UnicodeError.InvalidUtf8, 0xfffd, 1);
+            return unicode_result(UnicodeError::InvalidUtf8, 0xfffd, 1);
         }
         if b0 == 0xf0  and  b1 < 0x90 {
-            return unicode_result(UnicodeError.OverlongUtf8, 0xfffd, 1);
+            return unicode_result(UnicodeError::OverlongUtf8, 0xfffd, 1);
         }
         if b0 == 0xf4  and  b1 > 0x8f {
-            return unicode_result(UnicodeError.OutOfRange, 0xfffd, 1);
+            return unicode_result(UnicodeError::OutOfRange, 0xfffd, 1);
         }
         let codepoint: u64 = ((b0 & 0x07) << 18) |
                              ((b1 & 0x3f) << 12) |
                              ((b2 & 0x3f) << 6) | (b3 & 0x3f);
         if codepoint > 0x10ffff {
-            return unicode_result(UnicodeError.OutOfRange, 0xfffd, 1);
+            return unicode_result(UnicodeError::OutOfRange, 0xfffd, 1);
         }
-        return unicode_result(UnicodeError.None, codepoint, 4);
+        return unicode_result(UnicodeError::None, codepoint, 4);
     }
 
     if b0 == 0xc0  or  b0 == 0xc1 {
-        return unicode_result(UnicodeError.OverlongUtf8, 0xfffd, 1);
+        return unicode_result(UnicodeError::OverlongUtf8, 0xfffd, 1);
     }
-    if b0 >= 0xf5 { return unicode_result(UnicodeError.OutOfRange, 0xfffd, 1); }
-    return unicode_result(UnicodeError.InvalidUtf8, 0xfffd, 1);
+    if b0 >= 0xf5 { return unicode_result(UnicodeError::OutOfRange, 0xfffd, 1); }
+    return unicode_result(UnicodeError::InvalidUtf8, 0xfffd, 1);
 }
 
 export proc vitte_unicode_encode_utf8(codepoint: u64) -> UnicodeEncodedResult {
     if not vitte_unicode_is_scalar(codepoint) {
         if vitte_unicode_is_surrogate(codepoint) {
-            return UnicodeEncodedResult { error: UnicodeError.Surrogate, packed: 0, length: 0 };
+            return UnicodeEncodedResult { error: UnicodeError::Surrogate, packed: 0, length: 0 };
         }
-        return UnicodeEncodedResult { error: UnicodeError.OutOfRange, packed: 0, length: 0 };
+        return UnicodeEncodedResult { error: UnicodeError::OutOfRange, packed: 0, length: 0 };
     }
     if codepoint <= 0x7f {
-        return UnicodeEncodedResult { error: UnicodeError.None, packed: codepoint, length: 1 };
+        return UnicodeEncodedResult { error: UnicodeError::None, packed: codepoint, length: 1 };
     }
     if codepoint <= 0x7ff {
         let packed: u64 = (0xc0 | (codepoint >> 6)) |
                           ((0x80 | (codepoint & 0x3f)) << 8);
-        return UnicodeEncodedResult { error: UnicodeError.None, packed: packed, length: 2 };
+        return UnicodeEncodedResult { error: UnicodeError::None, packed: packed, length: 2 };
     }
     if codepoint <= 0xffff {
         let packed: u64 = (0xe0 | (codepoint >> 12)) |
                           ((0x80 | ((codepoint >> 6) & 0x3f)) << 8) |
                           ((0x80 | (codepoint & 0x3f)) << 16);
-        return UnicodeEncodedResult { error: UnicodeError.None, packed: packed, length: 3 };
+        return UnicodeEncodedResult { error: UnicodeError::None, packed: packed, length: 3 };
     }
     let packed: u64 = (0xf0 | (codepoint >> 18)) |
                       ((0x80 | ((codepoint >> 12) & 0x3f)) << 8) |
                       ((0x80 | ((codepoint >> 6) & 0x3f)) << 16) |
                       ((0x80 | (codepoint & 0x3f)) << 24);
-    return UnicodeEncodedResult { error: UnicodeError.None, packed: packed, length: 4 };
+    return UnicodeEncodedResult { error: UnicodeError::None, packed: packed, length: 4 };
 }
 
 export proc vitte_unicode_validate_utf8(input: string, length: usize) -> UnicodeScanResult {
@@ -217,7 +217,7 @@ export proc vitte_unicode_count_utf8(input: string, length: usize) -> UnicodeSca
     let mut count: u64 = 0;
     while offset < length {
         let result: UnicodeResult = vitte_unicode_decode_utf8(input, offset, length);
-        if result.error != UnicodeError.None  or  result.length == 0  or 
+        if result.error != UnicodeError::None  or  result.length == 0  or
            result.length > length - offset {
             return UnicodeScanResult { valid: false, count: count, error_offset: offset };
         }
@@ -232,7 +232,7 @@ export proc vitte_unicode_count_utf8(input: string, length: usize) -> UnicodeSca
 
 export proc vitte_unicode_next_utf8(input: string, length: usize, offset: usize) -> UnicodeCursorResult {
     let result: UnicodeResult = vitte_unicode_decode_utf8(input, offset, length);
-    if result.error != UnicodeError.None {
+    if result.error != UnicodeError::None {
         return UnicodeCursorResult {
             valid: false, codepoint: 0xfffd, offset: offset, error: result.error
         };
@@ -241,14 +241,14 @@ export proc vitte_unicode_next_utf8(input: string, length: usize, offset: usize)
         valid: true,
         codepoint: result.codepoint,
         offset: offset + result.length,
-        error: UnicodeError.None
+        error: UnicodeError::None
     };
 }
 
 export proc vitte_unicode_previous_utf8(input: string, length: usize, offset: usize) -> UnicodeCursorResult {
     if length > len(input) as u64  or  offset == 0  or  offset > length {
         return UnicodeCursorResult {
-            valid: false, codepoint: 0xfffd, offset: offset, error: UnicodeError.InvalidArgument
+            valid: false, codepoint: 0xfffd, offset: offset, error: UnicodeError::InvalidArgument
         };
     }
     let mut start: u64 = offset - 1;
@@ -257,24 +257,24 @@ export proc vitte_unicode_previous_utf8(input: string, length: usize, offset: us
         set continuation_count += 1;
         if continuation_count > 3 {
             return UnicodeCursorResult {
-                valid: false, codepoint: 0xfffd, offset: offset, error: UnicodeError.InvalidUtf8
+                valid: false, codepoint: 0xfffd, offset: offset, error: UnicodeError::InvalidUtf8
             };
         }
         set start -= 1;
     }
     let result: UnicodeResult = vitte_unicode_decode_utf8(input, start, offset);
-    if result.error != UnicodeError.None {
+    if result.error != UnicodeError::None {
         return UnicodeCursorResult {
             valid: false, codepoint: 0xfffd, offset: offset, error: result.error
         };
     }
     if result.length != offset - start {
         return UnicodeCursorResult {
-            valid: false, codepoint: 0xfffd, offset: offset, error: UnicodeError.InvalidUtf8
+            valid: false, codepoint: 0xfffd, offset: offset, error: UnicodeError::InvalidUtf8
         };
     }
     return UnicodeCursorResult {
-        valid: true, codepoint: result.codepoint, offset: start, error: UnicodeError.None
+        valid: true, codepoint: result.codepoint, offset: start, error: UnicodeError::None
     };
 }
 
@@ -288,36 +288,36 @@ export proc vitte_unicode_utf8_length(codepoint: u64) -> usize {
 
 export proc vitte_unicode_decode_utf16(first: u64, second: u64, has_second: bool) -> UnicodeResult {
     if first > 0xffff  or  (has_second  and  second > 0xffff) {
-        return unicode_result(UnicodeError.InvalidArgument, 0xfffd, 0);
+        return unicode_result(UnicodeError::InvalidArgument, 0xfffd, 0);
     }
     if unicode_in_range(first, 0xd800, 0xdbff) {
         if not has_second  or  not unicode_in_range(second, 0xdc00, 0xdfff) {
-            return unicode_result(UnicodeError.InvalidUtf16, 0xfffd, 0);
+            return unicode_result(UnicodeError::InvalidUtf16, 0xfffd, 0);
         }
         let codepoint: u64 = 0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00);
-        return unicode_result(UnicodeError.None, codepoint, 2);
+        return unicode_result(UnicodeError::None, codepoint, 2);
     }
     if unicode_in_range(first, 0xdc00, 0xdfff) {
-        return unicode_result(UnicodeError.InvalidUtf16, 0xfffd, 0);
+        return unicode_result(UnicodeError::InvalidUtf16, 0xfffd, 0);
     }
-    return unicode_result(UnicodeError.None, first, 1);
+    return unicode_result(UnicodeError::None, first, 1);
 }
 
 export proc vitte_unicode_encode_utf16(codepoint: u64) -> UnicodeEncodedResult {
     if not vitte_unicode_is_scalar(codepoint) {
         if vitte_unicode_is_surrogate(codepoint) {
-            return UnicodeEncodedResult { error: UnicodeError.Surrogate, packed: 0, length: 0 };
+            return UnicodeEncodedResult { error: UnicodeError::Surrogate, packed: 0, length: 0 };
         }
-        return UnicodeEncodedResult { error: UnicodeError.OutOfRange, packed: 0, length: 0 };
+        return UnicodeEncodedResult { error: UnicodeError::OutOfRange, packed: 0, length: 0 };
     }
     if codepoint <= 0xffff {
-        return UnicodeEncodedResult { error: UnicodeError.None, packed: codepoint, length: 1 };
+        return UnicodeEncodedResult { error: UnicodeError::None, packed: codepoint, length: 1 };
     }
     let value: u64 = codepoint - 0x10000;
     let first: u64 = 0xd800 + (value >> 10);
     let second: u64 = 0xdc00 + (value & 0x3ff);
     return UnicodeEncodedResult {
-        error: UnicodeError.None,
+        error: UnicodeError::None,
         packed: first | (second << 16),
         length: 2
     };
@@ -444,7 +444,7 @@ export proc vitte_unicode_validate_identifier(input: string, length: usize) -> U
     let mut count: u64 = 0;
     while offset < length {
         let result: UnicodeResult = vitte_unicode_decode_utf8(input, offset, length);
-        if result.error != UnicodeError.None {
+        if result.error != UnicodeError::None {
             return UnicodeScanResult { valid: false, count: count, error_offset: offset };
         }
         if count == 0 {
@@ -514,7 +514,7 @@ export proc vitte_unicode_utf8_display_width(
     let mut column: u64 = initial_column;
     while offset < length {
         let result: UnicodeResult = vitte_unicode_decode_utf8(input, offset, length);
-        if result.error != UnicodeError.None {
+        if result.error != UnicodeError::None {
             return UnicodeWidthResult { valid: false, width: 0, error_offset: offset };
         }
         let mut addition: u64 = 0;
@@ -584,7 +584,7 @@ export proc vitte_unicode_analyze_utf8(input: string, length: usize, stats: *mut
     let mut offset: usize = 0;
     while offset < length {
         let decoded = vitte_unicode_decode_utf8(input, offset, length);
-        if decoded.error != UnicodeError.None or decoded.length == 0 or decoded.length > length - offset {
+        if decoded.error != UnicodeError::None or decoded.length == 0 or decoded.length > length - offset {
             if (*stats).invalid_sequences == 0 {
                 set (*stats).first_error_offset = offset;
             }

@@ -648,7 +648,7 @@ proc help_explicit_annotation(
     let mut index: usize = 0;
     while index < diagnostic_value.annotations.len() {
         let annotation: &DiagnosticAnnotation = &diagnostic_value.annotations[index];
-        if annotation.kind == DiagnosticAnnotationKind.Help and
+        if annotation.kind == DiagnosticAnnotationKind::Help and
            help_text_present(annotation.message) {
             return annotation.message;
         }
@@ -892,7 +892,7 @@ proc help_primary_label(
     let mut index: usize = 0;
     while index < diagnostic_value.labels.len() and index < HELP_MAX_LABELS {
         let label = &diagnostic_value.labels[index];
-        if label.style == DiagnosticLabelStyle.Primary and
+        if label.style == DiagnosticLabelStyle::Primary and
            help_text_present(label.message) {
             return label.message;
         }
@@ -1157,7 +1157,7 @@ proc help_format_contract(
     policy: string
 ) -> ?string {
     if diagnostic_value == null or
-       diagnostic_value.contract.kind == DiagnosticContractKind.None or
+       diagnostic_value.contract.kind == DiagnosticContractKind::None or
        not help_text_present(diagnostic_value.contract.expression) {
         return null;
     }
@@ -1501,17 +1501,17 @@ proc help_append_next_action(
     }
 
     let internal = diagnostic_value.is_internal or
-        diagnostic_value.origin == DiagnosticOrigin.Internal;
+        diagnostic_value.origin == DiagnosticOrigin::Internal;
     let backend_code = public_code.len() >= 3 and
         (public_code.slice(0, 3) == "E09" or
          public_code.slice(0, 3) == "E10" or
          public_code.slice(0, 3) == "E19");
     let backend = backend_code or
-        diagnostic_value.origin == DiagnosticOrigin.C17Backend or
-        diagnostic_value.origin == DiagnosticOrigin.CCompiler or
-        diagnostic_value.origin == DiagnosticOrigin.Linker or
-        diagnostic_value.origin == DiagnosticOrigin.Codegen or
-        diagnostic_value.origin == DiagnosticOrigin.Ir;
+        diagnostic_value.origin == DiagnosticOrigin::C17Backend or
+        diagnostic_value.origin == DiagnosticOrigin::CCompiler or
+        diagnostic_value.origin == DiagnosticOrigin::Linker or
+        diagnostic_value.origin == DiagnosticOrigin::Codegen or
+        diagnostic_value.origin == DiagnosticOrigin::Ir;
 
     if public_code == "E0004" {
         set result += " Next: check memory and process limits, then retry with `vitte compile <file> --jobs=1` if parallel compilation may be exhausting resources.";
@@ -1525,7 +1525,7 @@ proc help_append_next_action(
         set result += " Next: inspect the selected compiler's target with `cc -dumpmachine` when supported (or use the executable named by `CC`), then reproduce with `vitte compile <file>`.";
     } else if backend {
         set result += " Next: reproduce with `vitte compile <file>`; for C17 backend output, inspect `vitte compile <file> --emit-c`.";
-    } else if diagnostic_value.origin == DiagnosticOrigin.Runtime {
+    } else if diagnostic_value.origin == DiagnosticOrigin::Runtime {
         set result += " Next: rerun `vitte run <file>` with the same input and compare the reported procedure and values.";
     } else {
         // Registered source diagnostics already carry family-specific advice.
@@ -1574,8 +1574,8 @@ proc help_format_fallback(
         set output += help_quote_fragment(cause, HELP_REASON_LIMIT);
         set output += ".";
     }
-    if diagnostic_value.origin == DiagnosticOrigin.Internal or
-       diagnostic_value.severity == DiagnosticSeverity.Fatal {
+    if diagnostic_value.origin == DiagnosticOrigin::Internal or
+       diagnostic_value.severity == DiagnosticSeverity::Fatal {
         set output += " Preserve the failing command, compiler version and smallest reproducing input for a compiler report.";
     }
     return output;
@@ -1591,9 +1591,9 @@ proc help_format_text(
 
     let explicit = help_explicit_annotation(diagnostic_value);
     if help_text_present(explicit) {
-        if diagnostic_value.severity != DiagnosticSeverity.Warning and
-           diagnostic_value.severity != DiagnosticSeverity.Error and
-           diagnostic_value.severity != DiagnosticSeverity.Fatal {
+        if diagnostic_value.severity != DiagnosticSeverity::Warning and
+           diagnostic_value.severity != DiagnosticSeverity::Error and
+           diagnostic_value.severity != DiagnosticSeverity::Fatal {
             return explicit;
         }
         let explicit_registry = help_registry_entry(diagnostic_value);
@@ -1619,9 +1619,9 @@ proc help_format_text(
         return enriched;
     }
 
-    if diagnostic_value.severity != DiagnosticSeverity.Warning and
-       diagnostic_value.severity != DiagnosticSeverity.Error and
-       diagnostic_value.severity != DiagnosticSeverity.Fatal {
+    if diagnostic_value.severity != DiagnosticSeverity::Warning and
+       diagnostic_value.severity != DiagnosticSeverity::Error and
+       diagnostic_value.severity != DiagnosticSeverity::Fatal {
         return "";
     }
 
@@ -1756,7 +1756,7 @@ proc help_format_text(
 
     if not specialized {
         if registry_value != null and
-           (*registry_value).origin != DiagnosticOrigin.Internal {
+           (*registry_value).origin != DiagnosticOrigin::Internal {
             // Keep registered user-facing failures tied to their own explanation
             // if the contextual-help table is incomplete.
             set output = (*registry_value).explanation;
@@ -1882,8 +1882,8 @@ export proc vitte_diagnostic_help_validate_rules(
     while registry_index < registry_count {
         let registry_entry = diagnostic_registry_at(registry_index);
         if registry_entry != null and help_text_present(registry_entry.public_code) and
-           registry_entry.default_severity != DiagnosticSeverity.Note and
-           registry_entry.default_severity != DiagnosticSeverity.Help {
+           registry_entry.default_severity != DiagnosticSeverity::Note and
+           registry_entry.default_severity != DiagnosticSeverity::Help {
             let help_index = help_rule_index(registry_entry.public_code);
             if help_index >= HELP_RULE_CODES.len() or
                help_index >= HELP_RULE_TEXTS.len() {

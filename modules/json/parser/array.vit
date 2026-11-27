@@ -224,7 +224,7 @@ proc empty_parsed_array() -> JsonParsedArray {
 proc no_diagnostic() -> JsonArrayParseDiagnostic {
     return JsonArrayParseDiagnostic {
         error:
-            JsonArrayParseError.None,
+            JsonArrayParseError::None,
 
         message: "",
 
@@ -293,57 +293,57 @@ proc error_name(
     error: JsonArrayParseError
 ) -> string {
     if error ==
-       JsonArrayParseError.None {
+       JsonArrayParseError::None {
         return "none";
     }
 
     if error ==
-       JsonArrayParseError.UnexpectedEnd {
+       JsonArrayParseError::UnexpectedEnd {
         return "unexpected-end";
     }
 
     if error ==
-       JsonArrayParseError.ExpectedLeftBracket {
+       JsonArrayParseError::ExpectedLeftBracket {
         return "expected-left-bracket";
     }
 
     if error ==
-       JsonArrayParseError.ExpectedValue {
+       JsonArrayParseError::ExpectedValue {
         return "expected-value";
     }
 
     if error ==
-       JsonArrayParseError.ExpectedCommaOrRightBracket {
+       JsonArrayParseError::ExpectedCommaOrRightBracket {
         return "expected-comma-or-right-bracket";
     }
 
     if error ==
-       JsonArrayParseError.TrailingComma {
+       JsonArrayParseError::TrailingComma {
         return "trailing-comma";
     }
 
     if error ==
-       JsonArrayParseError.UnterminatedArray {
+       JsonArrayParseError::UnterminatedArray {
         return "unterminated-array";
     }
 
     if error ==
-       JsonArrayParseError.TooManyElements {
+       JsonArrayParseError::TooManyElements {
         return "too-many-elements";
     }
 
     if error ==
-       JsonArrayParseError.DepthExceeded {
+       JsonArrayParseError::DepthExceeded {
         return "depth-exceeded";
     }
 
     if error ==
-       JsonArrayParseError.InvalidToken {
+       JsonArrayParseError::InvalidToken {
         return "invalid-token";
     }
 
     if error ==
-       JsonArrayParseError.ValueError {
+       JsonArrayParseError::ValueError {
         return "value-error";
     }
 
@@ -426,12 +426,12 @@ proc token_found_text(
     value: &JsonToken
 ) -> string {
     if value.kind ==
-       JsonTokenKind.End {
+       JsonTokenKind::End {
         return "end of input";
     }
 
     if value.kind ==
-       JsonTokenKind.Invalid {
+       JsonTokenKind::Invalid {
         return "invalid token";
     }
 
@@ -469,7 +469,7 @@ proc starts_array(
     }
 
     return tokens[index].kind ==
-         JsonTokenKind.LeftBracket;
+         JsonTokenKind::LeftBracket;
 }
 
 proc closes_array(
@@ -483,7 +483,7 @@ proc closes_array(
     }
 
     return tokens[index].kind ==
-         JsonTokenKind.RightBracket;
+         JsonTokenKind::RightBracket;
 }
 
 proc is_comma_at(
@@ -497,7 +497,7 @@ proc is_comma_at(
     }
 
     return tokens[index].kind ==
-         JsonTokenKind.Comma;
+         JsonTokenKind::Comma;
 }
 
 proc begins_array_value(
@@ -553,7 +553,7 @@ proc parse_with_limits(
         &parse_limits) {
         return failure(
             index,
-            JsonArrayParseError.Internal,
+            JsonArrayParseError::Internal,
             "invalid JSON array parser limits",
             "maximum element count and maximum depth must be greater than zero",
             "",
@@ -567,7 +567,7 @@ proc parse_with_limits(
        parse_limits.max_depth {
         return failure(
             index,
-            JsonArrayParseError.DepthExceeded,
+            JsonArrayParseError::DepthExceeded,
             "JSON array nesting depth exceeded",
             "the configured maximum JSON nesting depth was exceeded",
             "shallower JSON structure",
@@ -582,7 +582,7 @@ proc parse_with_limits(
         index) {
         return failure(
             index,
-            JsonArrayParseError.UnexpectedEnd,
+            JsonArrayParseError::UnexpectedEnd,
             "unexpected end of JSON token stream",
             "expected '[' to begin a JSON array",
             "'['",
@@ -594,10 +594,10 @@ proc parse_with_limits(
         tokens[index];
 
     if open.kind !=
-       JsonTokenKind.LeftBracket {
+       JsonTokenKind::LeftBracket {
         return failure(
             index,
-            JsonArrayParseError.ExpectedLeftBracket,
+            JsonArrayParseError::ExpectedLeftBracket,
             "expected JSON array",
             "a JSON array must begin with '['",
             "'['",
@@ -620,7 +620,7 @@ proc parse_with_limits(
         cursor) {
         return failure(
             cursor,
-            JsonArrayParseError.UnterminatedArray,
+            JsonArrayParseError::UnterminatedArray,
             "unterminated JSON array",
             "expected ']' after '['",
             "']'",
@@ -629,7 +629,7 @@ proc parse_with_limits(
     }
 
     if tokens[cursor].kind ==
-       JsonTokenKind.RightBracket {
+       JsonTokenKind::RightBracket {
         let close: JsonToken =
             tokens[cursor];
 
@@ -649,10 +649,10 @@ proc parse_with_limits(
     }
 
     if tokens[cursor].kind ==
-       JsonTokenKind.End {
+       JsonTokenKind::End {
         return failure(
             cursor,
-            JsonArrayParseError.UnterminatedArray,
+            JsonArrayParseError::UnterminatedArray,
             "unterminated JSON array",
             "expected a JSON value or ']' before the end of input",
             "JSON value or ']'",
@@ -666,7 +666,7 @@ proc parse_with_limits(
             cursor) {
             return failure(
                 cursor,
-                JsonArrayParseError.UnterminatedArray,
+                JsonArrayParseError::UnterminatedArray,
                 "unterminated JSON array",
                 "expected a JSON value before the end of the token stream",
                 "JSON value",
@@ -678,10 +678,10 @@ proc parse_with_limits(
             tokens[cursor];
 
         if current.kind ==
-           JsonTokenKind.End {
+           JsonTokenKind::End {
             return failure(
                 cursor,
-                JsonArrayParseError.UnterminatedArray,
+                JsonArrayParseError::UnterminatedArray,
                 "unterminated JSON array",
                 "expected ']' before the end of input",
                 "']'",
@@ -690,10 +690,10 @@ proc parse_with_limits(
         }
 
         if current.kind ==
-           JsonTokenKind.RightBracket {
+           JsonTokenKind::RightBracket {
             return failure(
                 cursor,
-                JsonArrayParseError.ExpectedValue,
+                JsonArrayParseError::ExpectedValue,
                 "expected JSON array element",
                 "an array element was expected at this position",
                 "JSON value",
@@ -702,10 +702,10 @@ proc parse_with_limits(
         }
 
         if current.kind ==
-           JsonTokenKind.Comma {
+           JsonTokenKind::Comma {
             return failure(
                 cursor,
-                JsonArrayParseError.ExpectedValue,
+                JsonArrayParseError::ExpectedValue,
                 "expected JSON array element",
                 "a comma cannot appear where an array value is required",
                 "JSON value",
@@ -717,7 +717,7 @@ proc parse_with_limits(
             current.kind) {
             return failure(
                 cursor,
-                JsonArrayParseError.ExpectedValue,
+                JsonArrayParseError::ExpectedValue,
                 "expected JSON array element",
                 "the token cannot begin a JSON value",
                 "JSON value",
@@ -730,7 +730,7 @@ proc parse_with_limits(
            parse_limits.max_elements {
             return failure(
                 cursor,
-                JsonArrayParseError.TooManyElements,
+                JsonArrayParseError::TooManyElements,
                 "JSON array contains too many elements",
                 "the configured maximum JSON array element count was exceeded",
                 "fewer array elements",
@@ -749,7 +749,7 @@ proc parse_with_limits(
         if not parsed.ok {
             return failure(
                 cursor,
-                JsonArrayParseError.ValueError,
+                JsonArrayParseError::ValueError,
                 "invalid JSON array element",
                 parsed.diagnostic_message,
                 "valid JSON value",
@@ -762,7 +762,7 @@ proc parse_with_limits(
            cursor {
             return failure(
                 cursor,
-                JsonArrayParseError.Internal,
+                JsonArrayParseError::Internal,
                 "JSON value parser made no progress",
                 "the recursive JSON value parser must consume at least one token",
                 "",
@@ -784,7 +784,7 @@ proc parse_with_limits(
             cursor) {
             return failure(
                 cursor,
-                JsonArrayParseError.UnterminatedArray,
+                JsonArrayParseError::UnterminatedArray,
                 "unterminated JSON array",
                 "expected ',' or ']' after the array element",
                 "',' or ']'",
@@ -796,7 +796,7 @@ proc parse_with_limits(
             tokens[cursor];
 
         if separator.kind ==
-           JsonTokenKind.RightBracket {
+           JsonTokenKind::RightBracket {
             return success(
                 JsonParsedArray {
                     values: values,
@@ -814,10 +814,10 @@ proc parse_with_limits(
         }
 
         if separator.kind ==
-           JsonTokenKind.End {
+           JsonTokenKind::End {
             return failure(
                 cursor,
-                JsonArrayParseError.UnterminatedArray,
+                JsonArrayParseError::UnterminatedArray,
                 "unterminated JSON array",
                 "expected ']' before the end of input",
                 "']'",
@@ -826,10 +826,10 @@ proc parse_with_limits(
         }
 
         if separator.kind !=
-           JsonTokenKind.Comma {
+           JsonTokenKind::Comma {
             return failure(
                 cursor,
-                JsonArrayParseError.ExpectedCommaOrRightBracket,
+                JsonArrayParseError::ExpectedCommaOrRightBracket,
                 "expected ',' or ']' after JSON array element",
                 "array elements must be separated by commas",
                 "',' or ']'",
@@ -848,7 +848,7 @@ proc parse_with_limits(
             cursor) {
             return failure(
                 cursor,
-                JsonArrayParseError.UnterminatedArray,
+                JsonArrayParseError::UnterminatedArray,
                 "unterminated JSON array",
                 "expected a JSON value after ','",
                 "JSON value",
@@ -860,10 +860,10 @@ proc parse_with_limits(
             tokens[cursor];
 
         if next_token.kind ==
-           JsonTokenKind.RightBracket {
+           JsonTokenKind::RightBracket {
             return failure(
                 cursor,
-                JsonArrayParseError.TrailingComma,
+                JsonArrayParseError::TrailingComma,
                 "trailing comma in JSON array",
                 "JSON does not permit a comma immediately before ']'",
                 "JSON value",
@@ -872,10 +872,10 @@ proc parse_with_limits(
         }
 
         if next_token.kind ==
-           JsonTokenKind.End {
+           JsonTokenKind::End {
             return failure(
                 cursor,
-                JsonArrayParseError.UnterminatedArray,
+                JsonArrayParseError::UnterminatedArray,
                 "unterminated JSON array",
                 "expected a JSON value after ',' before the end of input",
                 "JSON value",
@@ -886,7 +886,7 @@ proc parse_with_limits(
 
     return failure(
         cursor,
-        JsonArrayParseError.Internal,
+        JsonArrayParseError::Internal,
         "internal JSON array parser error",
         "array parser reached an unreachable state",
         "",
@@ -1009,11 +1009,11 @@ proc validate_result(
 ) -> bool {
     if not result.ok {
         return result.report.error !=
-             JsonArrayParseError.None;
+             JsonArrayParseError::None;
     }
 
     if result.report.error !=
-       JsonArrayParseError.None {
+       JsonArrayParseError::None {
         return false;
     }
 
@@ -1043,42 +1043,42 @@ proc statistics(
             value.values[index];
 
         if current.kind ==
-           JsonValueKind.Null {
+           JsonValueKind::Null {
             set result.scalar_count += 1;
             set result.null_count += 1;
         }
 
         if current.kind ==
-           JsonValueKind.Bool {
+           JsonValueKind::Bool {
             set result.scalar_count += 1;
             set result.boolean_count += 1;
         }
 
         if current.kind ==
-           JsonValueKind.Integer {
+           JsonValueKind::Integer {
             set result.scalar_count += 1;
             set result.integer_count += 1;
         }
 
         if current.kind ==
-           JsonValueKind.Float {
+           JsonValueKind::Float {
             set result.scalar_count += 1;
             set result.float_count += 1;
         }
 
         if current.kind ==
-           JsonValueKind.String {
+           JsonValueKind::String {
             set result.scalar_count += 1;
             set result.string_count += 1;
         }
 
         if current.kind ==
-           JsonValueKind.Array {
+           JsonValueKind::Array {
             set result.array_count += 1;
         }
 
         if current.kind ==
-           JsonValueKind.Object {
+           JsonValueKind::Object {
             set result.object_count += 1;
         }
 
@@ -1110,7 +1110,7 @@ proc contains_null(
     while index <
           value.element_count {
         if value.values[index].kind ==
-           JsonValueKind.Null {
+           JsonValueKind::Null {
             return true;
         }
 
@@ -1128,7 +1128,7 @@ proc contains_boolean(
     while index <
           value.element_count {
         if value.values[index].kind ==
-           JsonValueKind.Bool {
+           JsonValueKind::Bool {
             return true;
         }
 
@@ -1146,9 +1146,9 @@ proc contains_number(
     while index <
           value.element_count {
         if value.values[index].kind ==
-               JsonValueKind.Integer ||
+               JsonValueKind::Integer ||
            value.values[index].kind ==
-               JsonValueKind.Float {
+               JsonValueKind::Float {
             return true;
         }
 
@@ -1166,7 +1166,7 @@ proc contains_string(
     while index <
           value.element_count {
         if value.values[index].kind ==
-           JsonValueKind.String {
+           JsonValueKind::String {
             return true;
         }
 
@@ -1184,7 +1184,7 @@ proc contains_array(
     while index <
           value.element_count {
         if value.values[index].kind ==
-           JsonValueKind.Array {
+           JsonValueKind::Array {
             return true;
         }
 
@@ -1202,7 +1202,7 @@ proc contains_object(
     while index <
           value.element_count {
         if value.values[index].kind ==
-           JsonValueKind.Object {
+           JsonValueKind::Object {
             return true;
         }
 
@@ -1228,7 +1228,7 @@ proc all_null(
     while index <
           value.element_count {
         if value.values[index].kind !=
-           JsonValueKind.Null {
+           JsonValueKind::Null {
             return false;
         }
 
@@ -1250,7 +1250,7 @@ proc all_boolean(
     while index <
           value.element_count {
         if value.values[index].kind !=
-           JsonValueKind.Bool {
+           JsonValueKind::Bool {
             return false;
         }
 
@@ -1272,9 +1272,9 @@ proc all_number(
     while index <
           value.element_count {
         if value.values[index].kind !=
-               JsonValueKind.Integer &&
+               JsonValueKind::Integer &&
            value.values[index].kind !=
-               JsonValueKind.Float {
+               JsonValueKind::Float {
             return false;
         }
 
@@ -1296,7 +1296,7 @@ proc all_string(
     while index <
           value.element_count {
         if value.values[index].kind !=
-           JsonValueKind.String {
+           JsonValueKind::String {
             return false;
         }
 
@@ -1457,13 +1457,13 @@ test "json parser array empty" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 1,
                 2),
@@ -1509,19 +1509,19 @@ test "json parser array single null" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
 
             test_literal(
-                JsonTokenKind.Null,
+                JsonTokenKind::Null,
                 "null",
                 1,
                 5),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 5,
                 6),
@@ -1551,7 +1551,7 @@ test "json parser array single string" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
@@ -1563,7 +1563,7 @@ test "json parser array single string" {
                 8),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 8,
                 9),
@@ -1598,43 +1598,43 @@ test "json parser array scalar sequence" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
 
             test_literal(
-                JsonTokenKind.Null,
+                JsonTokenKind::Null,
                 "null",
                 1,
                 5),
 
             test_punctuation(
-                JsonTokenKind.Comma,
+                JsonTokenKind::Comma,
                 ",",
                 5,
                 6),
 
             test_literal(
-                JsonTokenKind.True,
+                JsonTokenKind::True,
                 "true",
                 6,
                 10),
 
             test_punctuation(
-                JsonTokenKind.Comma,
+                JsonTokenKind::Comma,
                 ",",
                 10,
                 11),
 
             test_literal(
-                JsonTokenKind.False,
+                JsonTokenKind::False,
                 "false",
                 11,
                 16),
 
             test_punctuation(
-                JsonTokenKind.Comma,
+                JsonTokenKind::Comma,
                 ",",
                 16,
                 17),
@@ -1645,7 +1645,7 @@ test "json parser array scalar sequence" {
                 19),
 
             test_punctuation(
-                JsonTokenKind.Comma,
+                JsonTokenKind::Comma,
                 ",",
                 19,
                 20),
@@ -1657,7 +1657,7 @@ test "json parser array scalar sequence" {
                 27),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 27,
                 28),
@@ -1697,25 +1697,25 @@ test "json parser array from token offset" {
     let tokens: [JsonToken] =
         [
             test_literal(
-                JsonTokenKind.True,
+                JsonTokenKind::True,
                 "true",
                 0,
                 4),
 
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 5,
                 6),
 
             test_literal(
-                JsonTokenKind.Null,
+                JsonTokenKind::Null,
                 "null",
                 6,
                 10),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 10,
                 11),
@@ -1752,7 +1752,7 @@ test "json parser array requires left bracket" {
     let tokens: [JsonToken] =
         [
             test_literal(
-                JsonTokenKind.Null,
+                JsonTokenKind::Null,
                 "null",
                 0,
                 4),
@@ -1773,7 +1773,7 @@ test "json parser array requires left bracket" {
     assert not result.ok;
 
     assert result.report.error ==
-        JsonArrayParseError.ExpectedLeftBracket;
+        JsonArrayParseError::ExpectedLeftBracket;
 }
 
 /// -------------------------------------------------------------------------
@@ -1784,7 +1784,7 @@ test "json parser array unterminated empty" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
@@ -1805,14 +1805,14 @@ test "json parser array unterminated empty" {
     assert not result.ok;
 
     assert result.report.error ==
-        JsonArrayParseError.UnterminatedArray;
+        JsonArrayParseError::UnterminatedArray;
 }
 
 test "json parser array unterminated after value" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
@@ -1838,7 +1838,7 @@ test "json parser array unterminated after value" {
     assert not result.ok;
 
     assert result.report.error ==
-        JsonArrayParseError.UnterminatedArray;
+        JsonArrayParseError::UnterminatedArray;
 }
 
 /// -------------------------------------------------------------------------
@@ -1849,13 +1849,13 @@ test "json parser array rejects leading comma" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
 
             test_punctuation(
-                JsonTokenKind.Comma,
+                JsonTokenKind::Comma,
                 ",",
                 1,
                 2),
@@ -1866,7 +1866,7 @@ test "json parser array rejects leading comma" {
                 3),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 3,
                 4),
@@ -1887,14 +1887,14 @@ test "json parser array rejects leading comma" {
     assert not result.ok;
 
     assert result.report.error ==
-        JsonArrayParseError.ExpectedValue;
+        JsonArrayParseError::ExpectedValue;
 }
 
 test "json parser array rejects trailing comma" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
@@ -1905,13 +1905,13 @@ test "json parser array rejects trailing comma" {
                 2),
 
             test_punctuation(
-                JsonTokenKind.Comma,
+                JsonTokenKind::Comma,
                 ",",
                 2,
                 3),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 3,
                 4),
@@ -1932,14 +1932,14 @@ test "json parser array rejects trailing comma" {
     assert not result.ok;
 
     assert result.report.error ==
-        JsonArrayParseError.TrailingComma;
+        JsonArrayParseError::TrailingComma;
 }
 
 test "json parser array rejects duplicate comma" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
@@ -1950,13 +1950,13 @@ test "json parser array rejects duplicate comma" {
                 2),
 
             test_punctuation(
-                JsonTokenKind.Comma,
+                JsonTokenKind::Comma,
                 ",",
                 2,
                 3),
 
             test_punctuation(
-                JsonTokenKind.Comma,
+                JsonTokenKind::Comma,
                 ",",
                 3,
                 4),
@@ -1967,7 +1967,7 @@ test "json parser array rejects duplicate comma" {
                 5),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 5,
                 6),
@@ -1988,14 +1988,14 @@ test "json parser array rejects duplicate comma" {
     assert not result.ok;
 
     assert result.report.error ==
-        JsonArrayParseError.ExpectedValue;
+        JsonArrayParseError::ExpectedValue;
 }
 
 test "json parser array requires comma" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
@@ -2011,7 +2011,7 @@ test "json parser array requires comma" {
                 4),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 4,
                 5),
@@ -2032,7 +2032,7 @@ test "json parser array requires comma" {
     assert not result.ok;
 
     assert result.report.error ==
-        JsonArrayParseError.ExpectedCommaOrRightBracket;
+        JsonArrayParseError::ExpectedCommaOrRightBracket;
 }
 
 /// -------------------------------------------------------------------------
@@ -2043,7 +2043,7 @@ test "json parser array element limit" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
@@ -2054,7 +2054,7 @@ test "json parser array element limit" {
                 2),
 
             test_punctuation(
-                JsonTokenKind.Comma,
+                JsonTokenKind::Comma,
                 ",",
                 2,
                 3),
@@ -2065,7 +2065,7 @@ test "json parser array element limit" {
                 4),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 4,
                 5),
@@ -2094,20 +2094,20 @@ test "json parser array element limit" {
     assert not result.ok;
 
     assert result.report.error ==
-        JsonArrayParseError.TooManyElements;
+        JsonArrayParseError::TooManyElements;
 }
 
 test "json parser array depth limit" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 0,
                 1),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 1,
                 2),
@@ -2136,7 +2136,7 @@ test "json parser array depth limit" {
     assert not result.ok;
 
     assert result.report.error ==
-        JsonArrayParseError.DepthExceeded;
+        JsonArrayParseError::DepthExceeded;
 }
 
 /// -------------------------------------------------------------------------
@@ -2187,31 +2187,31 @@ test "json parser array empty structural queries" {
 
 test "json parser array error names" {
     assert error_name(
-        JsonArrayParseError.None) ==
+        JsonArrayParseError::None) ==
             "none";
 
     assert error_name(
-        JsonArrayParseError.ExpectedLeftBracket) ==
+        JsonArrayParseError::ExpectedLeftBracket) ==
             "expected-left-bracket";
 
     assert error_name(
-        JsonArrayParseError.ExpectedValue) ==
+        JsonArrayParseError::ExpectedValue) ==
             "expected-value";
 
     assert error_name(
-        JsonArrayParseError.TrailingComma) ==
+        JsonArrayParseError::TrailingComma) ==
             "trailing-comma";
 
     assert error_name(
-        JsonArrayParseError.UnterminatedArray) ==
+        JsonArrayParseError::UnterminatedArray) ==
             "unterminated-array";
 
     assert error_name(
-        JsonArrayParseError.TooManyElements) ==
+        JsonArrayParseError::TooManyElements) ==
             "too-many-elements";
 
     assert error_name(
-        JsonArrayParseError.DepthExceeded) ==
+        JsonArrayParseError::DepthExceeded) ==
             "depth-exceeded";
 }
 
@@ -2223,13 +2223,13 @@ test "json parser array preserves complete span" {
     let tokens: [JsonToken] =
         [
             test_punctuation(
-                JsonTokenKind.LeftBracket,
+                JsonTokenKind::LeftBracket,
                 "[",
                 10,
                 11),
 
             test_punctuation(
-                JsonTokenKind.RightBracket,
+                JsonTokenKind::RightBracket,
                 "]",
                 11,
                 12),

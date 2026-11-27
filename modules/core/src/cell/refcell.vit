@@ -83,11 +83,11 @@ proc refcell_borrow_state<T>(
     cell: &RefCell[T]
 ) -> RefCellBorrowState {
     if cell.exclusive_borrow {
-        return RefCellBorrowState.Exclusive;
+        return RefCellBorrowState::Exclusive;
     } elif cell.shared_borrows > 0 {
-        return RefCellBorrowState.Shared;
+        return RefCellBorrowState::Shared;
     } else {
-        return RefCellBorrowState.Unborrowed;
+        return RefCellBorrowState::Unborrowed;
     }
 }
 
@@ -114,16 +114,16 @@ proc refcell_try_borrow<T>(
     cell: &RefCell[T]
 ) -> RefCellBorrowError {
     if cell.exclusive_borrow {
-        return RefCellBorrowError.AlreadyMutablyBorrowed;
+        return RefCellBorrowError::AlreadyMutablyBorrowed;
     }
 
     if cell.shared_borrows == usize.MAX {
-        return RefCellBorrowError.BorrowOverflow;
+        return RefCellBorrowError::BorrowOverflow;
     }
 
     set cell.shared_borrows = cell.shared_borrows + 1;
 
-    return RefCellBorrowError.None;
+    return RefCellBorrowError::None;
 }
 
 /// Tente d'acquérir un emprunt exclusif.
@@ -131,16 +131,16 @@ proc refcell_try_borrow_mut<T>(
     cell: &RefCell[T]
 ) -> RefCellBorrowError {
     if cell.exclusive_borrow {
-        return RefCellBorrowError.AlreadyMutablyBorrowed;
+        return RefCellBorrowError::AlreadyMutablyBorrowed;
     }
 
     if cell.shared_borrows > 0 {
-        return RefCellBorrowError.AlreadyBorrowed;
+        return RefCellBorrowError::AlreadyBorrowed;
     }
 
     set cell.exclusive_borrow = true;
 
-    return RefCellBorrowError.None;
+    return RefCellBorrowError::None;
 }
 
 /// Libère un emprunt partagé.
@@ -148,12 +148,12 @@ proc refcell_release_borrow<T>(
     cell: &RefCell[T]
 ) -> RefCellBorrowError {
     if cell.shared_borrows == 0 {
-        return RefCellBorrowError.InvalidRelease;
+        return RefCellBorrowError::InvalidRelease;
     }
 
     set cell.shared_borrows = cell.shared_borrows - 1;
 
-    return RefCellBorrowError.None;
+    return RefCellBorrowError::None;
 }
 
 /// Libère un emprunt exclusif.
@@ -161,12 +161,12 @@ proc refcell_release_borrow_mut<T>(
     cell: &RefCell[T]
 ) -> RefCellBorrowError {
     if not cell.exclusive_borrow {
-        return RefCellBorrowError.InvalidRelease;
+        return RefCellBorrowError::InvalidRelease;
     }
 
     set cell.exclusive_borrow = false;
 
-    return RefCellBorrowError.None;
+    return RefCellBorrowError::None;
 }
 
 /// Retourne une référence en lecture seule.
@@ -264,23 +264,23 @@ proc refcell_borrow_error<T>(
 ) -> RefCellBorrowError {
     if mutable {
         if cell.exclusive_borrow {
-            return RefCellBorrowError.AlreadyMutablyBorrowed;
+            return RefCellBorrowError::AlreadyMutablyBorrowed;
         } elif cell.shared_borrows > 0 {
-            return RefCellBorrowError.AlreadyBorrowed;
+            return RefCellBorrowError::AlreadyBorrowed;
         } else {
-            return RefCellBorrowError.None;
+            return RefCellBorrowError::None;
         }
     }
 
     if cell.exclusive_borrow {
-        return RefCellBorrowError.AlreadyMutablyBorrowed;
+        return RefCellBorrowError::AlreadyMutablyBorrowed;
     }
 
     if cell.shared_borrows == usize.MAX {
-        return RefCellBorrowError.BorrowOverflow;
+        return RefCellBorrowError::BorrowOverflow;
     }
 
-    return RefCellBorrowError.None;
+    return RefCellBorrowError::None;
 }
 
 /// Réinitialise les compteurs uniquement si aucun

@@ -114,7 +114,7 @@ pub form ResetConfig {
 
 pub proc reset_config_default() -> ResetConfig {
     return ResetConfig {
-        mode: ResetMode.Retain,
+        mode: ResetMode::Retain,
 
         reset_arena: true,
         reset_pools: true,
@@ -181,7 +181,7 @@ pub form ResetReport {
 pub proc reset_report_init() -> ResetReport {
     return ResetReport {
         success: false,
-        error: ResetError.None,
+        error: ResetError::None,
 
         arena_generation_before: 0,
         arena_generation_after: 0,
@@ -392,24 +392,24 @@ pub proc reset_is_valid(reset: &Reset) -> bool {
 
 pub proc reset_is_running(reset: &Reset) -> bool {
     return reset_magic_valid(reset)  and 
-           reset.state == ResetState.Running;
+           reset.state == ResetState::Running;
 }
 
 pub proc reset_succeeded(reset: &Reset) -> bool {
     return reset_magic_valid(reset)  and 
-           reset.state == ResetState.Completed  and 
+           reset.state == ResetState::Completed  and
            reset.report.success  and 
-           reset.report.error == ResetError.None;
+           reset.report.error == ResetError::None;
 }
 
 pub proc reset_failed(reset: &Reset) -> bool {
     return reset_magic_valid(reset)  and 
-           reset.state == ResetState.Failed;
+           reset.state == ResetState::Failed;
 }
 
 pub proc reset_state(reset: &Reset) -> ResetState {
     if not reset_magic_valid(reset) {
-        return ResetState.Uninitialized;
+        return ResetState::Uninitialized;
     }
 
     return reset.state;
@@ -432,7 +432,7 @@ proc reset_set_error(
 
 pub proc reset_last_error(reset: &Reset) -> ResetError {
     if not reset_magic_valid(reset) {
-        return ResetError.InvalidReset;
+        return ResetError::InvalidReset;
     }
 
     return reset.last_error;
@@ -443,7 +443,7 @@ pub proc reset_clear_error(reset: &mut Reset) {
         return;
     }
 
-    set reset.last_error = ResetError.None;
+    set reset.last_error = ResetError::None;
 }
 
 /* ========================================================================= */
@@ -466,7 +466,7 @@ pub proc reset_init(
 
     return Reset {
         magic: RESET_MAGIC,
-        state: ResetState.Ready,
+        state: ResetState::Ready,
 
         config: config,
 
@@ -482,7 +482,7 @@ pub proc reset_init(
         successful_execution_count: 0,
         failed_execution_count: 0,
 
-        last_error: ResetError.None,
+        last_error: ResetError::None,
         report: reset_report_init(),
     };
 }
@@ -520,8 +520,8 @@ pub proc reset_destroy(reset: &mut Reset) {
     set reset.after_callback = null;
     set reset.callback_user_data = null;
 
-    set reset.state = ResetState.Destroyed;
-    set reset.last_error = ResetError.InvalidReset;
+    set reset.state = ResetState::Destroyed;
+    set reset.last_error = ResetError::InvalidReset;
     set reset.magic = RESET_DEAD_MAGIC;
 }
 
@@ -537,13 +537,13 @@ pub proc reset_set_arena(
         return false;
     }
 
-    if reset.state == ResetState.Running {
-        reset_set_error(reset, ResetError.InvalidState);
+    if reset.state == ResetState::Running {
+        reset_set_error(reset, ResetError::InvalidState);
         return false;
     }
 
     if arena != null  and  not arena_context_is_valid(&*arena) {
-        reset_set_error(reset, ResetError.InvalidArena);
+        reset_set_error(reset, ResetError::InvalidArena);
         return false;
     }
 
@@ -600,28 +600,28 @@ pub proc reset_add_pool(
         return false;
     }
 
-    if reset.state == ResetState.Running {
-        reset_set_error(reset, ResetError.InvalidState);
+    if reset.state == ResetState::Running {
+        reset_set_error(reset, ResetError::InvalidState);
         return false;
     }
 
     if pool == null  or  not pool_is_valid(&*pool) {
-        reset_set_error(reset, ResetError.InvalidPool);
+        reset_set_error(reset, ResetError::InvalidPool);
         return false;
     }
 
     if reset.pool_count > RESET_MAX_POOLS {
-        reset_set_error(reset, ResetError.Corruption);
+        reset_set_error(reset, ResetError::Corruption);
         return false;
     }
 
     if reset_pool_registered(reset, pool) {
-        reset_set_error(reset, ResetError.DuplicatePool);
+        reset_set_error(reset, ResetError::DuplicatePool);
         return false;
     }
 
     if reset.pool_count == RESET_MAX_POOLS {
-        reset_set_error(reset, ResetError.TooManyPools);
+        reset_set_error(reset, ResetError::TooManyPools);
         return false;
     }
 
@@ -641,18 +641,18 @@ pub proc reset_remove_pool(
         return false;
     }
 
-    if reset.state == ResetState.Running {
-        reset_set_error(reset, ResetError.InvalidState);
+    if reset.state == ResetState::Running {
+        reset_set_error(reset, ResetError::InvalidState);
         return false;
     }
 
     if pool == null {
-        reset_set_error(reset, ResetError.InvalidArgument);
+        reset_set_error(reset, ResetError::InvalidArgument);
         return false;
     }
 
     if reset.pool_count > RESET_MAX_POOLS {
-        reset_set_error(reset, ResetError.Corruption);
+        reset_set_error(reset, ResetError::Corruption);
         return false;
     }
 
@@ -680,7 +680,7 @@ pub proc reset_remove_pool(
         set index = index + 1;
     }
 
-    reset_set_error(reset, ResetError.InvalidArgument);
+    reset_set_error(reset, ResetError::InvalidArgument);
     return false;
 }
 
@@ -689,8 +689,8 @@ pub proc reset_clear_pools(reset: &mut Reset) {
         return;
     }
 
-    if reset.state == ResetState.Running {
-        reset_set_error(reset, ResetError.InvalidState);
+    if reset.state == ResetState::Running {
+        reset_set_error(reset, ResetError::InvalidState);
         return;
     }
 
@@ -741,8 +741,8 @@ pub proc reset_set_callbacks(
         return;
     }
 
-    if reset.state == ResetState.Running {
-        reset_set_error(reset, ResetError.InvalidState);
+    if reset.state == ResetState::Running {
+        reset_set_error(reset, ResetError::InvalidState);
         return;
     }
 
@@ -953,7 +953,7 @@ proc reset_validate_target_registration(
     }
 
     if reset.pool_count > RESET_MAX_POOLS {
-        reset_set_error(reset, ResetError.Corruption);
+        reset_set_error(reset, ResetError::Corruption);
         return false;
     }
 
@@ -961,7 +961,7 @@ proc reset_validate_target_registration(
 
     while left < reset.pool_count {
         if reset.pools[left] == null {
-            reset_set_error(reset, ResetError.InvalidPool);
+            reset_set_error(reset, ResetError::InvalidPool);
             return false;
         }
 
@@ -969,7 +969,7 @@ proc reset_validate_target_registration(
 
         while right < reset.pool_count {
             if reset.pools[left] == reset.pools[right] {
-                reset_set_error(reset, ResetError.DuplicatePool);
+                reset_set_error(reset, ResetError::DuplicatePool);
                 return false;
             }
 
@@ -994,13 +994,13 @@ proc reset_validate_targets(reset: &mut Reset) -> bool {
     if reset.config.reset_arena  and 
        reset.arena != null {
         if not arena_context_is_valid(&*reset.arena) {
-            reset_set_error(reset, ResetError.InvalidArena);
+            reset_set_error(reset, ResetError::InvalidArena);
             return false;
         }
 
         if reset.config.validate_before  and 
            not arena_context_validate(&*reset.arena) {
-            reset_set_error(reset, ResetError.ValidationFailed);
+            reset_set_error(reset, ResetError::ValidationFailed);
             return false;
         }
     }
@@ -1015,13 +1015,13 @@ proc reset_validate_targets(reset: &mut Reset) -> bool {
         let pool = reset.pools[index];
 
         if pool == null  or  not pool_is_valid(&*pool) {
-            reset_set_error(reset, ResetError.InvalidPool);
+            reset_set_error(reset, ResetError::InvalidPool);
             return false;
         }
 
         if reset.config.validate_before  and 
            not pool_validate(&*pool) {
-            reset_set_error(reset, ResetError.ValidationFailed);
+            reset_set_error(reset, ResetError::ValidationFailed);
             return false;
         }
 
@@ -1044,7 +1044,7 @@ proc reset_validate_after(reset: &mut Reset) -> bool {
        reset.arena != null {
         if not arena_context_is_valid(&*reset.arena)  or 
            not arena_context_validate(&*reset.arena) {
-            reset_set_error(reset, ResetError.ValidationFailed);
+            reset_set_error(reset, ResetError::ValidationFailed);
             return false;
         }
     }
@@ -1061,7 +1061,7 @@ proc reset_validate_after(reset: &mut Reset) -> bool {
         if pool == null  or 
            not pool_is_valid(&*pool)  or 
            not pool_validate(&*pool) {
-            reset_set_error(reset, ResetError.ValidationFailed);
+            reset_set_error(reset, ResetError::ValidationFailed);
             return false;
         }
 
@@ -1084,7 +1084,7 @@ proc reset_execute_arena(reset: &mut Reset) -> bool {
     let arena = reset.arena;
 
     if not arena_context_is_valid(&*arena) {
-        reset_set_error(reset, ResetError.InvalidArena);
+        reset_set_error(reset, ResetError::InvalidArena);
         return false;
     }
 
@@ -1092,7 +1092,7 @@ proc reset_execute_arena(reset: &mut Reset) -> bool {
         arena_context_generation(&*arena);
 
     if generation_before == 0 {
-        reset_set_error(reset, ResetError.Corruption);
+        reset_set_error(reset, ResetError::Corruption);
         return false;
     }
 
@@ -1109,10 +1109,10 @@ proc reset_execute_arena(reset: &mut Reset) -> bool {
 
             if not arena_context_is_valid(&*arena)  or 
                arena_context_last_error(&*arena) !=
-                   ArenaContextError.None {
+                   ArenaContextError::None {
                 reset_set_error(
                     reset,
-                    ResetError.ArenaResetFailed
+                    ResetError::ArenaResetFailed
                 );
 
                 return false;
@@ -1127,26 +1127,26 @@ proc reset_execute_arena(reset: &mut Reset) -> bool {
     }
 
     if not arena_context_is_valid(&*arena) {
-        reset_set_error(reset, ResetError.ArenaResetFailed);
+        reset_set_error(reset, ResetError::ArenaResetFailed);
         return false;
     }
 
     if arena_context_last_error(&*arena) !=
-       ArenaContextError.None {
-        reset_set_error(reset, ResetError.ArenaResetFailed);
+       ArenaContextError::None {
+        reset_set_error(reset, ResetError::ArenaResetFailed);
         return false;
     }
 
     if arena_context_generation(&*arena) !=
        expected_generation {
-        reset_set_error(reset, ResetError.ArenaResetFailed);
+        reset_set_error(reset, ResetError::ArenaResetFailed);
         return false;
     }
 
     if arena_context_allocation_count(&*arena) != 0  or 
        arena_context_requested_bytes(&*arena) != 0  or 
        arena_context_used_bytes(&*arena) != 0 {
-        reset_set_error(reset, ResetError.ArenaResetFailed);
+        reset_set_error(reset, ResetError::ArenaResetFailed);
         return false;
     }
 
@@ -1162,14 +1162,14 @@ proc reset_execute_one_pool(
     pool: *mut Pool
 ) -> bool {
     if pool == null  or  not pool_is_valid(&*pool) {
-        reset_set_error(reset, ResetError.InvalidPool);
+        reset_set_error(reset, ResetError::InvalidPool);
         return false;
     }
 
     let generation_before = pool_generation(&*pool);
 
     if generation_before == 0 {
-        reset_set_error(reset, ResetError.Corruption);
+        reset_set_error(reset, ResetError::Corruption);
         return false;
     }
 
@@ -1185,10 +1185,10 @@ proc reset_execute_one_pool(
             pool_reset(&mut *pool);
 
             if not pool_is_valid(&*pool)  or 
-               pool_last_error(&*pool) != PoolError.None {
+               pool_last_error(&*pool) != PoolError::None {
                 reset_set_error(
                     reset,
-                    ResetError.PoolResetFailed
+                    ResetError::PoolResetFailed
                 );
 
                 return false;
@@ -1203,33 +1203,33 @@ proc reset_execute_one_pool(
     }
 
     if not pool_is_valid(&*pool)  or 
-       pool_last_error(&*pool) != PoolError.None {
-        reset_set_error(reset, ResetError.PoolResetFailed);
+       pool_last_error(&*pool) != PoolError::None {
+        reset_set_error(reset, ResetError::PoolResetFailed);
         return false;
     }
 
     if pool_generation(&*pool) != expected_generation {
-        reset_set_error(reset, ResetError.PoolResetFailed);
+        reset_set_error(reset, ResetError::PoolResetFailed);
         return false;
     }
 
     if pool_live_count(&*pool) != 0 {
-        reset_set_error(reset, ResetError.PoolResetFailed);
+        reset_set_error(reset, ResetError::PoolResetFailed);
         return false;
     }
 
     if pool_free_count(&*pool) != pool_capacity(&*pool) {
-        reset_set_error(reset, ResetError.PoolResetFailed);
+        reset_set_error(reset, ResetError::PoolResetFailed);
         return false;
     }
 
-    if reset.config.mode == ResetMode.Release {
+    if reset.config.mode == ResetMode::Release {
         if pool_capacity(&*pool) != 0  or 
            pool_page_count(&*pool) != 0  or 
            pool_reserved_bytes(&*pool) != 0 {
             reset_set_error(
                 reset,
-                ResetError.PoolResetFailed
+                ResetError::PoolResetFailed
             );
 
             return false;
@@ -1245,7 +1245,7 @@ proc reset_execute_pools(reset: &mut Reset) -> bool {
     }
 
     let mut success = true;
-    let mut first_error = ResetError.None;
+    let mut first_error = ResetError::None;
 
     let mut index: usize = 0;
 
@@ -1256,7 +1256,7 @@ proc reset_execute_pools(reset: &mut Reset) -> bool {
         ) {
             set success = false;
 
-            if first_error == ResetError.None {
+            if first_error == ResetError::None {
                 set first_error = reset.last_error;
             }
 
@@ -1269,10 +1269,10 @@ proc reset_execute_pools(reset: &mut Reset) -> bool {
     }
 
     if not success {
-        if first_error != ResetError.None {
+        if first_error != ResetError::None {
             set reset.last_error = first_error;
         } else {
-            set reset.last_error = ResetError.PoolResetFailed;
+            set reset.last_error = ResetError::PoolResetFailed;
         }
     }
 
@@ -1288,11 +1288,11 @@ proc reset_mark_failed(reset: &mut Reset) {
         return;
     }
 
-    set reset.state = ResetState.Failed;
+    set reset.state = ResetState::Failed;
     set reset.report.success = false;
 
-    if reset.last_error == ResetError.None {
-        set reset.last_error = ResetError.Corruption;
+    if reset.last_error == ResetError::None {
+        set reset.last_error = ResetError::Corruption;
     }
 
     set reset.report.error = reset.last_error;
@@ -1318,19 +1318,19 @@ pub proc reset_execute(reset: &mut Reset) -> bool {
     }
 
     if not reset_state_operable(reset) {
-        reset_set_error(reset, ResetError.InvalidState);
+        reset_set_error(reset, ResetError::InvalidState);
         return false;
     }
 
     if not reset_config_validate(&reset.config) {
-        reset_set_error(reset, ResetError.InvalidArgument);
-        set reset.state = ResetState.Failed;
+        reset_set_error(reset, ResetError::InvalidArgument);
+        set reset.state = ResetState::Failed;
         return false;
     }
 
     set reset.report = reset_report_init();
-    set reset.last_error = ResetError.None;
-    set reset.state = ResetState.Running;
+    set reset.last_error = ResetError::None;
+    set reset.state = ResetState::Running;
 
     set reset.execution_count =
         reset_saturating_increment(reset.execution_count);
@@ -1361,10 +1361,10 @@ pub proc reset_execute(reset: &mut Reset) -> bool {
 
         if not callback(
             reset,
-            ResetCallbackPhase.Before,
+            ResetCallbackPhase::Before,
             reset.callback_user_data
         ) {
-            reset_set_error(reset, ResetError.CallbackFailed);
+            reset_set_error(reset, ResetError::CallbackFailed);
 
             reset_capture_after(reset);
             reset_mark_failed(reset);
@@ -1438,10 +1438,10 @@ pub proc reset_execute(reset: &mut Reset) -> bool {
 
         if not callback(
             reset,
-            ResetCallbackPhase.After,
+            ResetCallbackPhase::After,
             reset.callback_user_data
         ) {
-            reset_set_error(reset, ResetError.CallbackFailed);
+            reset_set_error(reset, ResetError::CallbackFailed);
             reset_mark_failed(reset);
 
             return false;
@@ -1449,10 +1449,10 @@ pub proc reset_execute(reset: &mut Reset) -> bool {
     }
 
     set reset.report.success = true;
-    set reset.report.error = ResetError.None;
+    set reset.report.error = ResetError::None;
 
-    set reset.state = ResetState.Completed;
-    set reset.last_error = ResetError.None;
+    set reset.state = ResetState::Completed;
+    set reset.last_error = ResetError::None;
 
     set reset.successful_execution_count =
         reset_saturating_increment(
@@ -1549,8 +1549,8 @@ pub proc reset_set_mode(
         return false;
     }
 
-    if reset.state == ResetState.Running {
-        reset_set_error(reset, ResetError.InvalidState);
+    if reset.state == ResetState::Running {
+        reset_set_error(reset, ResetError::InvalidState);
         return false;
     }
 
@@ -1559,7 +1559,7 @@ pub proc reset_set_mode(
     set candidate.mode = mode;
 
     if not reset_config_validate(&candidate) {
-        reset_set_error(reset, ResetError.InvalidArgument);
+        reset_set_error(reset, ResetError::InvalidArgument);
         return false;
     }
 
@@ -1572,7 +1572,7 @@ pub proc reset_set_mode(
 
 pub proc reset_mode(reset: &Reset) -> ResetMode {
     if not reset_magic_valid(reset) {
-        return ResetMode.Retain;
+        return ResetMode::Retain;
     }
 
     return reset.config.mode;
@@ -1729,7 +1729,7 @@ pub proc reset_validate(reset: &Reset) -> bool {
             return false;
         }
 
-        if reset.state == ResetState.Running {
+        if reset.state == ResetState::Running {
             if reset.execution_count == 0 {
                 return false;
             }
@@ -1748,22 +1748,22 @@ pub proc reset_validate(reset: &Reset) -> bool {
      * State/report consistency.
      */
 
-    if reset.state == ResetState.Completed {
+    if reset.state == ResetState::Completed {
         if not reset.report.success  or 
-           reset.report.error != ResetError.None  or 
-           reset.last_error != ResetError.None {
+           reset.report.error != ResetError::None  or
+           reset.last_error != ResetError::None {
             return false;
         }
     }
 
-    if reset.state == ResetState.Failed {
+    if reset.state == ResetState::Failed {
         if reset.report.success  or 
-           reset.last_error == ResetError.None {
+           reset.last_error == ResetError::None {
             return false;
         }
     }
 
-    if reset.state == ResetState.Ready  and 
+    if reset.state == ResetState::Ready  and
        reset.report.success {
         return false;
     }
@@ -1772,8 +1772,8 @@ pub proc reset_validate(reset: &Reset) -> bool {
      * Released-byte arithmetic.
      */
 
-    if reset.state == ResetState.Completed  or 
-       reset.state == ResetState.Failed {
+    if reset.state == ResetState::Completed  or
+       reset.state == ResetState::Failed {
         if reset.report.arena_reserved_released !=
            reset_nonnegative_difference(
                reset.report.arena_reserved_before,
@@ -1835,7 +1835,7 @@ pub proc reset_validate(reset: &Reset) -> bool {
      * Successful reset target invariants.
      */
 
-    if reset.state == ResetState.Completed  and 
+    if reset.state == ResetState::Completed  and
        reset.report.success {
         if reset.config.reset_arena  and 
            reset.arena != null {
@@ -1880,7 +1880,7 @@ pub proc reset_validate(reset: &Reset) -> bool {
                     return false;
                 }
 
-                if reset.config.mode == ResetMode.Release {
+                if reset.config.mode == ResetMode::Release {
                     if pool_page_count(&*pool) != 0  or 
                        pool_capacity(&*pool) != 0  or 
                        pool_reserved_bytes(&*pool) != 0 {
@@ -1901,7 +1901,7 @@ pub proc reset_validate(reset: &Reset) -> bool {
 /* ========================================================================= */
 
 pub proc reset_has_error(reset: &Reset) -> bool {
-    return reset_last_error(reset) != ResetError.None;
+    return reset_last_error(reset) != ResetError::None;
 }
 
 pub proc reset_has_arena(reset: &Reset) -> bool {
@@ -1916,27 +1916,27 @@ pub proc reset_has_pools(reset: &Reset) -> bool {
 
 pub proc reset_is_ready(reset: &Reset) -> bool {
     return reset_magic_valid(reset)  and
-           reset.state == ResetState.Ready;
+           reset.state == ResetState::Ready;
 }
 
 pub proc reset_completed(reset: &Reset) -> bool {
     return reset_magic_valid(reset)  and
-           reset.state == ResetState.Completed;
+           reset.state == ResetState::Completed;
 }
 
 pub proc reset_uses_retain(reset: &Reset) -> bool {
     return reset_magic_valid(reset)  and
-           reset.config.mode == ResetMode.Retain;
+           reset.config.mode == ResetMode::Retain;
 }
 
 pub proc reset_uses_trim(reset: &Reset) -> bool {
     return reset_magic_valid(reset)  and
-           reset.config.mode == ResetMode.Trim;
+           reset.config.mode == ResetMode::Trim;
 }
 
 pub proc reset_uses_release(reset: &Reset) -> bool {
     return reset_magic_valid(reset)  and
-           reset.config.mode == ResetMode.Release;
+           reset.config.mode == ResetMode::Release;
 }
 
 pub proc reset_targets_arena(reset: &Reset) -> bool {
@@ -2118,7 +2118,7 @@ pub proc reset_report_arena_generation_advanced(
 /* ========================================================================= */
 
 pub proc reset_execute_retain(reset: &mut Reset) -> bool {
-    if not reset_set_mode(reset, ResetMode.Retain) {
+    if not reset_set_mode(reset, ResetMode::Retain) {
         return false;
     }
 
@@ -2126,7 +2126,7 @@ pub proc reset_execute_retain(reset: &mut Reset) -> bool {
 }
 
 pub proc reset_execute_trim(reset: &mut Reset) -> bool {
-    if not reset_set_mode(reset, ResetMode.Trim) {
+    if not reset_set_mode(reset, ResetMode::Trim) {
         return false;
     }
 
@@ -2134,7 +2134,7 @@ pub proc reset_execute_trim(reset: &mut Reset) -> bool {
 }
 
 pub proc reset_execute_release(reset: &mut Reset) -> bool {
-    if not reset_set_mode(reset, ResetMode.Release) {
+    if not reset_set_mode(reset, ResetMode::Release) {
         return false;
     }
 

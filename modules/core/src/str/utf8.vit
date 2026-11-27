@@ -36,10 +36,10 @@ proc utf8_continuation(value: u8) -> bool {
 }
 
 export proc utf8_decode(bytes: &[u8], offset: usize) -> Utf8DecodeResult {
-    if offset >= bytes.len() { return utf8_failure(Utf8Error.OutOfBounds, offset); }
+    if offset >= bytes.len() { return utf8_failure(Utf8Error::OutOfBounds, offset); }
     let first: u8 = bytes[offset];
     if first <= 127 {
-        return Utf8DecodeResult { success: true, codepoint: first as u32, width: 1, error: Utf8Error.None, error_index: 0 };
+        return Utf8DecodeResult { success: true, codepoint: first as u32, width: 1, error: Utf8Error::None, error_index: 0 };
     }
 
     let mut width: usize = 0;
@@ -54,26 +54,26 @@ export proc utf8_decode(bytes: &[u8], offset: usize) -> Utf8DecodeResult {
         set width = 4;
         set codepoint = (first & 7) as u32;
     } else {
-        return utf8_failure(Utf8Error.InvalidLeadingByte, offset);
+        return utf8_failure(Utf8Error::InvalidLeadingByte, offset);
     }
 
-    if width > bytes.len() - offset { return utf8_failure(Utf8Error.OutOfBounds, bytes.len()); }
+    if width > bytes.len() - offset { return utf8_failure(Utf8Error::OutOfBounds, bytes.len()); }
     for index in 1..width {
         let byte_offset: usize = offset + index;
         let byte_index: i64 = byte_offset as i64;
         let next: u8 = bytes[byte_index];
-        if not utf8_continuation(next) { return utf8_failure(Utf8Error.InvalidContinuationByte, offset + index); }
+        if not utf8_continuation(next) { return utf8_failure(Utf8Error::InvalidContinuationByte, offset + index); }
         set codepoint = (codepoint << 6) | ((next & 63) as u32);
     }
 
     let sequence_end: usize = offset + width - 1;
-    if width == 2 && codepoint < 128 { return utf8_failure(Utf8Error.OverlongEncoding, sequence_end); }
-    if width == 3 && codepoint < 2048 { return utf8_failure(Utf8Error.OverlongEncoding, sequence_end); }
-    if width == 4 && codepoint < 65536 { return utf8_failure(Utf8Error.OverlongEncoding, sequence_end); }
-    if codepoint >= 55296 && codepoint <= 57343 { return utf8_failure(Utf8Error.Surrogate, sequence_end); }
-    if codepoint > 1114111 { return utf8_failure(Utf8Error.OutOfRange, sequence_end); }
+    if width == 2 && codepoint < 128 { return utf8_failure(Utf8Error::OverlongEncoding, sequence_end); }
+    if width == 3 && codepoint < 2048 { return utf8_failure(Utf8Error::OverlongEncoding, sequence_end); }
+    if width == 4 && codepoint < 65536 { return utf8_failure(Utf8Error::OverlongEncoding, sequence_end); }
+    if codepoint >= 55296 && codepoint <= 57343 { return utf8_failure(Utf8Error::Surrogate, sequence_end); }
+    if codepoint > 1114111 { return utf8_failure(Utf8Error::OutOfRange, sequence_end); }
 
-    return Utf8DecodeResult { success: true, codepoint: codepoint, width: width, error: Utf8Error.None, error_index: 0 };
+    return Utf8DecodeResult { success: true, codepoint: codepoint, width: width, error: Utf8Error::None, error_index: 0 };
 }
 
 export proc utf8_validate(bytes: &[u8]) -> bool {

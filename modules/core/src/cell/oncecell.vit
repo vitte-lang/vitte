@@ -19,7 +19,7 @@ form OnceCell<T> {
 /// Construit une cellule vide.
 proc oncecell_new<T>() -> OnceCell[T] {
     return OnceCell[T] {
-        state: OnceCellState.Uninitialized,
+        state: OnceCellState::Uninitialized,
         value: null,
     };
 }
@@ -29,7 +29,7 @@ proc oncecell_from_value<T>(
     value: T
 ) -> OnceCell[T] {
     return OnceCell[T] {
-        state: OnceCellState.Initialized,
+        state: OnceCellState::Initialized,
         value: value,
     };
 }
@@ -38,21 +38,21 @@ proc oncecell_from_value<T>(
 proc oncecell_is_initialized<T>(
     cell: &OnceCell[T]
 ) -> bool {
-    return cell.state == OnceCellState.Initialized;
+    return cell.state == OnceCellState::Initialized;
 }
 
 /// Vérifie si la cellule est vide.
 proc oncecell_is_empty<T>(
     cell: &OnceCell[T]
 ) -> bool {
-    return cell.state == OnceCellState.Uninitialized;
+    return cell.state == OnceCellState::Uninitialized;
 }
 
 /// Vérifie si une initialisation est en cours.
 proc oncecell_is_initializing<T>(
     cell: &OnceCell[T]
 ) -> bool {
-    return cell.state == OnceCellState.Initializing;
+    return cell.state == OnceCellState::Initializing;
 }
 
 /// Retourne l'état actuel.
@@ -66,7 +66,7 @@ proc oncecell_state<T>(
 proc oncecell_can_set<T>(
     cell: &OnceCell[T]
 ) -> bool {
-    return cell.state == OnceCellState.Uninitialized;
+    return cell.state == OnceCellState::Uninitialized;
 }
 
 /// Initialise la cellule avec une valeur.
@@ -77,12 +77,12 @@ proc oncecell_set<T>(
     cell: &mut OnceCell[T],
     value: T
 ) -> bool {
-    if cell.state != OnceCellState.Uninitialized {
+    if cell.state != OnceCellState::Uninitialized {
         return false;
     }
 
     set cell.value = value;
-    set cell.state = OnceCellState.Initialized;
+    set cell.state = OnceCellState::Initialized;
 
     return true;
 }
@@ -94,17 +94,17 @@ proc oncecell_get_or_init<T>(
     cell: &mut OnceCell[T],
     initializer: proc() -> T
 ) -> bool {
-    if cell.state == OnceCellState.Initialized {
+    if cell.state == OnceCellState::Initialized {
         return true;
-    } elif cell.state == OnceCellState.Initializing {
+    } elif cell.state == OnceCellState::Initializing {
         return false;
     } else {
-        set cell.state = OnceCellState.Initializing;
+        set cell.state = OnceCellState::Initializing;
 
         let value: T = initializer();
 
         set cell.value = value;
-        set cell.state = OnceCellState.Initialized;
+        set cell.state = OnceCellState::Initialized;
 
         return true;
     }
@@ -118,7 +118,7 @@ proc oncecell_get_or_set<T>(
     cell: &mut OnceCell[T],
     fallback: T
 ) -> bool {
-    if cell.state == OnceCellState.Initialized {
+    if cell.state == OnceCellState::Initialized {
         return true;
     }
 
@@ -132,7 +132,7 @@ proc oncecell_get_or_set<T>(
 proc oncecell_get<T>(
     cell: &OnceCell[T]
 ) -> ?&T {
-    if cell.state != OnceCellState.Initialized {
+    if cell.state != OnceCellState::Initialized {
         return null;
     }
 
@@ -143,7 +143,7 @@ proc oncecell_get<T>(
 proc oncecell_get_mut<T>(
     cell: &mut OnceCell[T]
 ) -> ?&mut T {
-    if cell.state != OnceCellState.Initialized {
+    if cell.state != OnceCellState::Initialized {
         return null;
     }
 
@@ -155,7 +155,7 @@ proc oncecell_contains<T>(
     cell: &OnceCell[T],
     expected: T
 ) -> bool {
-    if cell.state != OnceCellState.Initialized {
+    if cell.state != OnceCellState::Initialized {
         return false;
     }
 
@@ -185,7 +185,7 @@ proc oncecell_with<T>(
     cell: &OnceCell[T],
     callback: proc(&T)
 ) -> bool {
-    if cell.state != OnceCellState.Initialized {
+    if cell.state != OnceCellState::Initialized {
         return false;
     }
 
@@ -199,7 +199,7 @@ proc oncecell_with_mut<T>(
     cell: &mut OnceCell[T],
     callback: proc(&mut T)
 ) -> bool {
-    if cell.state != OnceCellState.Initialized {
+    if cell.state != OnceCellState::Initialized {
         return false;
     }
 

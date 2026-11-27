@@ -94,7 +94,7 @@ static mut last_error_initialized: bool = false;
 
 #[thread_local]
 static mut last_error_value: Error = Error {
-    status: Status.Ok,
+    status: Status::Ok,
     code: "VITTE_OK",
     message: "ok",
     details: null,
@@ -347,7 +347,7 @@ proc normalize_details(
 
 export proc error_ok() -> Error {
     return Error {
-        status: Status.Ok,
+        status: Status::Ok,
 
         code:
             error_owned_string(
@@ -367,7 +367,7 @@ proc initialize_ok_raw(
     error: &mut Error
 ) {
     set error.status =
-        Status.Ok;
+        Status::Ok;
 
     set error.code =
         error_owned_string(
@@ -434,7 +434,7 @@ proc object_is_canonical_internal(
         }
     }
 
-    if error.status == Status.Ok  and 
+    if error.status == Status::Ok  and
        error.details != null {
         return false;
     }
@@ -501,7 +501,7 @@ proc error_copy_raw(
     set destination.message =
         message;
 
-    if status == Status.Ok {
+    if status == Status::Ok {
         set destination.details =
             null;
     } else {
@@ -552,7 +552,7 @@ export proc error_reset(
 
 export proc error_destroy(error: &mut Error) {
     release_owned_raw(error);
-    set error.status = Status.Ok;
+    set error.status = Status::Ok;
     set error.code = "";
     set error.message = "";
     set error.details = null;
@@ -567,14 +567,14 @@ export proc error_is_set(
     error: ?&Error
 ) -> bool {
     return error != null  and 
-           error.status != Status.Ok;
+           error.status != Status::Ok;
 }
 
 export proc error_is_ok(
     error: ?&Error
 ) -> bool {
     return error != null  and 
-           error.status == Status.Ok;
+           error.status == Status::Ok;
 }
 
 
@@ -632,7 +632,7 @@ export proc error_set_details(
     set error.message =
         normalized_message;
 
-    if status == Status.Ok {
+    if status == Status::Ok {
         set error.details =
             null;
     } else {
@@ -710,13 +710,13 @@ export proc error_clear_last() {
 export proc status_is_ok(
     status: Status
 ) -> bool {
-    return status == Status.Ok;
+    return status == Status::Ok;
 }
 
 export proc status_is_error(
     status: Status
 ) -> bool {
-    return status != Status.Ok;
+    return status != Status::Ok;
 }
 
 export proc status_is_known(
@@ -821,7 +821,7 @@ export proc error_normalize(
     set error.message =
         message;
 
-    if status == Status.Ok {
+    if status == Status::Ok {
         set error.details =
             null;
 
@@ -840,7 +840,7 @@ export proc error_normalize(
 export proc error_from_status(
     status: Status
 ) -> Error {
-    if status == Status.Ok {
+    if status == Status::Ok {
         return error_ok();
     }
 
@@ -868,14 +868,14 @@ export proc error_invalid_argument(
 ) -> Error {
     return Error {
         status:
-            Status.ErrorInvalidArgument,
+            Status::ErrorInvalidArgument,
 
         code:
             error_owned_string("VITTE_ERROR_INVALID_ARGUMENT"),
 
         message:
             normalize_message(
-                Status.ErrorInvalidArgument,
+                Status::ErrorInvalidArgument,
                 message
             ),
 
@@ -888,14 +888,14 @@ export proc error_invalid_state(
 ) -> Error {
     return Error {
         status:
-            Status.ErrorInvalidState,
+            Status::ErrorInvalidState,
 
         code:
             error_owned_string("VITTE_ERROR_INVALID_STATE"),
 
         message:
             normalize_message(
-                Status.ErrorInvalidState,
+                Status::ErrorInvalidState,
                 message
             ),
 
@@ -906,7 +906,7 @@ export proc error_invalid_state(
 export proc error_out_of_memory() -> Error {
     return Error {
         status:
-            Status.ErrorOutOfMemory,
+            Status::ErrorOutOfMemory,
 
         code:
             error_owned_string("VITTE_ERROR_OUT_OF_MEMORY"),
@@ -924,14 +924,14 @@ export proc error_io(
 ) -> Error {
     return Error {
         status:
-            Status.ErrorIo,
+            Status::ErrorIo,
 
         code:
             error_owned_string("VITTE_ERROR_IO"),
 
         message:
             normalize_message(
-                Status.ErrorIo,
+                Status::ErrorIo,
                 message
             ),
 
@@ -947,14 +947,14 @@ export proc error_parse(
 ) -> Error {
     return Error {
         status:
-            Status.ErrorParse,
+            Status::ErrorParse,
 
         code:
             error_owned_string("VITTE_ERROR_PARSE"),
 
         message:
             normalize_message(
-                Status.ErrorParse,
+                Status::ErrorParse,
                 message
             ),
 
@@ -967,14 +967,14 @@ export proc error_unsupported(
 ) -> Error {
     return Error {
         status:
-            Status.ErrorUnsupported,
+            Status::ErrorUnsupported,
 
         code:
             error_owned_string("VITTE_ERROR_UNSUPPORTED"),
 
         message:
             normalize_message(
-                Status.ErrorUnsupported,
+                Status::ErrorUnsupported,
                 message
             ),
 
@@ -987,14 +987,14 @@ export proc error_backend(
 ) -> Error {
     return Error {
         status:
-            Status.ErrorBackend,
+            Status::ErrorBackend,
 
         code:
             error_owned_string("VITTE_ERROR_BACKEND"),
 
         message:
             normalize_message(
-                Status.ErrorBackend,
+                Status::ErrorBackend,
                 message
             ),
 
@@ -1007,14 +1007,14 @@ export proc error_internal(
 ) -> Error {
     return Error {
         status:
-            Status.ErrorInternal,
+            Status::ErrorInternal,
 
         code:
             error_owned_string("VITTE_ERROR_INTERNAL"),
 
         message:
             normalize_message(
-                Status.ErrorInternal,
+                Status::ErrorInternal,
                 message
             ),
 
@@ -1031,7 +1031,7 @@ export proc error_status(
     error: ?&Error
 ) -> Status {
     if error == null {
-        return Status.ErrorInvalidArgument;
+        return Status::ErrorInvalidArgument;
     }
 
     return error.status;
@@ -1095,7 +1095,7 @@ export proc error_last_status() -> Status {
 ///
 /// I1 — Canonical OK state
 ///
-///     status  == Status.Ok
+///     status  == Status::Ok
 ///     code    == "VITTE_OK"
 ///     message == "ok"
 ///     details == null
@@ -1229,16 +1229,16 @@ export proc error_last_status() -> Status {
 ///
 /// Infrastructure status families:
 ///
-///     Status.Ok
+///     Status::Ok
 ///
-///     Status.ErrorInvalidArgument
-///     Status.ErrorInvalidState
-///     Status.ErrorOutOfMemory
-///     Status.ErrorIo
-///     Status.ErrorParse
-///     Status.ErrorUnsupported
-///     Status.ErrorBackend
-///     Status.ErrorInternal
+///     Status::ErrorInvalidArgument
+///     Status::ErrorInvalidState
+///     Status::ErrorOutOfMemory
+///     Status::ErrorIo
+///     Status::ErrorParse
+///     Status::ErrorUnsupported
+///     Status::ErrorBackend
+///     Status::ErrorInternal
 ///
 /// Source-level failures such as unknown identifiers, unknown types, type
 /// mismatches, wrong arity, invalid contracts or failed constant evaluation
@@ -1270,7 +1270,7 @@ export proc error_last_status() -> Status {
 ///
 ///     error_set_details(
 ///         &error,
-///         Status.ErrorIo,
+///         Status::ErrorIo,
 ///         "VITTE_IO_E_READ",
 ///         "unable to read source file",
 ///         path
@@ -1311,15 +1311,15 @@ export proc error_last_status() -> Status {
 ///         if invalid_condition {
 ///             error_set(
 ///                 &context.last_error,
-///                 Status.ErrorInvalidArgument,
+///                 Status::ErrorInvalidArgument,
 ///                 "VITTE_API_E_INVALID_ARGUMENT",
 ///                 "invalid argument"
 ///             );
 ///
-///             return Status.ErrorInvalidArgument;
+///             return Status::ErrorInvalidArgument;
 ///         }
 ///
-///         return Status.Ok;
+///         return Status::Ok;
 ///     }
 ///
 /// Source-facing compiler phases additionally emit structured diagnostics

@@ -30,7 +30,7 @@ test "numeric lexical zero" {
     let result: JsonNumericScan = scan("0");
 
     assert result.ok;
-    assert result.kind == JsonNumericKind.Integer;
+    assert result.kind == JsonNumericKind::Integer;
     assert not result.negative;
     assert result.integer_digits == 1;
     assert result.fraction_digits == 0;
@@ -43,7 +43,7 @@ test "numeric lexical negative zero" {
     let result: JsonNumericScan = scan("-0");
 
     assert result.ok;
-    assert result.kind == JsonNumericKind.Integer;
+    assert result.kind == JsonNumericKind::Integer;
     assert result.negative;
     assert result.integer_digits == 1;
 }
@@ -116,7 +116,7 @@ test "numeric lexical long fraction" {
         scan("123.12345678901234567");
 
     assert result.ok;
-    assert result.kind == JsonNumericKind.Float;
+    assert result.kind == JsonNumericKind::Float;
     assert result.has_fraction;
     assert result.fraction_digits == 17;
     assert result.integer_digits == 3;
@@ -184,7 +184,7 @@ test "numeric lexical exponent metadata" {
         scan("-123.456e-789");
 
     assert result.ok;
-    assert result.kind == JsonNumericKind.Float;
+    assert result.kind == JsonNumericKind::Float;
 
     assert result.negative;
     assert result.has_fraction;
@@ -204,15 +204,15 @@ test "numeric rejects empty input" {
     let result: JsonNumericScan = scan("");
 
     assert not result.ok;
-    assert result.kind == JsonNumericKind.Invalid;
-    assert result.error == JsonNumericError.Empty;
+    assert result.kind == JsonNumericKind::Invalid;
+    assert result.error == JsonNumericError::Empty;
 }
 
 test "numeric rejects plus prefix" {
     let result: JsonNumericScan = scan("+1");
 
     assert not result.ok;
-    assert result.error == JsonNumericError.LeadingPlus;
+    assert result.error == JsonNumericError::LeadingPlus;
     assert result.error_index == 0;
 }
 
@@ -222,14 +222,14 @@ test "numeric rejects minus only" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingIntegerDigits;
+        JsonNumericError::MissingIntegerDigits;
 }
 
 test "numeric rejects plus only" {
     let result: JsonNumericScan = scan("+");
 
     assert not result.ok;
-    assert result.error == JsonNumericError.LeadingPlus;
+    assert result.error == JsonNumericError::LeadingPlus;
 }
 
 /// -------------------------------------------------------------------------
@@ -249,14 +249,14 @@ test "numeric rejects positive leading zero" {
     let result: JsonNumericScan = scan("01");
 
     assert not result.ok;
-    assert result.error == JsonNumericError.LeadingZero;
+    assert result.error == JsonNumericError::LeadingZero;
 }
 
 test "numeric rejects negative leading zero" {
     let result: JsonNumericScan = scan("-01");
 
     assert not result.ok;
-    assert result.error == JsonNumericError.LeadingZero;
+    assert result.error == JsonNumericError::LeadingZero;
 }
 
 test "numeric rejects multiple leading zeroes" {
@@ -287,7 +287,7 @@ test "numeric rejects leading decimal point" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingIntegerDigits;
+        JsonNumericError::MissingIntegerDigits;
 }
 
 test "numeric rejects negative leading decimal point" {
@@ -296,7 +296,7 @@ test "numeric rejects negative leading decimal point" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingIntegerDigits;
+        JsonNumericError::MissingIntegerDigits;
 }
 
 test "numeric rejects trailing decimal point" {
@@ -305,7 +305,7 @@ test "numeric rejects trailing decimal point" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingFractionDigits;
+        JsonNumericError::MissingFractionDigits;
 }
 
 test "numeric rejects fraction followed by exponent without fraction digit" {
@@ -314,7 +314,7 @@ test "numeric rejects fraction followed by exponent without fraction digit" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingFractionDigits;
+        JsonNumericError::MissingFractionDigits;
 }
 
 test "numeric rejects duplicate decimal point" {
@@ -332,7 +332,7 @@ test "numeric rejects exponent without digits" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingExponentDigits;
+        JsonNumericError::MissingExponentDigits;
 }
 
 test "numeric rejects uppercase exponent without digits" {
@@ -341,7 +341,7 @@ test "numeric rejects uppercase exponent without digits" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingExponentDigits;
+        JsonNumericError::MissingExponentDigits;
 }
 
 test "numeric rejects exponent plus without digits" {
@@ -350,7 +350,7 @@ test "numeric rejects exponent plus without digits" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingExponentDigits;
+        JsonNumericError::MissingExponentDigits;
 }
 
 test "numeric rejects exponent minus without digits" {
@@ -359,7 +359,7 @@ test "numeric rejects exponent minus without digits" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingExponentDigits;
+        JsonNumericError::MissingExponentDigits;
 }
 
 test "numeric rejects duplicate exponent" {
@@ -434,43 +434,43 @@ test "numeric rejects infinity text" {
 
 test "numeric classifies integers" {
     assert classify("0") ==
-        JsonNumericKind.Integer;
+        JsonNumericKind::Integer;
 
     assert classify("42") ==
-        JsonNumericKind.Integer;
+        JsonNumericKind::Integer;
 
     assert classify("-42") ==
-        JsonNumericKind.Integer;
+        JsonNumericKind::Integer;
 }
 
 test "numeric classifies fractions as float" {
     assert classify("0.0") ==
-        JsonNumericKind.Float;
+        JsonNumericKind::Float;
 
     assert classify("42.0") ==
-        JsonNumericKind.Float;
+        JsonNumericKind::Float;
 
     assert classify("-42.5") ==
-        JsonNumericKind.Float;
+        JsonNumericKind::Float;
 }
 
 test "numeric classifies exponent as float" {
     assert classify("1e0") ==
-        JsonNumericKind.Float;
+        JsonNumericKind::Float;
 
     assert classify("1E10") ==
-        JsonNumericKind.Float;
+        JsonNumericKind::Float;
 }
 
 test "numeric classifies invalid input" {
     assert classify("") ==
-        JsonNumericKind.Invalid;
+        JsonNumericKind::Invalid;
 
     assert classify("+1") ==
-        JsonNumericKind.Invalid;
+        JsonNumericKind::Invalid;
 
     assert classify("01") ==
-        JsonNumericKind.Invalid;
+        JsonNumericKind::Invalid;
 }
 
 test "numeric integer literal predicate" {
@@ -604,7 +604,7 @@ test "numeric parse i64 zero" {
 
     assert result.ok;
     assert result.value == 0;
-    assert result.error == JsonNumericError.None;
+    assert result.error == JsonNumericError::None;
 }
 
 test "numeric parse i64 negative zero" {
@@ -654,7 +654,7 @@ test "numeric parse i64 overflow by one" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 test "numeric parse i64 underflow by one" {
@@ -664,7 +664,7 @@ test "numeric parse i64 underflow by one" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerUnderflow;
+        JsonNumericError::IntegerUnderflow;
 }
 
 test "numeric parse i64 rejects decimal" {
@@ -674,7 +674,7 @@ test "numeric parse i64 rejects decimal" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.InvalidInteger;
+        JsonNumericError::InvalidInteger;
 }
 
 test "numeric parse i64 rejects exponent" {
@@ -684,7 +684,7 @@ test "numeric parse i64 rejects exponent" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.InvalidInteger;
+        JsonNumericError::InvalidInteger;
 }
 
 test "numeric parse i64 propagates lexical error" {
@@ -694,7 +694,7 @@ test "numeric parse i64 propagates lexical error" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.LeadingZero;
+        JsonNumericError::LeadingZero;
 }
 
 /// -------------------------------------------------------------------------
@@ -732,7 +732,7 @@ test "numeric parse u64 overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.UnsignedOverflow;
+        JsonNumericError::UnsignedOverflow;
 }
 
 test "numeric parse u64 rejects negative" {
@@ -742,7 +742,7 @@ test "numeric parse u64 rejects negative" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.NegativeUnsigned;
+        JsonNumericError::NegativeUnsigned;
 }
 
 test "numeric parse u64 rejects negative zero" {
@@ -752,7 +752,7 @@ test "numeric parse u64 rejects negative zero" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.NegativeUnsigned;
+        JsonNumericError::NegativeUnsigned;
 }
 
 test "numeric parse u64 rejects float" {
@@ -762,7 +762,7 @@ test "numeric parse u64 rejects float" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.InvalidInteger;
+        JsonNumericError::InvalidInteger;
 }
 
 /// -------------------------------------------------------------------------
@@ -864,7 +864,7 @@ test "numeric parse f64 propagates lexical error" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.MissingFractionDigits;
+        JsonNumericError::MissingFractionDigits;
 }
 
 /// -------------------------------------------------------------------------
@@ -901,36 +901,36 @@ test "numeric as f64 fallback" {
 
 test "numeric classify i64 values" {
     assert classify_i64(-1) ==
-        JsonNumericClass.Negative;
+        JsonNumericClass::Negative;
 
     assert classify_i64(0) ==
-        JsonNumericClass.Zero;
+        JsonNumericClass::Zero;
 
     assert classify_i64(1) ==
-        JsonNumericClass.Positive;
+        JsonNumericClass::Positive;
 }
 
 test "numeric classify u64 values" {
     assert classify_u64(0) ==
-        JsonNumericClass.Zero;
+        JsonNumericClass::Zero;
 
     assert classify_u64(1) ==
-        JsonNumericClass.Positive;
+        JsonNumericClass::Positive;
 
     assert classify_u64(
         JSON_NUMERIC_U64_MAX) ==
-        JsonNumericClass.Positive;
+        JsonNumericClass::Positive;
 }
 
 test "numeric classify finite f64 values" {
     assert classify_f64(-1.0) ==
-        JsonNumericClass.Negative;
+        JsonNumericClass::Negative;
 
     assert classify_f64(0.0) ==
-        JsonNumericClass.Zero;
+        JsonNumericClass::Zero;
 
     assert classify_f64(1.0) ==
-        JsonNumericClass.Positive;
+        JsonNumericClass::Positive;
 }
 
 /// -------------------------------------------------------------------------
@@ -1022,7 +1022,7 @@ test "numeric checked add maximum overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 test "numeric checked add minimum underflow" {
@@ -1034,7 +1034,7 @@ test "numeric checked add minimum underflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerUnderflow;
+        JsonNumericError::IntegerUnderflow;
 }
 
 /// -------------------------------------------------------------------------
@@ -1066,7 +1066,7 @@ test "numeric checked subtract underflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerUnderflow;
+        JsonNumericError::IntegerUnderflow;
 }
 
 test "numeric checked subtract overflow" {
@@ -1078,7 +1078,7 @@ test "numeric checked subtract overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 /// -------------------------------------------------------------------------
@@ -1141,7 +1141,7 @@ test "numeric checked multiply minimum by negative one" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 /// -------------------------------------------------------------------------
@@ -1171,7 +1171,7 @@ test "numeric checked division zero denominator" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.DivisionByZero;
+        JsonNumericError::DivisionByZero;
 }
 
 test "numeric checked division minimum overflow" {
@@ -1183,7 +1183,7 @@ test "numeric checked division minimum overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 test "numeric checked remainder ordinary" {
@@ -1201,7 +1201,7 @@ test "numeric checked remainder zero denominator" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.RemainderByZero;
+        JsonNumericError::RemainderByZero;
 }
 
 test "numeric checked remainder minimum negative one" {
@@ -1250,7 +1250,7 @@ test "numeric checked negation minimum overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 /// -------------------------------------------------------------------------
@@ -1274,7 +1274,7 @@ test "numeric checked u64 addition overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.UnsignedOverflow;
+        JsonNumericError::UnsignedOverflow;
 }
 
 test "numeric checked u64 multiplication" {
@@ -1304,7 +1304,7 @@ test "numeric checked u64 multiplication overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.UnsignedOverflow;
+        JsonNumericError::UnsignedOverflow;
 }
 
 /// -------------------------------------------------------------------------
@@ -1605,7 +1605,7 @@ test "numeric rejects excessive precision" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.InvalidPrecision;
+        JsonNumericError::InvalidPrecision;
 }
 
 /// -------------------------------------------------------------------------
@@ -1667,7 +1667,7 @@ test "numeric normalize rejects invalid number" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.LeadingZero;
+        JsonNumericError::LeadingZero;
 }
 
 /// -------------------------------------------------------------------------
@@ -1752,7 +1752,7 @@ test "numeric f64 to i64 rejects fraction" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.InvalidInteger;
+        JsonNumericError::InvalidInteger;
 }
 
 /// -------------------------------------------------------------------------
@@ -1868,99 +1868,99 @@ test "numeric exponent marker helpers" {
 
 test "numeric error names" {
     assert error_name(
-        JsonNumericError.None) ==
+        JsonNumericError::None) ==
         "none";
 
     assert error_name(
-        JsonNumericError.Empty) ==
+        JsonNumericError::Empty) ==
         "empty";
 
     assert error_name(
-        JsonNumericError.InvalidCharacter) ==
+        JsonNumericError::InvalidCharacter) ==
         "invalid-character";
 
     assert error_name(
-        JsonNumericError.LeadingPlus) ==
+        JsonNumericError::LeadingPlus) ==
         "leading-plus";
 
     assert error_name(
-        JsonNumericError.LeadingZero) ==
+        JsonNumericError::LeadingZero) ==
         "leading-zero";
 
     assert error_name(
-        JsonNumericError.MissingIntegerDigits) ==
+        JsonNumericError::MissingIntegerDigits) ==
         "missing-integer-digits";
 
     assert error_name(
-        JsonNumericError.MissingFractionDigits) ==
+        JsonNumericError::MissingFractionDigits) ==
         "missing-fraction-digits";
 
     assert error_name(
-        JsonNumericError.MissingExponentDigits) ==
+        JsonNumericError::MissingExponentDigits) ==
         "missing-exponent-digits";
 
     assert error_name(
-        JsonNumericError.IntegerOverflow) ==
+        JsonNumericError::IntegerOverflow) ==
         "integer-overflow";
 
     assert error_name(
-        JsonNumericError.IntegerUnderflow) ==
+        JsonNumericError::IntegerUnderflow) ==
         "integer-underflow";
 
     assert error_name(
-        JsonNumericError.UnsignedOverflow) ==
+        JsonNumericError::UnsignedOverflow) ==
         "unsigned-overflow";
 
     assert error_name(
-        JsonNumericError.NegativeUnsigned) ==
+        JsonNumericError::NegativeUnsigned) ==
         "negative-unsigned";
 
     assert error_name(
-        JsonNumericError.DivisionByZero) ==
+        JsonNumericError::DivisionByZero) ==
         "division-by-zero";
 
     assert error_name(
-        JsonNumericError.RemainderByZero) ==
+        JsonNumericError::RemainderByZero) ==
         "remainder-by-zero";
 
     assert error_name(
-        JsonNumericError.ExponentTooLarge) ==
+        JsonNumericError::ExponentTooLarge) ==
         "exponent-too-large";
 
     assert error_name(
-        JsonNumericError.InvalidPrecision) ==
+        JsonNumericError::InvalidPrecision) ==
         "invalid-precision";
 }
 
 test "numeric kind names" {
     assert kind_name(
-        JsonNumericKind.Invalid) ==
+        JsonNumericKind::Invalid) ==
         "invalid";
 
     assert kind_name(
-        JsonNumericKind.Integer) ==
+        JsonNumericKind::Integer) ==
         "integer";
 
     assert kind_name(
-        JsonNumericKind.Float) ==
+        JsonNumericKind::Float) ==
         "float";
 }
 
 test "numeric class names" {
     assert class_name(
-        JsonNumericClass.Invalid) ==
+        JsonNumericClass::Invalid) ==
         "invalid";
 
     assert class_name(
-        JsonNumericClass.Zero) ==
+        JsonNumericClass::Zero) ==
         "zero";
 
     assert class_name(
-        JsonNumericClass.Positive) ==
+        JsonNumericClass::Positive) ==
         "positive";
 
     assert class_name(
-        JsonNumericClass.Negative) ==
+        JsonNumericClass::Negative) ==
         "negative";
 }
 
@@ -2207,7 +2207,7 @@ test "numeric long valid integer lexical scan" {
         scan(source);
 
     assert result.ok;
-    assert result.kind == JsonNumericKind.Integer;
+    assert result.kind == JsonNumericKind::Integer;
     assert result.integer_digits == 50;
 }
 
@@ -2219,7 +2219,7 @@ test "numeric long valid fraction lexical scan" {
         scan(source);
 
     assert result.ok;
-    assert result.kind == JsonNumericKind.Float;
+    assert result.kind == JsonNumericKind::Float;
     assert result.fraction_digits == 50;
 }
 
@@ -2243,7 +2243,7 @@ test "numeric long integer conversion reports overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.IntegerOverflow;
+        JsonNumericError::IntegerOverflow;
 }
 
 test "numeric long unsigned conversion reports overflow" {
@@ -2254,7 +2254,7 @@ test "numeric long unsigned conversion reports overflow" {
     assert not result.ok;
 
     assert result.error ==
-        JsonNumericError.UnsignedOverflow;
+        JsonNumericError::UnsignedOverflow;
 }
 
 /// -------------------------------------------------------------------------
@@ -2341,7 +2341,7 @@ test "numeric runtime complete smoke test" {
     assert valid("-123.456e+7");
 
     assert classify("-123.456e+7") ==
-        JsonNumericKind.Float;
+        JsonNumericKind::Float;
 
     assert integer_digit_count(
         "-123.456e+7") ==
@@ -2392,6 +2392,6 @@ test "numeric runtime complete smoke test" {
         "18446744073709551615");
 
     assert error_name(
-        JsonNumericError.IntegerOverflow) ==
+        JsonNumericError::IntegerOverflow) ==
         "integer-overflow";
 }

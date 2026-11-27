@@ -72,58 +72,58 @@ export type BuiltinVisitFn = proc(
 ) -> bool;
 
 const BUILTIN_REGISTRY: [BuiltinDescriptor] = [
-    BuiltinDescriptor { id: BuiltinId.Memcpy, name: "memcpy", description: "Copy a non-overlapping memory region.", category: BuiltinCategory.Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_READ | BUILTIN_FLAG_MEMORY_WRITE },
-    BuiltinDescriptor { id: BuiltinId.Memmove, name: "memmove", description: "Copy a potentially overlapping memory region.", category: BuiltinCategory.Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_READ | BUILTIN_FLAG_MEMORY_WRITE },
-    BuiltinDescriptor { id: BuiltinId.Memset, name: "memset", description: "Fill a memory region.", category: BuiltinCategory.Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_WRITE },
-    BuiltinDescriptor { id: BuiltinId.Memcmp, name: "memcmp", description: "Compare two memory regions.", category: BuiltinCategory.Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_READ },
-    BuiltinDescriptor { id: BuiltinId.PtrOffset, name: "ptr_offset", description: "Offset a pointer by an element displacement.", category: BuiltinCategory.Pointer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAG_UNSAFE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.PtrDiff, name: "ptr_diff", description: "Compute the displacement between compatible pointers.", category: BuiltinCategory.Pointer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAG_UNSAFE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.PtrIsNull, name: "ptr_is_null", description: "Test whether a pointer is null.", category: BuiltinCategory.Pointer, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Sizeof, name: "sizeof", description: "Return the storage size of a type or value.", category: BuiltinCategory.Type, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_QUERY },
-    BuiltinDescriptor { id: BuiltinId.Alignof, name: "alignof", description: "Return the required alignment of a type.", category: BuiltinCategory.Type, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_QUERY },
-    BuiltinDescriptor { id: BuiltinId.Offsetof, name: "offsetof", description: "Return a field offset inside an aggregate type.", category: BuiltinCategory.Type, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_QUERY },
-    BuiltinDescriptor { id: BuiltinId.AddOverflow, name: "add_overflow", description: "Perform integer addition and report overflow.", category: BuiltinCategory.Integer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.SubOverflow, name: "sub_overflow", description: "Perform integer subtraction and report overflow.", category: BuiltinCategory.Integer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.MulOverflow, name: "mul_overflow", description: "Perform integer multiplication and report overflow.", category: BuiltinCategory.Integer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Clz, name: "clz", description: "Count leading zero bits.", category: BuiltinCategory.Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Ctz, name: "ctz", description: "Count trailing zero bits.", category: BuiltinCategory.Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Popcount, name: "popcount", description: "Count set bits.", category: BuiltinCategory.Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Bswap, name: "bswap", description: "Reverse byte order.", category: BuiltinCategory.Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Rotl, name: "rotl", description: "Rotate bits left.", category: BuiltinCategory.Bit, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Rotr, name: "rotr", description: "Rotate bits right.", category: BuiltinCategory.Bit, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Isnan, name: "isnan", description: "Test whether a floating-point value is NaN.", category: BuiltinCategory.Float, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE },
-    BuiltinDescriptor { id: BuiltinId.Isinf, name: "isinf", description: "Test whether a floating-point value is infinite.", category: BuiltinCategory.Float, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE },
-    BuiltinDescriptor { id: BuiltinId.Isfinite, name: "isfinite", description: "Test whether a floating-point value is finite.", category: BuiltinCategory.Float, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE },
-    BuiltinDescriptor { id: BuiltinId.AtomicLoad, name: "atomic_load", description: "Atomically load a value.", category: BuiltinCategory.Atomic, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_ATOMIC_READ },
-    BuiltinDescriptor { id: BuiltinId.AtomicStore, name: "atomic_store", description: "Atomically store a value.", category: BuiltinCategory.Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_WRITE },
-    BuiltinDescriptor { id: BuiltinId.AtomicExchange, name: "atomic_exchange", description: "Atomically replace a value.", category: BuiltinCategory.Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
-    BuiltinDescriptor { id: BuiltinId.AtomicCompareExchange, name: "atomic_compare_exchange", description: "Atomically compare and conditionally exchange a value.", category: BuiltinCategory.Atomic, minimum_arity: 5, maximum_arity: 5, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
-    BuiltinDescriptor { id: BuiltinId.AtomicFetchAdd, name: "atomic_fetch_add", description: "Atomically add and return the previous value.", category: BuiltinCategory.Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
-    BuiltinDescriptor { id: BuiltinId.AtomicFetchSub, name: "atomic_fetch_sub", description: "Atomically subtract and return the previous value.", category: BuiltinCategory.Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
-    BuiltinDescriptor { id: BuiltinId.AtomicFence, name: "atomic_fence", description: "Emit an atomic memory fence.", category: BuiltinCategory.Atomic, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAG_ATOMIC | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Unreachable, name: "unreachable", description: "Mark the current control-flow path unreachable.", category: BuiltinCategory.Control, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAG_NORETURN | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Trap, name: "trap", description: "Terminate execution through a compiler trap.", category: BuiltinCategory.Control, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAG_NORETURN | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.Assume, name: "assume", description: "Tell the optimizer that a condition is true.", category: BuiltinCategory.Compiler, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.DebugBreak, name: "debug_break", description: "Request a debugger breakpoint.", category: BuiltinCategory.Debug, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAG_TARGET_DEPENDENT | BUILTIN_FLAG_LOWER_DIRECTLY },
-    BuiltinDescriptor { id: BuiltinId.CompilerVersion, name: "compiler_version", description: "Return compiler version information.", category: BuiltinCategory.Compiler, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAGS_QUERY },
-    BuiltinDescriptor { id: BuiltinId.TargetPointerBits, name: "target_pointer_bits", description: "Return the target pointer width.", category: BuiltinCategory.Compiler, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAGS_TARGET_QUERY },
-    BuiltinDescriptor { id: BuiltinId.TargetEndian, name: "target_endian", description: "Return the target byte order.", category: BuiltinCategory.Compiler, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAGS_TARGET_QUERY },
+    BuiltinDescriptor { id: BuiltinId::Memcpy, name: "memcpy", description: "Copy a non-overlapping memory region.", category: BuiltinCategory::Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_READ | BUILTIN_FLAG_MEMORY_WRITE },
+    BuiltinDescriptor { id: BuiltinId::Memmove, name: "memmove", description: "Copy a potentially overlapping memory region.", category: BuiltinCategory::Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_READ | BUILTIN_FLAG_MEMORY_WRITE },
+    BuiltinDescriptor { id: BuiltinId::Memset, name: "memset", description: "Fill a memory region.", category: BuiltinCategory::Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_WRITE },
+    BuiltinDescriptor { id: BuiltinId::Memcmp, name: "memcmp", description: "Compare two memory regions.", category: BuiltinCategory::Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_READ },
+    BuiltinDescriptor { id: BuiltinId::PtrOffset, name: "ptr_offset", description: "Offset a pointer by an element displacement.", category: BuiltinCategory::Pointer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAG_UNSAFE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::PtrDiff, name: "ptr_diff", description: "Compute the displacement between compatible pointers.", category: BuiltinCategory::Pointer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAG_UNSAFE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::PtrIsNull, name: "ptr_is_null", description: "Test whether a pointer is null.", category: BuiltinCategory::Pointer, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Sizeof, name: "sizeof", description: "Return the storage size of a type or value.", category: BuiltinCategory::Type, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_QUERY },
+    BuiltinDescriptor { id: BuiltinId::Alignof, name: "alignof", description: "Return the required alignment of a type.", category: BuiltinCategory::Type, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_QUERY },
+    BuiltinDescriptor { id: BuiltinId::Offsetof, name: "offsetof", description: "Return a field offset inside an aggregate type.", category: BuiltinCategory::Type, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_QUERY },
+    BuiltinDescriptor { id: BuiltinId::AddOverflow, name: "add_overflow", description: "Perform integer addition and report overflow.", category: BuiltinCategory::Integer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::SubOverflow, name: "sub_overflow", description: "Perform integer subtraction and report overflow.", category: BuiltinCategory::Integer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::MulOverflow, name: "mul_overflow", description: "Perform integer multiplication and report overflow.", category: BuiltinCategory::Integer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Clz, name: "clz", description: "Count leading zero bits.", category: BuiltinCategory::Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Ctz, name: "ctz", description: "Count trailing zero bits.", category: BuiltinCategory::Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Popcount, name: "popcount", description: "Count set bits.", category: BuiltinCategory::Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Bswap, name: "bswap", description: "Reverse byte order.", category: BuiltinCategory::Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Rotl, name: "rotl", description: "Rotate bits left.", category: BuiltinCategory::Bit, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Rotr, name: "rotr", description: "Rotate bits right.", category: BuiltinCategory::Bit, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Isnan, name: "isnan", description: "Test whether a floating-point value is NaN.", category: BuiltinCategory::Float, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE },
+    BuiltinDescriptor { id: BuiltinId::Isinf, name: "isinf", description: "Test whether a floating-point value is infinite.", category: BuiltinCategory::Float, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE },
+    BuiltinDescriptor { id: BuiltinId::Isfinite, name: "isfinite", description: "Test whether a floating-point value is finite.", category: BuiltinCategory::Float, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE },
+    BuiltinDescriptor { id: BuiltinId::AtomicLoad, name: "atomic_load", description: "Atomically load a value.", category: BuiltinCategory::Atomic, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_ATOMIC_READ },
+    BuiltinDescriptor { id: BuiltinId::AtomicStore, name: "atomic_store", description: "Atomically store a value.", category: BuiltinCategory::Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_WRITE },
+    BuiltinDescriptor { id: BuiltinId::AtomicExchange, name: "atomic_exchange", description: "Atomically replace a value.", category: BuiltinCategory::Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
+    BuiltinDescriptor { id: BuiltinId::AtomicCompareExchange, name: "atomic_compare_exchange", description: "Atomically compare and conditionally exchange a value.", category: BuiltinCategory::Atomic, minimum_arity: 5, maximum_arity: 5, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
+    BuiltinDescriptor { id: BuiltinId::AtomicFetchAdd, name: "atomic_fetch_add", description: "Atomically add and return the previous value.", category: BuiltinCategory::Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
+    BuiltinDescriptor { id: BuiltinId::AtomicFetchSub, name: "atomic_fetch_sub", description: "Atomically subtract and return the previous value.", category: BuiltinCategory::Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
+    BuiltinDescriptor { id: BuiltinId::AtomicFence, name: "atomic_fence", description: "Emit an atomic memory fence.", category: BuiltinCategory::Atomic, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAG_ATOMIC | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Unreachable, name: "unreachable", description: "Mark the current control-flow path unreachable.", category: BuiltinCategory::Control, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAG_NORETURN | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Trap, name: "trap", description: "Terminate execution through a compiler trap.", category: BuiltinCategory::Control, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAG_NORETURN | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::Assume, name: "assume", description: "Tell the optimizer that a condition is true.", category: BuiltinCategory::Compiler, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::DebugBreak, name: "debug_break", description: "Request a debugger breakpoint.", category: BuiltinCategory::Debug, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAG_TARGET_DEPENDENT | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId::CompilerVersion, name: "compiler_version", description: "Return compiler version information.", category: BuiltinCategory::Compiler, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAGS_QUERY },
+    BuiltinDescriptor { id: BuiltinId::TargetPointerBits, name: "target_pointer_bits", description: "Return the target pointer width.", category: BuiltinCategory::Compiler, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAGS_TARGET_QUERY },
+    BuiltinDescriptor { id: BuiltinId::TargetEndian, name: "target_endian", description: "Return the target byte order.", category: BuiltinCategory::Compiler, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAGS_TARGET_QUERY },
 ];
 
 proc builtin_flag_mask(flag: BuiltinFlag) -> u64 {
-    if flag == BuiltinFlag.None or (flag as u32) > (BuiltinFlag.LowerDirectly as u32) { return 0; }
+    if flag == BuiltinFlag::None or (flag as u32) > (BuiltinFlag::LowerDirectly as u32) { return 0; }
     return (1 as u64) << ((flag as u32) - 1);
 }
 
 proc builtin_descriptor_valid(descriptor: *const BuiltinDescriptor) -> bool {
     if descriptor == null { return false; }
     let value = *descriptor;
-    return value.id > BuiltinId.Invalid and value.id < BuiltinId.Count and
+    return value.id > BuiltinId::Invalid and value.id < BuiltinId::Count and
         value.name.len() != 0 and value.description.len() != 0 and
-        value.category > BuiltinCategory.Invalid and value.category < BuiltinCategory.Count and
+        value.category > BuiltinCategory::Invalid and value.category < BuiltinCategory::Count and
         (value.maximum_arity == BUILTIN_VARIADIC_ARITY or value.minimum_arity <= value.maximum_arity) and
         ((value.builtin_flags & BUILTIN_FLAG_CONST) == 0 or (value.builtin_flags & BUILTIN_FLAG_PURE) != 0) and
-        ((value.builtin_flags & BUILTIN_FLAG_ATOMIC) == 0 or value.category == BuiltinCategory.Atomic);
+        ((value.builtin_flags & BUILTIN_FLAG_ATOMIC) == 0 or value.category == BuiltinCategory::Atomic);
 }
 
 export proc vitte_builtin_category_name(category: BuiltinCategory) -> string {
@@ -175,8 +175,8 @@ export proc vitte_builtin_find(name: string) -> *const BuiltinDescriptor {
 export proc vitte_builtin_exists(name: string) -> bool { return vitte_builtin_find(name) != null; }
 
 export proc vitte_builtin_id_name(id: BuiltinId) -> string {
-    if id == BuiltinId.Invalid { return "invalid"; }
-    if id == BuiltinId.Count { return "count"; }
+    if id == BuiltinId::Invalid { return "invalid"; }
+    if id == BuiltinId::Count { return "count"; }
     let descriptor: *const BuiltinDescriptor = vitte_builtin_find_by_id(id);
     if descriptor == null { return "invalid"; }
     return (*descriptor).name;
@@ -199,16 +199,16 @@ export proc vitte_builtin_is_variadic(descriptor: *const BuiltinDescriptor) -> b
     return descriptor != null and (*descriptor).maximum_arity == BUILTIN_VARIADIC_ARITY;
 }
 
-export proc vitte_builtin_is_pure(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Pure); }
-export proc vitte_builtin_is_const(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Const); }
-export proc vitte_builtin_is_unsafe(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Unsafe); }
-export proc vitte_builtin_is_noreturn(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Noreturn); }
-export proc vitte_builtin_reads_memory(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.MemoryRead); }
-export proc vitte_builtin_writes_memory(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.MemoryWrite); }
-export proc vitte_builtin_is_atomic(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Atomic); }
+export proc vitte_builtin_is_pure(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag::Pure); }
+export proc vitte_builtin_is_const(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag::Const); }
+export proc vitte_builtin_is_unsafe(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag::Unsafe); }
+export proc vitte_builtin_is_noreturn(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag::Noreturn); }
+export proc vitte_builtin_reads_memory(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag::MemoryRead); }
+export proc vitte_builtin_writes_memory(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag::MemoryWrite); }
+export proc vitte_builtin_is_atomic(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag::Atomic); }
 
 export proc vitte_builtin_registry_validate() -> bool {
-    if BUILTIN_REGISTRY.len() != (BuiltinId.Count as usize) - 1 { return false; }
+    if BUILTIN_REGISTRY.len() != (BuiltinId::Count as usize) - 1 { return false; }
     let mut left: usize = 0;
     while left < BUILTIN_REGISTRY.len() {
         let descriptor: *const BuiltinDescriptor = &BUILTIN_REGISTRY[left];
@@ -270,9 +270,9 @@ export proc vitte_builtin_stats() -> BuiltinStats {
         if vitte_builtin_reads_memory(descriptor) { set stats.memory_read_count += 1; }
         if vitte_builtin_writes_memory(descriptor) { set stats.memory_write_count += 1; }
         if vitte_builtin_is_atomic(descriptor) { set stats.atomic_count += 1; }
-        if vitte_builtin_has_flag(descriptor, BuiltinFlag.TargetDependent) { set stats.target_dependent_count += 1; }
-        if vitte_builtin_has_flag(descriptor, BuiltinFlag.Comptime) { set stats.comptime_count += 1; }
-        if vitte_builtin_has_flag(descriptor, BuiltinFlag.LowerDirectly) { set stats.directly_lowered_count += 1; }
+        if vitte_builtin_has_flag(descriptor, BuiltinFlag::TargetDependent) { set stats.target_dependent_count += 1; }
+        if vitte_builtin_has_flag(descriptor, BuiltinFlag::Comptime) { set stats.comptime_count += 1; }
+        if vitte_builtin_has_flag(descriptor, BuiltinFlag::LowerDirectly) { set stats.directly_lowered_count += 1; }
         set index += 1;
     }
     set stats.registry_hash = vitte_builtin_registry_hash();
@@ -280,7 +280,7 @@ export proc vitte_builtin_stats() -> BuiltinStats {
 }
 
 export proc vitte_builtin_count_category(category: BuiltinCategory) -> usize {
-    if category <= BuiltinCategory.Invalid or category >= BuiltinCategory.Count { return 0; }
+    if category <= BuiltinCategory::Invalid or category >= BuiltinCategory::Count { return 0; }
     let mut count: usize = 0;
     let mut index: usize = 0;
     while index < BUILTIN_REGISTRY.len() { if BUILTIN_REGISTRY[index].category == category { set count += 1; } set index += 1; }
@@ -295,55 +295,55 @@ export proc vitte_builtin_count_flag(flag: BuiltinFlag) -> usize {
 }
 
 export proc vitte_builtin_id_is_valid(id: BuiltinId) -> bool {
-    return id > BuiltinId.Invalid and id < BuiltinId.Count;
+    return id > BuiltinId::Invalid and id < BuiltinId::Count;
 }
 
 export proc vitte_builtin_category_is_valid(category: BuiltinCategory) -> bool {
-    return category > BuiltinCategory.Invalid and category < BuiltinCategory.Count;
+    return category > BuiltinCategory::Invalid and category < BuiltinCategory::Count;
 }
 
 export proc vitte_builtin_is_memory_operation(descriptor: *const BuiltinDescriptor) -> bool {
-    return descriptor != null and (*descriptor).category == BuiltinCategory.Memory;
+    return descriptor != null and (*descriptor).category == BuiltinCategory::Memory;
 }
 
 export proc vitte_builtin_is_pointer_operation(descriptor: *const BuiltinDescriptor) -> bool {
-    return descriptor != null and (*descriptor).category == BuiltinCategory.Pointer;
+    return descriptor != null and (*descriptor).category == BuiltinCategory::Pointer;
 }
 
 export proc vitte_builtin_is_type_operation(descriptor: *const BuiltinDescriptor) -> bool {
-    return descriptor != null and (*descriptor).category == BuiltinCategory.Type;
+    return descriptor != null and (*descriptor).category == BuiltinCategory::Type;
 }
 
 export proc vitte_builtin_is_integer_operation(descriptor: *const BuiltinDescriptor) -> bool {
-    return descriptor != null and (*descriptor).category == BuiltinCategory.Integer;
+    return descriptor != null and (*descriptor).category == BuiltinCategory::Integer;
 }
 
 export proc vitte_builtin_is_float_operation(descriptor: *const BuiltinDescriptor) -> bool {
-    return descriptor != null and (*descriptor).category == BuiltinCategory.Float;
+    return descriptor != null and (*descriptor).category == BuiltinCategory::Float;
 }
 
 export proc vitte_builtin_is_bit_operation(descriptor: *const BuiltinDescriptor) -> bool {
-    return descriptor != null and (*descriptor).category == BuiltinCategory.Bit;
+    return descriptor != null and (*descriptor).category == BuiltinCategory::Bit;
 }
 
 export proc vitte_builtin_is_control_operation(descriptor: *const BuiltinDescriptor) -> bool {
-    return descriptor != null and (*descriptor).category == BuiltinCategory.Control;
+    return descriptor != null and (*descriptor).category == BuiltinCategory::Control;
 }
 
 export proc vitte_builtin_is_compiler_operation(descriptor: *const BuiltinDescriptor) -> bool {
-    return descriptor != null and (*descriptor).category == BuiltinCategory.Compiler;
+    return descriptor != null and (*descriptor).category == BuiltinCategory::Compiler;
 }
 
 export proc vitte_builtin_is_target_dependent(descriptor: *const BuiltinDescriptor) -> bool {
-    return vitte_builtin_has_flag(descriptor, BuiltinFlag.TargetDependent);
+    return vitte_builtin_has_flag(descriptor, BuiltinFlag::TargetDependent);
 }
 
 export proc vitte_builtin_is_comptime(descriptor: *const BuiltinDescriptor) -> bool {
-    return vitte_builtin_has_flag(descriptor, BuiltinFlag.Comptime);
+    return vitte_builtin_has_flag(descriptor, BuiltinFlag::Comptime);
 }
 
 export proc vitte_builtin_lowers_directly(descriptor: *const BuiltinDescriptor) -> bool {
-    return vitte_builtin_has_flag(descriptor, BuiltinFlag.LowerDirectly);
+    return vitte_builtin_has_flag(descriptor, BuiltinFlag::LowerDirectly);
 }
 
 export proc vitte_builtin_touches_memory(descriptor: *const BuiltinDescriptor) -> bool {

@@ -101,7 +101,7 @@ proc lexer_sat_add(left: u64, right: u64) -> u64 {
 
 proc lexer_context_valid(lexer: ?&Lexer) -> bool {
     if lexer == null  or  lexer.magic != LEXER_MAGIC { return false; }
-    if lexer.state == LexerState.Invalid  or  lexer.state == LexerState.Destroyed  or  lexer.state == LexerState.Count { return false; }
+    if lexer.state == LexerState::Invalid  or  lexer.state == LexerState::Destroyed  or  lexer.state == LexerState::Count { return false; }
     if lexer.source_length > lexer.source.length  or  lexer.offset > lexer.source_length { return false; }
     if lexer.token_count > lexer.token_capacity  or  lexer.token_count > lexer.tokens.length { return false; }
     if lexer.diagnostic_count > lexer.diagnostics.length  or  lexer.diagnostic_count > LEXER_DEFAULT_MAX_DIAGNOSTICS { return false; }
@@ -122,7 +122,7 @@ proc lexer_fail(lexer: ?&mut Lexer, error: LexerError, begin: usize, end: usize)
                     set (*context).diagnostic_count += 1;
                 } else {
                     if (*context).diagnostic_count == 0 {
-                        set (*context).last_error = LexerError.OutOfMemory;
+                        set (*context).last_error = LexerError::OutOfMemory;
                         set (*context).error_span = span;
                     }
                     set (*context).stats.allocation_failures = lexer_sat_add((*context).stats.allocation_failures, 1);
@@ -153,7 +153,7 @@ proc lexer_skip_quoted_remainder(lexer: &mut Lexer, quote: u8) {
 }
 
 proc lexer_is_mutable(lexer: ?&mut Lexer) -> bool {
-    return lexer_context_valid(lexer)  and  lexer.state == LexerState.Ready;
+    return lexer_context_valid(lexer)  and  lexer.state == LexerState::Ready;
 }
 
 proc lexer_eof(lexer: &Lexer) -> bool { return lexer.offset >= lexer.source_length; }
@@ -221,7 +221,7 @@ proc lexer_hex_digit(byte: u8) -> bool {
 proc lexer_utf8_at(lexer: &Lexer, offset: usize, codepoint: &mut u64, width: &mut usize) -> bool {
     if offset >= lexer.source_length { return false; }
     let decoded = vitte_unicode_decode_utf8(lexer.source, offset, lexer.source_length);
-    if decoded.error != UnicodeError.None  or  decoded.length == 0 { return false; }
+    if decoded.error != UnicodeError::None  or  decoded.length == 0 { return false; }
     set *codepoint = decoded.codepoint;
     set *width = decoded.length;
     return true;
@@ -244,7 +244,7 @@ proc lexer_utf8_error_width(lexer: &Lexer, offset: usize) -> usize {
 }
 
 proc lexer_reserve_tokens(lexer: &mut Lexer, required: usize) -> bool {
-    if required > lexer.max_tokens { return lexer_fail(lexer, LexerError.TokenLimit, lexer.offset, lexer.offset); }
+    if required > lexer.max_tokens { return lexer_fail(lexer, LexerError::TokenLimit, lexer.offset, lexer.offset); }
     if required <= lexer.token_capacity { return true; }
     let mut capacity: usize = if lexer.token_capacity == 0 { LEXER_DEFAULT_INITIAL_CAPACITY } else { lexer.token_capacity };
     while capacity < required {
@@ -252,10 +252,10 @@ proc lexer_reserve_tokens(lexer: &mut Lexer, required: usize) -> bool {
         set capacity *= 2;
     }
     if capacity > lexer.max_tokens { set capacity = lexer.max_tokens; }
-    if capacity < required { return lexer_fail(lexer, LexerError.TokenLimit, lexer.offset, lexer.offset); }
+    if capacity < required { return lexer_fail(lexer, LexerError::TokenLimit, lexer.offset, lexer.offset); }
     if not lexer.tokens.reserve(capacity) {
         set lexer.stats.allocation_failures = lexer_sat_add(lexer.stats.allocation_failures, 1);
-        return lexer_fail(lexer, LexerError.OutOfMemory, lexer.offset, lexer.offset);
+        return lexer_fail(lexer, LexerError::OutOfMemory, lexer.offset, lexer.offset);
     }
     if lexer.token_capacity == 0 { set lexer.stats.allocations = lexer_sat_add(lexer.stats.allocations, 1); }
     else { set lexer.stats.reallocations = lexer_sat_add(lexer.stats.reallocations, 1); }
@@ -270,15 +270,15 @@ proc lexer_copy_source_range(
     output: &mut string
 ) -> bool {
     if begin > end or end > lexer.source_length {
-        return lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidToken, begin, end);
+        return lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidToken, begin, end);
     }
     let length = end - begin;
     if length == usize.MAX {
-        return lexer_fail(lexer as ?&mut Lexer, LexerError.Overflow, begin, end);
+        return lexer_fail(lexer as ?&mut Lexer, LexerError::Overflow, begin, end);
     }
     let storage = allocate(length + 1);
     if storage == null {
-        return lexer_fail(lexer as ?&mut Lexer, LexerError.OutOfMemory, begin, end);
+        return lexer_fail(lexer as ?&mut Lexer, LexerError::OutOfMemory, begin, end);
     }
     if length != 0 and not copy(
         storage,
@@ -286,7 +286,7 @@ proc lexer_copy_source_range(
         length
     ) {
         deallocate(storage);
-        return lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidToken, begin, end);
+        return lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidToken, begin, end);
     }
     set storage[length] = 0;
     set *output = pointer.add_bytes(storage, 0) as string;
@@ -315,8 +315,8 @@ proc lexer_release_owned_storage(lexer: &mut Lexer) {
 }
 
 proc lexer_emit(lexer: &mut Lexer, kind: TokenKind, begin: usize, end: usize, line: usize, column: usize) -> bool {
-    if begin > end  or  end > lexer.source_length { return lexer_fail(lexer, LexerError.InvalidToken, begin, end); }
-    if lexer.token_count >= lexer.max_tokens { return lexer_fail(lexer, LexerError.TokenLimit, begin, end); }
+    if begin > end  or  end > lexer.source_length { return lexer_fail(lexer, LexerError::InvalidToken, begin, end); }
+    if lexer.token_count >= lexer.max_tokens { return lexer_fail(lexer, LexerError::TokenLimit, begin, end); }
     let required: usize = lexer.token_count + 1;
     if not lexer_reserve_tokens(lexer, required) { return false; }
     let mut lexeme: string = "";
@@ -331,7 +331,7 @@ proc lexer_emit(lexer: &mut Lexer, kind: TokenKind, begin: usize, end: usize, li
     };
     if not lexer.tokens.push(token) {
         deallocate(token.lexeme.as_ptr() as *mut u8);
-        return lexer_fail(lexer, LexerError.OutOfMemory, begin, end);
+        return lexer_fail(lexer, LexerError::OutOfMemory, begin, end);
     }
     set lexer.token_count += 1;
     set lexer.stats.tokens_emitted = lexer_sat_add(lexer.stats.tokens_emitted, 1);
@@ -339,68 +339,68 @@ proc lexer_emit(lexer: &mut Lexer, kind: TokenKind, begin: usize, end: usize, li
 }
 
 proc lexer_keyword(text: string) -> TokenKind {
-    if text == "space" { return TokenKind.KwSpace; }
-    if text == "use" { return TokenKind.KwUse; }
-    if text == "pub" { return TokenKind.KwPub; }
-    if text == "const" { return TokenKind.KwConst; }
-    if text == "static" { return TokenKind.KwStatic; }
-    if text == "type" { return TokenKind.KwType; }
-    if text == "opaque" { return TokenKind.KwOpaque; }
-    if text == "form" { return TokenKind.KwForm; }
-    if text == "pick" { return TokenKind.KwPick; }
-    if text == "trait" { return TokenKind.KwTrait; }
-    if text == "impl" { return TokenKind.KwImpl; }
-    if text == "where" { return TokenKind.KwWhere; }
-    if text == "proc" { return TokenKind.KwProc; }
-    if text == "extern"  or  text == "intrinsic" { return TokenKind.KwExtern; }
-    if text == "macro" { return TokenKind.KwMacro; }
-    if text == "comptime" { return TokenKind.KwComptime; }
-    if text == "test" { return TokenKind.KwTest; }
-    if text == "let" { return TokenKind.KwLet; }
-    if text == "mut" { return TokenKind.KwMut; }
-    if text == "set" { return TokenKind.KwSet; }
-    if text == "return" { return TokenKind.KwReturn; }
-    if text == "defer" { return TokenKind.KwDefer; }
-    if text == "requires" { return TokenKind.KwRequires; }
-    if text == "ensures" { return TokenKind.KwEnsures; }
-    if text == "export" { return TokenKind.KwExport; }
-    if text == "if" { return TokenKind.KwIf; }
-    if text == "else" { return TokenKind.KwElse; }
-    if text == "elif" { return TokenKind.KwElif; }
-    if text == "while" { return TokenKind.KwWhile; }
-    if text == "loop" { return TokenKind.KwLoop; }
-    if text == "for" { return TokenKind.KwFor; }
-    if text == "in" { return TokenKind.KwIn; }
-    if text == "break" { return TokenKind.KwBreak; }
-    if text == "continue" { return TokenKind.KwContinue; }
-    if text == "match" { return TokenKind.KwMatch; }
-    if text == "as" { return TokenKind.KwAs; }
-    if text == "async" { return TokenKind.KwAsync; }
-    if text == "await" { return TokenKind.KwAwait; }
-    if text == "unsafe" { return TokenKind.KwUnsafe; }
-    if text == "asm" { return TokenKind.KwAsm; }
-    if text == "move" { return TokenKind.KwMove; }
-    if text == "ref" { return TokenKind.KwRef; }
-    if text == "self" { return TokenKind.KwSelf; }
-    if text == "and" { return TokenKind.KwAnd; }
-    if text == "or" { return TokenKind.KwOr; }
-    if text == "not" { return TokenKind.KwNot; }
-    if text == "true" { return TokenKind.KwTrue; }
-    if text == "false" { return TokenKind.KwFalse; }
-    if text == "null" { return TokenKind.KwNull; }
-    if text == "assert" { return TokenKind.KwAssert; }
-    if text == "sizeof" { return TokenKind.KwSizeof; }
-    if text == "alignof" { return TokenKind.KwAlignof; }
-    if text == "print" { return TokenKind.KwPrint; }
+    if text == "space" { return TokenKind::KwSpace; }
+    if text == "use" { return TokenKind::KwUse; }
+    if text == "pub" { return TokenKind::KwPub; }
+    if text == "const" { return TokenKind::KwConst; }
+    if text == "static" { return TokenKind::KwStatic; }
+    if text == "type" { return TokenKind::KwType; }
+    if text == "opaque" { return TokenKind::KwOpaque; }
+    if text == "form" { return TokenKind::KwForm; }
+    if text == "pick" { return TokenKind::KwPick; }
+    if text == "trait" { return TokenKind::KwTrait; }
+    if text == "impl" { return TokenKind::KwImpl; }
+    if text == "where" { return TokenKind::KwWhere; }
+    if text == "proc" { return TokenKind::KwProc; }
+    if text == "extern"  or  text == "intrinsic" { return TokenKind::KwExtern; }
+    if text == "macro" { return TokenKind::KwMacro; }
+    if text == "comptime" { return TokenKind::KwComptime; }
+    if text == "test" { return TokenKind::KwTest; }
+    if text == "let" { return TokenKind::KwLet; }
+    if text == "mut" { return TokenKind::KwMut; }
+    if text == "set" { return TokenKind::KwSet; }
+    if text == "return" { return TokenKind::KwReturn; }
+    if text == "defer" { return TokenKind::KwDefer; }
+    if text == "requires" { return TokenKind::KwRequires; }
+    if text == "ensures" { return TokenKind::KwEnsures; }
+    if text == "export" { return TokenKind::KwExport; }
+    if text == "if" { return TokenKind::KwIf; }
+    if text == "else" { return TokenKind::KwElse; }
+    if text == "elif" { return TokenKind::KwElif; }
+    if text == "while" { return TokenKind::KwWhile; }
+    if text == "loop" { return TokenKind::KwLoop; }
+    if text == "for" { return TokenKind::KwFor; }
+    if text == "in" { return TokenKind::KwIn; }
+    if text == "break" { return TokenKind::KwBreak; }
+    if text == "continue" { return TokenKind::KwContinue; }
+    if text == "match" { return TokenKind::KwMatch; }
+    if text == "as" { return TokenKind::KwAs; }
+    if text == "async" { return TokenKind::KwAsync; }
+    if text == "await" { return TokenKind::KwAwait; }
+    if text == "unsafe" { return TokenKind::KwUnsafe; }
+    if text == "asm" { return TokenKind::KwAsm; }
+    if text == "move" { return TokenKind::KwMove; }
+    if text == "ref" { return TokenKind::KwRef; }
+    if text == "self" { return TokenKind::KwSelf; }
+    if text == "and" { return TokenKind::KwAnd; }
+    if text == "or" { return TokenKind::KwOr; }
+    if text == "not" { return TokenKind::KwNot; }
+    if text == "true" { return TokenKind::KwTrue; }
+    if text == "false" { return TokenKind::KwFalse; }
+    if text == "null" { return TokenKind::KwNull; }
+    if text == "assert" { return TokenKind::KwAssert; }
+    if text == "sizeof" { return TokenKind::KwSizeof; }
+    if text == "alignof" { return TokenKind::KwAlignof; }
+    if text == "print" { return TokenKind::KwPrint; }
     if text == "share"  or  text == "region"  or  text == "compiler"  or
        text == "diagnostic"  or  text == "bench"  or  text == "entry"  or
        text == "select"  or  text == "when"  or  text == "case"  or
        text == "critical"  or  text == "owned"  or  text == "borrow"  or
        text == "volatile"  or  text == "is"  or  text == "kernel"  or
        text == "class"  or  text == "flags" {
-        return TokenKind.KwReserved;
+        return TokenKind::KwReserved;
     }
-    return TokenKind.Identifier;
+    return TokenKind::Identifier;
 }
 
 proc lexer_skip_whitespace(lexer: &mut Lexer) {
@@ -431,7 +431,7 @@ proc lexer_skip_block_comment(lexer: &mut Lexer) -> bool {
         if lexer_peek(lexer, 0) == 47 and lexer_peek(lexer, 1) == 42 {
             if depth >= lexer.max_comment_depth and not depth_reported {
                 let diagnostic_count: usize = lexer.diagnostic_count;
-                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.CommentDepth, lexer.offset, lexer.offset + 2);
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::CommentDepth, lexer.offset, lexer.offset + 2);
                 if lexer.diagnostic_count == diagnostic_count { return false; }
                 set depth_reported = true;
             }
@@ -447,7 +447,7 @@ proc lexer_skip_block_comment(lexer: &mut Lexer) -> bool {
             }
         } else { lexer_advance_byte(lexer); }
     }
-    return lexer_fail(lexer, LexerError.UnterminatedComment, begin, lexer.offset);
+    return lexer_fail(lexer, LexerError::UnterminatedComment, begin, lexer.offset);
 }
 
 proc lexer_skip_trivia(lexer: &mut Lexer) -> bool {
@@ -476,7 +476,7 @@ proc lexer_scan_identifier(lexer: &mut Lexer) -> bool {
         let mut width: usize = 0;
         if not lexer_utf8_at(lexer, lexer.offset, &mut codepoint, &mut width) {
             let error_width = lexer_utf8_error_width(lexer, lexer.offset);
-            return lexer_fail(lexer, LexerError.InvalidUtf8, lexer.offset, lexer.offset + error_width);
+            return lexer_fail(lexer, LexerError::InvalidUtf8, lexer.offset, lexer.offset + error_width);
         }
         if not vitte_unicode_is_identifier_start(codepoint) { return false; }
         lexer_advance_n(lexer, width);
@@ -493,7 +493,7 @@ proc lexer_scan_identifier(lexer: &mut Lexer) -> bool {
                 let error_width = lexer_utf8_error_width(lexer, lexer.offset);
                 let invalid_end: usize = lexer.offset + error_width;
                 let diagnostic_count: usize = lexer.diagnostic_count;
-                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidUtf8, lexer.offset, invalid_end);
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidUtf8, lexer.offset, invalid_end);
                 if lexer.diagnostic_count == diagnostic_count { return false; }
                 lexer_advance_to(lexer, invalid_end);
                 return true;
@@ -507,7 +507,7 @@ proc lexer_scan_identifier(lexer: &mut Lexer) -> bool {
     let kind: TokenKind = lexer_keyword(identifier);
     deallocate(identifier.as_ptr() as *mut u8);
     if not lexer_emit(lexer, kind, begin, lexer.offset, line, column) { return false; }
-    if kind == TokenKind.Identifier { set lexer.stats.identifiers = lexer_sat_add(lexer.stats.identifiers, 1); }
+    if kind == TokenKind::Identifier { set lexer.stats.identifiers = lexer_sat_add(lexer.stats.identifiers, 1); }
     else { set lexer.stats.keywords = lexer_sat_add(lexer.stats.keywords, 1); }
     return true;
 }
@@ -628,59 +628,59 @@ proc lexer_scan_number(lexer: &mut Lexer) -> bool {
         set base = 16;
         lexer_advance_n(lexer, 2);
         if not lexer_scan_digit_sequence(lexer, 16, &mut digits)  or  not digits {
-            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidNumericBase }, begin);
+            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError::InvalidNumericSeparator } else { LexerError::InvalidNumericBase }, begin);
         }
         if lexer_peek(lexer, 0) == 46  and  lexer_peek(lexer, 1) != 46 {
             set is_float = true; lexer_advance_byte(lexer);
-            if not lexer_scan_digit_sequence(lexer, 16, &mut digits) { return lexer_number_fail(lexer, LexerError.InvalidNumericSeparator, begin); }
+            if not lexer_scan_digit_sequence(lexer, 16, &mut digits) { return lexer_number_fail(lexer, LexerError::InvalidNumericSeparator, begin); }
         }
         if lexer_peek(lexer, 0) == 112  or  lexer_peek(lexer, 0) == 80 {
             set is_float = true; lexer_advance_byte(lexer);
             if lexer_peek(lexer, 0) == 43  or  lexer_peek(lexer, 0) == 45 { lexer_advance_byte(lexer); }
             if not lexer_scan_digit_sequence(lexer, 10, &mut digits)  or  not digits {
-                return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidExponent }, begin);
+                return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError::InvalidNumericSeparator } else { LexerError::InvalidExponent }, begin);
             }
-        } else if is_float { return lexer_number_fail(lexer, LexerError.InvalidExponent, begin); }
+        } else if is_float { return lexer_number_fail(lexer, LexerError::InvalidExponent, begin); }
     } else if lexer_peek(lexer, 0) == 48  and  (lexer_peek(lexer, 1) == 98  or  lexer_peek(lexer, 1) == 66) {
         set base = 2; lexer_advance_n(lexer, 2);
         if not lexer_scan_digit_sequence(lexer, 2, &mut digits)  or  not digits {
-            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidNumericBase }, begin);
+            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError::InvalidNumericSeparator } else { LexerError::InvalidNumericBase }, begin);
         }
     } else if lexer_peek(lexer, 0) == 48  and  (lexer_peek(lexer, 1) == 111  or  lexer_peek(lexer, 1) == 79) {
         set base = 8; lexer_advance_n(lexer, 2);
         if not lexer_scan_digit_sequence(lexer, 8, &mut digits)  or  not digits {
-            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidNumericBase }, begin);
+            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError::InvalidNumericSeparator } else { LexerError::InvalidNumericBase }, begin);
         }
     } else {
         if not lexer_scan_digit_sequence(lexer, 10, &mut digits) {
-            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidInteger }, begin);
+            return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError::InvalidNumericSeparator } else { LexerError::InvalidInteger }, begin);
         }
     }
     if base == 10 {
         if lexer_peek(lexer, 0) == 46  and  lexer_peek(lexer, 1) != 46 {
             set is_float = true; lexer_advance_byte(lexer);
             if not lexer_scan_digit_sequence(lexer, 10, &mut digits) {
-                return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidFloat }, begin);
+                return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError::InvalidNumericSeparator } else { LexerError::InvalidFloat }, begin);
             }
         }
         if lexer_peek(lexer, 0) == 101  or  lexer_peek(lexer, 0) == 69 {
             set is_float = true; lexer_advance_byte(lexer);
             if lexer_peek(lexer, 0) == 43  or  lexer_peek(lexer, 0) == 45 { lexer_advance_byte(lexer); }
             if not lexer_scan_digit_sequence(lexer, 10, &mut digits)  or  not digits {
-                return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError.InvalidNumericSeparator } else { LexerError.InvalidExponent }, begin);
+                return lexer_number_fail(lexer, if lexer_number_separator_error(lexer) { LexerError::InvalidNumericSeparator } else { LexerError::InvalidExponent }, begin);
             }
         }
     }
     if not lexer_eof(lexer) {
         let next: u8 = lexer_peek(lexer, 0);
         if lexer_identifier_start_ascii(next)  or  next >= 128  or  (base != 10  and  lexer_decimal_digit(next)) {
-            return lexer_number_fail(lexer, if base != 10 and lexer_decimal_digit(next) { LexerError.InvalidNumericBase } else { LexerError.InvalidNumericSuffix }, begin);
+            return lexer_number_fail(lexer, if base != 10 and lexer_decimal_digit(next) { LexerError::InvalidNumericBase } else { LexerError::InvalidNumericSuffix }, begin);
         }
     }
     if not is_float and not lexer_integer_fits_u64(lexer, begin, lexer.offset, base) {
-        return lexer_number_fail(lexer, LexerError.NumberOverflow, begin);
+        return lexer_number_fail(lexer, LexerError::NumberOverflow, begin);
     }
-    let kind: TokenKind = if is_float { TokenKind.FloatLiteral } else { TokenKind.IntegerLiteral };
+    let kind: TokenKind = if is_float { TokenKind::FloatLiteral } else { TokenKind::IntegerLiteral };
     if not lexer_emit(lexer, kind, begin, lexer.offset, line, column) { return false; }
     if is_float { set lexer.stats.float_literals = lexer_sat_add(lexer.stats.float_literals, 1); }
     else { set lexer.stats.integer_literals = lexer_sat_add(lexer.stats.integer_literals, 1); }
@@ -720,14 +720,14 @@ proc lexer_scan_string(lexer: &mut Lexer) -> bool {
         if byte == 34 {
             lexer_advance_byte(lexer);
             if malformed { return true; }
-            if not lexer_emit(lexer, TokenKind.StringLiteral, begin, lexer.offset, line, column) { return false; }
+            if not lexer_emit(lexer, TokenKind::StringLiteral, begin, lexer.offset, line, column) { return false; }
             set lexer.stats.string_literals = lexer_sat_add(lexer.stats.string_literals, 1);
             return true;
         }
         if byte == 10  or  byte == 13 {
             if not malformed {
                 let diagnostic_count: usize = lexer.diagnostic_count;
-                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.UnterminatedString, begin, lexer.offset);
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::UnterminatedString, begin, lexer.offset);
                 if lexer.diagnostic_count == diagnostic_count { return false; }
             }
             return true;
@@ -741,7 +741,7 @@ proc lexer_scan_string(lexer: &mut Lexer) -> bool {
                     lexer.offset
                 } else { lexer.offset + 1 };
                 let diagnostic_count: usize = lexer.diagnostic_count;
-                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidEscape, escape_begin, escape_end);
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidEscape, escape_begin, escape_end);
                 if lexer.diagnostic_count == diagnostic_count { return false; }
                 set malformed = true;
                 lexer_advance_to(lexer, escape_end);
@@ -752,7 +752,7 @@ proc lexer_scan_string(lexer: &mut Lexer) -> bool {
                 let error_width = lexer_utf8_error_width(lexer, lexer.offset);
                 let invalid_end: usize = lexer.offset + error_width;
                 let diagnostic_count: usize = lexer.diagnostic_count;
-                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidUtf8, lexer.offset, invalid_end);
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidUtf8, lexer.offset, invalid_end);
                 if lexer.diagnostic_count == diagnostic_count { return false; }
                 set malformed = true;
                 lexer_advance_to(lexer, invalid_end);
@@ -763,7 +763,7 @@ proc lexer_scan_string(lexer: &mut Lexer) -> bool {
     }
     if not malformed {
         let diagnostic_count: usize = lexer.diagnostic_count;
-        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.UnterminatedString, begin, lexer.offset);
+        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::UnterminatedString, begin, lexer.offset);
         if lexer.diagnostic_count == diagnostic_count { return false; }
     }
     return true;
@@ -775,7 +775,7 @@ proc lexer_scan_character(lexer: &mut Lexer) -> bool {
     if lexer_eof(lexer)  or  lexer_peek(lexer, 0) == 10  or  lexer_peek(lexer, 0) == 13  or  lexer_peek(lexer, 0) == 39 {
         let end: usize = lexer_character_error_end(lexer, begin);
         let diagnostic_count: usize = lexer.diagnostic_count;
-        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidCharacterLiteral, begin, end);
+        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidCharacterLiteral, begin, end);
         if lexer.diagnostic_count == diagnostic_count { return false; }
         lexer_advance_to(lexer, end);
         return true;
@@ -789,7 +789,7 @@ proc lexer_scan_character(lexer: &mut Lexer) -> bool {
                 lexer.offset
             } else { lexer.offset + 1 };
             let diagnostic_count: usize = lexer.diagnostic_count;
-            let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidEscape, escape_begin, escape_end);
+            let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidEscape, escape_begin, escape_end);
             if lexer.diagnostic_count == diagnostic_count { return false; }
             lexer_skip_quoted_remainder(lexer, 39);
             return true;
@@ -800,7 +800,7 @@ proc lexer_scan_character(lexer: &mut Lexer) -> bool {
             let error_width = lexer_utf8_error_width(lexer, lexer.offset);
             let invalid_end: usize = lexer.offset + error_width;
             let diagnostic_count: usize = lexer.diagnostic_count;
-            let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidUtf8, lexer.offset, invalid_end);
+            let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidUtf8, lexer.offset, invalid_end);
             if lexer.diagnostic_count == diagnostic_count { return false; }
             lexer_advance_to(lexer, invalid_end);
             lexer_skip_quoted_remainder(lexer, 39);
@@ -811,77 +811,77 @@ proc lexer_scan_character(lexer: &mut Lexer) -> bool {
     if lexer_eof(lexer)  or  lexer_peek(lexer, 0) != 39 {
         let end: usize = lexer_character_error_end(lexer, begin);
         let diagnostic_count: usize = lexer.diagnostic_count;
-        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidCharacterLiteral, begin, end);
+        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidCharacterLiteral, begin, end);
         if lexer.diagnostic_count == diagnostic_count { return false; }
         lexer_advance_to(lexer, end);
         return true;
     }
     lexer_advance_byte(lexer);
-    if not lexer_emit(lexer, TokenKind.CharacterLiteral, begin, lexer.offset, line, column) { return false; }
+    if not lexer_emit(lexer, TokenKind::CharacterLiteral, begin, lexer.offset, line, column) { return false; }
     set lexer.stats.character_literals = lexer_sat_add(lexer.stats.character_literals, 1);
     return true;
 }
 
 proc lexer_operator_kind(text: string) -> TokenKind {
-    if text == "<<=" { return TokenKind.ShiftLeftEqual; }
-    if text == ">>=" { return TokenKind.ShiftRightEqual; }
-    if text == "..=" { return TokenKind.DotDotEqual; }
-    if text == "::" { return TokenKind.ColonColon; }
-    if text == "->" { return TokenKind.Arrow; }
-    if text == "=>" { return TokenKind.FatArrow; }
-    if text == "==" { return TokenKind.EqualEqual; }
-    if text == "!=" { return TokenKind.BangEqual; }
-    if text == "<=" { return TokenKind.LessEqual; }
-    if text == ">=" { return TokenKind.GreaterEqual; }
-    if text == "+=" { return TokenKind.PlusEqual; }
-    if text == "-=" { return TokenKind.MinusEqual; }
-    if text == "*=" { return TokenKind.StarEqual; }
-    if text == "/=" { return TokenKind.SlashEqual; }
-    if text == "%=" { return TokenKind.PercentEqual; }
-    if text == "&=" { return TokenKind.AmpEqual; }
-    if text == "|=" { return TokenKind.PipeEqual; }
-    if text == "^=" { return TokenKind.CaretEqual; }
-    if text == "<<" { return TokenKind.ShiftLeft; }
-    if text == ">>" { return TokenKind.ShiftRight; }
-    if text == "&&" { return TokenKind.AmpAmp; }
-    if text == "||" { return TokenKind.PipePipe; }
-    if text == "??" { return TokenKind.QuestionQuestion; }
-    if text == ".." { return TokenKind.DotDot; }
-    if text == "(" { return TokenKind.LeftParen; }
-    if text == ")" { return TokenKind.RightParen; }
-    if text == "{" { return TokenKind.LeftBrace; }
-    if text == "}" { return TokenKind.RightBrace; }
-    if text == "[" { return TokenKind.LeftBracket; }
-    if text == "]" { return TokenKind.RightBracket; }
-    if text == "," { return TokenKind.Comma; }
-    if text == ";" { return TokenKind.Semicolon; }
-    if text == ":" { return TokenKind.Colon; }
-    if text == "." { return TokenKind.Dot; }
-    if text == "!" { return TokenKind.Bang; }
-    if text == "+" { return TokenKind.Plus; }
-    if text == "-" { return TokenKind.Minus; }
-    if text == "*" { return TokenKind.Star; }
-    if text == "/" { return TokenKind.Slash; }
-    if text == "%" { return TokenKind.Percent; }
-    if text == "&" { return TokenKind.Amp; }
-    if text == "|" { return TokenKind.Pipe; }
-    if text == "^" { return TokenKind.Caret; }
-    if text == "~" { return TokenKind.Tilde; }
-    if text == "=" { return TokenKind.Equal; }
-    if text == "<" { return TokenKind.Less; }
-    if text == ">" { return TokenKind.Greater; }
-    if text == "?" { return TokenKind.Question; }
-    if text == "@" { return TokenKind.At; }
-    if text == "#" { return TokenKind.Hash; }
-    if text == "$" { return TokenKind.Dollar; }
-    return TokenKind.Invalid;
+    if text == "<<=" { return TokenKind::ShiftLeftEqual; }
+    if text == ">>=" { return TokenKind::ShiftRightEqual; }
+    if text == "..=" { return TokenKind::DotDotEqual; }
+    if text == "::" { return TokenKind::ColonColon; }
+    if text == "->" { return TokenKind::Arrow; }
+    if text == "=>" { return TokenKind::FatArrow; }
+    if text == "==" { return TokenKind::EqualEqual; }
+    if text == "!=" { return TokenKind::BangEqual; }
+    if text == "<=" { return TokenKind::LessEqual; }
+    if text == ">=" { return TokenKind::GreaterEqual; }
+    if text == "+=" { return TokenKind::PlusEqual; }
+    if text == "-=" { return TokenKind::MinusEqual; }
+    if text == "*=" { return TokenKind::StarEqual; }
+    if text == "/=" { return TokenKind::SlashEqual; }
+    if text == "%=" { return TokenKind::PercentEqual; }
+    if text == "&=" { return TokenKind::AmpEqual; }
+    if text == "|=" { return TokenKind::PipeEqual; }
+    if text == "^=" { return TokenKind::CaretEqual; }
+    if text == "<<" { return TokenKind::ShiftLeft; }
+    if text == ">>" { return TokenKind::ShiftRight; }
+    if text == "&&" { return TokenKind::AmpAmp; }
+    if text == "||" { return TokenKind::PipePipe; }
+    if text == "??" { return TokenKind::QuestionQuestion; }
+    if text == ".." { return TokenKind::DotDot; }
+    if text == "(" { return TokenKind::LeftParen; }
+    if text == ")" { return TokenKind::RightParen; }
+    if text == "{" { return TokenKind::LeftBrace; }
+    if text == "}" { return TokenKind::RightBrace; }
+    if text == "[" { return TokenKind::LeftBracket; }
+    if text == "]" { return TokenKind::RightBracket; }
+    if text == "," { return TokenKind::Comma; }
+    if text == ";" { return TokenKind::Semicolon; }
+    if text == ":" { return TokenKind::Colon; }
+    if text == "." { return TokenKind::Dot; }
+    if text == "!" { return TokenKind::Bang; }
+    if text == "+" { return TokenKind::Plus; }
+    if text == "-" { return TokenKind::Minus; }
+    if text == "*" { return TokenKind::Star; }
+    if text == "/" { return TokenKind::Slash; }
+    if text == "%" { return TokenKind::Percent; }
+    if text == "&" { return TokenKind::Amp; }
+    if text == "|" { return TokenKind::Pipe; }
+    if text == "^" { return TokenKind::Caret; }
+    if text == "~" { return TokenKind::Tilde; }
+    if text == "=" { return TokenKind::Equal; }
+    if text == "<" { return TokenKind::Less; }
+    if text == ">" { return TokenKind::Greater; }
+    if text == "?" { return TokenKind::Question; }
+    if text == "@" { return TokenKind::At; }
+    if text == "#" { return TokenKind::Hash; }
+    if text == "$" { return TokenKind::Dollar; }
+    return TokenKind::Invalid;
 }
 
 proc lexer_scan_operator(lexer: &mut Lexer) -> bool {
     let begin: usize = lexer.offset; let line: usize = lexer.line; let column: usize = lexer.column;
     if lexer_peek(lexer, 0) == 63 and lexer_peek(lexer, 1) == 63 and lexer_peek(lexer, 2) == 61 {
         let diagnostic_count: usize = lexer.diagnostic_count;
-        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidOperator, begin, begin + 3);
+        let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidOperator, begin, begin + 3);
         if lexer.diagnostic_count == diagnostic_count { return false; }
         lexer_advance_n(lexer, 3);
         return true;
@@ -891,7 +891,7 @@ proc lexer_scan_operator(lexer: &mut Lexer) -> bool {
         let invalid: string = LEXER_INVALID_OPERATORS[index];
         if lexer_starts_with(lexer, invalid) {
             let diagnostic_count: usize = lexer.diagnostic_count;
-            let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidOperator, begin, begin + invalid.length);
+            let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidOperator, begin, begin + invalid.length);
             if lexer.diagnostic_count == diagnostic_count { return false; }
             lexer_advance_n(lexer, invalid.length);
             return true;
@@ -914,7 +914,7 @@ proc lexer_scan_operator(lexer: &mut Lexer) -> bool {
 
 proc lexer_scan_one(lexer: &mut Lexer) -> bool {
     if not lexer_skip_trivia(lexer) { return false; }
-    if lexer_eof(lexer) { return lexer_emit(lexer, TokenKind.Eof, lexer.offset, lexer.offset, lexer.line, lexer.column); }
+    if lexer_eof(lexer) { return lexer_emit(lexer, TokenKind::Eof, lexer.offset, lexer.offset, lexer.line, lexer.column); }
     let byte: u8 = lexer_peek(lexer, 0);
     if lexer_identifier_start_ascii(byte)  or  byte >= 128 {
         if byte >= 128 {
@@ -923,7 +923,7 @@ proc lexer_scan_one(lexer: &mut Lexer) -> bool {
                 let error_width = lexer_utf8_error_width(lexer, lexer.offset);
                 let invalid_end: usize = lexer.offset + error_width;
                 let diagnostic_count: usize = lexer.diagnostic_count;
-                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidUtf8, lexer.offset, invalid_end);
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidUtf8, lexer.offset, invalid_end);
                 if lexer.diagnostic_count == diagnostic_count { return false; }
                 lexer_advance_to(lexer, invalid_end);
                 return true;
@@ -931,7 +931,7 @@ proc lexer_scan_one(lexer: &mut Lexer) -> bool {
             if not vitte_unicode_is_identifier_start(codepoint) {
                 let invalid_end: usize = lexer.offset + width;
                 let diagnostic_count: usize = lexer.diagnostic_count;
-                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidIdentifier, lexer.offset, invalid_end);
+                let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidIdentifier, lexer.offset, invalid_end);
                 if lexer.diagnostic_count == diagnostic_count { return false; }
                 lexer_advance_to(lexer, invalid_end);
                 return true;
@@ -945,7 +945,7 @@ proc lexer_scan_one(lexer: &mut Lexer) -> bool {
     if lexer_scan_operator(lexer) { return true; }
     let begin: usize = lexer.offset;
     let diagnostic_count: usize = lexer.diagnostic_count;
-    let _ = lexer_fail(lexer as ?&mut Lexer, LexerError.InvalidToken, begin, begin + 1);
+    let _ = lexer_fail(lexer as ?&mut Lexer, LexerError::InvalidToken, begin, begin + 1);
     if lexer.diagnostic_count == diagnostic_count { return false; }
     lexer_advance_to(lexer, begin + 1);
     return true;
@@ -1008,7 +1008,7 @@ export proc vitte_lexer_init(lexer: &mut Lexer, source: ?str, source_length: usi
     let input: string = if source == null { "" } else { source? };
     if source_length > input.length { return false; }
     set *lexer = Lexer {
-        magic: LEXER_MAGIC, state: LexerState.Ready, last_error: LexerError.None,
+        magic: LEXER_MAGIC, state: LexerState::Ready, last_error: LexerError::None,
         source: input.slice(0, source_length), source_length: source_length, file_id: file_id,
         offset: vitte_unicode_skip_utf8_bom(input, source_length), line: 1, column: 1, tokens: [], token_count: 0, token_capacity: 0,
         diagnostics: [], diagnostic_count: 0,
@@ -1017,13 +1017,13 @@ export proc vitte_lexer_init(lexer: &mut Lexer, source: ?str, source_length: usi
         max_comment_depth: LEXER_DEFAULT_MAX_COMMENT_DEPTH, stats: LexerStats {}, generation: 1
     };
     if source_length > lexer.max_source_bytes {
-        set lexer.state = LexerState.Failed; set lexer.last_error = LexerError.SourceTooLarge; return false;
+        set lexer.state = LexerState::Failed; set lexer.last_error = LexerError::SourceTooLarge; return false;
     }
     return true;
 }
 
 export proc vitte_lexer_destroy(lexer: &mut Lexer) {
-    if lexer.magic == LEXER_DEAD_MAGIC  and  lexer.state == LexerState.Destroyed { return; }
+    if lexer.magic == LEXER_DEAD_MAGIC  and  lexer.state == LexerState::Destroyed { return; }
     if lexer.magic == LEXER_MAGIC {
         lexer_release_token_lexemes(lexer);
         lexer_release_owned_storage(lexer);
@@ -1031,7 +1031,7 @@ export proc vitte_lexer_destroy(lexer: &mut Lexer) {
     set lexer.offset = 0; set lexer.line = 0; set lexer.column = 0;
     set lexer.error_span = LexerSpan { file_id: 0, begin: 0, end: 0, valid: false };
     set lexer.diagnostics = []; set lexer.diagnostic_count = 0;
-    set lexer.magic = LEXER_DEAD_MAGIC; set lexer.state = LexerState.Destroyed; set lexer.last_error = LexerError.None;
+    set lexer.magic = LEXER_DEAD_MAGIC; set lexer.state = LexerState::Destroyed; set lexer.last_error = LexerError::None;
     set lexer.file_id = 0; set lexer.max_tokens = 0; set lexer.max_source_bytes = 0; set lexer.max_comment_depth = 0;
     set lexer.generation = 0; set lexer.stats = LexerStats {};
 }
@@ -1039,7 +1039,7 @@ export proc vitte_lexer_destroy(lexer: &mut Lexer) {
 export proc vitte_lexer_reset(lexer: &mut Lexer, source: ?str, source_length: usize, file_id: u64) -> bool {
     if lexer.magic != LEXER_MAGIC  or  (source == null  and  source_length != 0) { return false; }
     let input: string = if source == null { "" } else { source? };
-    if source_length > input.length { set lexer.last_error = LexerError.InvalidArgument; return false; }
+    if source_length > input.length { set lexer.last_error = LexerError::InvalidArgument; return false; }
     let max_tokens: usize = lexer.max_tokens; let max_bytes: usize = lexer.max_source_bytes; let max_depth: usize = lexer.max_comment_depth;
     let generation: u64 = if lexer.generation == 18446744073709551615 { lexer.generation } else { lexer.generation + 1 };
     lexer_release_token_lexemes(lexer);
@@ -1049,33 +1049,33 @@ export proc vitte_lexer_reset(lexer: &mut Lexer, source: ?str, source_length: us
     set lexer.error_span = LexerSpan { file_id: file_id, begin: 0, end: 0, valid: false };
     set lexer.diagnostics = []; set lexer.diagnostic_count = 0;
     set lexer.max_tokens = max_tokens; set lexer.max_source_bytes = max_bytes; set lexer.max_comment_depth = max_depth;
-    set lexer.stats = LexerStats {}; set lexer.last_error = LexerError.None; set lexer.state = LexerState.Ready; set lexer.generation = generation;
-    if source_length > max_bytes { set lexer.state = LexerState.Failed; set lexer.last_error = LexerError.SourceTooLarge; return false; }
+    set lexer.stats = LexerStats {}; set lexer.last_error = LexerError::None; set lexer.state = LexerState::Ready; set lexer.generation = generation;
+    if source_length > max_bytes { set lexer.state = LexerState::Failed; set lexer.last_error = LexerError::SourceTooLarge; return false; }
     return true;
 }
 
 export proc vitte_lexer_is_valid(lexer: ?&Lexer) -> bool { return lexer_context_valid(lexer); }
 
 export proc vitte_lexer_run(lexer: &mut Lexer) -> bool {
-    if not lexer_is_mutable(lexer) { return lexer_fail(lexer, LexerError.InvalidState, lexer.offset, lexer.offset); }
-    if lexer.source_length > lexer.max_source_bytes { set lexer.state = LexerState.Failed; return lexer_fail(lexer, LexerError.SourceTooLarge, 0, lexer.source_length); }
-    set lexer.state = LexerState.Lexing; set lexer.stats.runs = lexer_sat_add(lexer.stats.runs, 1);
+    if not lexer_is_mutable(lexer) { return lexer_fail(lexer, LexerError::InvalidState, lexer.offset, lexer.offset); }
+    if lexer.source_length > lexer.max_source_bytes { set lexer.state = LexerState::Failed; return lexer_fail(lexer, LexerError::SourceTooLarge, 0, lexer.source_length); }
+    set lexer.state = LexerState::Lexing; set lexer.stats.runs = lexer_sat_add(lexer.stats.runs, 1);
     loop {
         let before: usize = lexer.offset; let previous_count: usize = lexer.token_count;
-        if not lexer_scan_one(lexer) { set lexer.state = LexerState.Failed; set lexer.stats.failed_runs = lexer_sat_add(lexer.stats.failed_runs, 1); return false; }
-        if lexer.token_count > previous_count  and  lexer.tokens[lexer.token_count - 1].kind == TokenKind.Eof { break; }
+        if not lexer_scan_one(lexer) { set lexer.state = LexerState::Failed; set lexer.stats.failed_runs = lexer_sat_add(lexer.stats.failed_runs, 1); return false; }
+        if lexer.token_count > previous_count  and  lexer.tokens[lexer.token_count - 1].kind == TokenKind::Eof { break; }
         if lexer.offset <= before {
-            set lexer.state = LexerState.Failed; lexer_fail(lexer, LexerError.Internal, before, lexer.offset);
+            set lexer.state = LexerState::Failed; lexer_fail(lexer, LexerError::Internal, before, lexer.offset);
             set lexer.stats.failed_runs = lexer_sat_add(lexer.stats.failed_runs, 1); return false;
         }
     }
     if lexer.diagnostic_count != 0 {
-        set lexer.state = LexerState.Failed;
+        set lexer.state = LexerState::Failed;
         set lexer.stats.failed_runs = lexer_sat_add(lexer.stats.failed_runs, 1);
         set lexer.stats.source_bytes = lexer_sat_add(lexer.stats.source_bytes, lexer.source_length as u64);
         return false;
     }
-    set lexer.state = LexerState.Done; set lexer.last_error = LexerError.None;
+    set lexer.state = LexerState::Done; set lexer.last_error = LexerError::None;
     set lexer.stats.source_bytes = lexer_sat_add(lexer.stats.source_bytes, lexer.source_length as u64);
     return true;
 }
@@ -1126,24 +1126,24 @@ export proc vitte_lexer_validate(lexer: &mut Lexer) -> bool {
     let mut index: usize = 0;
     while index < lexer.token_count {
         let token = &lexer.tokens[index];
-        if token.kind <= TokenKind.Invalid  or  token.kind >= TokenKind.Count  or
+        if token.kind <= TokenKind::Invalid  or  token.kind >= TokenKind::Count  or
            not token.span.valid  or  token.span.file_id != lexer.file_id  or
            token.span.begin > token.span.end  or  token.span.end > lexer.source_length  or
            token.span.begin < previous_end  or  token.length != token.span.end - token.span.begin  or
            not lexer_token_text_matches_source(lexer as *const Lexer, token)  or
            token.line == 0  or  token.column == 0 {
             set lexer.stats.validation_failures = lexer_sat_add(lexer.stats.validation_failures, 1);
-            set lexer.last_error = LexerError.Validation; return false;
+            set lexer.last_error = LexerError::Validation; return false;
         }
-        if token.kind == TokenKind.Eof  and  (index + 1 != lexer.token_count  or  token.span.begin != lexer.source_length  or  token.span.end != lexer.source_length  or  token.length != 0) {
-            set lexer.stats.validation_failures = lexer_sat_add(lexer.stats.validation_failures, 1); set lexer.last_error = LexerError.Validation; return false;
+        if token.kind == TokenKind::Eof  and  (index + 1 != lexer.token_count  or  token.span.begin != lexer.source_length  or  token.span.end != lexer.source_length  or  token.length != 0) {
+            set lexer.stats.validation_failures = lexer_sat_add(lexer.stats.validation_failures, 1); set lexer.last_error = LexerError::Validation; return false;
         }
         set previous_end = token.span.end; set index += 1;
     }
-    if lexer.state == LexerState.Done  and  (lexer.token_count == 0  or  lexer.tokens[lexer.token_count - 1].kind != TokenKind.Eof) {
-        set lexer.stats.validation_failures = lexer_sat_add(lexer.stats.validation_failures, 1); set lexer.last_error = LexerError.Validation; return false;
+    if lexer.state == LexerState::Done  and  (lexer.token_count == 0  or  lexer.tokens[lexer.token_count - 1].kind != TokenKind::Eof) {
+        set lexer.stats.validation_failures = lexer_sat_add(lexer.stats.validation_failures, 1); set lexer.last_error = LexerError::Validation; return false;
     }
-    set lexer.last_error = LexerError.None; return true;
+    set lexer.last_error = LexerError::None; return true;
 }
 
 proc lexer_hash_u64(hash: u64, value: u64) -> u64 {
@@ -1180,28 +1180,28 @@ export proc vitte_lexer_stats(lexer: ?&Lexer) -> LexerStats {
 }
 
 export proc vitte_lexer_set_limits(lexer: &mut Lexer, max_tokens: usize, max_source_bytes: usize, max_comment_depth: usize) -> bool {
-    if not lexer_is_mutable(lexer) { return lexer_fail(lexer, LexerError.InvalidState, lexer.offset, lexer.offset); }
+    if not lexer_is_mutable(lexer) { return lexer_fail(lexer, LexerError::InvalidState, lexer.offset, lexer.offset); }
     if max_tokens == 0  or  max_source_bytes == 0  or  max_comment_depth == 0  or
        max_tokens < lexer.token_count  or  max_source_bytes < lexer.source_length {
-        return lexer_fail(lexer, LexerError.InvalidArgument, lexer.offset, lexer.offset);
+        return lexer_fail(lexer, LexerError::InvalidArgument, lexer.offset, lexer.offset);
     }
     set lexer.max_tokens = max_tokens; set lexer.max_source_bytes = max_source_bytes; set lexer.max_comment_depth = max_comment_depth;
-    set lexer.last_error = LexerError.None; return true;
+    set lexer.last_error = LexerError::None; return true;
 }
 
 export proc vitte_lexer_translation_unit_anchor() {}
 
 /// Inline contracts mirrored from lexer.h, implemented as Vitte procedures.
 export proc vitte_token_kind_is_valid(kind: TokenKind) -> bool {
-    return kind > TokenKind.Invalid  and  kind < TokenKind.Count;
+    return kind > TokenKind::Invalid  and  kind < TokenKind::Count;
 }
 
 export proc vitte_lexer_error_is_valid(error: LexerError) -> bool {
-    return error >= LexerError.None  and  error < LexerError.Count;
+    return error >= LexerError::None  and  error < LexerError::Count;
 }
 
 export proc vitte_lexer_state_is_valid(state: LexerState) -> bool {
-    return state > LexerState.Invalid  and  state < LexerState.Count;
+    return state > LexerState::Invalid  and  state < LexerState::Count;
 }
 
 export proc vitte_lexer_span_invalid() -> LexerSpan {
@@ -1224,12 +1224,12 @@ export proc vitte_lexer_span_contains(span: ?&LexerSpan, offset: usize) -> bool 
 }
 
 export proc vitte_lexer_state(lexer: ?&Lexer) -> LexerState {
-    if lexer == null  or  lexer.magic != LEXER_MAGIC { return LexerState.Invalid; }
+    if lexer == null  or  lexer.magic != LEXER_MAGIC { return LexerState::Invalid; }
     return lexer.state;
 }
 
 export proc vitte_lexer_last_error(lexer: ?&Lexer) -> LexerError {
-    if lexer == null  or  lexer.magic != LEXER_MAGIC { return LexerError.InvalidContext; }
+    if lexer == null  or  lexer.magic != LEXER_MAGIC { return LexerError::InvalidContext; }
     return lexer.last_error;
 }
 
@@ -1254,15 +1254,15 @@ export proc vitte_lexer_generation(lexer: ?&Lexer) -> u64 {
 }
 
 export proc vitte_lexer_is_ready(lexer: ?&Lexer) -> bool {
-    return lexer != null  and  lexer.magic == LEXER_MAGIC  and  lexer.state == LexerState.Ready;
+    return lexer != null  and  lexer.magic == LEXER_MAGIC  and  lexer.state == LexerState::Ready;
 }
 
 export proc vitte_lexer_is_done(lexer: ?&Lexer) -> bool {
-    return lexer != null  and  lexer.magic == LEXER_MAGIC  and  lexer.state == LexerState.Done;
+    return lexer != null  and  lexer.magic == LEXER_MAGIC  and  lexer.state == LexerState::Done;
 }
 
 export proc vitte_lexer_has_failed(lexer: ?&Lexer) -> bool {
-    return lexer != null  and  lexer.magic == LEXER_MAGIC  and  lexer.state == LexerState.Failed;
+    return lexer != null  and  lexer.magic == LEXER_MAGIC  and  lexer.state == LexerState::Failed;
 }
 
 export proc vitte_lexer_source_length(lexer: ?&Lexer) -> usize {
@@ -1295,17 +1295,17 @@ export proc vitte_token_is(token: ?&Token, kind: TokenKind) -> bool {
 }
 
 export proc vitte_token_is_eof(token: ?&Token) -> bool {
-    return vitte_token_is(token, TokenKind.Eof);
+    return vitte_token_is(token, TokenKind::Eof);
 }
 
 export proc vitte_token_is_identifier(token: ?&Token) -> bool {
-    return vitte_token_is(token, TokenKind.Identifier);
+    return vitte_token_is(token, TokenKind::Identifier);
 }
 
 export proc vitte_token_is_literal_kind(kind: TokenKind) -> bool {
-    return kind == TokenKind.IntegerLiteral  or  kind == TokenKind.FloatLiteral  or
-           kind == TokenKind.StringLiteral  or  kind == TokenKind.CharacterLiteral  or
-           kind == TokenKind.KwTrue  or  kind == TokenKind.KwFalse  or  kind == TokenKind.KwNull;
+    return kind == TokenKind::IntegerLiteral  or  kind == TokenKind::FloatLiteral  or
+           kind == TokenKind::StringLiteral  or  kind == TokenKind::CharacterLiteral  or
+           kind == TokenKind::KwTrue  or  kind == TokenKind::KwFalse  or  kind == TokenKind::KwNull;
 }
 
 export proc vitte_token_is_literal(token: ?&Token) -> bool {
@@ -1313,19 +1313,19 @@ export proc vitte_token_is_literal(token: ?&Token) -> bool {
 }
 
 export proc vitte_token_kind_is_keyword(kind: TokenKind) -> bool {
-    return kind >= TokenKind.KwSpace  and  kind <= TokenKind.KwReserved;
+    return kind >= TokenKind::KwSpace  and  kind <= TokenKind::KwReserved;
 }
 
 export proc vitte_token_kind_is_contextual_keyword(kind: TokenKind) -> bool {
-    return kind == TokenKind.KwPub  or  kind == TokenKind.KwStatic  or
-           kind == TokenKind.KwOpaque  or  kind == TokenKind.KwDyn  or
-           kind == TokenKind.KwWhere  or  kind == TokenKind.KwComptime  or
-           kind == TokenKind.KwDefer  or  kind == TokenKind.KwLoop  or
-           kind == TokenKind.KwAwait  or  kind == TokenKind.KwAsm  or
-           kind == TokenKind.KwMove  or  kind == TokenKind.KwRef  or
-           kind == TokenKind.KwMap  or  kind == TokenKind.KwSizeof  or
-           kind == TokenKind.KwAlignof  or  kind == TokenKind.KwOffsetof  or
-           kind == TokenKind.KwTypeof;
+    return kind == TokenKind::KwPub  or  kind == TokenKind::KwStatic  or
+           kind == TokenKind::KwOpaque  or  kind == TokenKind::KwDyn  or
+           kind == TokenKind::KwWhere  or  kind == TokenKind::KwComptime  or
+           kind == TokenKind::KwDefer  or  kind == TokenKind::KwLoop  or
+           kind == TokenKind::KwAwait  or  kind == TokenKind::KwAsm  or
+           kind == TokenKind::KwMove  or  kind == TokenKind::KwRef  or
+           kind == TokenKind::KwMap  or  kind == TokenKind::KwSizeof  or
+           kind == TokenKind::KwAlignof  or  kind == TokenKind::KwOffsetof  or
+           kind == TokenKind::KwTypeof;
 }
 
 export proc vitte_token_is_keyword(token: ?&Token) -> bool {
@@ -1333,41 +1333,41 @@ export proc vitte_token_is_keyword(token: ?&Token) -> bool {
 }
 
 export proc vitte_token_kind_is_assignment(kind: TokenKind) -> bool {
-    return kind == TokenKind.Equal  or  kind == TokenKind.PlusEqual  or
-           kind == TokenKind.MinusEqual  or  kind == TokenKind.StarEqual  or
-           kind == TokenKind.SlashEqual  or  kind == TokenKind.PercentEqual  or
-           kind == TokenKind.AmpEqual  or  kind == TokenKind.PipeEqual  or
-           kind == TokenKind.CaretEqual  or  kind == TokenKind.ShiftLeftEqual  or
-           kind == TokenKind.ShiftRightEqual;
+    return kind == TokenKind::Equal  or  kind == TokenKind::PlusEqual  or
+           kind == TokenKind::MinusEqual  or  kind == TokenKind::StarEqual  or
+           kind == TokenKind::SlashEqual  or  kind == TokenKind::PercentEqual  or
+           kind == TokenKind::AmpEqual  or  kind == TokenKind::PipeEqual  or
+           kind == TokenKind::CaretEqual  or  kind == TokenKind::ShiftLeftEqual  or
+           kind == TokenKind::ShiftRightEqual;
 }
 
 export proc vitte_token_kind_is_comparison(kind: TokenKind) -> bool {
-    return kind == TokenKind.EqualEqual  or  kind == TokenKind.BangEqual  or
-           kind == TokenKind.Less  or  kind == TokenKind.LessEqual  or
-           kind == TokenKind.Greater  or  kind == TokenKind.GreaterEqual;
+    return kind == TokenKind::EqualEqual  or  kind == TokenKind::BangEqual  or
+           kind == TokenKind::Less  or  kind == TokenKind::LessEqual  or
+           kind == TokenKind::Greater  or  kind == TokenKind::GreaterEqual;
 }
 
 export proc vitte_token_kind_is_delimiter(kind: TokenKind) -> bool {
-    return kind == TokenKind.LeftParen  or  kind == TokenKind.RightParen  or
-           kind == TokenKind.LeftBrace  or  kind == TokenKind.RightBrace  or
-           kind == TokenKind.LeftBracket  or  kind == TokenKind.RightBracket  or
-           kind == TokenKind.Comma  or  kind == TokenKind.Semicolon;
+    return kind == TokenKind::LeftParen  or  kind == TokenKind::RightParen  or
+           kind == TokenKind::LeftBrace  or  kind == TokenKind::RightBrace  or
+           kind == TokenKind::LeftBracket  or  kind == TokenKind::RightBracket  or
+           kind == TokenKind::Comma  or  kind == TokenKind::Semicolon;
 }
 
 export proc vitte_token_kind_is_operator(kind: TokenKind) -> bool {
-    return kind == TokenKind.Colon  or  kind == TokenKind.ColonColon  or
-           kind == TokenKind.Dot  or  kind == TokenKind.DotDot  or kind == TokenKind.DotDotEqual  or
-           kind == TokenKind.Arrow  or  kind == TokenKind.FatArrow  or
-           kind == TokenKind.Plus  or  kind == TokenKind.Minus  or kind == TokenKind.Star  or
-           kind == TokenKind.Slash  or  kind == TokenKind.Percent  or
-           kind == TokenKind.Amp  or  kind == TokenKind.Pipe  or kind == TokenKind.Caret  or
-           kind == TokenKind.Tilde  or  kind == TokenKind.Bang  or
-           kind == TokenKind.Equal  or  kind == TokenKind.EqualEqual  or kind == TokenKind.BangEqual  or
-           kind == TokenKind.Less  or  kind == TokenKind.LessEqual  or kind == TokenKind.Greater  or
-           kind == TokenKind.GreaterEqual  or  kind == TokenKind.ShiftLeft  or kind == TokenKind.ShiftRight  or
-           vitte_token_kind_is_assignment(kind)  or  kind == TokenKind.AmpAmp  or kind == TokenKind.PipePipe  or
-           kind == TokenKind.Question  or  kind == TokenKind.QuestionQuestion  or kind == TokenKind.At  or
-           kind == TokenKind.Hash  or  kind == TokenKind.Dollar;
+    return kind == TokenKind::Colon  or  kind == TokenKind::ColonColon  or
+           kind == TokenKind::Dot  or  kind == TokenKind::DotDot  or kind == TokenKind::DotDotEqual  or
+           kind == TokenKind::Arrow  or  kind == TokenKind::FatArrow  or
+           kind == TokenKind::Plus  or  kind == TokenKind::Minus  or kind == TokenKind::Star  or
+           kind == TokenKind::Slash  or  kind == TokenKind::Percent  or
+           kind == TokenKind::Amp  or  kind == TokenKind::Pipe  or kind == TokenKind::Caret  or
+           kind == TokenKind::Tilde  or  kind == TokenKind::Bang  or
+           kind == TokenKind::Equal  or  kind == TokenKind::EqualEqual  or kind == TokenKind::BangEqual  or
+           kind == TokenKind::Less  or  kind == TokenKind::LessEqual  or kind == TokenKind::Greater  or
+           kind == TokenKind::GreaterEqual  or  kind == TokenKind::ShiftLeft  or kind == TokenKind::ShiftRight  or
+           vitte_token_kind_is_assignment(kind)  or  kind == TokenKind::AmpAmp  or kind == TokenKind::PipePipe  or
+           kind == TokenKind::Question  or  kind == TokenKind::QuestionQuestion  or kind == TokenKind::At  or
+           kind == TokenKind::Hash  or  kind == TokenKind::Dollar;
 }
 
 export proc vitte_token_data(token: ?&Token) -> ?str {
@@ -1397,7 +1397,7 @@ export proc vitte_lexer_last_token(lexer: ?&Lexer) -> ?&Token {
 
 export proc vitte_lexer_eof_token(lexer: ?&Lexer) -> ?&Token {
     let token = vitte_lexer_last_token(lexer);
-    if token == null  or  token.kind != TokenKind.Eof { return null; }
+    if token == null  or  token.kind != TokenKind::Eof { return null; }
     return token;
 }
 

@@ -25,13 +25,13 @@ formes internes de nombre :
 
 | JSON | Représentation Vitte |
 |---|---|
-| `null` | `JsonValueKind.Null` |
-| `true` / `false` | `JsonValueKind.Bool` |
-| nombre entier | `JsonValueKind.Integer` |
-| nombre décimal ou exponentiel | `JsonValueKind.Float` |
-| chaîne | `JsonValueKind.String` |
-| tableau | `JsonValueKind.Array` |
-| objet | `JsonValueKind.Object` |
+| `null` | `JsonValueKind::Null` |
+| `true` / `false` | `JsonValueKind::Bool` |
+| nombre entier | `JsonValueKind::Integer` |
+| nombre décimal ou exponentiel | `JsonValueKind::Float` |
+| chaîne | `JsonValueKind::String` |
+| tableau | `JsonValueKind::Array` |
+| objet | `JsonValueKind::Object` |
 
 Le parcours normal est :
 
@@ -981,7 +981,7 @@ let parser_limits: JsonParserLimits =
         10000,
         10000,
         4096,
-        JsonParserDuplicateKeyPolicy.Reject);
+        JsonParserDuplicateKeyPolicy::Reject);
 
 let result: JsonParseResult =
     parse_strict_with_limits(
@@ -1007,7 +1007,7 @@ tokens.
 
 Si le lexer échoue pendant `parse` ou `parse_with_limits`, le résultat du
 parser conserve le message, le détail, la suggestion et l’emplacement du lexer,
-mais classe `report.error` comme `JsonParserError.InvalidTokenStream`. Appelez
+mais classe `report.error` comme `JsonParserError::InvalidTokenStream`. Appelez
 `lex` ou `lex_with_limits` directement pour obtenir la catégorie précise de
 `JsonLexerError`.
 
