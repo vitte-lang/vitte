@@ -197,6 +197,8 @@ typedef enum vitte_sema_type_kind {
      */
     VITTE_SEMA_TYPE_DYN,
 
+    VITTE_SEMA_TYPE_INT,
+
     VITTE_SEMA_TYPE_COUNT
 } vitte_sema_type_kind_t;
 
@@ -585,6 +587,7 @@ typedef struct vitte_sema {
     vitte_sema_type_id_t type_bool;
 
     vitte_sema_type_id_t type_i64;
+    vitte_sema_type_id_t type_int;
     vitte_sema_type_id_t type_u64;
     vitte_sema_type_id_t type_u8;
     vitte_sema_type_id_t type_f64;

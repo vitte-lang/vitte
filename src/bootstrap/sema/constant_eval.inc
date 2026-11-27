@@ -173,7 +173,7 @@ vitte_sema_eval_node_impl(vitte_sema_eval_t *eval, const vitte_ast_node_t *node)
                  (op == VITTE_CONSTANT_BINARY_LOGICAL_OR && left.as.boolean))) return left;
             right = vitte_sema_eval_node(eval, vitte_sema_node(context, node->children[1]));
             if ((op == VITTE_CONSTANT_BINARY_DIVIDE || op == VITTE_CONSTANT_BINARY_REMAINDER) &&
-                info != NULL && (info->type_id == context->type_i64 || info->type_id == context->type_u64 ||
+                info != NULL && (info->type_id == context->type_i64 || info->type_id == context->type_int || info->type_id == context->type_u64 ||
                 info->type_id == context->type_u8) &&
                 ((right.kind == VITTE_CONSTANT_KIND_I64 && right.as.i64 == 0) ||
                  (right.kind == VITTE_CONSTANT_KIND_U64 && right.as.u64 == 0u)) &&

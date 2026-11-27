@@ -351,6 +351,11 @@ INVALID_CASES = {
         'proc main() -> bool { return 1 == "wrong"; }\n',
         "VITTE_TYPE_E_INVALID_OPERAND",
     ),
+    "reference pointee types must match": (
+        "proc expects_int(value: &int) {}\n"
+        "proc pass_i64(value: &i64) { expects_int(value); }\n",
+        "VITTE_TYPE_E_MISMATCH",
+    ),
     "logical negation requires a boolean": (
         "proc main() -> bool { return not 1; }\n",
         "VITTE_TYPE_E_INVALID_OPERAND",

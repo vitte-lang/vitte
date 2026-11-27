@@ -210,6 +210,9 @@ typedef enum vitte_sema_type_kind {
     /* Bottom type: values of this type never return to the caller. */
     VITTE_SEMA_TYPE_NEVER,
 
+    /* C-compatible signed 32-bit integer (`int`/`i32`). */
+    VITTE_SEMA_TYPE_INT,
+
     VITTE_SEMA_TYPE_COUNT
 } vitte_sema_type_kind_t;
 
@@ -759,6 +762,7 @@ typedef struct vitte_sema {
     vitte_sema_type_id_t type_bool;
 
     vitte_sema_type_id_t type_i64;
+    vitte_sema_type_id_t type_int;
     vitte_sema_type_id_t type_u64;
     vitte_sema_type_id_t type_u8;
     vitte_sema_type_id_t type_f32;

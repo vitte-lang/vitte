@@ -1600,6 +1600,15 @@ vitte_sema_create_builtin_types(
             VITTE_SCOPE_INVALID_SYMBOL_ID,
             false);
 
+    context->type_int =
+        vitte_sema_create_type_private(
+            context,
+            VITTE_SEMA_TYPE_INT,
+            VITTE_SEMA_INVALID_TYPE_ID,
+            0u,
+            VITTE_SCOPE_INVALID_SYMBOL_ID,
+            false);
+
     context->type_u64 =
         vitte_sema_create_type_private(
             context,
@@ -1670,6 +1679,8 @@ vitte_sema_create_builtin_types(
         context->type_bool ==
             VITTE_SEMA_INVALID_TYPE_ID ||
         context->type_i64 ==
+            VITTE_SEMA_INVALID_TYPE_ID ||
+        context->type_int ==
             VITTE_SEMA_INVALID_TYPE_ID ||
         context->type_u64 ==
             VITTE_SEMA_INVALID_TYPE_ID ||
@@ -1910,6 +1921,8 @@ vitte_sema_type_is_integer_private(
 
     return type->kind ==
                VITTE_SEMA_TYPE_I64 ||
+           type->kind ==
+               VITTE_SEMA_TYPE_INT ||
            type->kind ==
                VITTE_SEMA_TYPE_U64 ||
            type->kind ==
@@ -2496,12 +2509,37 @@ vitte_sema_type_conversion_private(
      */
     if (source_type->kind == VITTE_SEMA_TYPE_U8 ||
         source_type->kind == VITTE_SEMA_TYPE_CHAR) {
-        if (destination_type->kind == VITTE_SEMA_TYPE_I64 ||
+        if (destination_type->kind == VITTE_SEMA_TYPE_INT ||
+            destination_type->kind == VITTE_SEMA_TYPE_I64 ||
             destination_type->kind == VITTE_SEMA_TYPE_U64 ||
             destination_type->kind == VITTE_SEMA_TYPE_F32 ||
             destination_type->kind == VITTE_SEMA_TYPE_F64) {
             return VITTE_SEMA_TYPE_CONVERSION_SAFE;
         }
+    }
+
+    if (source_type->kind == VITTE_SEMA_TYPE_INT) {
+        if (destination_type->kind == VITTE_SEMA_TYPE_I64 ||
+            destination_type->kind == VITTE_SEMA_TYPE_F64) {
+            return VITTE_SEMA_TYPE_CONVERSION_SAFE;
+        }
+        if (destination_type->kind == VITTE_SEMA_TYPE_F32) {
+            return VITTE_SEMA_TYPE_CONVERSION_LOSSY;
+        }
+    }
+
+    if (destination_type->kind == VITTE_SEMA_TYPE_INT &&
+        (source_type->kind == VITTE_SEMA_TYPE_U64 ||
+         source_type->kind == VITTE_SEMA_TYPE_F32 ||
+         source_type->kind == VITTE_SEMA_TYPE_F64)) {
+        return VITTE_SEMA_TYPE_CONVERSION_LOSSY;
+    }
+
+    if ((destination_type->kind == VITTE_SEMA_TYPE_INT &&
+         source_type->kind == VITTE_SEMA_TYPE_I64) ||
+        (destination_type->kind == VITTE_SEMA_TYPE_I64 &&
+         source_type->kind == VITTE_SEMA_TYPE_INT)) {
+        return VITTE_SEMA_TYPE_CONVERSION_SAFE;
     }
 
     if (source_type->kind == VITTE_SEMA_TYPE_F32 &&
@@ -2770,6 +2808,7 @@ vitte_sema_contextualize_integer_literal(
         (expected_type != context->type_u8 &&
          expected_type != context->type_u64 &&
          expected_type != context->type_i64 &&
+         expected_type != context->type_int &&
          expected_type != context->type_f32 &&
          expected_type != context->type_f64)) {
         return false;
@@ -2822,6 +2861,10 @@ vitte_sema_contextualize_integer_literal(
         value > (uint64_t)INT64_MAX) {
         return false;
     }
+    if (expected_type == context->type_int &&
+        value > (uint64_t)INT32_MAX) {
+        return false;
+    }
     if (expected_type == context->type_f64 &&
         value > UINT64_C(9007199254740991)) {
         return false;
@@ -2846,6 +2889,10 @@ vitte_sema_contextualize_integer_literal(
         expected_type == context->type_f64) {
         info->constant.kind = VITTE_SEMA_CONSTANT_FLOAT;
         info->constant.value.float_value = (double)value;
+    } else if (expected_type == context->type_int ||
+               expected_type == context->type_i64) {
+        info->constant.kind = VITTE_SEMA_CONSTANT_INTEGER;
+        info->constant.value.integer_value = (int64_t)value;
     } else {
         info->constant.kind = VITTE_SEMA_CONSTANT_UNSIGNED_INTEGER;
         info->constant.value.unsigned_integer_value = value;
@@ -3239,6 +3286,17 @@ vitte_sema_common_numeric_type(
         right_type->kind ==
             VITTE_SEMA_TYPE_U8) {
         return context->type_u8;
+    }
+
+    if (left_type->kind == VITTE_SEMA_TYPE_INT &&
+        right_type->kind == VITTE_SEMA_TYPE_INT) {
+        return context->type_int;
+    }
+    if ((left_type->kind == VITTE_SEMA_TYPE_INT &&
+         right_type->kind == VITTE_SEMA_TYPE_U8) ||
+        (right_type->kind == VITTE_SEMA_TYPE_INT &&
+         left_type->kind == VITTE_SEMA_TYPE_U8)) {
+        return context->type_int;
     }
 
     if ((left_type->kind ==
@@ -6909,14 +6967,16 @@ vitte_sema_analyze_type_node(
 
             if (VITTE_SEMA_MATCH_BUILTIN("bool")) {
                 type_id = context->type_bool;
-            } else if (VITTE_SEMA_MATCH_BUILTIN("i64") ||
-                       VITTE_SEMA_MATCH_BUILTIN("int")) {
+            } else if (VITTE_SEMA_MATCH_BUILTIN("i64")) {
                 type_id = context->type_i64;
+            } else if (VITTE_SEMA_MATCH_BUILTIN("int")) {
+                type_id = context->type_int;
             } else if (VITTE_SEMA_MATCH_BUILTIN("i8") ||
-                       VITTE_SEMA_MATCH_BUILTIN("i16") ||
-                       VITTE_SEMA_MATCH_BUILTIN("i32")) {
+                       VITTE_SEMA_MATCH_BUILTIN("i16")) {
                 /* Match the widened signed arithmetic model used for i64. */
                 type_id = context->type_i64;
+            } else if (VITTE_SEMA_MATCH_BUILTIN("i32")) {
+                type_id = context->type_int;
             } else if (VITTE_SEMA_MATCH_BUILTIN("u64")) {
                 type_id = context->type_u64;
             } else if (VITTE_SEMA_MATCH_BUILTIN("u32")) {
@@ -7350,10 +7410,12 @@ vitte_sema_builtin_type_from_name(
      memcmp(name, text_, sizeof(text_) - 1u) == 0)
     if (context == NULL || name == NULL) return VITTE_SEMA_INVALID_TYPE_ID;
     if (VITTE_SEMA_MATCH_TYPE_NAME("bool")) return context->type_bool;
-    if (VITTE_SEMA_MATCH_TYPE_NAME("i64") || VITTE_SEMA_MATCH_TYPE_NAME("int") ||
+    if (VITTE_SEMA_MATCH_TYPE_NAME("i64") ||
         VITTE_SEMA_MATCH_TYPE_NAME("i8") || VITTE_SEMA_MATCH_TYPE_NAME("i16") ||
-        VITTE_SEMA_MATCH_TYPE_NAME("i32") || VITTE_SEMA_MATCH_TYPE_NAME("isize"))
+        VITTE_SEMA_MATCH_TYPE_NAME("isize"))
         return context->type_i64;
+    if (VITTE_SEMA_MATCH_TYPE_NAME("int") || VITTE_SEMA_MATCH_TYPE_NAME("i32"))
+        return context->type_int;
     if (VITTE_SEMA_MATCH_TYPE_NAME("u64") || VITTE_SEMA_MATCH_TYPE_NAME("u32") ||
         VITTE_SEMA_MATCH_TYPE_NAME("u16") || VITTE_SEMA_MATCH_TYPE_NAME("usize"))
         return context->type_u64;
@@ -16185,6 +16247,7 @@ vitte_sema_ffi_type_supported_depth_private(
     }
     if (type->kind == VITTE_SEMA_TYPE_BOOL ||
         type->kind == VITTE_SEMA_TYPE_I64 ||
+        type->kind == VITTE_SEMA_TYPE_INT ||
         type->kind == VITTE_SEMA_TYPE_U64 ||
         type->kind == VITTE_SEMA_TYPE_U8 ||
         type->kind == VITTE_SEMA_TYPE_F32 ||
@@ -19363,6 +19426,8 @@ vitte_sema_type_kind_name(
             return "bool";
         case VITTE_SEMA_TYPE_I64:
             return "i64";
+        case VITTE_SEMA_TYPE_INT:
+            return "int";
         case VITTE_SEMA_TYPE_U64:
             return "u64";
         case VITTE_SEMA_TYPE_U8:

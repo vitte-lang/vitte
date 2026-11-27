@@ -16,6 +16,7 @@ INVALID = (
     ("unknown_unary_no_cascade", "proc f() -> bool { return not missing; }", ("E0401",)),
     ("unknown_index_no_cascade", "proc f() -> int { let a = [1]; return a[missing]; }", ("E0401",)),
     ("unknown_array_no_cascade", "proc f() -> int { return missing[0]; }", ("E0401",)),
+    ("reference_pointee_mismatch", "proc expects_int(value: &int) {} proc pass_i64(value: &i64) { expects_int(value); }", ("E0602",)),
     ("match_literal_type", "proc f(x: bool) -> int { match x { 1 => 1, _ => 0, } }", ("E1603",)),
     ("match_postcondition", "proc f(x: bool) -> int ensures result > 0; { match x { true => 1, false => -1, } }", ("E0702",)),
     ("signed_literal_overflow", "proc f() -> int { return 9223372036854775808; }", ("E1502",)),
@@ -63,8 +64,8 @@ INVALID = (
     ("exhaustive_pick_match_unreachable_tail", "pick Choice { Left, Right } proc f(value: Choice) -> i64 { match value { Choice::Left => { return 0; }, Choice::Right => { return 1; }, _ => let ignored = 2; } }", ("E1602",)),
     ("match_implicit_return_type", 'proc f(x: bool) -> int { match x { true => "bad", false => 0, } }', ("E0605",)),
     ("contract_await_effect", "async proc ready() -> bool { return true; } async proc f() -> int requires await ready(); { return 0; }", ("E0710",)),
-    ("reference_return_local", "proc bad() -> &int { let value = 1; return &value; }", ("E1205",)),
-    ("reference_return_local_via_identity", "proc identity(value: &int) -> &int { return value; } proc bad() -> &int { let local = 1; return identity(&local); }", ("E1205",)),
+    ("reference_return_local", "proc bad() -> &int { let value: int = 1; return &value; }", ("E1205",)),
+    ("reference_return_local_via_identity", "proc identity(value: &int) -> &int { return value; } proc bad() -> &int { let local: int = 1; return identity(&local); }", ("E1205",)),
     ("reference_rebind_shorter_owner", "proc bad() { let outer = 1; let mut reference = &outer; { let inner = 2; set reference = &inner; } }", ("E1205",)),
 )
 
@@ -100,7 +101,7 @@ VALID = (
     ("reference_return_parameter", "proc identity(value: &int) -> &int { return value; }"),
     ("reference_return_static", "static VALUE: int = 1; proc get() -> &int { return &VALUE; }"),
     ("reference_alias_same_scope", "proc f() -> int { let value = 1; let first = &value; let second = first; return *second; }"),
-    ("reference_call_parameter", "proc identity(value: &int) -> &int { return value; } proc f() -> int { let value = 1; let reference = identity(&value); return *reference; }"),
+    ("reference_call_parameter", "proc identity(value: &int) -> &int { return value; } proc f() -> int { let value: int = 1; let reference = identity(&value); return *reference; }"),
 )
 
 RUNTIME = (
@@ -115,7 +116,7 @@ RUNTIME = (
     ("void_implicit_postcondition", "static mut COUNT: int = 0; proc f() ensures COUNT > 0; { } proc main() -> int { f(); return 0; }", "E0702", ""),
     ("void_defer_postcondition", "static mut COUNT: int = 0; proc f() ensures COUNT == 1; { defer { set COUNT = 1; } } proc main() -> int { f(); return COUNT - 1; }", None, ""),
     ("multiple_clauses", "proc f(x: int) -> int requires x > 0; requires x < 10; ensures result > 0; ensures result < 10; { return x; } proc main() -> int { let mut x = 12; return f(x); }", "E0701", ""),
-    ("reference_parameter", "proc f(x: &int) -> int requires x > 0; ensures result > 0; { return x; } proc main() -> int { let x = 1; return f(&x) - 1; }", None, ""),
+    ("reference_parameter", "proc f(x: &int) -> int requires x > 0; ensures result > 0; { return x; } proc main() -> int { let x: int = 1; return f(&x) - 1; }", None, ""),
     ("implicit_match_return", "static mut BAD: int = -1; proc f(x: bool) -> int ensures result > 0; { match x { true => 1, false => BAD, } } proc main() -> int { let mut x = false; return f(x); }", "E0702", ""),
     ("generic_contract", "proc f<T>(x: T, valid: bool) -> T requires valid; ensures valid; { return x; } proc main() -> int { let mut valid = false; return f(1, valid); }", "E0701", ""),
 )
