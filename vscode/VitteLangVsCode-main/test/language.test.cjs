@@ -816,6 +816,18 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   fs.writeFileSync(path.join(workspace, 'diskapi.vit'), 'export proc workspaceApi(value: i32) -> i32 { return value; }\n');
   const child = spawn(process.execPath, [path.join(root, 'server/out/src/server.js'), '--stdio'], { cwd: root, stdio: ['pipe', 'pipe', 'pipe'] });
   const connection = createMessageConnection(new StreamMessageReader(child.stdout), new StreamMessageWriter(child.stdin));
+  let releaseConfiguration;
+  let notifyConfigurationRequested;
+  let holdConfiguration = false;
+  const configurationRequested = new Promise(resolve => { notifyConfigurationRequested = resolve; });
+  const configurationGate = new Promise(resolve => { releaseConfiguration = resolve; });
+  connection.onRequest('workspace/configuration', () => {
+    if (!holdConfiguration) return [{}];
+    notifyConfigurationRequested();
+    return configurationGate;
+  });
+  connection.onRequest('client/registerCapability', () => null);
+  connection.onRequest('client/unregisterCapability', () => null);
   t.after(() => { connection.dispose(); child.kill(); });
   t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
   child.stderr.resume();
@@ -826,6 +838,7 @@ test('bundled server serves editor features, navigation and workspace symbols ov
     workspaceFolders: [{ uri: workspaceUri, name: 'vitte-lsp-workspace' }],
     capabilities: {
       workspace: {
+        configuration: true,
         workspaceEdit: { documentChanges: true },
         workspaceFolders: true,
         fileOperations: { willRename: true },
@@ -1061,6 +1074,45 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   }
   assert.ok(!cancelledSymbols.some(symbol => symbol.name === 'cancellationRecoverySymbol'), 'cancelled queries must not publish obsolete symbols');
   cancellation.dispose();
+
+  const staleUri = require('node:url').pathToFileURL(path.join(workspace, 'stale-version.vit')).toString();
+  const staleSource = 'proc staleRecoverySymbol() {}';
+  const staleLines = staleSource.split(String.fromCharCode(10));
+  const staleLine = staleLines.findIndex(line => line.includes('staleRecoverySymbol'));
+  const stalePosition = { line: staleLine, character: staleLines[staleLine].indexOf('staleRecoverySymbol') + 1 };
+  await connection.sendNotification('textDocument/didOpen', {
+    textDocument: { uri: staleUri, languageId: 'vit', version: 1, text: staleSource },
+  });
+  holdConfiguration = true;
+  const staleRequest = connection.sendRequest('textDocument/references', {
+    textDocument: { uri: staleUri },
+    position: stalePosition,
+    context: { includeDeclaration: true },
+  });
+  await Promise.race([
+    configurationRequested,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('The LSP server did not request project configuration')), 1500)),
+  ]);
+  const currentSource = staleSource.replace('staleRecoverySymbol', 'currentRecoverySymbol');
+  await connection.sendNotification('textDocument/didChange', {
+    textDocument: { uri: staleUri, version: 2 },
+    contentChanges: [{ text: currentSource }],
+  });
+  releaseConfiguration([{}]);
+  holdConfiguration = false;
+  const staleReferences = await Promise.race([
+    staleRequest,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Stale-document response timed out')), 1500)),
+  ]);
+  assert.deepEqual(staleReferences, [], 'a references request must discard results for a superseded document version');
+  const currentLines = currentSource.split('\n');
+  const freshReferences = await connection.sendRequest('textDocument/references', {
+    textDocument: { uri: staleUri },
+    position: { line: staleLine, character: currentLines[staleLine].indexOf('currentRecoverySymbol') + 1 },
+    context: { includeDeclaration: true },
+  });
+  assert.equal(freshReferences.length, 1, 'a fresh request should return the current declaration after the edit');
+
   const recoveredSymbols = await connection.sendRequest('workspace/symbol', { query: 'workspaceOnly' });
   assert.ok(recoveredSymbols.some(symbol => symbol.name === 'workspaceOnly'), 'the server should process a fresh request after cancellation');
   await connection.sendRequest('shutdown');

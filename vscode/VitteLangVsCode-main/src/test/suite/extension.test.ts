@@ -1210,6 +1210,8 @@ suite("Vitte extension", () => {
         detectedRuntime.found,
         `Configured executable was not discovered: ${detectedRuntime.cliPath ?? "no executable path returned"}`,
       );
+      await waitUntil(() => testApi.getStatusTooltip().includes(expectedCompilerPath), 8000, 50);
+      assert.ok(testApi.getStatusTooltip().includes("Compiler:"), "The status item should identify the active folder compiler and its path.");
 
       // The VSIX smoke loads this suite from a separate extension path, so its
       // vscode.window wrapper cannot be stubbed from the test extension. Keep
