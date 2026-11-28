@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit packaged production dependencies
+        run: npm audit --omit=dev
+
       - name: Debug revision
         run: |
           git rev-parse HEAD
@@ -97,11 +100,14 @@ jobs:
           EXPECTED_NODE_ARCH: ${{ matrix.node-arch }}
         run: node -e "if (process.platform !== process.env.EXPECTED_NODE_PLATFORM || process.arch !== process.env.EXPECTED_NODE_ARCH) { console.error('Unexpected runner:', process.platform, process.arch); process.exit(1); } console.log('Verified runner:', process.platform, process.arch);"
 
-      - name: Check manifest and generated imports
-        run: npm run check:imports-sync && npm run check:manifest
+      - name: Check generated imports
+        run: npm run check:imports-sync
 
       - name: Build and run process safety tests
         run: npm run test:unit
+
+      - name: Check the built extension manifest
+        run: npm run check:manifest
 
       - name: Package VSIX
         run: npm run vsix

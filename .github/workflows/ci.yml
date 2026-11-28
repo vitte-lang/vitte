@@ -410,17 +410,23 @@ jobs:
       - name: Install extension dependencies
         run: npm ci
 
+      - name: Audit packaged production dependencies
+        run: npm audit --omit=dev
+
       - name: Verify runner architecture
         env:
           EXPECTED_NODE_PLATFORM: ${{ matrix.node-platform }}
           EXPECTED_NODE_ARCH: ${{ matrix.node-arch }}
         run: node -e "if (process.platform !== process.env.EXPECTED_NODE_PLATFORM || process.arch !== process.env.EXPECTED_NODE_ARCH) { console.error('Unexpected runner:', process.platform, process.arch); process.exit(1); } console.log('Verified extension host:', process.platform, process.arch);"
 
-      - name: Validate manifest and generated imports
-        run: npm run check:imports-sync && npm run check:manifest
+      - name: Validate generated imports
+        run: npm run check:imports-sync
 
       - name: Build and run argument, environment and process tests
         run: npm run test:unit
+
+      - name: Validate the built extension manifest
+        run: npm run check:manifest
 
       - name: Package VSIX
         run: npm run vsix
