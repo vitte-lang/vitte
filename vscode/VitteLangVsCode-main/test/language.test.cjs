@@ -731,7 +731,9 @@ test('every advertised editor capability has positive and negative regression ev
   const negative = fs.readFileSync(path.join(root, 'test/fixtures/editor', coverage.fixtures.negative), 'utf8');
   assert.match(positive, /proc main\(\)/);
   assert.match(negative, /unresolved_name/);
-  assert.match(negative, /let amount: int = 1\n/);
+  const amountLine = /let amount: int = 1\r?\n/;
+  assert.match(negative, amountLine);
+  assert.match(negative.replace(/\n/g, '\r\n'), amountLine, 'the capability fixture check must accept Windows CRLF checkouts');
 
   for (const [feature, cases] of Object.entries(coverage.advertisedFeatures)) {
     for (const mode of ['positive', 'negative']) {
