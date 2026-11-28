@@ -1,10 +1,9 @@
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { compilerSuggestionsFor } from "../utils/compilerDiagnostics";
 
-type FixCategory = "imports" | "style" | "naming" | "contracts";
-
-function diagnosticCodeText(d: vscode.Diagnostic): string {
-  const raw = d.code;
+function diagnosticCodeText(diagnostic: vscode.Diagnostic): string {
+  const raw = diagnostic.code;
   if (typeof raw === "string" || typeof raw === "number") return String(raw);
   if (raw && typeof raw === "object" && "value" in raw) {
     const value = (raw as { value?: unknown }).value;
@@ -13,27 +12,55 @@ function diagnosticCodeText(d: vscode.Diagnostic): string {
   return "";
 }
 
-function explainableDiagnosticCode(d: vscode.Diagnostic): string | undefined {
-  const code = diagnosticCodeText(d).trim().toUpperCase();
-  if (!code) return undefined;
-  const prefixed = /^([A-Z][A-Z0-9_-]*):(.*)$/.exec(code);
-  const base = (prefixed?.[2] ?? code).trim().toUpperCase();
-  if (/^E\d{4}$/.test(base) || /^VITTE-[A-Z]\d{4}$/.test(base)) return base;
-  return undefined;
+function canonicalCode(diagnostic: vscode.Diagnostic): string | undefined {
+  const value = diagnosticCodeText(diagnostic).trim().toUpperCase();
+  if (!value) return undefined;
+  const code = value.slice(value.lastIndexOf(":") + 1).trim();
+  return code || undefined;
 }
 
-function buildCompilerSuggestionQuickFixes(document: vscode.TextDocument, d: vscode.Diagnostic): vscode.CodeAction[] {
-  const code = explainableDiagnosticCode(d);
+function explainableDiagnosticCode(diagnostic: vscode.Diagnostic): string | undefined {
+  const code = canonicalCode(diagnostic);
+  return code && (/^E\d{4}$/.test(code) || /^VITTE-[A-Z]\d{4}$/.test(code)) ? code : undefined;
+}
+
+function hasUniqueImportTarget(suggestion: ReturnType<typeof compilerSuggestionsFor>[number]): boolean {
+  const kind = `${suggestion.kind ?? ""} ${suggestion.message}`.toLowerCase();
+  const replacement = suggestion.replacement ?? "";
+  const importOrQualification = /import|qualif/.test(kind)
+    || /^\s*(?:use|import|pull)\b/.test(replacement)
+    || /[A-Za-z_][A-Za-z0-9_]*\s*::\s*[A-Za-z_][A-Za-z0-9_]*/.test(replacement);
+  if (!importOrQualification) return true;
+  return Boolean(
+    suggestion.candidate?.trim()
+      && suggestion.destination?.trim()
+      && suggestion.candidateCount === 1
+      && suggestion.destinationCount === 1,
+  );
+}
+
+function compilerSuggestionTitle(message: string): string {
+  const firstSentence = message.replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s/, 1)[0] ?? "";
+  const concise = firstSentence.length > 68 ? `${firstSentence.slice(0, 65).trimEnd()}…` : firstSentence;
+  return `Vitte: ${concise || "Apply compiler-proven fix"}`;
+}
+
+function buildCompilerSuggestionQuickFixes(document: vscode.TextDocument, diagnostic: vscode.Diagnostic): vscode.CodeAction[] {
+  if (!String(diagnostic.source ?? "").startsWith("vitte") || diagnostic.severity !== vscode.DiagnosticSeverity.Error) return [];
+  const code = canonicalCode(diagnostic);
   if (!code) return [];
-  const start = document.offsetAt(d.range.start);
-  const end = document.offsetAt(d.range.end);
+  const start = document.offsetAt(diagnostic.range.start);
+  const end = document.offsetAt(diagnostic.range.end);
   return compilerSuggestionsFor(document.uri.toString(), code, start, end).flatMap((suggestion) => {
     if (suggestion.applicability !== "machine-applicable" || suggestion.replacement === undefined) return [];
-    if (suggestion.source && suggestion.source !== document.uri.fsPath) return [];
+    if (!suggestion.message.trim() || /^apply (?:the )?(?:compiler )?(?:suggestion|fix)$/i.test(suggestion.message.trim())) return [];
+    if (!hasUniqueImportTarget(suggestion)) return [];
+    if (!suggestion.source || path.resolve(suggestion.source) !== path.resolve(document.uri.fsPath)) return [];
     if (suggestion.start < 0 || suggestion.end < suggestion.start || suggestion.end > document.getText().length) return [];
-    const action = new vscode.CodeAction(`Vitte: ${suggestion.message}`, vscode.CodeActionKind.QuickFix);
-    action.diagnostics = [d];
-    action.isPreferred = true;
+
+    const action = new vscode.CodeAction(compilerSuggestionTitle(suggestion.message), vscode.CodeActionKind.QuickFix);
+    action.isPreferred = false;
+    action.diagnostics = [diagnostic];
     action.edit = new vscode.WorkspaceEdit();
     action.edit.replace(
       document.uri,
@@ -44,119 +71,20 @@ function buildCompilerSuggestionQuickFixes(document: vscode.TextDocument, d: vsc
   });
 }
 
-
-function explainTitle(message: string): string {
-  const didYouMean = /did you mean\s+[`'"]?([^`'".,;]+)[`'"]?/i.exec(message);
-  if (!didYouMean?.[1]) return "Vitte: Explain this diagnostic";
-  return `Vitte: Explain diagnostic (did you mean \`${didYouMean[1]}\`?)`;
-}
-
-function toSnakeCase(name: string): string {
-  return name
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .replace(/[-\s]+/g, "_")
-    .replace(/__+/g, "_")
-    .toLowerCase();
-}
-
-function transformImports(text: string): string {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
-  const importRows: string[] = [];
-  const kept: string[] = [];
-  for (const line of lines) {
-    if (/^\s*(import|use|pull)\b/.test(line)) importRows.push(line.trim());
-    else kept.push(line);
-  }
-  if (importRows.length === 0) return text;
-  const sorted = Array.from(new Set(importRows)).sort((a, b) => a.localeCompare(b));
-  const newText = [...sorted, "", ...kept].join("\n").replace(/\n{3,}/g, "\n\n");
-  return text.endsWith("\n") && !newText.endsWith("\n") ? `${newText}\n` : newText;
-}
-
-function transformStyle(text: string): string {
-  return text
-    .replace(/\t/g, "  ")
-    .split(/\r?\n/)
-    .map((l) => l.replace(/[ \t]+$/g, ""))
-    .join("\n");
-}
-
-function transformNaming(text: string): string {
-  const renames = new Map<string, string>();
-  const declRx = /\b(?:proc|fn|let|const|static)\s+(?:mut\s+)?([A-Za-z_]\w*)/g;
-  let m: RegExpExecArray | null;
-  while ((m = declRx.exec(text))) {
-    const oldName = m[1];
-    if (!oldName) continue;
-    const snake = toSnakeCase(oldName);
-    if (oldName !== snake && /^[A-Za-z_]\w*$/.test(snake)) {
-      renames.set(oldName, snake);
-    }
-    if (m[0].length === 0) declRx.lastIndex++;
-  }
-  let out = text;
-  for (const [oldName, newName] of renames) {
-    out = out.replace(new RegExp(`(?<![A-Za-z0-9_])${oldName}(?![A-Za-z0-9_])`, "g"), newName);
-  }
-  return out;
-}
-
-function transformContracts(text: string): string {
-  if (/^\s*<<<\s+ROLE-CONTRACT\b/m.test(text)) return text;
-  const pkg = /^\s*(?:space|module)\s+([A-Za-z_][\w./:-]*)/m.exec(text)?.[1] ?? "my/package";
-  const block = [
-    "",
-    "<<< ROLE-CONTRACT",
-    `package: ${pkg}`,
-    "role: Responsibility",
-    "input_contract: Explicit normalized inputs",
-    "output_contract: Stable explicit outputs",
-    "boundary: No business policy decisions",
-    ">>>",
-    "",
-  ].join("\n");
-  return text.endsWith("\n") ? `${text}${block}` : `${text}\n${block}`;
-}
-
-function applyCategory(category: FixCategory, text: string): string {
-  switch (category) {
-    case "imports": return transformImports(text);
-    case "style": return transformStyle(text);
-    case "naming": return transformNaming(text);
-    case "contracts": return transformContracts(text);
-  }
-}
-
-async function previewAndApplyCategory(category: FixCategory, doc: vscode.TextDocument): Promise<void> {
-  const before = doc.getText();
-  const after = applyCategory(category, before);
-  if (after === before) {
-    void vscode.window.showInformationMessage(`Vitte ${category}: no changes.`);
-    return;
-  }
-  const tmp = await vscode.workspace.openTextDocument({ content: after, language: doc.languageId });
-  await vscode.commands.executeCommand(
-    "vscode.diff",
-    doc.uri,
-    tmp.uri,
-    `Vitte ${category} preview: ${vscode.workspace.asRelativePath(doc.uri, false)}`
-  );
-  const pick = await vscode.window.showInformationMessage(`Apply Vitte ${category} fixes?`, "Apply", "Cancel");
-  if (pick !== "Apply") return;
-  const edit = new vscode.WorkspaceEdit();
-  const full = new vscode.Range(0, 0, doc.lineCount, 0);
-  edit.replace(doc.uri, full, after);
-  await vscode.workspace.applyEdit(edit);
-  await doc.save();
-}
-
-function categoryTitle(category: FixCategory): string {
-  switch (category) {
-    case "imports": return "imports";
-    case "style": return "style";
-    case "naming": return "naming";
-    case "contracts": return "contracts";
-  }
+function advisoryAction(
+  title: string,
+  command: string,
+  document: vscode.TextDocument,
+  diagnostic: vscode.Diagnostic,
+): vscode.CodeAction {
+  const action = new vscode.CodeAction(`Vitte (advisory): ${title}`, vscode.CodeActionKind.Empty);
+  action.diagnostics = [diagnostic];
+  action.command = {
+    command,
+    title,
+    arguments: [{ uri: document.uri, diagnostic }],
+  };
+  return action;
 }
 
 export function registerAdvancedCodeActions(context: vscode.ExtensionContext): void {
@@ -164,92 +92,37 @@ export function registerAdvancedCodeActions(context: vscode.ExtensionContext): v
     provideCodeActions(document, _range, ctx) {
       if (!["vitte", "vit"].includes(document.languageId)) return [];
       const actions: vscode.CodeAction[] = [];
-      const addCategory = (category: FixCategory, kind: vscode.CodeActionKind) => {
-        const action = new vscode.CodeAction(
-          `Vitte: Fix all ${categoryTitle(category)} (preview diff)`,
-          kind
-        );
-        action.command = {
-          command: "vitte.fixCategoryPreview",
-          title: "Vitte fix category preview",
-          arguments: [category, document.uri],
-        };
-        action.isPreferred = category === "imports";
-        actions.push(action);
-      };
 
-      addCategory("imports", vscode.CodeActionKind.SourceFixAll.append("vitte.imports"));
-      addCategory("style", vscode.CodeActionKind.SourceFixAll.append("vitte.style"));
-      addCategory("naming", vscode.CodeActionKind.SourceFixAll.append("vitte.naming"));
-      addCategory("contracts", vscode.CodeActionKind.SourceFixAll.append("vitte.contracts"));
-
-      for (const d of ctx.diagnostics) {
-        const code = diagnosticCodeText(d);
+      for (const diagnostic of ctx.diagnostics) {
+        const code = diagnosticCodeText(diagnostic);
         const doctorCode = code.toUpperCase().startsWith("DOCTOR:")
           ? code.slice("DOCTOR:".length)
-          : (code.toUpperCase().startsWith("DOCTOR_") ? code.slice("DOCTOR_".length) : "");
-        if (!doctorCode) continue;
-        const tool = doctorCode.replace(/[_:].*$/, "").toLowerCase();
-        const action = new vscode.CodeAction(`Vitte Doctor: rerun ${tool}`, vscode.CodeActionKind.QuickFix);
-        action.diagnostics = [d];
-        action.command = { command: "vitte.doctor.runTool", title: "Run Doctor tool", arguments: [tool] };
-        actions.push(action);
-      }
-      for (const d of ctx.diagnostics) {
-        if (String(d.source ?? "").startsWith("vitte-") || explainableDiagnosticCode(d) !== undefined) {
-          const explain = new vscode.CodeAction(explainTitle(d.message ?? ""), vscode.CodeActionKind.QuickFix);
-          explain.diagnostics = [d];
-          explain.command = {
-            command: "vitte.diagnostics.explain",
-            title: "Explain this diagnostic",
-            arguments: [{ uri: document.uri, diagnostic: d }],
-          };
-          actions.push(explain);
+          : code.toUpperCase().startsWith("DOCTOR_") ? code.slice("DOCTOR_".length) : "";
+        if (doctorCode) {
+          const tool = doctorCode.replace(/[_:].*$/, "").toLowerCase();
+          const action = new vscode.CodeAction(`Vitte (advisory): rerun Doctor ${tool}`, vscode.CodeActionKind.Empty);
+          action.diagnostics = [diagnostic];
+          action.command = { command: "vitte.doctor.runTool", title: "Rerun Doctor tool", arguments: [tool] };
+          actions.push(action);
         }
-        const code = explainableDiagnosticCode(d);
-        if (code) {
-          const openDoc = new vscode.CodeAction("Vitte: Open diagnostics doc", vscode.CodeActionKind.QuickFix);
-          openDoc.diagnostics = [d];
-          openDoc.command = {
-            command: "vitte.diagnostics.openDoc",
-            title: "Open diagnostics doc",
-            arguments: [{ uri: document.uri, diagnostic: d }],
-          };
-          actions.push(openDoc);
 
-          const copyExplain = new vscode.CodeAction("Vitte: Copy explain command", vscode.CodeActionKind.QuickFix);
-          copyExplain.diagnostics = [d];
-          copyExplain.command = {
-            command: "vitte.diagnostics.copyExplainCommand",
-            title: "Copy explain command",
-            arguments: [{ uri: document.uri, diagnostic: d }],
-          };
-          actions.push(copyExplain);
+        if (String(diagnostic.source ?? "").startsWith("vitte")) {
+          actions.push(advisoryAction("Explain this diagnostic", "vitte.diagnostics.explain", document, diagnostic));
         }
-        actions.push(...buildCompilerSuggestionQuickFixes(document, d));
+        if (explainableDiagnosticCode(diagnostic)) {
+          actions.push(advisoryAction("Open diagnostics documentation", "vitte.diagnostics.openDoc", document, diagnostic));
+          actions.push(advisoryAction("Copy explain command", "vitte.diagnostics.copyExplainCommand", document, diagnostic));
+        }
+
+        actions.push(...buildCompilerSuggestionQuickFixes(document, diagnostic));
       }
       return actions;
     },
   };
 
-  context.subscriptions.push(
-    vscode.languages.registerCodeActionsProvider(
-      [{ language: "vitte" }, { language: "vit" }],
-      provider,
-      {
-        providedCodeActionKinds: [
-          vscode.CodeActionKind.QuickFix,
-          vscode.CodeActionKind.SourceFixAll.append("vitte.imports"),
-          vscode.CodeActionKind.SourceFixAll.append("vitte.style"),
-          vscode.CodeActionKind.SourceFixAll.append("vitte.naming"),
-          vscode.CodeActionKind.SourceFixAll.append("vitte.contracts"),
-        ],
-      }
-    ),
-    vscode.commands.registerCommand("vitte.fixCategoryPreview", async (category: FixCategory, uri?: vscode.Uri) => {
-      if (!uri) return;
-      const doc = await vscode.workspace.openTextDocument(uri);
-      await previewAndApplyCategory(category, doc);
-    }),
-  );
+  context.subscriptions.push(vscode.languages.registerCodeActionsProvider(
+    [{ language: "vitte" }, { language: "vit" }],
+    provider,
+    { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix, vscode.CodeActionKind.Empty] },
+  ));
 }

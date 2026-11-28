@@ -64,6 +64,14 @@ class LanguageTools(unittest.TestCase):
             self.assertNotIn('${', expand(entry['body']))
             self.assertNotIn('$0', expand(entry['body']))
         self.assertEqual(expand('${1:name}($1)$0', {'1': 'hello'}), 'hello(hello)')
+        with tempfile.TemporaryDirectory(prefix='vitte snippets ') as directory:
+            generated_root = Path(directory) / 'editors'
+            stale = generated_root / 'emacs/snippets/vitte-mode/give'
+            stale.parent.mkdir(parents=True)
+            stale.write_text('# -*- mode: snippet -*-\n# name: obsolete generated snippet\n# key: give\n# --\ngive value;\n')
+            self.assertTrue(any(Path(path) == stale for path in generate(generated_root, check=True)))
+            generate(generated_root)
+            self.assertFalse(stale.exists(), 'stale generated files must not keep recommending removed syntax')
 
     def test_cli_format_roundtrip_and_status(self):
         with tempfile.TemporaryDirectory(prefix='vitte format ') as directory:

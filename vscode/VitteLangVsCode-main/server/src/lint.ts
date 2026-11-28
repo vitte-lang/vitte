@@ -458,7 +458,16 @@ function isDisabled(
 /* ============================= LSP Bridge ================================= */
 
 export function lintToPublishable(text: string, uri: string, options?: LintOptions): Diagnostic[] {
-  return lintText(text, uri, options);
+  // The compiler owns syntax, name, type and language-style diagnostics. The
+  // editor linter publishes only non-semantic advisories that cannot duplicate
+  // a compiler error or claim that a source construct is invalid.
+  const advisoryRules = new Set<RuleId>([
+    RULES.Tabs,
+    RULES.TrailingWhitespace,
+    RULES.LineLength,
+    RULES.Todo,
+  ]);
+  return lintText(text, uri, options).filter(diagnostic => advisoryRules.has(diagnostic.code as RuleId));
 }
 
 /* ========================= Style conventions (Vitte) ====================== */

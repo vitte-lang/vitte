@@ -29,7 +29,7 @@ cmake --build build</code></pre>
 proc main() -&gt; int {
     return 0;
 }</code></pre>
-<p>Pour les modules, la CLI documente <code>--project-root</code>, <code>--manifest-path</code> et la variable <code>VITTE_MODULE_PATH</code>. Cette dernière ajoute des racines de recherche pour les modules ; elle ne remplace pas la déclaration des chemins et imports dans les fichiers source.</p>
+<p>Le CLI natif 0.1.1 charge <code>vitte.toml</code> ou <code>.vitte/config</code> depuis son dossier courant ; <code>--manifest-path</code> sélectionne un manifest et <code>VITTE_MODULE_PATH</code> ajoute des racines de modules. <code>--project-root</code> appartient au pilote bootstrap documenté séparément et n’est pas accepté par le dispatcher natif.</p>
 <pre><code>VITTE_MODULE_PATH="$PWD/modules" build/bin/vitte compile application.vit -o application
 vitte check src/main.vit</code></pre>
 <p>Le module JSON du dépôt illustre un paquet organisé avec <code>package.toml</code>. Ce manifeste décrit ce paquet et son point d’entrée ; il ne faut pas le confondre avec un gestionnaire universel de dépendances ou un format de projet garanti pour toutes les applications. La page <a href="{{ '/reference/modules/' | relative_url }}">Modules et visibilité</a> détaille la résolution documentée et ses limites.</p>
@@ -56,7 +56,7 @@ vitte run examples/hello.vit</code></pre>
 <ol>
   <li><strong>Vérifiez la commande et le fichier.</strong> Confirmez que le binaire attendu est lancé, que le chemin existe et que vous partez de la bonne racine de projet.</li>
   <li><strong>Réduisez la phase.</strong> Utilisez <code>lex</code>, <code>parse</code>, <code>check</code> ou <code>compile --stop-after-sema</code> pour repérer le premier stade qui échoue.</li>
-  <li><strong>Vérifiez les noms et les modules.</strong> Comparez <code>space</code>, les chemins <code>use</code>, les noms de fichier, les exports et les racines données à <code>VITTE_MODULE_PATH</code> ou <code>--project-root</code>.</li>
+  <li><strong>Vérifiez les noms et les modules.</strong> Comparez <code>space</code>, les chemins <code>use</code>, les noms de fichier, les exports et les racines données à <code>VITTE_MODULE_PATH</code>, ainsi que le dossier courant et le fichier de configuration chargé.</li>
   <li><strong>Vérifiez le niveau de support.</strong> Une construction peut être reconnue par un parseur, puis rejetée par l’analyse sémantique ou le backend. Cherchez-la dans la fiche concernée et dans la matrice de support.</li>
   <li><strong>Conservez les éléments utiles.</strong> Notez la version, la commande exacte, le diagnostic complet et le plus petit fichier source qui reproduit le problème.</li>
 </ol>

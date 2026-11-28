@@ -2,7 +2,7 @@
   "name": "vitte-studio",
   "displayName": "Vitte Language Support",
   "description": "Editor support and project workflows for Vitte. See the versioned capability matrix for tested scope and platform limits.",
-  "version": "2.3.4",
+  "version": "2.3.9",
   "publisher": "VitteStudio",
   "license": "MIT",
   "repository": {
@@ -104,8 +104,21 @@
               },
               "nativeBackend": {
                 "type": "boolean",
-                "default": true,
-                "description": "Experimental: use the bundled native DAP backend when no external adapter is configured. The repository DAP job targets Ubuntu 24.04; configure an external adapter for other environments."
+                "default": false,
+                "description": "Explicit opt-in to the experimental bundled DAP backend. Requires CLI 0.1.1, LLDB and Expect on the Linux x86_64 / Ubuntu 24.04 platform candidate; use Vitte: Build and Vitte: Run elsewhere."
+              },
+              "target": {
+                "type": "string",
+                "description": "Target passed unchanged to the selected Vitte CLI as --target during native debug compilation. The bundled debugger only accepts the verified host target."
+              },
+              "compilerArgs": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Additional arguments passed to the selected Vitte CLI during native debug compilation."
+              },
+              "manifestPath": {
+                "type": "string",
+                "description": "CLI manifest path used during native debug compilation; relative paths resolve from the selected project root."
               },
               "adapter": {
                 "type": "string",
@@ -185,15 +198,6 @@
           }
         },
         "initialConfigurations": [
-          {
-            "type": "vitte",
-            "request": "launch",
-            "name": "Vitte: Launch current file",
-            "program": "${file}",
-            "adapterTransport": "stdio",
-            "cwd": "${workspaceFolder}",
-            "args": []
-          },
           {
             "type": "vitte",
             "request": "attach",
@@ -311,12 +315,16 @@
         "title": "Vitte Debug: Attach"
       },
       {
+        "command": "vitte.formatDocument",
+        "title": "Vitte: Format Document (Unavailable)"
+      },
+      {
         "command": "vitte.organizeImports",
-        "title": "Vitte: Organize Imports"
+        "title": "Vitte: Organize Imports (Unavailable)"
       },
       {
         "command": "vitte.fixAll",
-        "title": "Vitte: Fix All"
+        "title": "Vitte: Fix All (Unavailable)"
       },
       {
         "command": "vitte.renameSymbol",
@@ -412,6 +420,11 @@
         "category": "Vitte"
       },
       {
+        "command": "vitte.detectProject",
+        "title": "Vitte: Detect Project",
+        "category": "Vitte"
+      },
+      {
         "command": "vitte.bench",
         "title": "Vitte: Run Benchmarks",
         "category": "Vitte"
@@ -424,6 +437,11 @@
       {
         "command": "vitte.openBenchDir",
         "title": "Vitte: Open Bench Directory",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.check",
+        "title": "Vitte: Check",
         "category": "Vitte"
       },
       {
@@ -584,21 +602,6 @@
       {
         "command": "vitte.fixCategoryPreview",
         "title": "Vitte: Fix Category Preview",
-        "category": "Vitte"
-      },
-      {
-        "command": "vitte.codelens.runProc",
-        "title": "Vitte: CodeLens Run Proc",
-        "category": "Vitte"
-      },
-      {
-        "command": "vitte.codelens.openRefs",
-        "title": "Vitte: CodeLens Open Refs",
-        "category": "Vitte"
-      },
-      {
-        "command": "vitte.codelens.explainCode",
-        "title": "Vitte: CodeLens Explain Code",
         "category": "Vitte"
       },
       {
@@ -1047,11 +1050,45 @@
           "command": {
             "type": "string",
             "enum": [
+              "check",
               "build",
               "run",
-              "test",
-              "clean"
+              "test"
             ]
+          },
+          "args": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Additional compiler arguments for check/build/run tasks."
+          },
+          "programArgs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Arguments forwarded to a running Vitte program after the CLI separator."
+          },
+          "currentFileOnly": {
+            "type": "boolean",
+            "description": "Run this check/build through the selected CLI file instead of a compiler repository Make target."
+          },
+          "compilerRepository": {
+            "type": "boolean",
+            "description": "Explicitly build the Vitte compiler repository using its Make target."
+          },
+          "file": {
+            "type": "string",
+            "description": "Vitte source file. Relative paths resolve from the detected project root; defaults to the active Vitte file in this task's workspace folder."
+          },
+          "target": {
+            "type": "string",
+            "description": "Target triple or platform passed through to the compiler CLI."
+          },
+          "manifestPath": {
+            "type": "string",
+            "description": "Optional CLI manifest path; relative paths resolve from the detected project root."
+          },
+          "projectFolder": {
+            "type": "string",
+            "description": "Workspace folder URI used by generated multi-root Vitte tasks."
           }
         }
       },
@@ -1217,14 +1254,6 @@
           "minimum": 50,
           "maximum": 5000,
           "description": "Timeout (ms) for semantic tokens.",
-          "scope": "resource"
-        },
-        "vitte.requestTimeouts.formatting": {
-          "type": "number",
-          "default": 800,
-          "minimum": 50,
-          "maximum": 5000,
-          "description": "Timeout (ms) for formatting.",
           "scope": "resource"
         },
         "vitte.indexerMaxRssMB": {
@@ -2051,12 +2080,6 @@
           "description": "Enable semantic tokens.",
           "scope": "resource"
         },
-        "vitte.features.formatting": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable document formatting.",
-          "scope": "resource"
-        },
         "vitte.features.lint": {
           "type": "boolean",
           "default": true,
@@ -2065,8 +2088,8 @@
         },
         "vitte.features.inlayHints": {
           "type": "boolean",
-          "default": false,
-          "description": "Experimental source heuristics can be inaccurate; disabled and not advertised until hints use compiler-resolved types.",
+          "default": true,
+          "description": "Show tested source-derived inlay hints for simple literal types and uniquely resolved call parameters. This feature does not query compiler inference.",
           "scope": "resource"
         },
         "vitte.requestTimeouts.inlayHints": {
@@ -2091,15 +2114,15 @@
         },
         "vitte.inlayHints.returnHints": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "scope": "resource",
-          "description": "Show inferred return inlay hints."
+          "description": "Reserved; return hints are unavailable until the compiler exposes reliable inferred return types."
         },
         "vitte.inlayHints.aliasHints": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "scope": "resource",
-          "description": "Show suggested alias inlay hints for imports."
+          "description": "Reserved; import alias hints are unavailable until project module aliases can be resolved without guessing."
         },
         "vitte.diagnosticsBudget.maxLatencyMs": {
           "type": "number",
@@ -2164,16 +2187,10 @@
           "description": "Display mode for the Top Syntax Errors view.",
           "scope": "resource"
         },
-        "vitte.format.onSave": {
-          "type": "boolean",
-          "default": false,
-          "description": "Run Vitte document formatter automatically after saving Vitte/Vit files.",
-          "scope": "resource"
-        },
         "vitte.syntax.liveDiagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Run lightweight parser diagnostics in real time and underline syntax errors while typing.",
+          "description": "Run structured diagnostics from the selected Vitte CLI against the current saved or unsaved source buffer.",
           "scope": "resource"
         },
         "vitte.syntax.liveDiagnosticsDelayMs": {
@@ -2186,8 +2203,8 @@
         },
         "vitte.syntax.liveDiagnosticsOnSaveOnly": {
           "type": "boolean",
-          "default": true,
-          "description": "Only refresh live syntax diagnostics on save (useful for large projects or slower machines).",
+          "default": false,
+          "description": "Only refresh compiler diagnostics after save instead of checking the current unsaved source snapshot while typing.",
           "scope": "resource"
         },
         "vitte.syntax.firstErrorMode": {
@@ -2219,13 +2236,13 @@
         "vitte.debug.program": {
           "type": "string",
           "default": "",
-          "description": "Optional path to an external Vitte-compatible DAP adapter executable. Leave blank to use the native Vitte backend.",
+          "description": "Optional path to an external Vitte-compatible DAP adapter executable. The bundled native backend requires vitte.debug.nativeBackend=true on its Linux x86_64 / Ubuntu 24.04 platform candidate.",
           "scope": "resource"
         },
         "vitte.debug.nativeBackend": {
           "type": "boolean",
-          "default": true,
-          "description": "Experimental: enable the bundled native Vitte DAP backend when no external adapter is configured. The repository DAP job targets Ubuntu 24.04; configure an external adapter for other environments.",
+          "default": false,
+          "description": "Explicitly opt into the experimental native Vitte DAP backend and its launch templates. Requires CLI 0.1.1 plus LLDB and Expect on the Linux x86_64 / Ubuntu 24.04 platform candidate. Use Vitte: Build and Vitte: Run elsewhere.",
           "scope": "resource"
         },
         "vitte.debug.adapterArgs": {
@@ -2292,7 +2309,7 @@
         "vitte.fmt.path": {
           "type": "string",
           "default": "",
-          "description": "Optional external formatter binary. Leave blank to use the bundled language-server formatter.",
+          "description": "Optional external formatter used by the playground stdin protocol only; it does not enable document or range formatting.",
           "scope": "resource"
         },
         "vitte.bench.path": {
@@ -2534,7 +2551,13 @@
         "vitte.project.root": {
           "type": "string",
           "default": "",
-          "description": "Optional project root override for build/run tasks and project-local toolchain discovery. Relative paths resolve from the first workspace folder; the LSP document scope still follows VS Code workspace folders.",
+          "description": "Optional project root override for this workspace folder's compiler discovery, CLI commands and module resolution. Relative paths resolve from this folder. If empty, Vitte detects the nearest CLI project configuration (vitte.toml or .vitte/config) for the active file, then falls back to this workspace folder.",
+          "scope": "resource"
+        },
+        "vitte.project.manifestPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional manifest selected for CLI tasks with --manifest-path. Relative paths resolve from the detected project root. Empty lets the CLI load its documented project config automatically.",
           "scope": "resource"
         },
         "vitte.modulePaths": {
@@ -2543,7 +2566,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Additional Vitte module search roots for completion, signature help and import paths. Relative paths start at the project/workspace root. Paths are checked after the importing file and workspace/project roots, then before VITTE_MODULE_PATH and standard toolchain module locations.",
+          "description": "Additional Vitte module search roots for completion, signature help, imports and CLI tasks. Relative paths start at the detected project root; CLI tasks forward them through VITTE_MODULE_PATH.",
           "scope": "resource"
         },
         "vitte.build.args": {
@@ -2552,11 +2575,47 @@
           "items": {
             "type": "string"
           },
-          "description": "Extra compiler arguments for standalone project build/run commands. Ignored for compiler repository Make targets.",
+          "description": "Extra compiler arguments for CLI check/build/run tasks. Compiler repository Make tasks report an error if CLI-only arguments are configured.",
+          "scope": "resource"
+        },
+        "vitte.build.env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {},
+          "description": "Environment overrides shared by Vitte CLI tasks and native debug launches; supports ${workspaceFolder} and ${env:NAME} substitutions.",
+          "scope": "resource"
+        },
+        "vitte.build.target": {
+          "type": "string",
+          "default": "",
+          "description": "Optional target triple or platform forwarded to the CLI as --target. The active C17 backend may reject cross-target requests that it cannot fulfill.",
           "scope": "resource"
         }
       }
-    }
+    },
+    "problemMatchers": [
+      {
+        "name": "$vitte",
+        "label": "Vitte compiler diagnostics",
+        "owner": "vitte",
+        "source": "vitte",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": [
+          {
+            "regexp": "^(error|warning|info)(?:\\[([^\\]]+)\\])?: (.*)$",
+            "severity": 1,
+            "code": 2,
+            "message": 3
+          },
+          {
+            "regexp": "^\\s*-->\\s+(.*):(\\d+):(\\d+)$",
+            "file": 1,
+            "line": 2,
+            "column": 3
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "build": "npm run generate:imports && npm run build:client && npm run build:server && npm run build:servercopy",
@@ -2609,7 +2668,11 @@
   "activationEvents": [
     "onLanguage:vit",
     "onLanguage:vitte",
+    "onTaskType:vitte",
     "workspaceContains:vitte.toml",
+    "workspaceContains:.vitte/config",
+    "workspaceContains:**/vitte.toml",
+    "workspaceContains:**/.vitte/config",
     "workspaceContains:vitte.config.json",
     "workspaceContains:.vitte/config.json"
   ]

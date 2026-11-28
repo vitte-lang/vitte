@@ -1,20 +1,48 @@
 {
   "schema": "vitte-capabilities@1",
-  "matrixVersion": "1.0.5",
-  "updated": "2026-11-27",
+  "matrixVersion": "1.0.12",
+  "updated": "2026-11-28",
   "versions": {
-    "extension": "2.3.4",
-    "languageServer": "2.3.4",
+    "extension": "2.3.9",
+    "languageServer": "2.3.9",
     "compilerEvidence": "0.1.1"
   },
   "statusDefinitions": {
     "implemented": "Behavior exists and has an automated test for the stated scope.",
     "partial": "Behavior exists for a bounded subset; the limitation and evidence are listed.",
     "planned": "Not advertised. Follow-up work is recorded below.",
-    "unavailable": "The active 0.1.1 toolchain explicitly does not provide this behavior."
+    "unavailable": "The active 0.1.1 toolchain or packaged providers do not provide this behavior."
   },
   "advertisingRule": "A capability is advertised only when advertised is true and evidence is non-empty. Partial capabilities must display their scope and limitation in Vitte: Show Capabilities.",
   "editorFeatures": [
+    {
+      "id": "project-workflows",
+      "label": "Project detection, toolchains and build tasks",
+      "status": "partial",
+      "advertised": true,
+      "provider": "VS Code extension and Vitte CLI",
+      "description": "Detects the nearest CLI-supported vitte.toml or .vitte/config file, runs Check/Build/Run on the active source through the selected CLI, applies folder-scoped compiler arguments, environment, target and manifest settings, forwards module roots through VITTE_MODULE_PATH, and generates extension-owned task templates. A separate explicit Build Compiler Repository task uses Make; Test is offered only when that checkout has an actual Make test target.",
+      "limitation": "Compiler-repository Make tasks report an error when a Vitte project config or CLI-only target, manifest or compiler arguments would otherwise be ignored. The LSP does not infer package/generated-source mappings from manifests. The CLI 0.1.1 has no reliable test discovery metadata or structured results, so Test Explorer discovery/run/debug actions are unavailable. The experimental native DAP template requires explicit opt-in and is limited to Linux x86_64 / Ubuntu 24.04; external DAP adapters remain available elsewhere.",
+      "evidence": [
+        "src/utils/project.ts: CLI project detection, extension-owned task templates and command planning",
+        "src/tasks/buildTasks.ts: per-folder task execution and Make target checks",
+        "src/debug/configurationProvider.ts: folder-scoped launch config, compiler and project root selection",
+        "test/project.test.cjs: project detection, command arguments and task matcher",
+        "test/language.test.cjs: multi-root LSP project scopes select the containing workspace folder"
+      ],
+      "followUp": "CAP-PROJECT-001"
+    },
+    {
+      "id": "test-explorer",
+      "label": "Test discovery and execution in the native Test Explorer",
+      "status": "unavailable",
+      "advertised": false,
+      "provider": "Vitte CLI/test runner metadata",
+      "description": "Compiler 0.1.1 rejects `vitte test` and exposes no stable test discovery, execution state, failure or source-location contract. No Vitte tests are fabricated in the native Test Explorer.",
+      "limitation": "A compiler checkout's Make `test` target can run as a normal VS Code task, but does not expose individual Vitte test cases to Test Explorer.",
+      "evidence": ["src/docs/compiler_0.1.1_audit.md: C-09", "src/tasks/buildTasks.ts: standalone Test Current File unavailable message"],
+      "followUp": "CAP-CLI-001"
+    },
     {
       "id": "syntax-highlighting",
       "label": "Syntax highlighting",
@@ -23,7 +51,10 @@
       "provider": "TextMate grammar and LSP semantic tokens",
       "description": "Highlights Vitte declarations, literals, operators, types, comments and strings.",
       "limitation": "Lexical and lightweight syntactic scopes; this is not compiler-resolved type information.",
-      "evidence": ["test/language.test.cjs: TextMate highlights current keywords and every canonical numeric form", "test/language.test.cjs: semantic tokenization classifies types, bindings, fields and numbers"]
+      "evidence": [
+        "test/language.test.cjs: TextMate highlights current keywords and every canonical numeric form",
+        "test/language.test.cjs: semantic tokenization classifies types, bindings, fields and numbers"
+      ]
     },
     {
       "id": "snippets",
@@ -31,8 +62,36 @@
       "status": "implemented",
       "advertised": true,
       "provider": "VS Code snippet contribution",
-      "description": "Parser-compatible templates for common declarations and control flow.",
-      "evidence": ["test/language.test.cjs: snippets use parser-compatible match, pick, import and external declarations"]
+      "description": "Parser-checked declaration, control-flow, test, import and module scaffolding snippets generated from the shared editors/snippets/catalog.json source.",
+      "evidence": [
+        "test/project.test.cjs: packaged snippets expand to syntax accepted by the active Vitte parser",
+        "test/language.test.cjs: packaged snippets stay in sync with the shared snippet catalog"
+      ]
+    },
+    {
+      "id": "editor-configuration",
+      "label": "Bracket pairs, comments and indentation",
+      "status": "implemented",
+      "advertised": true,
+      "provider": "VS Code language configuration",
+      "description": "Configures matching (), [] and {} brackets, safe auto-closing and surrounding pairs including /* */ comments, // comment toggling, and predictable indentation for canonical brace blocks.",
+      "limitation": "Uses VS Code language-configuration rules rather than an AST; angle brackets and the obsolete <<< >>> zone delimiters are not auto-paired. No source formatting edits run while typing.",
+      "evidence": [
+        "test/language.test.cjs: language configuration uses canonical comment pairs and stable block indentation"
+      ]
+    },
+    {
+      "id": "on-type-formatting",
+      "label": "On-type formatting",
+      "status": "unavailable",
+      "advertised": false,
+      "provider": "None; no canonical compatible formatter is available",
+      "description": "No formatting edits are applied as the user types. VS Code native brace indentation remains available as documented under editor configuration.",
+      "limitation": "The active compiler does not provide a verified formatter or on-type formatting contract; unpredictable text rewrites are not registered.",
+      "evidence": [
+        "test/language.test.cjs: LSP initialize omits document, range and on-type formatting providers"
+      ],
+      "followUp": "CAP-CLI-001"
     },
     {
       "id": "completion",
@@ -44,7 +103,14 @@
       "description": "Contextual completions for lexical bindings, keywords, declared types, form fields, pick variants, callable declarations and values, attributes, filesystem module/import paths, explicitly imported exports, and trait methods with a visible implementation or generic trait bound.",
       "limitation": "The active compiler has no editor semantic-query API. Results are parsed from a bounded source subset, so overload resolution and inferred receiver types are unavailable; direct inherent impl methods and type-qualified associated functions are not advertised because the active frontend does not validate them. Trait method suggestions require a visible trait plus a source-detected implementation or bound. Named procedure-call arguments are not in the active grammar. Missing module roots and unresolved typed receivers show a non-inserting status item. Files over 512 KiB use a lightweight keyword/builtin fallback; disk enumeration and module reads are bounded.",
       "followUp": "CAP-LSP-002",
-      "evidence": ["test/language.test.cjs: completion is suppressed inside comments and strings and offers keywords", "test/language.test.cjs: completion follows local types, fields, variants, generic trait bounds, shadowing and nested lexical scopes", "test/language.test.cjs: completion resolves real module paths, public exports, aliases and imported trait members", "test/language.test.cjs: unsupported inherent methods and trait declarations are not advertised as callable members", "test/language.test.cjs: bundled server serves completion over stdio LSP", "Vitte 0.1.1 parse --stop-after-parser accepted the tested forms, pick variants, generic procedure and constructor fixture"]
+      "evidence": [
+        "test/language.test.cjs: completion is suppressed inside comments and strings and offers keywords",
+        "test/language.test.cjs: completion follows local types, fields, variants, generic trait bounds, shadowing and nested lexical scopes",
+        "test/language.test.cjs: completion resolves real module paths, public exports, aliases and imported trait members",
+        "test/language.test.cjs: unsupported inherent methods and trait declarations are not advertised as callable members",
+        "test/language.test.cjs: bundled server serves completion over stdio LSP",
+        "Vitte 0.1.1 parse --stop-after-parser accepted the tested forms, pick variants, generic procedure and constructor fixture"
+      ]
     },
     {
       "id": "signature-help",
@@ -56,7 +122,12 @@
       "description": "Shows parameter names, types and available documentation for local and imported procedures, callable values, supported trait methods, and named form fields; tracks nested calls and incomplete argument lists.",
       "limitation": "The active compiler has no editor semantic-query API. Imported and overloaded signatures are source-derived; named procedure-call arguments are unavailable in the active grammar, while named form fields are supported.",
       "followUp": "CAP-LSP-002",
-      "evidence": ["test/language.test.cjs: signature help counts arguments after strings containing surrogate pairs", "test/language.test.cjs: signature help tracks nested incomplete calls, generics, aliases and parameter docs", "test/language.test.cjs: form initializer signature help follows named fields and documentation", "grammar/vitte.ebnf: procedure calls accept positional expression lists; form initializers accept named fields"]
+      "evidence": [
+        "test/language.test.cjs: signature help counts arguments after strings containing surrogate pairs",
+        "test/language.test.cjs: signature help tracks nested incomplete calls, generics, aliases and parameter docs",
+        "test/language.test.cjs: form initializer signature help follows named fields and documentation",
+        "grammar/vitte.ebnf: procedure calls accept positional expression lists; form initializers accept named fields"
+      ]
     },
     {
       "id": "hover",
@@ -67,18 +138,28 @@
       "provider": "Vitte language server",
       "description": "Shows source signatures, annotations, literal-inferred types, docs, module/import paths, fields, variants, parameters and compiler builtin signatures where the source index can identify them.",
       "limitation": "The active compiler exposes no editor semantic-query API. Inference is limited to explicit annotations and simple literals/constructors; unknown or intrinsic-only targets display an explicit unavailable explanation.",
-      "evidence": ["test/language.test.cjs: source hover resolves declarations, signatures, types, docs, fields, variants and simple inference", "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
+      "evidence": [
+        "test/language.test.cjs: source hover resolves declarations, signatures, types, docs, fields, variants and simple inference",
+        "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references",
+        "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"
+      ]
     },
     {
       "id": "diagnostics",
       "label": "Diagnostics",
       "status": "partial",
       "advertised": true,
-      "setting": "lint",
-      "provider": "Language server plus the selected Vitte CLI",
-      "description": "Basic editor lint and structured compiler diagnostics from the detected CLI.",
-      "limitation": "Compiler results are only as reliable as the selected CLI version and the active frontend subset; simple LSP lint is not semantic analysis.",
-      "evidence": ["test/diagnostics.test.cjs: LSP diagnostic normalization preserves compiler spans and remediation", "test/project.test.cjs: real compiler diagnostic envelopes identify Unicode source spans"]
+      "setting": "syntax.liveDiagnostics",
+      "provider": "Selected Vitte CLI with an unsaved-buffer snapshot; advisory-only language-server lint",
+      "description": "Runs structured `vitte check --diagnostic=lsp --no-color` against the current saved or unsaved document. Preserves compiler code, severity, phase, category, help, labels, related locations and safe-fix applicability; UTF-8 byte spans are mapped to VS Code UTF-16 offsets. Editor lint is limited to non-semantic advisories.",
+      "limitation": "Accuracy is bounded by the active compiler frontend and CLI diagnostic contract. Unsaved content is checked from a temporary sibling source file so project roots and relative imports resolve; projects that infer module identity from the source filename should declare the module path explicitly. If structured JSON is missing, the extension clears diagnostics and logs an actionable CLI compatibility message instead of guessing spans from terminal text.",
+      "evidence": [
+        "test/diagnostics.test.cjs: LSP diagnostics preserve code, title, Unicode primary span, labels, related locations, help and fix applicability",
+        "test/diagnostics.test.cjs: unsaved compiler snapshots preserve the source folder and leave disk content untouched",
+        "test/diagnostics.test.cjs: editor lint does not duplicate compiler-owned syntax or semantic diagnostics",
+        "test/diagnostics.test.cjs: cross-file compiler related byte spans remain tagged for source-aware conversion"
+      ],
+      "followUp": "CAP-LSP-003"
     },
     {
       "id": "document-symbols",
@@ -89,7 +170,10 @@
       "provider": "Vitte language server source indexer",
       "description": "Provides a nested outline for modules, types, traits, procedures, implementation blocks, fields and variants; VS Code uses this tree for outline and breadcrumbs.",
       "limitation": "The hierarchy is reconstructed from source braces and declarations, not compiler AST scope identities.",
-      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "src/test/suite/extension.test.ts: LSP E2E: completion, symboles, définition, références et renommage"]
+      "evidence": [
+        "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references",
+        "src/test/suite/extension.test.ts: LSP E2E: completion, symboles, définition, références et renommage"
+      ]
     },
     {
       "id": "workspace-symbols",
@@ -100,7 +184,10 @@
       "provider": "Vitte language server indexer",
       "description": "Searches declarations in open documents and a bounded scan of Vitte source files under workspace, configured project and module roots; groups nested results by their container.",
       "limitation": "This is a source index, not a compiler symbol table. It scans at most 256 files and 16 MiB of source per request and may omit results in larger workspaces.",
-      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
+      "evidence": [
+        "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references",
+        "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"
+      ]
     },
     {
       "id": "definition",
@@ -111,7 +198,11 @@
       "provider": "Vitte language server source indexer",
       "description": "Resolves local declarations and explicit imported exports, including aliases, fields, variants and supported trait methods.",
       "limitation": "Resolution is source-index based, not a compiler symbol query. Inferred receiver types and generated declarations without a source location return an explicit unavailable message.",
-      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP", "src/test/suite/extension.test.ts: LSP E2E: completion, symboles, définition, références et renommage"]
+      "evidence": [
+        "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references",
+        "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP",
+        "src/test/suite/extension.test.ts: LSP E2E: completion, symboles, définition, références et renommage"
+      ]
     },
     {
       "id": "declaration",
@@ -122,7 +213,10 @@
       "provider": "Vitte language server source indexer",
       "description": "Navigates to the source declaration for local and explicitly imported symbols.",
       "limitation": "Vitte 0.1.1 does not distinguish declaration and definition targets through an editor API; both use the best verified source location.",
-      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
+      "evidence": [
+        "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references",
+        "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"
+      ]
     },
     {
       "id": "type-definition",
@@ -133,7 +227,10 @@
       "provider": "Vitte language server source indexer",
       "description": "Resolves annotated parameter, binding, field and alias types to local or explicitly imported declarations.",
       "limitation": "Only explicit types and simple source-inferred types are available; generic substitutions and compiler-inferred expression types return an explicit unavailable message.",
-      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
+      "evidence": [
+        "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references",
+        "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"
+      ]
     },
     {
       "id": "implementation",
@@ -144,7 +241,10 @@
       "provider": "Vitte language server source indexer",
       "description": "Finds source implementations for visible trait declarations and trait methods in the current file, open workspace files and explicit imports.",
       "limitation": "The active compiler has no editor query for generated or monomorphized implementations; only source-detected trait impl blocks are returned.",
-      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"]
+      "evidence": [
+        "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references",
+        "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP"
+      ]
     },
     {
       "id": "references",
@@ -155,7 +255,11 @@
       "provider": "Vitte language server source indexer",
       "description": "Finds a local symbol’s references in its lexical scope and public imported symbols in files that explicitly import the same source declaration.",
       "limitation": "Results use bounded source scanning and identifier identity checks, not a compiler reference graph; files beyond the workspace scan limits may be omitted.",
-      "evidence": ["test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references", "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP", "src/test/suite/extension.test.ts: LSP E2E: completion, symboles, définition, références et renommage"]
+      "evidence": [
+        "test/language.test.cjs: navigation resolves local scopes, trait implementations, imports, aliases and workspace references",
+        "test/language.test.cjs: bundled server serves editor features, navigation and workspace symbols over stdio LSP",
+        "src/test/suite/extension.test.ts: LSP E2E: completion, symboles, définition, références et renommage"
+      ]
     },
     {
       "id": "rename",
@@ -167,7 +271,12 @@
       "description": "Prepares and renames tested local declarations, scoped references, explicit imports and aliases. VS Code file moves also update module declarations and imports when a unique project-root mapping is proven.",
       "limitation": "The active compiler exposes no symbol graph. Public rename scans are bounded to 1024 files, 64 MiB and two seconds; incomplete or changed scans, collisions, unresolved tokens and ambiguous file mappings are refused. The extension previews affected files and rechecks unsaved buffers before applying.",
       "followUp": "CAP-LSP-001",
-      "evidence": ["test/language.test.cjs: rename resolves symbol identity, preserves import aliases and ignores comments, strings and shadowed bindings", "test/language.test.cjs: file moves refuse overlapping project and module-root mappings", "test/language.test.cjs: bundled server validates unsaved document versions, imported rename edits and unique module-path file renames", "src/test/suite/extension.test.ts: LSP E2E rename updates declaration and call"]
+      "evidence": [
+        "test/language.test.cjs: rename resolves symbol identity, preserves import aliases and ignores comments, strings and shadowed bindings",
+        "test/language.test.cjs: file moves refuse overlapping project and module-root mappings",
+        "test/language.test.cjs: bundled server validates unsaved document versions, imported rename edits and unique module-path file renames",
+        "src/test/suite/extension.test.ts: LSP E2E rename updates declaration and call"
+      ]
     },
     {
       "id": "code-actions",
@@ -175,42 +284,136 @@
       "status": "partial",
       "advertised": true,
       "provider": "Language server and editor integration",
-      "description": "Offers diagnostic explanations, deterministic whitespace fixes and compiler-marked machine-applicable fixes.",
-      "limitation": "The LSP provider returns quick fixes only. Guessed import rewrites, aliases and role-contract templates were removed.",
-      "evidence": ["test/language.test.cjs: bundled server applies a whitespace quick fix and returns no guessed edit for an unverified syntax error", "src/test/suite/extension.test.ts: code actions explain diagnostics without invented syntax edits", "src/test/suite/extension.test.ts: code actions apply only compiler-marked machine-applicable edits"]
+      "description": "Offers concise result-oriented titles, diagnostic explanations marked as advisory, deterministic whitespace fixes, and only compiler-marked machine-applicable edits for compiler errors.",
+      "limitation": "Edits remain manual actions and are never marked preferred for automatic application. No generic text-based import, naming, style, contract or fix-all rewrites. Import organization/removal is unavailable without symbol-usage proof; add-import/qualification requires unique target metadata.",
+      "evidence": [
+        "test/language.test.cjs: bundled server code actions use concise titles and never prefer whitespace edits for automatic application",
+        "src/test/suite/extension.test.ts: code actions use short result titles; advisory explanations are not quick fixes",
+        "src/test/suite/extension.test.ts: compiler actions with ambiguous imports are withheld and unique machine-applicable imports are offered"
+      ]
+    },
+    {
+      "id": "organize-imports",
+      "label": "Organize and remove unused imports",
+      "status": "unavailable",
+      "advertised": false,
+      "provider": "None; active frontend has no symbol-usage query for imports",
+      "description": "No organize-imports or remove-unused-import action is offered until the compiler can prove visibility and usage for every import.",
+      "limitation": "Text-only sorting or deletion can change resolution and is not safe. Compiler-marked unique add-import or qualification suggestions remain eligible under Code actions.",
+      "followUp": "CAP-LSP-003",
+      "evidence": [
+        "test/language.test.cjs: versioned capability matrix keeps organize-imports unadvertised without symbol-usage proof"
+      ]
+    },
+    {
+      "id": "refactorings",
+      "label": "Refactorings",
+      "status": "partial",
+      "advertised": true,
+      "provider": "Symbol-aware rename with extension preview",
+      "description": "Rename is the only implemented refactoring. The extension previews edits across affected files before applying a rename.",
+      "limitation": "No additional construct-specific refactorings are advertised until symbol identity and edit safety can be proven.",
+      "followUp": "CAP-LSP-003",
+      "evidence": [
+        "test/language.test.cjs: rename resolves symbol identity and ignores comments, strings and shadowed bindings",
+        "src/test/suite/extension.test.ts: LSP E2E rename updates declaration and call"
+      ]
     },
     {
       "id": "formatting",
       "label": "Formatting",
-      "status": "partial",
-      "advertised": true,
-      "setting": "formatting",
-      "provider": "Vitte language server formatter",
-      "description": "Applies deterministic whitespace and layout rules.",
-      "limitation": "It is a lightweight formatter, not a compiler AST formatter; syntax-specific transformations are excluded.",
-      "evidence": ["test/language.test.cjs: formatter normalizes spacing and is idempotent"]
+      "status": "unavailable",
+      "advertised": false,
+      "provider": "None; no canonical compatible formatter is available",
+      "description": "Document formatting and range formatting are unavailable because compiler 0.1.1 does not implement `vitte fmt` and the extension has no verified compatible formatter.",
+      "limitation": "The playground-only optional formatter setting does not enable document formatting. The VS Code format commands show an actionable unavailable message; the LSP advertises no formatting provider.",
+      "evidence": [
+        "src/compiler/cli/README.md: native driver does not implement `vitte fmt` in compiler 0.1.1",
+        "test/language.test.cjs: LSP initialize omits document and range formatting providers"
+      ],
+      "followUp": "CAP-CLI-001"
     },
     {
       "id": "semantic-tokens",
       "label": "Semantic tokens",
-      "status": "implemented",
+      "status": "partial",
       "advertised": true,
       "setting": "semanticTokens",
       "provider": "Vitte language server lexical scanner",
-      "description": "Highlights comments, strings, keywords, primitive types, declarations and basic identifiers.",
-      "limitation": "The token classification is lexical and declaration-context based; it is not compiler type information.",
-      "evidence": ["test/language.test.cjs: semantic token classification regression", "test/language.test.cjs: bundled server serves semantic tokens over stdio LSP"]
+      "description": "Highlights lexical comments and strings, declarations and resolved local references, types, fields, variants, attributes, modifiers, keywords, literals and symbolic operators; supports semantic token deltas. TextMate remains the lexical fallback.",
+      "limitation": "Roles are source-index resolved for the supported subset, with lexical fallback for unresolved or generated names. The compiler has no editor semantic API, so overloads and generated compiler symbols are not resolved.",
+      "evidence": [
+        "test/language.test.cjs: semantic tokens classify declarations, attributes, variants, modifiers and punctuation while masking strings and comments",
+        "test/language.test.cjs: bundled server serves semantic tokens and deltas over stdio LSP"
+      ]
     },
     {
       "id": "inlay-hints",
       "label": "Inlay hints",
       "status": "partial",
-      "advertised": false,
+      "advertised": true,
       "setting": "inlayHints",
-      "provider": "Vitte language server source heuristics",
-      "description": "A prototype infers a few literal types and parameter labels from line text.",
-      "limitation": "Hints are not compiler-resolved and can be wrong; disabled until compiler-backed hints have tests.",
-      "evidence": []
+      "provider": "Vitte language server source index and signature parser",
+      "description": "Shows types for simple literal initializers and parameter names at calls with one proven local or imported signature. Verbosity controls are provided per hint class.",
+      "limitation": "These source-derived hints do not query compiler inference. Ambiguous signatures and non-literal expressions are omitted. Return-type and import-alias hints remain unavailable and their settings default off.",
+      "followUp": "CAP-LSP-001",
+      "evidence": [
+        "test/language.test.cjs: inlay hints show only literal types and uniquely resolved parameter names",
+        "test/language.test.cjs: bundled server serves inlay hints over stdio LSP"
+      ]
+    },
+    {
+      "id": "code-lens",
+      "label": "Code lenses",
+      "status": "partial",
+      "advertised": true,
+      "provider": "Vitte language server source index and VS Code references command",
+      "description": "Adds Find references lenses to source-indexed procedures and types.",
+      "limitation": "Reference results use the bounded source index, not a compiler reference graph. Run-test lenses are unavailable because compiler 0.1.1 does not implement `vitte test`.",
+      "followUp": "CAP-LSP-001",
+      "evidence": [
+        "test/language.test.cjs: stdio LSP test returns reference lenses for indexed declarations",
+        "src/test/suite/extension.test.ts: LSP E2E executes the reference lens command"
+      ]
+    },
+    {
+      "id": "folding-ranges",
+      "label": "Folding ranges",
+      "status": "partial",
+      "advertised": true,
+      "provider": "Vitte language server lexical scanner",
+      "description": "Folds balanced brace blocks and multiline or adjacent line comments while ignoring braces inside comments and strings.",
+      "limitation": "Folding is based on canonical braces and lexical comments, not compiler syntax nodes; unmatched braces are omitted.",
+      "evidence": [
+        "test/language.test.cjs: folding and selection ranges follow lexical comments and canonical brace scopes",
+        "test/language.test.cjs: bundled server serves folding ranges over stdio LSP"
+      ]
+    },
+    {
+      "id": "selection-ranges",
+      "label": "Selection ranges",
+      "status": "partial",
+      "advertised": true,
+      "provider": "Vitte language server source index and lexical scanner",
+      "description": "Expands selections from identifiers and comments or strings through declaration bodies, balanced blocks, lines and the document.",
+      "limitation": "The hierarchy uses source-index declarations and balanced braces, not a compiler AST; unsupported syntax falls back to lexical and line ranges.",
+      "evidence": [
+        "test/language.test.cjs: folding and selection ranges follow lexical comments and canonical brace scopes",
+        "test/language.test.cjs: bundled server serves selection ranges over stdio LSP"
+      ]
+    },
+    {
+      "id": "document-links",
+      "label": "Document links",
+      "status": "partial",
+      "advertised": true,
+      "provider": "Vitte language server module resolver",
+      "description": "Links `use` module paths to one unambiguous file inside workspace, configured project or module roots.",
+      "limitation": "Unresolved, ambiguous and external package targets are omitted rather than linked to a guessed file.",
+      "evidence": [
+        "test/language.test.cjs: document links resolve one workspace module and omit ambiguous or external targets",
+        "test/language.test.cjs: bundled server resolves document links over stdio LSP"
+      ]
     },
     {
       "id": "call-hierarchy",
@@ -240,7 +443,9 @@
       "provider": "Extension-local heuristic engine; optional AI pipeline",
       "description": "Local n-gram, template and optional backend suggestions are experimental and are not language-server semantic results.",
       "limitation": "Disabled by default. Prefer the language-server completion provider for language symbols.",
-      "evidence": ["src/test/suite/suggestions.ranking.snapshot.test.ts: ranking snapshots"]
+      "evidence": [
+        "src/test/suite/suggestions.ranking.snapshot.test.ts: ranking snapshots"
+      ]
     },
     {
       "id": "native-debug",
@@ -248,9 +453,16 @@
       "status": "partial",
       "advertised": false,
       "provider": "Bundled DAP adapter with LLDB and DWARF",
-      "description": "The bundled DAP backend is experimental. External DAP adapters can be configured independently.",
-      "limitation": "The repository DAP CI job targets Ubuntu 24.04. The active macOS arm64 run with compiler 0.1.1 fails DWARF frame, variable and breakpoint checks; Windows has no DAP gate.",
-      "evidence": ["src/test/suite/debugAdapter.test.ts: native adapter stdio launch", "src/test/suite/nativeDwarf.test.ts: frames, locals, aggregates and breakpoints", ".github/workflows/ci.yml: Extension and native DAP on Ubuntu 24.04"],
+      "description": "An explicitly enabled experimental LLDB/DAP backend compiles source with --debug-info and #line mappings or launches an existing executable whose DWARF names Vitte sources. Its adapter implements line and conditional breakpoints, stepping, continue, pause, termination, stack frames, DWARF locals and expression watches.",
+      "limitation": "Requires Vitte CLI 0.1.1, LLDB and Expect on Linux x86_64 / Ubuntu 24.04. It is not advertised by default. The extension-dap workflow checks out a pinned older extension revision (98470ad8de948a4fb3ecdc8c41e2a4c7ee66b441), so it does not validate the current 2.3.9 source snapshot. On the active macOS arm64 host, compiling with --debug-info produced a Mach-O executable whose .debug_info and .debug_line sections were empty; local DAP scenarios also fail frame, variable and breakpoint checks. Windows has no DAP gate. Source mapping relies on C #line/DWARF for source files emitted by the current backend; structured runtime diagnostics and generated multi-module source maps are unavailable.",
+      "evidence": [
+        "src/main.c: --debug-info enables DWARF and source line directives",
+        "src/bootstrap/backend/c17/ast_emitter.c: emits #line source locations and compiler -g flags",
+        "src/debug/nativeAdapter.ts: LLDB-backed DAP request handlers",
+        "src/test/suite/debugAdapter.test.ts and nativeDwarf.test.ts: checked-in regression scenarios, not run by the pinned current workflow",
+        ".github/workflows/ci.yml: extension-dap pins upstream extension revision 98470ad8de948a4fb3ecdc8c41e2a4c7ee66b441",
+        "macOS arm64 audit 2026-11-28: vitte 0.1.1 compile --debug-info emitted Mach-O with empty .debug_info/.debug_line according to dwarfdump"
+      ],
       "followUp": "CAP-DBG-001"
     }
   ],
@@ -260,59 +472,330 @@
       "label": "C17 bootstrap frontend",
       "status": "partial",
       "description": "Seed compiler and compatibility path; accepts a broader set of legacy sources than the native frontend in some areas, but is not the full language contract.",
-      "evidence": ["make bootstrap-check", "make test-bootstrap-regressions", "make test-native-bootstrap-parity", "src/docs/compiler_0.1.1_audit.md"]
+      "evidence": [
+        "make bootstrap-check",
+        "make test-bootstrap-regressions",
+        "make test-native-bootstrap-parity",
+        "src/docs/compiler_0.1.1_audit.md"
+      ]
     },
     {
       "id": "native-hir-ir-c17",
       "label": "Native Vitte frontend (HIR/IR/C17)",
       "status": "partial",
       "description": "Native lexer/parser/sema/HIR/IR/C17 path for the tested language subset; the CLI does not fall back to the bootstrap driver.",
-      "evidence": ["make test-native-frontend-subset", "make test-native-bootstrap-parity", "make test-compiler-integration", "src/compiler/driver/README.md"]
+      "evidence": [
+        "make test-native-frontend-subset",
+        "make test-native-bootstrap-parity",
+        "make test-compiler-integration",
+        "src/compiler/driver/README.md"
+      ]
     },
     {
       "id": "self-host-stages",
       "label": "Self-host stages 0 to 3",
       "status": "partial",
       "description": "The dated audit records earlier local macOS arm64 verification, but this checkout's make -j2 currently fails in the bootstrap parser before reproducing those stages.",
-      "evidence": ["make -j2 on 2026-11-27: bootstrap parser failed in src/compiler/backend/c17/ast_emitter.vitte and src/compiler/ir/ir.vitte", "make bootstrap-selfhost", "src/docs/compiler_0.1.1_audit.md"]
+      "evidence": [
+        "make -j2 on 2026-11-27: bootstrap parser failed in src/compiler/backend/c17/ast_emitter.vitte and src/compiler/ir/ir.vitte",
+        "make bootstrap-selfhost",
+        "src/docs/compiler_0.1.1_audit.md"
+      ]
     },
     {
       "id": "editor-semantic-api",
       "label": "Compiler editor semantic API",
       "status": "unavailable",
       "description": "Compiler 0.1.1 exposes shell-script completion through the CLI but no editor query for scope, overload, type, import or signature semantics. The language server therefore reports only its tested source-derived subset.",
-      "evidence": ["vitte --help on compiler 0.1.1: completion command generates shell scripts", "grammar/vitte.ebnf: procedure calls use positional expression lists and form initializers use named fields"]
+      "evidence": [
+        "vitte --help on compiler 0.1.1: completion command generates shell scripts",
+        "grammar/vitte.ebnf: procedure calls use positional expression lists and form initializers use named fields"
+      ]
     }
   ],
   "cliCommands": [
-    {"id": "compile", "label": "vitte compile / build", "status": "partial", "description": "Compiles the documented native subset through C17 and the selected host C compiler.", "evidence": ["make test-compiler-integration", "src/compiler/driver/README.md"]},
-    {"id": "check", "label": "vitte check", "status": "partial", "description": "Checks syntax and semantics for the active frontend subset; other sources may use the documented compatibility path.", "evidence": ["make test-native-frontend-subset", "make bootstrap-check"]},
-    {"id": "run", "label": "vitte run", "status": "partial", "description": "Compiles and runs programs in the tested language subset using the host C17 toolchain.", "evidence": ["make test-runtime", "make test-compiler-integration"]},
-    {"id": "install", "label": "vitte install", "status": "partial", "description": "Installer verifies registry metadata and archive hashes; the public JSON package archive currently has a compatibility blocker.", "evidence": ["src/docs/compiler_0.1.1_audit.md: C-20"]},
-    {"id": "lex-parse-explain", "label": "vitte lex / parse / explain / version / help", "status": "implemented", "description": "CLI inspection and diagnostic commands implemented by the native driver.", "evidence": ["src/compiler/cli/process.vitte", "src/bootstrap/cli/command_spec.def"]},
-    {"id": "shell-completion", "label": "vitte completion", "status": "implemented", "description": "Generates shell completion scripts; this CLI command does not provide editor symbol or signature queries.", "evidence": ["vitte --help on compiler 0.1.1: completion command generates shell scripts", "src/compiler/cli/process.vitte"]},
-    {"id": "test", "label": "vitte test", "status": "unavailable", "description": "Recognized by the argument parser but rejected by the native driver in compiler 0.1.1.", "followUp": "CAP-CLI-001", "evidence": ["src/docs/compiler_0.1.1_audit.md: C-09"]},
-    {"id": "format", "label": "vitte fmt", "status": "unavailable", "description": "No formatter command is implemented in the native driver in compiler 0.1.1.", "followUp": "CAP-CLI-001", "evidence": ["src/docs/compiler_0.1.1_audit.md: C-09"]},
-    {"id": "cross-target", "label": "Cross-target compile", "status": "unavailable", "description": "The native C17 host-tools path does not forward --target to a verified cross C toolchain.", "followUp": "CAP-PLATFORM-001", "evidence": ["src/compiler/driver/README.md", "docs/reference/support.html"]}
+    {
+      "id": "compile",
+      "label": "vitte compile / build",
+      "status": "partial",
+      "description": "Compiles the documented native subset through C17 and the selected host C compiler.",
+      "evidence": [
+        "make test-compiler-integration",
+        "src/compiler/driver/README.md"
+      ]
+    },
+    {
+      "id": "check",
+      "label": "vitte check",
+      "status": "partial",
+      "description": "Checks syntax and semantics for the active frontend subset; other sources may use the documented compatibility path.",
+      "evidence": [
+        "make test-native-frontend-subset",
+        "make bootstrap-check"
+      ]
+    },
+    {
+      "id": "run",
+      "label": "vitte run",
+      "status": "partial",
+      "description": "Compiles and runs programs in the tested language subset using the host C17 toolchain.",
+      "evidence": [
+        "make test-runtime",
+        "make test-compiler-integration"
+      ]
+    },
+    {
+      "id": "install",
+      "label": "vitte install",
+      "status": "partial",
+      "description": "Installer verifies registry metadata and archive hashes; the public JSON package archive currently has a compatibility blocker.",
+      "evidence": [
+        "src/docs/compiler_0.1.1_audit.md: C-20"
+      ]
+    },
+    {
+      "id": "lex-parse-explain",
+      "label": "vitte lex / parse / explain / version / help",
+      "status": "implemented",
+      "description": "CLI inspection and diagnostic commands implemented by the native driver.",
+      "evidence": [
+        "src/compiler/cli/process.vitte",
+        "src/bootstrap/cli/command_spec.def"
+      ]
+    },
+    {
+      "id": "shell-completion",
+      "label": "vitte completion",
+      "status": "implemented",
+      "description": "Generates shell completion scripts; this CLI command does not provide editor symbol or signature queries.",
+      "evidence": [
+        "vitte --help on compiler 0.1.1: completion command generates shell scripts",
+        "src/compiler/cli/process.vitte"
+      ]
+    },
+    {
+      "id": "test",
+      "label": "vitte test",
+      "status": "unavailable",
+      "description": "Recognized by the argument parser but rejected by the native driver in compiler 0.1.1; no reliable test discovery metadata or structured editor results are exposed.",
+      "followUp": "CAP-CLI-001",
+      "evidence": [
+        "src/docs/compiler_0.1.1_audit.md: C-09"
+      ]
+    },
+    {
+      "id": "format",
+      "label": "vitte fmt",
+      "status": "unavailable",
+      "description": "No formatter command is implemented in the native driver in compiler 0.1.1.",
+      "followUp": "CAP-CLI-001",
+      "evidence": [
+        "src/docs/compiler_0.1.1_audit.md: C-09"
+      ]
+    },
+    {
+      "id": "cross-target",
+      "label": "Cross-target compile",
+      "status": "unavailable",
+      "description": "The native C17 host-tools path does not forward --target to a verified cross C toolchain.",
+      "followUp": "CAP-PLATFORM-001",
+      "evidence": [
+        "src/compiler/driver/README.md",
+        "docs/reference/support.html"
+      ]
+    }
   ],
   "platforms": [
-    {"id": "vscode-engine", "product": "VS Code extension runtime", "platform": "VS Code 1.105 and later", "status": "partial", "description": "The manifest declares ^1.105.0 and validates its entry point; integration evidence currently runs on VS Code 1.148.0, not the minimum engine.", "followUp": "CAP-EXT-001", "evidence": ["test/language.test.cjs: manifest contract", "scripts/check-extension-manifest.mjs: engine and packaged-entry checks"]},
-    {"id": "editor-linux-x64", "product": "Extension and language server", "platform": "Linux x86_64 / Ubuntu 24.04", "status": "implemented", "description": "Unit and VS Code integration/DAP CI run on Ubuntu 24.04.", "evidence": [".github/workflows/ci.yml: extension-dap", "vscode/VitteLangVsCode-main/test/language.test.cjs"]},
-    {"id": "editor-macos-arm64", "product": "Extension and language server", "platform": "macOS arm64", "status": "partial", "description": "Local VS Code 1.148.0 integration run passed 39 cases and failed five native DAP/DWARF cases; the repository has no macOS CI gate.", "evidence": ["VITTE_COMPILER=/usr/local/bin/vitte node out/test/runTest.js on 2026-11-27: 39 passed, 5 failed", "vscode/VitteLangVsCode-main/package.json"]},
-    {"id": "editor-windows-x64", "product": "Extension and language server", "platform": "Windows x86_64", "status": "partial", "description": "The extension is packaged as portable Node.js code, but this repository has no Windows VS Code integration/DAP gate.", "evidence": ["vscode/VitteLangVsCode-main/package.json"]},
-    {"id": "compiler-linux-x64", "product": "Compiler host", "platform": "Linux x86_64 / Ubuntu 24.04 / GCC or cc", "status": "partial", "description": "Release target; current compiler/release CI evidence remains open. See the dated audit before relying on a release build.", "evidence": ["docs/reference/support.html", "src/docs/compiler_0.1.1_audit.md"]},
-    {"id": "compiler-macos-arm64", "product": "Compiler host", "platform": "macOS arm64 / macOS 15 / Apple Clang", "status": "partial", "description": "The dated audit records earlier local bootstrap/self-host evidence, but this checkout's make -j2 currently fails when its bootstrap compiler parses elif syntax; CI release confirmation remains open.", "evidence": ["make -j2 on 2026-11-27: bootstrap parser failed in src/compiler/backend/c17/ast_emitter.vitte and src/compiler/ir/ir.vitte", "docs/reference/support.html", "src/docs/compiler_0.1.1_audit.md"]},
-    {"id": "compiler-windows-x64", "product": "Compiler host", "platform": "Windows x86_64 / Windows 2025 / MSYS2 UCRT64 MinGW-w64", "status": "partial", "description": "Release target; current compiler/self-host/package CI evidence remains open.", "evidence": ["docs/reference/support.html", "src/docs/compiler_0.1.1_audit.md"]},
-    {"id": "other-targets", "product": "Compiler target", "platform": "Other OSes, architectures and cross targets", "status": "partial", "description": "Experimental smoke jobs are not a support promise; several jobs currently fail and the driver does not select a verified cross C toolchain.", "followUp": "CAP-PLATFORM-001", "evidence": ["docs/reference/support.html: experimental portability jobs"]}
+    {
+      "id": "vscode-engine",
+      "product": "VS Code extension runtime",
+      "platform": "VS Code 1.105 and later",
+      "status": "partial",
+      "description": "The manifest declares ^1.105.0 and validates its entry point; integration evidence currently runs on VS Code 1.148.0, not the minimum engine.",
+      "followUp": "CAP-EXT-001",
+      "evidence": [
+        "test/language.test.cjs: manifest contract",
+        "scripts/check-extension-manifest.mjs: engine and packaged-entry checks"
+      ]
+    },
+    {
+      "id": "editor-linux-x64",
+      "product": "Extension and language server",
+      "platform": "Linux x86_64 / Ubuntu 24.04",
+      "status": "partial",
+      "description": "Unit coverage is checked in, but the DAP workflow currently builds a pinned upstream extension revision instead of this 2.3.9 source snapshot.",
+      "evidence": [
+        ".github/workflows/ci.yml: extension-dap checks out extension revision 98470ad8de948a4fb3ecdc8c41e2a4c7ee66b441",
+        "vscode/VitteLangVsCode-main/test/language.test.cjs"
+      ]
+    },
+    {
+      "id": "editor-macos-arm64",
+      "product": "Extension and language server",
+      "platform": "macOS arm64",
+      "status": "partial",
+      "description": "Local VS Code 1.148.0 integration run passed 39 cases and failed five native DAP/DWARF cases; the repository has no macOS CI gate.",
+      "evidence": [
+        "VITTE_COMPILER=/usr/local/bin/vitte node out/test/runTest.js on 2026-11-27: 39 passed, 5 failed",
+        "vscode/VitteLangVsCode-main/package.json"
+      ]
+    },
+    {
+      "id": "editor-windows-x64",
+      "product": "Extension and language server",
+      "platform": "Windows x86_64",
+      "status": "partial",
+      "description": "The extension is packaged as portable Node.js code, but this repository has no Windows VS Code integration/DAP gate.",
+      "evidence": [
+        "vscode/VitteLangVsCode-main/package.json"
+      ]
+    },
+    {
+      "id": "compiler-linux-x64",
+      "product": "Compiler host",
+      "platform": "Linux x86_64 / Ubuntu 24.04 / GCC or cc",
+      "status": "partial",
+      "description": "Release target; current compiler/release CI evidence remains open. See the dated audit before relying on a release build.",
+      "evidence": [
+        "docs/reference/support.html",
+        "src/docs/compiler_0.1.1_audit.md"
+      ]
+    },
+    {
+      "id": "compiler-macos-arm64",
+      "product": "Compiler host",
+      "platform": "macOS arm64 / macOS 15 / Apple Clang",
+      "status": "partial",
+      "description": "The dated audit records earlier local bootstrap/self-host evidence, but this checkout's make -j2 currently fails when its bootstrap compiler parses elif syntax; CI release confirmation remains open.",
+      "evidence": [
+        "make -j2 on 2026-11-27: bootstrap parser failed in src/compiler/backend/c17/ast_emitter.vitte and src/compiler/ir/ir.vitte",
+        "docs/reference/support.html",
+        "src/docs/compiler_0.1.1_audit.md"
+      ]
+    },
+    {
+      "id": "compiler-windows-x64",
+      "product": "Compiler host",
+      "platform": "Windows x86_64 / Windows 2025 / MSYS2 UCRT64 MinGW-w64",
+      "status": "partial",
+      "description": "Release target; current compiler/self-host/package CI evidence remains open.",
+      "evidence": [
+        "docs/reference/support.html",
+        "src/docs/compiler_0.1.1_audit.md"
+      ]
+    },
+    {
+      "id": "other-targets",
+      "product": "Compiler target",
+      "platform": "Other OSes, architectures and cross targets",
+      "status": "partial",
+      "description": "Experimental smoke jobs are not a support promise; several jobs currently fail and the driver does not select a verified cross C toolchain.",
+      "followUp": "CAP-PLATFORM-001",
+      "evidence": [
+        "docs/reference/support.html: experimental portability jobs"
+      ]
+    }
   ],
+  "runtimeControls": {
+    "status": "partial",
+    "description": "The LSP rejects results after the requested document version or workspace configuration changes, stops workspace scans when cancelled, bounds request queues and workspace scans, and verifies persisted index entries against current disk content. Open buffers take precedence over disk snapshots. Compiler-backed live diagnostics cancel the prior per-document process and discard late output.",
+    "limits": {
+      "queuedLspRequests": 64,
+      "indexedDocuments": 4096,
+      "workspaceScanFiles": 256,
+      "workspaceScanBytes": 16777216,
+      "workspaceScanMilliseconds": 450,
+      "workspaceScanFileBytes": 1048576,
+      "renameWorkspaceFiles": 1024,
+      "renameWorkspaceDirectories": 4096,
+      "renameWorkspaceBytes": 67108864,
+      "renameWorkspaceMilliseconds": 2000,
+      "indexCacheBytes": 33554432,
+      "lintQueue": 512,
+      "semanticTokenHistoryDocuments": 32,
+      "semanticTokenSnapshotValues": 50000,
+      "liveCompilerDiagnosticOutputBytes": 2097152
+    },
+    "logging": "vitte.trace.server supports off, messages and verbose. Source contents are not written to extension or server logs by default; request failures use a sanitized message or a document basename.",
+    "platformNotes": "File URIs are decoded with Node URL helpers, paths preserve native case rules (case-folded on Windows), and workspace traversal follows symlinks only when their targets stay inside the configured root. Windows/macOS runtime race coverage remains incomplete.",
+    "evidence": [
+      "npm run build: TypeScript client and language server compile on the local macOS arm64 host",
+      "Automated cancellation, race and cross-platform regression coverage remains open"
+    ],
+    "followUp": "CAP-LSP-004"
+  },
   "followUps": [
-    {"id": "CAP-EXT-002", "label": "Implement or remove placeholder enterprise report plugins", "status": "planned", "description": "Do not map dead-code, documentation coverage or API-breakage reports to generic compiler checks. Add real tested providers or keep these plugin actions explicitly unavailable."},
-    {"id": "CAP-EXT-001", "label": "Verify the minimum VS Code engine and offline VSIX contents", "status": "planned", "description": "Run the extension integration suite on VS Code 1.105, and retain release evidence that the packaged server, runtime dependencies, grammar, snippets and icon install and work from a local VSIX without a repository checkout."},
-    {"id": "CAP-LSP-001", "label": "Use compiler symbol/type APIs for semantic editor features", "status": "planned", "description": "Replace text-index approximations for workspace symbols, cross-module navigation, inlay hints and hierarchies with compiler/LSP semantic data; add parity tests before advertising them."},
-    {"id": "CAP-LSP-002", "label": "Add compiler-backed completion and signature queries", "status": "planned", "description": "Expose scope, type, visibility, overload and signature data from the active compiler frontend before expanding beyond the tested source-derived completion subset; decide whether named procedure-call arguments belong to the language grammar."},
-    {"id": "CAP-CLI-001", "label": "Implement or remove v0.1.1 test and formatter CLI commands", "status": "planned", "description": "The parser accepts these names but the native driver rejects them. Keep editor actions explicitly unavailable until command behavior and tests exist."},
-    {"id": "CAP-PLATFORM-001", "label": "Close compiler platform and cross-target gates", "status": "planned", "description": "Resolve and rerun Linux x86_64, macOS arm64 and Windows x86_64 release gates; publish no wider platform claim until toolchain jobs pass."},
-    {"id": "CAP-SUGGEST-001", "label": "Move inline suggestions behind verified language-server results", "status": "planned", "description": "Keep local n-gram/template and AI suggestion engines opt-in and experimental until outputs are validated against compiler/LSP semantics and stale candidates are rejected."},
-    {"id": "CAP-DBG-001", "label": "Pass native debugger gates on each supported toolchain", "status": "planned", "description": "Resolve macOS 0.1.1 DAP/DWARF regressions and add Windows coverage before advertising the bundled native debugger on those platforms."}
+    {
+      "id": "CAP-EXT-002",
+      "label": "Implement or remove placeholder enterprise report plugins",
+      "status": "planned",
+      "description": "Do not map dead-code, documentation coverage or API-breakage reports to generic compiler checks. Add real tested providers or keep these plugin actions explicitly unavailable."
+    },
+    {
+      "id": "CAP-EXT-001",
+      "label": "Verify the minimum VS Code engine and offline VSIX contents",
+      "status": "planned",
+      "description": "Run the extension integration suite on VS Code 1.105, and retain release evidence that the packaged server, runtime dependencies, grammar, snippets and icon install and work from a local VSIX without a repository checkout."
+    },
+    {
+      "id": "CAP-LSP-001",
+      "label": "Use compiler symbol/type APIs for semantic editor features",
+      "status": "planned",
+      "description": "Replace source-index approximations with compiler symbol/type/reference data for workspace symbols, cross-module navigation, semantic token identities, code lenses and inlay hints; add generated-target and hierarchy queries with parity tests before expanding their advertised scope."
+    },
+    {
+      "id": "CAP-LSP-002",
+      "label": "Add compiler-backed completion and signature queries",
+      "status": "planned",
+      "description": "Expose scope, type, visibility, overload and signature data from the active compiler frontend before expanding beyond the tested source-derived completion subset; decide whether named procedure-call arguments belong to the language grammar."
+    },
+    {
+      "id": "CAP-CLI-001",
+      "label": "Implement or explicitly retire native test and formatter commands",
+      "status": "planned",
+      "description": "The native driver rejects `vitte test` and `vitte fmt` and exposes no test metadata. Keep Test Explorer discovery/execution and document/range formatting unavailable until the compiler provides stable result contracts and parity evidence."
+    },
+    {
+      "id": "CAP-PROJECT-001",
+      "label": "Expose canonical package and generated-source mappings to editor tooling",
+      "status": "planned",
+      "description": "Add a compiler/CLI project query for source roots, package roots and generated Vitte files; until then, LSP navigation accepts explicit vitte.modulePaths only and does not infer package or generated-source mappings from manifests."
+    },
+    {
+      "id": "CAP-PLATFORM-001",
+      "label": "Close compiler platform and cross-target gates",
+      "status": "planned",
+      "description": "Resolve and rerun Linux x86_64, macOS arm64 and Windows x86_64 release gates; publish no wider platform claim until toolchain jobs pass."
+    },
+    {
+      "id": "CAP-SUGGEST-001",
+      "label": "Move inline suggestions behind verified language-server results",
+      "status": "planned",
+      "description": "Keep local n-gram/template and AI suggestion engines opt-in and experimental until outputs are validated against compiler/LSP semantics and stale candidates are rejected."
+    },
+    {
+      "id": "CAP-DBG-001",
+      "label": "Gate the current native debugger build in CI",
+      "status": "planned",
+      "description": "Run the checked-in extension and DAP regression scenarios against the exact compiler/extension revisions in CI, then resolve macOS 0.1.1 regressions and add Windows coverage before widening platform support or advertising the bundled native debugger by default."
+    },
+    {
+      "id": "CAP-DBG-002",
+      "label": "Add canonical Vitte source maps and runtime debug events",
+      "status": "planned",
+      "description": "Expose compiler source-map metadata and structured runtime failure locations to DAP for generated code and multi-module programs. Until then, source mapping uses C #line/DWARF entries and runtime exception reporting is limited to native signals."
+    },
+    {
+      "id": "CAP-LSP-003",
+      "label": "Add symbol-proven import actions and safe refactorings",
+      "status": "planned",
+      "description": "Expose import usage, visibility and unique destination data from the active compiler before implementing organize/remove-unused imports, add-import or qualification actions beyond exact compiler-marked machine-applicable suggestions."
+    },
+    {
+      "id": "CAP-LSP-004",
+      "label": "Add request lifecycle and cross-platform workspace regressions",
+      "status": "planned",
+      "description": "Add automated tests for cancellation and stale-result rejection across document edits, settings changes, file watcher events, workspace-folder changes and toolchain restarts; cover bounded queues, cache invalidation, symlink loops, URI escaping, non-ASCII paths and Windows/macOS case behavior."
+    }
   ]
 }

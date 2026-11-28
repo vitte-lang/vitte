@@ -36,6 +36,9 @@ interface LaunchArguments extends JsonObject {
   args?: unknown;
   cwd?: unknown;
   env?: unknown;
+  compilerArgs?: unknown;
+  target?: unknown;
+  manifestPath?: unknown;
   stopOnEntry?: unknown;
 }
 
@@ -340,13 +343,20 @@ function dapVariable(
   };
 }
 
-async function compileProgram(program: string, cwd: string, env: NodeJS.ProcessEnv): Promise<string> {
+async function compileProgram(program: string, cwd: string, env: NodeJS.ProcessEnv, launch: LaunchArguments): Promise<string> {
   temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'vitte-dap-'));
   const target = path.join(temporaryDirectory, 'program');
+  const compilerArgs = Array.isArray(launch.compilerArgs)
+    ? launch.compilerArgs.filter((argument): argument is string => typeof argument === 'string')
+    : [];
+  const args = ['compile', '--debug-info', '--line-directives'];
+  if (typeof launch.manifestPath === 'string' && launch.manifestPath.trim()) args.push(`--manifest-path=${launch.manifestPath}`);
+  if (typeof launch.target === 'string' && launch.target.trim()) args.push(`--target=${launch.target.trim()}`);
+  args.push(...compilerArgs, program, '-o', target);
   await new Promise<void>((resolve, reject) => {
     const compiler = spawn(
       compilerPath(),
-      ['compile', '--debug-info', '--line-directives', program, '-o', target],
+      args,
       { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] },
     );
     compiler.stdout.on('data', (chunk: Buffer | string) => output('stdout', String(chunk)));
@@ -539,6 +549,13 @@ function processExited(text: string): boolean {
   return /Process \d+ (?:exited|detached)/i.test(text) || /exited with status/i.test(text);
 }
 
+function processExitCode(text: string): number | undefined {
+  const match = /exited with (?:status\s*=\s*|code\s+)(-?\d+)/i.exec(text);
+  if (!match) return undefined;
+  const code = Number(match[1]);
+  return Number.isSafeInteger(code) ? code : undefined;
+}
+
 async function handleStop(text: string, forcedReason?: string): Promise<void> {
   if (!lldb || debuggeeExited) return;
   currentStopReason = forcedReason ?? stopReason(text);
@@ -546,7 +563,7 @@ async function handleStop(text: string, forcedReason?: string): Promise<void> {
     debuggeeExited = true;
     if (!exitEventSent) {
       exitEventSent = true;
-      event('exited', { exitCode: 0 });
+      event('exited', { exitCode: processExitCode(text) ?? 0 });
       event('terminated');
     }
     return;
@@ -592,7 +609,14 @@ async function installBreakpoints(requested: unknown[], requestedPath: string | 
   if (!lldb) return requested.map(() => ({ verified: false, message: 'LLDB target is not initialized.' }));
   await lldb.command('breakpoint delete --force');
   breakpointSpecs = [];
-  const matchesSource = Boolean(source && requestedPath && path.resolve(requestedPath) === source.path);
+  // Source launches are limited to the file that the adapter compiled. When
+  // launching an existing executable, LLDB's DWARF line table is the source
+  // authority and can resolve any Vitte source path it contains.
+  const matchesSource = Boolean(
+    requestedPath &&
+    isVitteSource(requestedPath) &&
+    (!source || path.resolve(requestedPath) === source.path),
+  );
   const response: JsonObject[] = [];
   for (const item of requested) {
     const object = item && typeof item === 'object' ? item as JsonObject : {};
@@ -612,12 +636,16 @@ async function installBreakpoints(requested: unknown[], requestedPath: string | 
     }
     // The C backend emits the Vitte basename in #line directives.  LLDB can
     // still map it to the absolute DAP source through the source descriptor.
-    const lldbSourceName = source?.name ?? path.basename(requestedPath ?? '');
+    const lldbSourceName = path.basename(requestedPath ?? '');
     const outputText = await lldb.command(`breakpoint set --file ${quoteLldb(lldbSourceName)} --line ${line}`);
     const idMatch = /Breakpoint (\d+)/.exec(outputText);
     const id = idMatch ? Number(idMatch[1]) : undefined;
     if (!id) {
-      response.push({ verified: false, line, message: 'LLDB did not resolve this source line.' });
+      response.push({
+        verified: false,
+        line,
+        message: 'LLDB found no DWARF line entry here. Rebuild with Vitte: Build (which enables debug information) or compile with --debug-info.',
+      });
       continue;
     }
     spec.lldbId = id;
@@ -630,10 +658,18 @@ async function installBreakpoints(requested: unknown[], requestedPath: string | 
   return response;
 }
 
-async function compileAndCreateTarget(program: string, cwd: string, env: NodeJS.ProcessEnv): Promise<void> {
-  executablePath = source ? await compileProgram(program, cwd, env) : program;
+async function compileAndCreateTarget(program: string, cwd: string, env: NodeJS.ProcessEnv, launch: LaunchArguments): Promise<void> {
+  executablePath = source ? await compileProgram(program, cwd, env, launch) : program;
   lldb = new LldbSession(cwd, env);
-  await lldb.start();
+  try {
+    await lldb.start();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/spawn (?:expect|lldb).*ENOENT|command not found/i.test(message)) {
+      throw new Error(`Native Vitte debugging requires LLDB and, on Linux, Expect. Install those tools or use Vitte: Build and Vitte: Run with the selected CLI. (${message})`);
+    }
+    throw error;
+  }
   const targetOutput = await lldb.command(`target create ${quoteLldb(executablePath)}`);
   if (/error:/i.test(targetOutput)) throw new Error(targetOutput.trim());
   // Keep fatal runtime signals visible to DAP instead of letting LLDB pass
@@ -691,6 +727,27 @@ async function cleanup(): Promise<void> {
   if (directory) await rm(directory, { recursive: true, force: true });
 }
 
+async function terminateDebuggee(): Promise<void> {
+  if (lldb && debuggeeStarted && !debuggeeExited) {
+    try {
+      const result = await lldb.command('process kill');
+      if (processExited(result)) {
+        await handleStop(result);
+      } else {
+        debuggeeExited = true;
+        if (!exitEventSent) {
+          exitEventSent = true;
+          event('terminated');
+        }
+      }
+    } catch {
+      // Disposing the debugger still releases its resources if the inferior
+      // has already become unreachable.
+    }
+  }
+  await cleanup();
+}
+
 async function launch(request: DapRequest): Promise<void> {
   const argumentsObject = launchObject(request);
   const programValue = stringValue(argumentsObject.program);
@@ -709,7 +766,7 @@ async function launch(request: DapRequest): Promise<void> {
   debuggeeExited = false;
   exitEventSent = false;
   try {
-    await compileAndCreateTarget(program, cwd, env);
+    await compileAndCreateTarget(program, cwd, env, argumentsObject);
     respond(request, true);
     event('process', {
       name: path.basename(executablePath ?? program),
@@ -940,10 +997,19 @@ async function handle(request: DapRequest): Promise<void> {
       return;
 
     case 'terminate':
+      respond(request, true);
+      await terminateDebuggee();
+      return;
+
     case 'disconnect':
       respond(request, true);
-      await cleanup();
-      if (request.command === 'disconnect') setTimeout(() => process.exit(0), 0);
+      if (requestObject(request).terminateDebuggee !== false) {
+        await terminateDebuggee();
+      } else {
+        try { if (lldb && !debuggeeExited) await lldb.command('process detach'); } catch { /* dispose below */ }
+        await cleanup();
+      }
+      setTimeout(() => process.exit(0), 0);
       return;
 
     default:

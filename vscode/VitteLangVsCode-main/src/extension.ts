@@ -1,5 +1,6 @@
-import { workspaceBinaryRoots, expandToolPath } from "./utils/project";
+import { workspaceBinaryRoots, detectVitteProject, expandToolPath, resolveProjectRoot } from "./utils/project";
 import { clearCompilerSuggestions, normalizeCompilerDiagnostics, storeCompilerSuggestions } from "./utils/compilerDiagnostics";
+import { writeCompilerSourceSnapshot } from "./utils/compilerSourceSnapshot";
 /*
  * extension.ts — VS Code client for Vitte/Vit
  * - Full LSP client (start/stop/restart, traces, status, watchers)
@@ -47,7 +48,6 @@ import type {
   LanguageClientOptions,
   ServerOptions,
   DocumentSelector,
-  ProvideDocumentFormattingEditsSignature,
 } from "vscode-languageclient/node";
 import {
   summarizeWorkspaceDiagnostics,
@@ -141,9 +141,10 @@ let client: LanguageClient | undefined;
 let output: vscode.OutputChannel;
 let statusItem: vscode.StatusBarItem;
 let completionTimeoutNoticeShown = false;
-let compilerRuntimeStatus: "checking" | "supported" | "missing" | "unsupported" = "checking";
-let compilerValidationInFlight: Promise<boolean> | undefined;
-let lastCompilerWarning = "";
+type CompilerRuntimeStatus = "checking" | "supported" | "missing" | "unsupported";
+const compilerRuntimeStatusByFolder = new Map<string, CompilerRuntimeStatus>();
+const compilerValidationByFolder = new Map<string, Promise<boolean>>();
+const lastCompilerWarningByFolder = new Map<string, string>();
 let trustNoticeShown = false;
 let startupCommandPromptShown = false;
 let cloudOptInPromptShown = false;
@@ -167,10 +168,8 @@ const OFFLINE_STATUS_BG = new vscode.ThemeColor("statusBarItem.warningBackground
 let offlineRetryTimer: NodeJS.Timeout | undefined;
 let offlineRetryMs = 60000;
 let lastActivationContext: vscode.ExtensionContext | undefined;
-let editorLintCollection: vscode.DiagnosticCollection | undefined;
 let syntaxLintCollection: vscode.DiagnosticCollection | undefined;
 let offlineSince: number | undefined;
-const formatOnSaveInFlight = new Set<string>();
 const syntaxLintTimers = new Map<string, NodeJS.Timeout>();
 const syntaxLintSeq = new Map<string, number>();
 const syntaxLintProcByDoc = new Map<string, cp.ChildProcess>();
@@ -1097,6 +1096,8 @@ const WATCH_PATTERNS = [
   "**/*.{vitte,vit,vitl}",
   "**/vitte.toml",
   "**/.vitte/config",
+  "**/vitte.config.json",
+  "**/.vitte/config.json",
   "**/.vitteconfig"
 ] as const;
 const LANGUAGE_SET = new Set<string>(LANGUAGES);
@@ -1127,18 +1128,31 @@ function isRelevantVitteContext(): boolean {
   if (process.env.VSCODE_TESTING === "1") return true;
   if (vscode.workspace.textDocuments.some(isVitteDocument)) return true;
 
-  const cfg = vscode.workspace.getConfiguration("vitte");
-  const configuredRoot = cfg.get<string>("project.root", "").trim();
-  if (configuredRoot) {
-    const base = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-    try {
-      if (fs.statSync(expandToolPath(configuredRoot, base)).isDirectory()) return true;
-    } catch { /* invalid override is reported by settings validation */ }
-  }
+  const activationMarkers = ["vitte.config.json", path.join(".vitte", "config.json")];
+  return (vscode.workspace.workspaceFolders ?? []).some((folder) => {
+    const cfg = vscode.workspace.getConfiguration("vitte", folder.uri);
+    const configuredRoot = cfg.get<string>("project.root", "").trim();
+    if (configuredRoot) {
+      try {
+        if (fs.statSync(expandToolPath(configuredRoot, folder.uri.fsPath)).isDirectory()) return true;
+      } catch { /* invalid override is reported by settings validation */ }
+    }
+    return Boolean(detectVitteProject(folder.uri.fsPath))
+      || activationMarkers.some((marker) => fs.existsSync(path.join(folder.uri.fsPath, marker)));
+  });
+}
 
-  const markers = ["vitte.toml", "vitte.config.json", path.join(".vitte", "config.json")];
-  return (vscode.workspace.workspaceFolders ?? []).some((folder) =>
-    markers.some((marker) => fs.existsSync(path.join(folder.uri.fsPath, marker))));
+async function hasRelevantVitteContext(): Promise<boolean> {
+  if (isRelevantVitteContext()) return true;
+  const exclusions = "**/{node_modules,.git,out,build,target}/**";
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    for (const pattern of ["**/vitte.toml", "**/.vitte/config", "**/vitte.config.json", "**/.vitte/config.json"]) {
+      try {
+        if ((await vscode.workspace.findFiles(new vscode.RelativePattern(folder, pattern), exclusions, 1)).length > 0) return true;
+      } catch { /* unsupported workspace providers can still activate through a Vitte source file */ }
+    }
+  }
+  return false;
 }
 
 async function initializeOptionalSuggestionEngines(context: vscode.ExtensionContext): Promise<void> {
@@ -1186,7 +1200,7 @@ async function initializeOptionalSuggestionEngines(context: vscode.ExtensionCont
 }
 
 async function ensureLanguageServices(context: vscode.ExtensionContext, reason: string): Promise<boolean> {
-  if (extensionShuttingDown || !isRelevantVitteContext()) return false;
+  if (extensionShuttingDown || !(await hasRelevantVitteContext())) return false;
   if (!vscode.workspace.isTrusted) {
     setOfflineStatus("Workspace is untrusted; Vitte language services and project tools are paused.", false);
     if (!trustNoticeShown) {
@@ -1285,7 +1299,8 @@ function readNumberSetting(cfg: vscode.WorkspaceConfiguration, key: string, fall
 }
 
 function validateRuntimeSettings(): string[] {
-  const cfg = vscode.workspace.getConfiguration("vitte");
+  const activeUri = vscode.window.activeTextEditor?.document.uri;
+  const cfg = vscode.workspace.getConfiguration("vitte", activeUri);
   const issues: string[] = [];
 
   const topN = readNumberSetting(cfg, "suggestions.topN", 50);
@@ -1326,7 +1341,8 @@ function validateRuntimeSettings(): string[] {
     issues.push(`vitte.syntax.liveDiagnosticsDelayMs (${liveDelayMs}) is outside supported range [60..2000].`);
   }
 
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const activeFolder = activeUri ? vscode.workspace.getWorkspaceFolder(activeUri) : undefined;
+  const workspaceRoot = activeFolder?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
   const resolveConfiguredPath = (raw: string): string => expandToolPath(raw, workspaceRoot);
   const serverPath = cfg.get<string>("serverPath", "").trim();
   if (serverPath) {
@@ -1365,7 +1381,14 @@ function validateRuntimeSettings(): string[] {
     try { if (!fs.statSync(resolved).isDirectory()) issues.push("vitte.project.root must point to a directory."); }
     catch { issues.push(`vitte.project.root does not exist: ${resolved}`); }
   }
-  for (const key of ["lsp.args", "build.args"] as const) {
+  const effectiveProjectRoot = resolveProjectRoot(projectRoot, workspaceRoot, activeUri?.fsPath) ?? workspaceRoot;
+  const manifestPath = cfg.get<string>("project.manifestPath", "").trim();
+  if (manifestPath) {
+    const resolved = expandToolPath(manifestPath, effectiveProjectRoot);
+    try { if (!fs.statSync(resolved).isFile()) issues.push("vitte.project.manifestPath must point to a file."); }
+    catch { issues.push(`vitte.project.manifestPath does not exist: ${resolved}`); }
+  }
+  for (const key of ["lsp.args", "build.args", "modulePaths"] as const) {
     const value = cfg.get<unknown>(key, []);
     if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
       issues.push(`vitte.${key} must be an array of strings.`);
@@ -1575,12 +1598,6 @@ function isOfflineEnabled(): boolean {
   return vscode.workspace.getConfiguration("vitte").get<boolean>("server.offline", false);
 }
 
-function shouldFormatOnSave(doc: vscode.TextDocument): boolean {
-  if (!LANGUAGE_SET.has(doc.languageId)) return false;
-  if (doc.isUntitled) return false;
-  return vscode.workspace.getConfiguration("vitte").get<boolean>("format.onSave", false);
-}
-
 function isOfflinePermanent(): boolean {
   return vscode.workspace.getConfiguration("vitte").get<boolean>("server.offlinePermanent", false);
 }
@@ -1728,6 +1745,33 @@ function ensureFileWatchers(context: vscode.ExtensionContext): vscode.FileSystem
     fileWatchers = WATCH_PATTERNS.map((pattern) => {
       const watcher = vscode.workspace.createFileSystemWatcher(pattern);
       context.subscriptions.push(watcher);
+      if (pattern === "**/*.{vitte,vit,vitl}") {
+        const refreshSource = (uri: vscode.Uri): void => {
+          const doc = vscode.workspace.textDocuments.find((candidate) => candidate.uri.toString() === uri.toString());
+          if (doc && isVitteDocument(doc)) scheduleLiveSyntaxDiagnostics(doc, "change");
+        };
+        context.subscriptions.push(watcher.onDidChange(refreshSource));
+        context.subscriptions.push(watcher.onDidCreate(refreshSource));
+        context.subscriptions.push(watcher.onDidDelete(refreshSource));
+      } else {
+        const refreshProject = (uri: vscode.Uri): void => {
+          const folder = vscode.workspace.getWorkspaceFolder(uri);
+          if (!folder) return;
+          const affected = vscode.workspace.textDocuments.filter((doc) =>
+            isVitteDocument(doc) && vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.toString() === folder.uri.toString(),
+          );
+          clearRuntimeLocatorCache();
+          for (const doc of affected) {
+            scheduleLiveSyntaxDiagnostics(doc, "config");
+            void validateCompilerRuntime(folder.uri).finally(() => {
+              if (vscode.workspace.textDocuments.includes(doc)) scheduleLiveSyntaxDiagnostics(doc, "config");
+            });
+          }
+        };
+        context.subscriptions.push(watcher.onDidChange(refreshProject));
+        context.subscriptions.push(watcher.onDidCreate(refreshProject));
+        context.subscriptions.push(watcher.onDidDelete(refreshProject));
+      }
       return watcher;
     });
   }
@@ -1833,6 +1877,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   } catch {
     output = vscode.window.createOutputChannel("Vitte Language Server");
   }
+  const projectOutput = vscode.window.createOutputChannel("Vitte Project");
   output.appendLine("[activate] begin");
   output.appendLine("[activate] Vitte extension activated");
   obsLog("extension.activate.begin", "info", { extensionVersion: getExtensionVersion(context.extension) });
@@ -1843,7 +1888,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   }
   statusItem.name = "Vitte LSP";
   statusItem.command = "vitte.showServerLog";
-  context.subscriptions.push(output, statusItem);
+  context.subscriptions.push(output, statusItem, projectOutput);
   if (process.env.VSCODE_TESTING === "1") {
     ensureTestingWorkspaceFolder(context);
   }
@@ -1862,6 +1907,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   }));
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
     optionalEngineWorkspaceRoot = undefined;
+    clearRuntimeLocatorCache();
+    compilerRuntimeStatusByFolder.clear();
+    compilerValidationByFolder.clear();
+    lastCompilerWarningByFolder.clear();
+    for (const document of vscode.workspace.textDocuments) {
+      if (isVitteDocument(document)) {
+        const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+        if (folder) void validateCompilerRuntime(folder.uri);
+      }
+    }
     if (isRelevantVitteContext()) {
       void ensureLanguageServices(context, "workspace folders changed");
     } else {
@@ -1914,13 +1969,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       : "Offline mode is enabled (vitte.server.offline)."));
   }
 
-  editorLintCollection = vscode.languages.createDiagnosticCollection("vitte-lint");
   syntaxLintCollection = vscode.languages.createDiagnosticCollection("vitte-syntax");
-  context.subscriptions.push(editorLintCollection);
   context.subscriptions.push(syntaxLintCollection);
   context.subscriptions.push(vscode.workspace.onDidOpenTextDocument((doc) => {
     if (isVitteDocument(doc)) void ensureLanguageServices(context, "Vitte document opened");
-    updateEditorLint(doc);
+    if (isVitteDocument(doc)) {
+      const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
+      if (folder) void validateCompilerRuntime(folder.uri);
+    }
     scheduleLiveSyntaxDiagnostics(doc, "open");
     completionOpenedAtByDoc.set(doc.uri.toString(), Date.now());
     scheduleAstCacheInvalidation(doc, false);
@@ -1937,7 +1993,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     } else {
       typingSpeedByDoc.set(docKey, { lastEditAt: now, intervalEwmaMs: 180 });
     }
-    updateEditorLint(e.document);
+    // Drop compiler data immediately: any existing result and fix now refers to
+    // an older buffer version. The next CLI run checks a source snapshot.
+    clearCompilerSuggestions(docKey);
+    syntaxLintCollection?.delete(e.document.uri);
     scheduleLiveSyntaxDiagnostics(e.document, "change");
     scheduleAstCacheInvalidation(e.document, true);
     scheduleLocalInlineEngineUpdate(e.document);
@@ -1957,7 +2016,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     }
   }));
   context.subscriptions.push(vscode.workspace.onDidCloseTextDocument((doc) => {
-    editorLintCollection?.delete(doc.uri);
     syntaxLintCollection?.delete(doc.uri);
     const key = doc.uri.toString();
     clearCompilerSuggestions(key);
@@ -1992,7 +2050,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     }
   }));
   for (const doc of vscode.workspace.textDocuments) {
-    updateEditorLint(doc);
+    if (isVitteDocument(doc)) {
+      const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
+      if (folder) void validateCompilerRuntime(folder.uri);
+    }
     scheduleLiveSyntaxDiagnostics(doc, "open");
     completionOpenedAtByDoc.set(doc.uri.toString(), Date.now());
     scheduleAstCacheInvalidation(doc, false);
@@ -2025,6 +2086,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   context.subscriptions.push(
     vscode.commands.registerCommand("vitte.showServerLog", () => {
       output.show(true);
+    }),
+    vscode.commands.registerCommand("vitte.detectProject", async () => {
+      const activeUri = vscode.window.activeTextEditor?.document.uri;
+      const activeFolder = activeUri ? vscode.workspace.getWorkspaceFolder(activeUri) : undefined;
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      let folder = activeFolder ?? (folders.length === 1 ? folders[0] : undefined);
+      if (!folder && folders.length > 1) {
+        const selected = await vscode.window.showQuickPick(folders.map(item => ({ label: item.name, description: item.uri.fsPath, folder: item })), {
+          placeHolder: "Select the workspace folder whose Vitte project to inspect",
+        });
+        folder = selected?.folder;
+      }
+      if (!folder) {
+        void vscode.window.showInformationMessage("Vitte: open a workspace folder to inspect project detection.");
+        return;
+      }
+      const cfg = vscode.workspace.getConfiguration("vitte", folder.uri);
+      const configuredRoot = cfg.get<string>("project.root", "").trim();
+      const activePath = activeFolder?.uri.toString() === folder.uri.toString() ? activeUri?.fsPath : undefined;
+      const detected = detectVitteProject(activePath ?? folder.uri.fsPath);
+      const root = resolveProjectRoot(configuredRoot, folder.uri.fsPath, activePath) ?? folder.uri.fsPath;
+      const selectedProject = configuredRoot ? detectVitteProject(root) : detected;
+      projectOutput.clear();
+      projectOutput.appendLine(`Workspace folder: ${folder.uri.fsPath}`);
+      projectOutput.appendLine(`Project root: ${root}`);
+      projectOutput.appendLine(`Detection: ${configuredRoot ? "vitte.project.root setting" : selectedProject ? "nearest CLI project configuration" : "workspace-folder fallback"}`);
+      projectOutput.appendLine(`Configuration: ${selectedProject?.configFile ?? "none"}`);
+      projectOutput.appendLine("CLI configuration files: vitte.toml and .vitte/config.");
+      projectOutput.appendLine("vitte.config.json and .vitte/config.json can activate editor support but are not loaded by the active CLI.");
+      projectOutput.show(true);
     }),
     vscode.commands.registerCommand("vitte.showCapabilities", async () => {
       const requestId = nextRequestId("capabilities");
@@ -2555,29 +2646,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     vscode.commands.registerCommand("vitte.runAction", async () => {
       const pick = await vscode.window.showQuickPick([
         {
-          label: "Format document",
-          description: "editor.action.formatDocument",
-          detail: "Apply the configured formatter to the active file.",
+          label: "Format document (unavailable)",
+          description: "No canonical compatible Vitte formatter is installed.",
+          detail: "Vitte 0.1.1 does not implement `vitte fmt`; no edits will be applied.",
           action: "format",
         },
         {
-          label: "Organize imports",
-          description: "editor.action.organizeImports",
-          detail: "Trie et nettoie les imports du document courant.",
+          label: "Organize imports (unavailable)",
+          description: "Import usage and candidate uniqueness are not compiler-resolved.",
+          detail: "No imports will be changed. See Vitte: Show Capabilities.",
           action: "organizeImports",
         },
         {
-          label: "Fix all",
-          description: "source.fixAll",
-          detail: "Run available quick fixes.",
-          action: "fixAll",
+          label: "Show Vitte capabilities",
+          description: "Versioned editor and toolchain support matrix",
+          action: "capabilities",
         }
       ], { title: "Vitte: run a quick action" });
       if (!pick) return;
       await runBuiltinAction(pick.action);
     }),
     vscode.commands.registerCommand("vitte.runActionWithArgs", async () => {
-      const action = await vscode.window.showInputBox({ prompt: "Action (format | organizeImports | fixAll)", value: "format" });
+      const action = await vscode.window.showInputBox({ prompt: "Action (format | organizeImports | capabilities)", value: "format" });
       if (!action) return;
       await runBuiltinAction(action.trim());
     }),
@@ -2819,8 +2909,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       reportSettingsIssues(output, "config");
       if (["vitte.compiler.path", "vitte.toolchain.root", "vitte.toolchainPath", "vitte.project.root", "vitte.lsp.path"].some((key) => e.affectsConfiguration(key))) {
         clearRuntimeLocatorCache();
-        compilerRuntimeStatus = "checking";
-        lastCompilerWarning = "";
+        compilerRuntimeStatusByFolder.clear();
+        compilerValidationByFolder.clear();
+        lastCompilerWarningByFolder.clear();
+        for (const document of vscode.workspace.textDocuments) {
+          if (isVitteDocument(document)) {
+            const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+            // Invalidate diagnostics produced by the previous toolchain now,
+            // then rerun once the replacement executable has been validated.
+            scheduleLiveSyntaxDiagnostics(document, "config");
+            if (folder) {
+              void validateCompilerRuntime(folder.uri).finally(() => {
+                if (vscode.workspace.textDocuments.includes(document)) scheduleLiveSyntaxDiagnostics(document, "config");
+              });
+            }
+          }
+        }
       }
       if (shouldRestartForConfigChange(e)) {
         scheduleConfigRestart(context, "config-change");
@@ -2832,9 +2936,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       if (isOfflinePermanent()) {
         setOfflineStatus("Offline permanent (user-forced).");
       }
-    }
-    if (e.affectsConfiguration("vitte.lint") || e.affectsConfiguration("vitte.features.lint") || e.affectsConfiguration("vitte.server.offline") || e.affectsConfiguration("vitte.server.offlinePermanent")) {
-      for (const doc of vscode.workspace.textDocuments) updateEditorLint(doc);
     }
     if (e.affectsConfiguration("vitte.syntax.liveDiagnostics") || e.affectsConfiguration("vitte.lang")) {
       for (const doc of vscode.workspace.textDocuments) scheduleLiveSyntaxDiagnostics(doc, "config");
@@ -2888,24 +2989,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   //   }
   // ));
   context.subscriptions.push(vscode.languages.onDidChangeDiagnostics(() => refreshDiagnosticsStatus()));
-  context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (doc) => {
-    if (!shouldFormatOnSave(doc)) return;
-    if (formatOnSaveInFlight.has(doc.uri.toString())) return;
-    const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === doc.uri.toString());
-    if (!editor) return;
-    formatOnSaveInFlight.add(doc.uri.toString());
-    try {
-      await vscode.window.showTextDocument(editor.document, { preview: false, preserveFocus: true });
-      await vscode.commands.executeCommand("editor.action.formatDocument");
-      if (editor.document.isDirty) {
-        await editor.document.save();
-      }
-    } catch (err) {
-      output.appendLine(`[format.onSave] ${redactLogText(err)}`);
-    } finally {
-      formatOnSaveInFlight.delete(doc.uri.toString());
-    }
-  }));
   context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((doc) => {
     scheduleLiveSyntaxDiagnostics(doc, "save");
     scheduleLocalInlineEngineUpdate(doc);
@@ -3017,9 +3100,9 @@ export async function deactivate(): Promise<void> {
   optionalEngineWorkspaceRoot = undefined;
   localInlineEngineInitialized = false;
   aiInlinePipelineInitialized = false;
-  compilerRuntimeStatus = "checking";
-  compilerValidationInFlight = undefined;
-  lastCompilerWarning = "";
+  compilerRuntimeStatusByFolder.clear();
+  compilerValidationByFolder.clear();
+  lastCompilerWarningByFolder.clear();
   clearRuntimeLocatorCache();
   for (const watcher of fileWatchers) {
     try { watcher.dispose(); } catch { /* noop */ }
@@ -3133,37 +3216,44 @@ function sanitizedErrorMessage(error: unknown): string {
   return redactLogText(error instanceof Error ? error.message : error);
 }
 
-async function validateCompilerRuntime(): Promise<boolean> {
+async function validateCompilerRuntime(scopeUri?: vscode.Uri): Promise<boolean> {
   if (!vscode.workspace.isTrusted) return false;
-  if (compilerValidationInFlight) return compilerValidationInFlight;
+  const activeUri = scopeUri ?? vscode.window.activeTextEditor?.document.uri;
+  const folder = activeUri ? vscode.workspace.getWorkspaceFolder(activeUri) : undefined;
+  const fallbackFolders = vscode.workspace.workspaceFolders ?? [];
+  const selectedFolder = folder ?? (fallbackFolders.length === 1 ? fallbackFolders[0] : undefined);
+  if (!selectedFolder) return false;
+  const key = selectedFolder.uri.toString();
+  const inFlight = compilerValidationByFolder.get(key);
+  if (inFlight) return inFlight;
 
-  compilerRuntimeStatus = "checking";
-  compilerValidationInFlight = (async () => {
-    const runtime = await locateVitteRuntime();
+  compilerRuntimeStatusByFolder.set(key, "checking");
+  const pending = (async () => {
+    const runtime = await locateVitteRuntime(undefined, selectedFolder.uri);
     const version = runtime.versions?.cli;
     let message: string | undefined;
     if (!runtime.found) {
-      compilerRuntimeStatus = "missing";
-      message = "Vitte compiler was not found. Set vitte.compiler.path or vitte.toolchain.root, or install Vitte on PATH.";
+      compilerRuntimeStatusByFolder.set(key, "missing");
+      message = `Vitte compiler was not found for “${selectedFolder.name}”. Set vitte.compiler.path or vitte.toolchain.root for this folder, or install Vitte on PATH.`;
     } else if (!isSupportedVitteCompilerVersion(version)) {
-      compilerRuntimeStatus = "unsupported";
+      compilerRuntimeStatusByFolder.set(key, "unsupported");
       message = version
-        ? `Vitte ${version} is not verified by this extension; compiler evidence targets ${VITTE_COMPILER_EVIDENCE_VERSION}.`
-        : `Vitte compiler version could not be determined; compiler evidence targets ${VITTE_COMPILER_EVIDENCE_VERSION}.`;
+        ? `Vitte ${version} in “${selectedFolder.name}” is not verified by this extension; compiler evidence targets ${VITTE_COMPILER_EVIDENCE_VERSION}.`
+        : `Vitte compiler version for “${selectedFolder.name}” could not be determined; compiler evidence targets ${VITTE_COMPILER_EVIDENCE_VERSION}.`;
     } else {
-      compilerRuntimeStatus = "supported";
-      output.appendLine(`[toolchain] compiler version verified: ${version}`);
+      compilerRuntimeStatusByFolder.set(key, "supported");
+      output.appendLine(`[toolchain:${redactLogText(selectedFolder.name)}] compiler version verified: ${version}`);
       for (const document of vscode.workspace.textDocuments) {
-        if (isVitteDocument(document)) scheduleLiveSyntaxDiagnostics(document, "config");
+        if (isVitteDocument(document) && vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString() === key) scheduleLiveSyntaxDiagnostics(document, "config");
       }
       return true;
     }
 
     for (const document of vscode.workspace.textDocuments) {
-      if (isVitteDocument(document)) syntaxLintCollection?.delete(document.uri);
+      if (isVitteDocument(document) && vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString() === key) syntaxLintCollection?.delete(document.uri);
     }
-    if (message && message !== lastCompilerWarning) {
-      lastCompilerWarning = message;
+    if (message && message !== lastCompilerWarningByFolder.get(key)) {
+      lastCompilerWarningByFolder.set(key, message);
       output.appendLine(`[toolchain] ${redactLogText(message)}`);
       const selection = await vscode.window.showWarningMessage(
         `${message} The language server remains available for non-compiler editor features.`,
@@ -3171,13 +3261,19 @@ async function validateCompilerRuntime(): Promise<boolean> {
         "Open Settings",
         "Show Capabilities",
       );
-      if (selection === "Select Compiler") await vscode.commands.executeCommand("vitte.selectRuntime");
+      if (selection === "Select Compiler") await vscode.commands.executeCommand("vitte.selectRuntime", selectedFolder.uri.toString());
       else if (selection === "Open Settings") await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:VitteStudio.vitte-studio vitte.compiler.path");
       else if (selection === "Show Capabilities") await vscode.commands.executeCommand("vitte.showCapabilities");
     }
     return false;
-  })().finally(() => { compilerValidationInFlight = undefined; });
-  return compilerValidationInFlight;
+  })().finally(() => { if (compilerValidationByFolder.get(key) === pending) compilerValidationByFolder.delete(key); });
+  compilerValidationByFolder.set(key, pending);
+  return pending;
+}
+
+function compilerRuntimeStatusFor(uri: vscode.Uri): CompilerRuntimeStatus | undefined {
+  const folder = vscode.workspace.getWorkspaceFolder(uri);
+  return folder ? compilerRuntimeStatusByFolder.get(folder.uri.toString()) : undefined;
 }
 
 async function startClient(context: vscode.ExtensionContext | undefined): Promise<boolean> {
@@ -3624,17 +3720,6 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
         completionSuggestionPendingAccepted = false;
         return Promise.resolve(next(item, token));
       },
-      provideDocumentFormattingEdits: async (
-        doc: vscode.TextDocument,
-        options: vscode.FormattingOptions,
-        token: vscode.CancellationToken,
-        next: ProvideDocumentFormattingEditsSignature
-      ) => {
-        try { return await next(doc, options, token); } catch {
-          await vscode.commands.executeCommand("editor.action.formatDocument");
-          return [];
-        }
-      },
     },
     initializationOptions: {
       // Extension → Serveur: options d’init (libre)
@@ -3929,6 +4014,10 @@ function wireClientState(c: LanguageClient): void {
 /* ----------------------------- Actions utilitaires ------------------------ */
 
 async function runBuiltinAction(action: string): Promise<void> {
+  if (action === "capabilities") {
+    await vscode.commands.executeCommand("vitte.showCapabilities");
+    return;
+  }
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     void vscode.window.showWarningMessage("Open a Vitte/Vit document before running this action.");
@@ -3941,16 +4030,22 @@ async function runBuiltinAction(action: string): Promise<void> {
   }
   switch (action) {
     case "format":
-      await vscode.commands.executeCommand("editor.action.formatDocument");
+      void vscode.window.showWarningMessage(
+        "Vitte formatting is unavailable: compiler 0.1.1 has no `vitte fmt`, and no canonical compatible formatter is bundled. No edits were applied.",
+        "Show Capabilities",
+      ).then(pick => pick === "Show Capabilities" ? vscode.commands.executeCommand("vitte.showCapabilities") : undefined);
       return;
     case "organizeImports":
-      await vscode.commands.executeCommand("editor.action.organizeImports");
+      void vscode.window.showInformationMessage(
+        "Organize imports and remove-unused-import actions are unavailable until Vitte can prove symbol usage and a unique import destination. No edits were applied.",
+        "Show Capabilities",
+      ).then(pick => pick === "Show Capabilities" ? vscode.commands.executeCommand("vitte.showCapabilities") : undefined);
       return;
     case "fixAll":
-      await vscode.commands.executeCommand("editor.action.codeAction", {
-        kind: vscode.CodeActionKind.SourceFixAll.value,
-        apply: "first"
-      });
+      void vscode.window.showInformationMessage(
+        "Vitte has no safe fix-all action. Apply only the individual compiler-marked machine-applicable fixes shown for each diagnostic.",
+        "Show Capabilities",
+      ).then(pick => pick === "Show Capabilities" ? vscode.commands.executeCommand("vitte.showCapabilities") : undefined);
       return;
     default:
       void vscode.window.showWarningMessage(`Action inconnue: ${action}`);
@@ -4111,7 +4206,7 @@ function isVitteDocument(doc: vscode.TextDocument): boolean {
 function shouldRunLiveSyntaxDiagnostics(doc: vscode.TextDocument): boolean {
   if (!syntaxLintCollection) return false;
   if (!isVitteDocument(doc)) return false;
-  if (doc.uri.scheme !== "file" || doc.isDirty) return false;
+  if (doc.uri.scheme !== "file") return false;
   const cfg = vscode.workspace.getConfiguration("vitte");
   return cfg.get<boolean>("syntax.liveDiagnostics", true);
 }
@@ -4385,10 +4480,11 @@ function explainHelpFromVitte(
   code: string,
   lang: string,
   resolved: { bin: string; cwd: string },
-  explainTimeoutMs: number
+  explainTimeoutMs: number,
+  resourceUri?: vscode.Uri
 ): DiagnosticExplainPayload | undefined {
   if (!/^E\d{4}$/.test(code) && !/^VITTE-[A-Z]\d{4}$/.test(code)) return undefined;
-  if (compilerRuntimeStatus !== "supported" || !vscode.workspace.isTrusted) return undefined;
+  if (!vscode.workspace.isTrusted || !resourceUri || compilerRuntimeStatusFor(resourceUri) !== "supported") return undefined;
   const versionSignature = resolveVitteVersionSignature(resolved);
   const cachePath = vitteExplainHelpCachePath(resolved.cwd);
   loadVitteExplainHelpCache(cachePath, versionSignature);
@@ -4470,7 +4566,8 @@ function resolveDiagnosticHelp(
   lang: string,
   resolved: { bin: string; cwd: string },
   helpSource: DiagnosticHelpSource,
-  explainTimeoutMs: number
+  explainTimeoutMs: number,
+  resourceUri?: vscode.Uri
 ): DiagnosticExplainPayload | undefined {
   diagnosticHelpRequests += 1;
   if (helpSource === "local") {
@@ -4483,7 +4580,7 @@ function resolveDiagnosticHelp(
     return undefined;
   }
   if (helpSource === "vitte") {
-    const remote = explainHelpFromVitte(code, lang, resolved, explainTimeoutMs);
+    const remote = explainHelpFromVitte(code, lang, resolved, explainTimeoutMs, resourceUri);
     if (remote) {
       diagnosticHelpExplainResolved += 1;
       return remote;
@@ -4491,7 +4588,7 @@ function resolveDiagnosticHelp(
     diagnosticHelpUnresolved += 1;
     return undefined;
   }
-  const remote = explainHelpFromVitte(code, lang, resolved, explainTimeoutMs);
+  const remote = explainHelpFromVitte(code, lang, resolved, explainTimeoutMs, resourceUri);
   if (remote) {
     diagnosticHelpExplainResolved += 1;
     return remote;
@@ -4573,18 +4670,19 @@ function normalizeDiagSchemaSignature(parsed: unknown): string {
 function resolveVitteBinary(doc: vscode.TextDocument): { bin: string; cwd: string } | undefined {
   const folder = vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath;
   if (!folder) return undefined;
-  const cfg = vscode.workspace.getConfiguration("vitte");
+  const cfg = vscode.workspace.getConfiguration("vitte", doc.uri);
   const explicit = cfg.get<string>("compiler.path", "").trim();
   const root = cfg.get<string>("toolchain.root", "").trim() || cfg.get<string>("toolchainPath", "").trim();
+  const projectRoot = resolveProjectRoot(cfg.get<string>("project.root", ""), folder, doc.uri.fsPath) ?? folder;
   const candidates = [
     explicit ? expandToolPath(explicit, folder) : "",
     root ? path.join(expandToolPath(root, folder), "bin", compilerName("vitte")) : "",
-    ...workspaceBinaryRoots([folder]).map(binRoot => path.join(binRoot, compilerName("vitte"))),
+    ...workspaceBinaryRoots([projectRoot, folder]).map(binRoot => path.join(binRoot, compilerName("vitte"))),
     findExecutableOnPath("vitte"),
   ].filter((candidate): candidate is string => typeof candidate === "string" && candidate.length > 0);
   const bin = candidates.find(candidate => fs.existsSync(candidate));
   if (!bin) return undefined;
-  return { bin, cwd: folder };
+  return { bin, cwd: projectRoot };
 }
 
 function compilerName(name: string): string {
@@ -4607,54 +4705,124 @@ function findExecutableOnPath(name: string): string | undefined {
   return undefined;
 }
 
-function parseVitteTextDiagnostics(
-  doc: vscode.TextDocument,
-  text: string,
-  maxDiagnostics: number,
-): vscode.Diagnostic[] {
-  const diagnostics: vscode.Diagnostic[] = [];
-  const docPath = path.normalize(doc.uri.fsPath);
-  const docBase = path.basename(docPath);
-  const rx = /^(.*?):(\d+):(\d+):\s+([A-Z][A-Z0-9_-]*):\s+(.*)$/gm;
-  let match: RegExpExecArray | null;
-  while ((match = rx.exec(text)) !== null && diagnostics.length < maxDiagnostics) {
-    const file = match[1] ?? "";
-    const normalizedFile = path.normalize(file);
-    if (normalizedFile !== docPath && path.basename(normalizedFile) !== docBase) continue;
-    const line = Math.max(0, Number(match[2]) - 1);
-    const character = Math.max(0, Number(match[3]) - 1);
-    const code = normalizeDiagCode(match[4]);
-    const message = (match[5] ?? "Compiler diagnostic").trim();
-    const range = new vscode.Range(line, character, line, character + 1);
-    const diag = new vscode.Diagnostic(range, message, textDiagnosticSeverity(code));
-    const parseCode = prefixedDiagCode("COMPILER", code || "UNKNOWN");
-    const target = diagnosticDocUri(code);
-    diag.code = target ? { value: parseCode, target } : parseCode;
-    diag.source = "vitte";
-    diagnostics.push(diag);
+function remapDiagnosticSource(source: string | undefined, snapshot: string, original: string): string | undefined {
+  if (!source) return source;
+  let candidate = source;
+  if (source.startsWith("file://")) {
+    try { candidate = vscode.Uri.parse(source).fsPath; } catch { return source; }
   }
-  return diagnostics;
+  return path.resolve(candidate) === path.resolve(snapshot) ? original : source;
 }
 
-function textDiagnosticSeverity(code: string): vscode.DiagnosticSeverity {
-  if (/^(W|WARN|WARNING)[A-Z0-9_-]*/.test(code)) return vscode.DiagnosticSeverity.Warning;
-  if (/^(I|INFO|NOTE)[A-Z0-9_-]*/.test(code)) return vscode.DiagnosticSeverity.Information;
-  if (/^(H|HELP)[A-Z0-9_-]*/.test(code)) return vscode.DiagnosticSeverity.Hint;
-  return vscode.DiagnosticSeverity.Error;
+function remapSnapshotDiagnostics(
+  diagnostics: ReturnType<typeof normalizeCompilerDiagnostics>,
+  snapshot: string,
+  original: string,
+): ReturnType<typeof normalizeCompilerDiagnostics> {
+  return diagnostics.map(diagnostic => ({
+    ...diagnostic,
+    source: remapDiagnosticSource(diagnostic.source, snapshot, original),
+    labels: diagnostic.labels.map(label => ({ ...label, source: remapDiagnosticSource(label.source, snapshot, original) })),
+    related: diagnostic.related.map(location => ({ ...location, source: remapDiagnosticSource(location.source, snapshot, original) })),
+    suggestions: diagnostic.suggestions.map(suggestion => ({ ...suggestion, source: remapDiagnosticSource(suggestion.source, snapshot, original) })),
+  }));
 }
 
-function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): void {
+function compilerRelatedInformation(
+  document: vscode.TextDocument,
+  locations: ReturnType<typeof normalizeCompilerDiagnostics>[number]["related"],
+  cwd: string,
+): vscode.DiagnosticRelatedInformation[] {
+  const result: vscode.DiagnosticRelatedInformation[] = [];
+  for (const related of locations) {
+    let uri = document.uri;
+    if (related.source && related.source !== document.uri.fsPath && related.source !== document.uri.toString()) {
+      if (related.source.startsWith("file://")) {
+        try { uri = vscode.Uri.parse(related.source); } catch { continue; }
+      } else {
+        uri = vscode.Uri.file(path.resolve(cwd, related.source));
+      }
+    }
+
+    let range: vscode.Range | undefined;
+    if (related.lineRange) {
+      range = new vscode.Range(
+        related.lineRange.startLine,
+        related.lineRange.startCharacter,
+        related.lineRange.endLine,
+        related.lineRange.endCharacter,
+      );
+    } else if (uri.toString() === document.uri.toString()) {
+      range = new vscode.Range(document.positionAt(related.start), document.positionAt(related.end));
+    } else {
+      try {
+        // The compiler resolved related byte spans from imported files on disk.
+        // Read that same source before converting them to editor UTF-16 ranges.
+        const text = fs.readFileSync(uri.fsPath, "utf8");
+        const bytes = Buffer.from(text, "utf8");
+        const offset = (value: number) => related.offsetUnit === "utf8-byte"
+          ? bytes.subarray(0, Math.max(0, Math.min(value, bytes.length))).toString("utf8").length
+          : Math.max(0, Math.min(value, text.length));
+        const positionAt = (value: number): vscode.Position => {
+          let line = 0;
+          let lineStart = 0;
+          for (let i = 0; i < value; i += 1) {
+            const char = text[i];
+            if (char === "\r") {
+              if (text[i + 1] === "\n") i += 1;
+              line += 1;
+              lineStart = i + 1;
+            } else if (char === "\n") {
+              line += 1;
+              lineStart = i + 1;
+            }
+          }
+          return new vscode.Position(line, value - lineStart);
+        };
+        range = new vscode.Range(positionAt(offset(related.start)), positionAt(offset(related.end)));
+      } catch {
+        continue;
+      }
+    }
+    if (!range) continue;
+    result.push(new vscode.DiagnosticRelatedInformation(new vscode.Location(uri, range), related.message));
+  }
+  return result;
+}
+
+async function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): Promise<void> {
   if (!syntaxLintCollection || !shouldRunLiveSyntaxDiagnostics(doc)) return;
-  if (!vscode.workspace.isTrusted || compilerRuntimeStatus !== "supported") return;
+  if (!vscode.workspace.isTrusted || compilerRuntimeStatusFor(doc.uri) !== "supported") {
+    const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
+    if (folder && compilerRuntimeStatusFor(doc.uri) !== "checking") void validateCompilerRuntime(folder.uri);
+    return;
+  }
   const resolved = resolveVitteBinary(doc);
   if (!resolved) return;
 
-  const cfg = vscode.workspace.getConfiguration("vitte");
+  const cfg = vscode.workspace.getConfiguration("vitte", doc.uri);
   const lang = cfg.get<string>("lang", "en");
   const helpSource = cfg.get<DiagnosticHelpSource>("diagnostics.helpSource", "auto");
   const explainTimeoutMs = Math.max(100, Math.min(5000, cfg.get<number>("diagnostics.explainTimeoutMs", 450)));
-  const args = ["check", "--diagnostic=lsp", "--no-color", doc.uri.fsPath];
+  const sourceText = doc.getText();
+  const sourceVersion = doc.version;
+  let snapshotPath: string | undefined;
+  try {
+    if (doc.isDirty) snapshotPath = await writeCompilerSourceSnapshot(doc.uri.fsPath, sourceText);
+  } catch (error) {
+    if ((syntaxLintSeq.get(doc.uri.toString()) ?? 0) === seq) syntaxLintCollection.set(doc.uri, []);
+    output.appendLine(`[syntax.live] could not prepare unsaved source snapshot: ${redactLogText(error)}`);
+    return;
+  }
+  const sourcePath = snapshotPath ?? doc.uri.fsPath;
+  const projectRootSetting = cfg.get<string>("project.root", "").trim();
+  const projectRoot = projectRootSetting ? expandToolPath(projectRootSetting, resolved.cwd) : resolved.cwd;
+  const args = ["check", "--diagnostic=lsp", "--no-color", `--project-root=${projectRoot}`, sourcePath];
   const key = doc.uri.toString();
+  if ((syntaxLintSeq.get(key) ?? 0) !== seq || doc.version !== sourceVersion) {
+    if (snapshotPath) await fs.promises.unlink(snapshotPath).catch(() => undefined);
+    return;
+  }
   const prev = syntaxLintProcByDoc.get(key);
   if (prev && !prev.killed) {
     try { prev.kill(); } catch { /* noop */ }
@@ -4671,23 +4839,49 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
   const timeout = setTimeout(() => {
     try { child.kill(); } catch { /* noop */ }
   }, 4000);
-  child.stdout?.on("data", (b: Buffer) => { stdout += b.toString(); });
-  child.stderr?.on("data", (b: Buffer) => { stderr += b.toString(); });
-  child.on("close", () => {
-    clearTimeout(timeout);
-    if (syntaxLintProcByDoc.get(key) === child) {
-      syntaxLintProcByDoc.delete(key);
+  const maxOutputBytes = 2 * 1024 * 1024;
+  let outputBytes = 0;
+  let outputLimitExceeded = false;
+  const appendDiagnosticOutput = (target: "stdout" | "stderr", chunk: Buffer): void => {
+    if (outputLimitExceeded) return;
+    outputBytes += chunk.length;
+    if (outputBytes > maxOutputBytes) {
+      outputLimitExceeded = true;
+      try { child.kill(); } catch { /* noop */ }
+      return;
     }
+    if (target === "stdout") stdout += chunk.toString();
+    else stderr += chunk.toString();
+  };
+  child.stdout?.on("data", (b: Buffer) => appendDiagnosticOutput("stdout", b));
+  child.stderr?.on("data", (b: Buffer) => appendDiagnosticOutput("stderr", b));
+  let settled = false;
+  const settle = async (): Promise<boolean> => {
+    if (settled) return false;
+    settled = true;
+    clearTimeout(timeout);
+    if (syntaxLintProcByDoc.get(key) === child) syntaxLintProcByDoc.delete(key);
     syntaxParsingInFlight = Math.max(0, syntaxParsingInFlight - 1);
     applyStatusBar();
-    if ((syntaxLintSeq.get(key) ?? 0) !== seq || doc.isDirty) return;
+    if (snapshotPath) await fs.promises.unlink(snapshotPath).catch(() => undefined);
+    return true;
+  };
+  child.on("close", async () => {
+    if (!await settle()) return;
+    if ((syntaxLintSeq.get(key) ?? 0) !== seq || doc.version !== sourceVersion) return;
     if (!syntaxLintCollection) return;
+    if (outputLimitExceeded) {
+      storeCompilerSuggestions(doc.uri.toString(), []);
+      syntaxLintCollection.set(doc.uri, []);
+      output.appendLine(`[syntax.live] diagnostic output exceeded ${maxOutputBytes} bytes for ${path.basename(doc.uri.fsPath)}; process stopped.`);
+      return;
+    }
 
     const payload = extractDiagJson(stdout, stderr);
     if (!payload) {
       storeCompilerSuggestions(doc.uri.toString(), []);
-      const diagnostics = parseVitteTextDiagnostics(doc, `${stdout}\n${stderr}`, maxDiag);
-      syntaxLintCollection.set(doc.uri, dedupeDiagnosticsBySpanCodeSource(diagnostics));
+      syntaxLintCollection.set(doc.uri, []);
+      output.appendLine(`[syntax.live] compiler returned no structured diagnostics for ${path.basename(doc.uri.fsPath)}; verify the selected Vitte CLI version.`);
       return;
     }
     try {
@@ -4705,7 +4899,10 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
           diagnosticsCount: parsedDiagnostics.length,
         });
       }
-      const incoming = normalizeCompilerDiagnostics(parsed, doc.getText(), doc.uri.fsPath, resolved.cwd);
+      const normalized = normalizeCompilerDiagnostics(parsed, sourceText, sourcePath, resolved.cwd);
+      const incoming = snapshotPath
+        ? remapSnapshotDiagnostics(normalized, snapshotPath, doc.uri.fsPath)
+        : normalized;
       const diagnostics: vscode.Diagnostic[] = [];
       const strictSeen = new Set<string>();
       const firstErrorLine = new Set<number>();
@@ -4717,7 +4914,10 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
         const endRaw = Number.isFinite(d.end) ? Number(d.end) : start + 1;
         const end = Math.max(start, endRaw);
         const range = new vscode.Range(doc.positionAt(start), doc.positionAt(end));
-        const baseMessage = typeof d.message === "string" && d.message.length > 0 ? d.message : "Syntax error";
+        const messageParts = [d.title, d.message].filter((part, index, values): part is string =>
+          typeof part === "string" && part.trim().length > 0 && values.indexOf(part) === index,
+        );
+        const baseMessage = messageParts.length > 0 ? messageParts.join("\n") : "Compiler diagnostic";
         const severity = mapDiagSeverity(d.severity);
         const severityRaw = normalizeDiagSeverityToken(d.severity);
         const code = normalizeDiagCode(d.code);
@@ -4741,7 +4941,7 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
         }
         const explainHelp = d.help
           ? { help: d.help, source: "local" as const }
-          : baseCode ? resolveDiagnosticHelp(baseCode, lang, resolved, helpSource, explainTimeoutMs) : undefined;
+          : baseCode ? resolveDiagnosticHelp(baseCode, lang, resolved, helpSource, explainTimeoutMs, doc.uri) : undefined;
         const message = baseCode ? formatVitteDiagnosticMessage(contextualMessage, baseCode, explainHelp) : contextualMessage;
 
         // Avoid cascade noise: configurable first parser error policy.
@@ -4764,34 +4964,16 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
           continue;
         }
 
-        const primaryLabel = d.labels.find(label => label.style === "primary")?.message;
+        const primaryLabel = d.labels.find(label => label.style === "primary" && label.source === doc.uri.fsPath)?.message;
         const labeledMessage = primaryLabel && !message.includes(primaryLabel)
           ? `${message}\n${primaryLabel}`
           : message;
         const diag = new vscode.Diagnostic(range, labeledMessage, severity);
         const target = baseCode ? diagnosticDocUri(baseCode) : undefined;
         diag.code = target ? { value: parseCode, target } : parseCode;
-        diag.source = sourceKey;
-        const relatedInformation: vscode.DiagnosticRelatedInformation[] = [];
-        for (const related of d.related) {
-          let relatedUri: vscode.Uri;
-          if (!related.source || related.source === doc.uri.fsPath || related.source === doc.uri.toString()) {
-            relatedUri = doc.uri;
-          } else if (related.source.startsWith("file://")) {
-            try { relatedUri = vscode.Uri.parse(related.source); } catch { relatedUri = vscode.Uri.file(path.resolve(resolved.cwd, related.source)); }
-          } else {
-            relatedUri = vscode.Uri.file(path.resolve(resolved.cwd, related.source));
-          }
-          if (relatedUri.toString() !== doc.uri.toString() && !related.lineRange) continue;
-          const relatedRange = related.lineRange
-            ? new vscode.Range(related.lineRange.startLine, related.lineRange.startCharacter, related.lineRange.endLine, related.lineRange.endCharacter)
-            : new vscode.Range(doc.positionAt(related.start), doc.positionAt(related.end));
-          relatedInformation.push(new vscode.DiagnosticRelatedInformation(
-            new vscode.Location(relatedUri, relatedRange),
-            related.message,
-          ));
-        }
-        diag.relatedInformation = relatedInformation;
+        const diagnosticOrigin = d.origin ?? [d.phase, d.category].filter(Boolean).join("/");
+        diag.source = diagnosticOrigin ? `vitte (${diagnosticOrigin})` : sourceKey;
+        diag.relatedInformation = compilerRelatedInformation(doc, d.related, resolved.cwd);
         diagnostics.push(diag);
         if (severity === vscode.DiagnosticSeverity.Error) {
           lastError = diag;
@@ -4805,15 +4987,11 @@ function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number): voi
     }
   });
   child.on("error", (spawnErr) => {
-    clearTimeout(timeout);
-    if (syntaxLintProcByDoc.get(key) === child) {
-      syntaxLintProcByDoc.delete(key);
-    }
-    syntaxParsingInFlight = Math.max(0, syntaxParsingInFlight - 1);
-    applyStatusBar();
-    if (process.env.VITTE_DEBUG_LIVE_SYNTAX === "1") {
-      output.appendLine(`[syntax.live] spawn error: ${redactLogText(spawnErr)}`);
-    }
+    void settle().then(first => {
+      if (!first) return;
+      if ((syntaxLintSeq.get(key) ?? 0) === seq && doc.version === sourceVersion) syntaxLintCollection?.set(doc.uri, []);
+      output.appendLine(`[syntax.live] compiler invocation failed: ${redactLogText(spawnErr)}`);
+    });
   });
 }
 
@@ -4824,8 +5002,14 @@ function scheduleLiveSyntaxDiagnostics(doc: vscode.TextDocument, reason: "open" 
   if (prev) clearTimeout(prev);
   const seq = (syntaxLintSeq.get(key) ?? 0) + 1;
   syntaxLintSeq.set(key, seq);
+  const activeProcess = syntaxLintProcByDoc.get(key);
+  if (activeProcess && !activeProcess.killed) {
+    try { activeProcess.kill(); } catch { /* noop */ }
+  }
+  syntaxLintProcByDoc.delete(key);
+  clearCompilerSuggestions(key);
+  syntaxLintCollection.delete(doc.uri);
   if (!shouldRunLiveSyntaxDiagnostics(doc)) {
-    syntaxLintCollection.delete(doc.uri);
     return;
   }
   const cfg = vscode.workspace.getConfiguration("vitte");
@@ -4848,163 +5032,9 @@ function scheduleLiveSyntaxDiagnostics(doc: vscode.TextDocument, reason: "open" 
     : (typing < 170 ? Math.max(300, delayCfg) : delayCfg);
   const timer = setTimeout(() => {
     syntaxLintTimers.delete(key);
-    runLiveSyntaxDiagnosticsNow(doc, seq);
+    void runLiveSyntaxDiagnosticsNow(doc, seq);
   }, delayMs);
   syntaxLintTimers.set(key, timer);
-}
-
-function updateEditorLint(doc: vscode.TextDocument): void {
-  if (!editorLintCollection) return;
-  const cfg = vscode.workspace.getConfiguration("vitte");
-  if (!cfg.get<boolean>("features.lint", true)) {
-    editorLintCollection.delete(doc.uri);
-    return;
-  }
-  if (!isVitteDocument(doc)) {
-    editorLintCollection.delete(doc.uri);
-    return;
-  }
-  const lintCfg = cfg.get<{ maxLineLength?: number; allowTabs?: boolean; allowTrailingWhitespace?: boolean }>("lint") ?? {};
-  const maxLineLength = typeof lintCfg.maxLineLength === "number" ? lintCfg.maxLineLength : 120;
-  const allowTabs = lintCfg.allowTabs === true;
-  const allowTrailing = lintCfg.allowTrailingWhitespace === true;
-
-  const diagnostics: vscode.Diagnostic[] = [];
-  const lines = doc.getText().split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line === undefined) continue;
-    if (!allowTabs && line.includes("\t")) {
-      const idx = line.indexOf("\t");
-      const diag = new vscode.Diagnostic(
-        new vscode.Range(i, idx, i, idx + 1),
-        "Tabulation détectée. Utiliser des espaces.",
-        vscode.DiagnosticSeverity.Warning
-      );
-      diag.code = prefixedDiagCode("LINT", "TABS");
-      diagnostics.push(diag);
-    }
-    if (!allowTrailing) {
-      const m = /[ \t]+$/.exec(line);
-      if (m) {
-        const start = m.index ?? Math.max(0, line.length - m[0].length);
-        const trailing = new vscode.Diagnostic(
-          new vscode.Range(i, start, i, line.length),
-          "Espaces en fin de ligne.",
-          vscode.DiagnosticSeverity.Hint
-        );
-        trailing.tags = [vscode.DiagnosticTag.Unnecessary];
-        trailing.code = prefixedDiagCode("LINT", "TRAILING_WHITESPACE");
-        diagnostics.push(trailing);
-      }
-    }
-    if (maxLineLength > 0 && line.length > maxLineLength) {
-      const diag = new vscode.Diagnostic(
-        new vscode.Range(i, maxLineLength, i, line.length),
-        `Ligne trop longue (${line.length} > ${maxLineLength}).`,
-        vscode.DiagnosticSeverity.Hint
-      );
-      diag.code = prefixedDiagCode("LINT", "LINE_LENGTH");
-      diagnostics.push(diag);
-    }
-  }
-  diagnostics.push(...buildBracketDiagnostics(lines));
-  for (const d of diagnostics) {
-    d.source = "vitte";
-  }
-  editorLintCollection.set(doc.uri, dedupeDiagnosticsBySpanCodeSource(diagnostics));
-}
-
-function buildBracketDiagnostics(lines: string[]): vscode.Diagnostic[] {
-  const diagnostics: vscode.Diagnostic[] = [];
-  const stack: { char: "(" | "[" | "{"; line: number; col: number }[] = [];
-  const pairs: Record<string, "(" | "[" | "{"> = { ")": "(", "]": "[", "}": "{" };
-  const openers = new Set(["(", "[", "{"]);
-  const closers = new Set([")", "]", "}"]);
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const rawLine = lines[lineIndex] ?? "";
-    const codeLine = normalizeForBracketScan(rawLine);
-    for (let col = 0; col < codeLine.length; col++) {
-      const char = codeLine[col];
-      if (!char) continue;
-      if (openers.has(char)) {
-        stack.push({ char: char as "(" | "[" | "{", line: lineIndex, col });
-        continue;
-      }
-      if (!closers.has(char)) continue;
-      const expected = pairs[char];
-      const top = stack[stack.length - 1];
-      if (!top || top.char !== expected) {
-        const diag = new vscode.Diagnostic(
-          new vscode.Range(lineIndex, col, lineIndex, col + 1),
-          `Parenthèse/accolade fermante inattendue "${char}".`,
-          vscode.DiagnosticSeverity.Error
-        );
-        diag.code = prefixedDiagCode("BRACKETS", "UNEXPECTED_CLOSER");
-        diagnostics.push(diag);
-        continue;
-      }
-      stack.pop();
-    }
-  }
-
-  for (const entry of stack) {
-    const expected = entry.char === "(" ? ")" : entry.char === "[" ? "]" : "}";
-    const diag = new vscode.Diagnostic(
-      new vscode.Range(entry.line, entry.col, entry.line, entry.col + 1),
-      `Parenthèse/accolade ouvrante "${entry.char}" non fermée (attendu: "${expected}").`,
-      vscode.DiagnosticSeverity.Error
-    );
-    diag.code = prefixedDiagCode("BRACKETS", "UNCLOSED_OPENER");
-    diagnostics.push(diag);
-  }
-  return diagnostics;
-}
-
-function normalizeForBracketScan(line: string): string {
-  let result = "";
-  let inSingle = false;
-  let inDouble = false;
-  let inTemplate = false;
-  let escaped = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i] ?? "";
-    const next = i + 1 < line.length ? (line[i + 1] ?? "") : "";
-
-    if (!inSingle && !inDouble && !inTemplate && ch === "/" && next === "/") {
-      break;
-    }
-    if (escaped) {
-      escaped = false;
-      result += " ";
-      continue;
-    }
-    if (ch === "\\") {
-      escaped = true;
-      result += " ";
-      continue;
-    }
-    if (!inDouble && !inTemplate && ch === "'") {
-      inSingle = !inSingle;
-      result += " ";
-      continue;
-    }
-    if (!inSingle && !inTemplate && ch === "\"") {
-      inDouble = !inDouble;
-      result += " ";
-      continue;
-    }
-    if (!inSingle && !inDouble && ch === "`") {
-      inTemplate = !inTemplate;
-      result += " ";
-      continue;
-    }
-    result += inSingle || inDouble || inTemplate ? " " : ch;
-  }
-
-  return result;
 }
 
 function summarizeWorkspaceEdit(edit: vscode.WorkspaceEdit): { fileCount: number; editCount: number } {
@@ -5071,13 +5101,13 @@ async function captureWorkspaceEditSnapshots(edit: vscode.WorkspaceEdit): Promis
 
 async function captureRenameWorkspaceSnapshot(documentUri: vscode.Uri): Promise<RenameWorkspaceSnapshot> {
   const settings = vscode.workspace.getConfiguration("vitte", documentUri);
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  const firstRoot = folders[0]?.uri.fsPath ?? process.cwd();
+  const folder = vscode.workspace.getWorkspaceFolder(documentUri);
+  const firstRoot = folder?.uri.fsPath ?? process.cwd();
   const configuredProject = settings.get<string>("project.root", "").trim();
-  const projectRoot = configuredProject ? path.resolve(firstRoot, configuredProject) : undefined;
+  const projectRoot = resolveProjectRoot(configuredProject, firstRoot, documentUri.fsPath);
   const configuredModulePaths = settings.get<string[]>("modulePaths", []);
   const roots = Array.from(new Set([
-    ...folders.map((folder) => path.resolve(folder.uri.fsPath)),
+    ...(folder ? [path.resolve(folder.uri.fsPath)] : []),
     ...(projectRoot ? [projectRoot] : []),
     ...configuredModulePaths.map((root) => path.resolve(projectRoot ?? firstRoot, root.trim())).filter(Boolean),
   ]));

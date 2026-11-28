@@ -81,6 +81,7 @@ suite("Vitte extension", () => {
       "vitte.diagnostics.goToFirstErrorInFile",
       "vitte.topSyntaxErrors.setCodeFilter",
       "vitte.topSyntaxErrors.clearCodeFilter",
+      "vitte.codelens.openRefs",
     ];
 
     for (const cmd of expected) {
@@ -190,33 +191,41 @@ suite("Vitte extension", () => {
       );
 
       const callLine = source.split("\n")[11] ?? "";
-      const signatureHelp = await withTimeout(
-        vscode.commands.executeCommand<vscode.SignatureHelp>(
-          "vscode.executeSignatureHelpProvider",
-          document.uri,
-          new vscode.Position(
-            11,
-            callLine.indexOf("vitteEditorTarget(") + "vitteEditorTarget(nested(1, 2), ".length,
+      let signatureHelp: vscode.SignatureHelp | undefined;
+      await waitUntil(async () => {
+        signatureHelp = await withTimeout(
+          vscode.commands.executeCommand<vscode.SignatureHelp>(
+            "vscode.executeSignatureHelpProvider",
+            document.uri,
+            new vscode.Position(
+              11,
+              callLine.indexOf("vitteEditorTarget(") + "vitteEditorTarget(nested(1, 2), ".length,
+            ),
           ),
-        ),
-        8000,
-        "Vitte signature help",
-      );
-      assert.equal(signatureHelp?.activeParameter, 1);
+          8000,
+          "Vitte signature help",
+        );
+        return signatureHelp?.activeParameter === 1;
+      }, 8000, 100);
+      assert.equal(signatureHelp?.activeParameter, 1, JSON.stringify(signatureHelp));
       assert.match(
         signatureHelp?.signatures[0]?.label ?? "",
         /vitteEditorTarget\(value: int, label: string\) -> int/,
       );
 
-      const nestedSignatureHelp = await withTimeout(
-        vscode.commands.executeCommand<vscode.SignatureHelp>(
-          "vscode.executeSignatureHelpProvider",
-          document.uri,
-          new vscode.Position(11, callLine.indexOf("nested(") + "nested(1, ".length),
-        ),
-        8000,
-        "Vitte nested-call signature help",
-      );
+      let nestedSignatureHelp: vscode.SignatureHelp | undefined;
+      await waitUntil(async () => {
+        nestedSignatureHelp = await withTimeout(
+          vscode.commands.executeCommand<vscode.SignatureHelp>(
+            "vscode.executeSignatureHelpProvider",
+            document.uri,
+            new vscode.Position(11, callLine.indexOf("nested(") + "nested(1, ".length),
+          ),
+          8000,
+          "Vitte nested-call signature help",
+        );
+        return nestedSignatureHelp?.activeParameter === 1;
+      }, 8000, 100);
       assert.equal(nestedSignatureHelp?.activeParameter, 1);
       assert.match(nestedSignatureHelp?.signatures[0]?.label ?? "", /nested\(left: int, right: int\) -> int/);
 
@@ -258,6 +267,27 @@ suite("Vitte extension", () => {
       );
       assert.ok((references?.length ?? 0) >= 2, "La déclaration et l’appel doivent être référencés");
 
+      const codeLenses = await withTimeout(
+        vscode.commands.executeCommand<vscode.CodeLens[]>("vscode.executeCodeLensProvider", document.uri),
+        8000,
+        "Vitte reference code lenses",
+      );
+      const referenceLens = codeLenses?.find((lens) => lens.command?.command === "vitte.codelens.openRefs");
+      assert.ok(referenceLens?.command, "Les déclarations sources exposent une lens de références");
+      const lensArguments: unknown[] = referenceLens.command.arguments ?? [];
+      const lensUri = lensArguments[0];
+      const positionValue = lensArguments[1];
+      if (typeof lensUri !== "string" || !positionValue || typeof positionValue !== "object"
+        || !("line" in positionValue) || !("character" in positionValue)
+        || typeof positionValue.line !== "number" || typeof positionValue.character !== "number") {
+        throw new Error("La lens doit transmettre une URI et une position LSP valides");
+      }
+      await withTimeout(
+        vscode.commands.executeCommand(referenceLens.command.command, lensUri, new vscode.Position(positionValue.line, positionValue.character)),
+        8000,
+        "Vitte reference code lens command",
+      );
+
       const rename = await withTimeout(
         vscode.commands.executeCommand<vscode.WorkspaceEdit>(
           "vscode.executeDocumentRenameProvider",
@@ -285,12 +315,13 @@ suite("Vitte extension", () => {
     }
   });
 
-  test("La commande runAction déclenche l’action sélectionnée", async () => {
+  test("La commande runAction explique que le formatage est indisponible sans appeler un formateur", async () => {
     const testApi = api;
     assert.ok(testApi, "API de test non disponible");
 
     const disposables: vscode.Disposable[] = [];
     let formatCalled = false;
+    let unavailableMessage = "";
 
     disposables.push(
       vscode.commands.registerCommand("editor.action.formatDocument", () => {
@@ -301,26 +332,34 @@ suite("Vitte extension", () => {
     const windowAny = vscode.window as unknown as { showQuickPick: (...args: unknown[]) => Thenable<unknown> };
     const originalQuickPick = windowAny.showQuickPick;
     windowAny.showQuickPick = () => Promise.resolve({
-      label: "Format document",
-      description: "editor.action.formatDocument",
+      label: "Format document (unavailable)",
+      description: "No canonical compatible Vitte formatter is installed.",
       action: "format",
     });
+    const warningAny = vscode.window as unknown as { showWarningMessage: (...args: unknown[]) => Thenable<unknown> };
+    const originalWarning = warningAny.showWarningMessage;
+    warningAny.showWarningMessage = (...args: unknown[]) => {
+      unavailableMessage = String(args[0] ?? "");
+      return Promise.resolve(undefined);
+    };
 
     const document = await vscode.workspace.openTextDocument({ content: "test", language: "vitte" });
     await vscode.window.showTextDocument(document, { preview: false });
 
     try {
       await vscode.commands.executeCommand("vitte.runAction");
-      await waitUntil(() => formatCalled, 1000, 20);
+      await waitUntil(() => unavailableMessage.length > 0, 1000, 20);
     } finally {
       windowAny.showQuickPick = originalQuickPick;
+      warningAny.showWarningMessage = originalWarning;
       for (const disposable of disposables) {
         disposable.dispose();
       }
       await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
     }
 
-    assert.ok(formatCalled, "La commande de formatage n’a pas été appelée");
+    assert.equal(formatCalled, false, "Aucun fallback VS Code formatter ne doit être lancé");
+    assert.match(unavailableMessage, /no canonical compatible formatter/i);
   });
 
   test("Une résolution sans serveur signale une erreur explicite", () => {
@@ -341,7 +380,7 @@ suite("Vitte extension", () => {
 
     assert.throws(
       () => testApi.resolveServerModuleForTest(fakeContext),
-      /Module serveur Vitte introuvable/
+      /(?:Module serveur Vitte introuvable|Packaged Vitte language server is missing)/
     );
   });
 
@@ -911,7 +950,6 @@ suite("Vitte extension", () => {
               "vscode.executeCodeActionProvider",
               document.uri,
               range,
-              vscode.CodeActionKind.QuickFix.value,
             )) ?? [];
           const isExplainCodeAction = (a: vscode.CodeAction | vscode.Command): a is vscode.CodeAction =>
             a instanceof vscode.CodeAction
@@ -926,6 +964,14 @@ suite("Vitte extension", () => {
         }
       }, 4000, 60);
       assert.ok(explainAction, "La code action Explain this diagnostic est absente");
+      assert.notEqual(
+        explainAction.kind?.value,
+        vscode.CodeActionKind.QuickFix.value,
+        "L’explication doit être une action advisory, pas un correctif",
+      );
+      assert.match(explainAction.title, /^Vitte \(advisory\):/);
+      assert.ok(explainAction.title.length <= 80, "Les titres d’action advisory doivent rester courts");
+      assert.notEqual(explainAction.isPreferred, true, "Une action informative ne doit jamais être suggérée comme application automatique");
 
       let openDiagnosticsDocAction: vscode.CodeAction | undefined;
       await waitUntil(async () => {
@@ -935,7 +981,6 @@ suite("Vitte extension", () => {
               "vscode.executeCodeActionProvider",
               document.uri,
               range,
-              vscode.CodeActionKind.QuickFix.value,
             )) ?? [];
           const isOpenDiagnosticsDocCodeAction = (a: vscode.CodeAction | vscode.Command): a is vscode.CodeAction =>
             a instanceof vscode.CodeAction
@@ -959,7 +1004,6 @@ suite("Vitte extension", () => {
               "vscode.executeCodeActionProvider",
               document.uri,
               range,
-              vscode.CodeActionKind.QuickFix.value,
             )) ?? [];
           const isCopyExplainCommandCodeAction = (a: vscode.CodeAction | vscode.Command): a is vscode.CodeAction =>
             a instanceof vscode.CodeAction
@@ -975,12 +1019,36 @@ suite("Vitte extension", () => {
       }, 4000, 60);
       assert.ok(copyExplainCommandAction, "La code action Copy explain command est absente");
 
-      const actions =
+      const allActions =
+        (await vscode.commands.executeCommand<(vscode.CodeAction | vscode.Command)[]>(
+          "vscode.executeCodeActionProvider",
+          document.uri,
+          range,
+        )) ?? [];
+      const vitteActions = allActions.filter((action): action is vscode.CodeAction =>
+        action instanceof vscode.CodeAction && action.title.startsWith("Vitte"),
+      );
+      assert.ok(vitteActions.length >= 3, "Les actions Vitte attendues doivent être présentes");
+      for (const action of vitteActions) {
+        assert.ok(action.title.length <= 80, `Le titre doit rester bref : ${action.title}`);
+        if (action.edit) assert.notEqual(action.isPreferred, true, "Les éditions doivent rester manuelles");
+      }
+
+      const quickFixes =
         (await vscode.commands.executeCommand<(vscode.CodeAction | vscode.Command)[]>(
           "vscode.executeCodeActionProvider",
           document.uri,
           range,
           vscode.CodeActionKind.QuickFix.value,
+        )) ?? [];
+      assert.equal(quickFixes.some(action => action instanceof vscode.CodeAction && action.command?.command?.startsWith("vitte.diagnostics.")),
+        false, "Les explications et commandes manuelles ne doivent pas être annoncées comme quick fixes.");
+
+      const actions =
+        (await vscode.commands.executeCommand<(vscode.CodeAction | vscode.Command)[]>(
+          "vscode.executeCodeActionProvider",
+          document.uri,
+          range,
         )) ?? [];
       assert.equal(
         actions.some((action) => action instanceof vscode.CodeAction && action.edit !== undefined),
@@ -1016,7 +1084,10 @@ suite("Vitte extension", () => {
       help: "Separate arguments with a comma.",
       suggestions: [
         { start: insertion, end: insertion, source: document.uri.fsPath, message: "Insert the missing comma", replacement: ",", applicability: "machine-applicable" },
+        { start: insertion, end: insertion, source: document.uri.fsPath, message: "Apply compiler suggestion", replacement: "value", applicability: "machine-applicable" },
         { start: insertion, end: insertion, source: document.uri.fsPath, message: "Try a different argument", replacement: "value", applicability: "maybe-incorrect" },
+        { start: 0, end: 0, source: document.uri.fsPath, kind: "add-import", candidate: "pkg::Item", destination: "main.vit", candidateCount: 2, destinationCount: 1, message: "Add an import for a candidate", replacement: "use pkg::Item;\n", applicability: "machine-applicable" },
+        { start: 0, end: 0, source: document.uri.fsPath, kind: "add-import", candidate: "pkg::Item", destination: "main.vit", candidateCount: 1, destinationCount: 1, message: "Add the unique import", replacement: "use pkg::Item;\n", applicability: "machine-applicable" },
       ],
     }]);
     testCollection.set(document.uri, [diagnostic]);
@@ -1030,18 +1101,26 @@ suite("Vitte extension", () => {
           range,
           vscode.CodeActionKind.QuickFix.value,
         )) ?? [];
-      assert.ok(actions.some((action) => action instanceof vscode.CodeAction && action.command?.command === "vitte.diagnostics.explain"),
-        "Every registered compiler diagnostic family should expose the compiler's full remediation command.");
       const fixes = actions.filter((action): action is vscode.CodeAction =>
-        action instanceof vscode.CodeAction && action.edit !== undefined && action.title.includes("missing comma"));
-      assert.equal(fixes.length, 1, "Only the compiler's machine-applicable replacement should be exposed.");
-      const edit = fixes[0]?.edit;
-      assert.ok(edit);
-      const entries = edit.entries();
-      assert.equal(entries.length, 1);
-      assert.equal(entries[0]?.[1][0]?.newText, ",");
-      assert.deepEqual(entries[0]?.[1][0]?.range.start, document.positionAt(insertion));
-      assert.deepEqual(entries[0]?.[1][0]?.range.end, document.positionAt(insertion));
+        action instanceof vscode.CodeAction && action.edit !== undefined);
+      assert.equal(fixes.length, 2, "Only safe edits and compiler-proven unique import targets should be exposed.");
+      assert.ok(fixes.every(action => action.kind?.value === vscode.CodeActionKind.QuickFix.value));
+      const commaFix = fixes.find(action => action.title.includes("missing comma"));
+      const importFix = fixes.find(action => action.title.includes("unique import"));
+      assert.ok(commaFix);
+      assert.ok(importFix);
+      assert.ok(commaFix.title.length <= 80, "Le titre doit résumer l’effet du correctif");
+      assert.notEqual(commaFix.isPreferred, true, "Un correctif compilateur ne doit pas être auto-appliqué");
+      assert.equal(commaFix.title, "Vitte: Insert the missing comma");
+      assert.equal(fixes.some(action => action.title.includes("Apply compiler suggestion")), false, "Un correctif sans effet expliqué est masqué");
+      assert.equal(fixes.some(action => action.title.includes("candidate")), false, "ambiguous import candidates are withheld");
+      const commaEntry = commaFix.edit?.entries()[0]?.[1][0];
+      assert.equal(commaEntry?.newText, ",");
+      assert.deepEqual(commaEntry?.range.start, document.positionAt(insertion));
+      assert.deepEqual(commaEntry?.range.end, document.positionAt(insertion));
+      const importEntry = importFix.edit?.entries()[0]?.[1][0];
+      assert.equal(importEntry?.newText, "use pkg::Item;\n");
+      assert.deepEqual(importEntry?.range.start, new vscode.Position(0, 0));
     } finally {
       storeCompilerSuggestions(document.uri.toString(), []);
       testCollection.delete(document.uri);

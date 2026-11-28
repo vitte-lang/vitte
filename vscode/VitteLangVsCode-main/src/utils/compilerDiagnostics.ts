@@ -9,18 +9,26 @@ export interface CompilerSpan {
 
 export interface CompilerLabel extends CompilerSpan {
   style?: string | undefined;
+  offsetUnit?: "utf8-byte" | "utf16" | undefined;
+  lineRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
   message: string;
 }
 
 export interface CompilerRelatedLocation extends CompilerSpan {
   message: string;
-  lineRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number };
+  offsetUnit?: "utf8-byte" | "utf16" | undefined;
+  lineRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
 }
 
 export interface CompilerSuggestion extends CompilerSpan {
   message: string;
   replacement?: string | undefined;
   applicability: string;
+  kind?: string | undefined;
+  candidate?: string | undefined;
+  destination?: string | undefined;
+  candidateCount?: number | undefined;
+  destinationCount?: number | undefined;
 }
 
 export interface CompilerDiagnostic extends CompilerSpan {
@@ -38,6 +46,7 @@ export interface CompilerDiagnostic extends CompilerSpan {
   actualType?: string | undefined;
   phase?: string | undefined;
   category?: string | undefined;
+  origin?: string | undefined;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -137,17 +146,42 @@ function helpFrom(item: JsonRecord, data: JsonRecord): string | undefined {
   return help.length > 0 ? Array.from(new Set(help)).join('\n') : undefined;
 }
 
-function labelsFrom(item: JsonRecord, data: JsonRecord, text: string, bytes: Buffer, fallbackSource: string): CompilerLabel[] {
+function labelsFrom(item: JsonRecord, data: JsonRecord, text: string, bytes: Buffer, fallbackSource: string, cwd: string): CompilerLabel[] {
   const rawLabels = Array.isArray(item.labels) ? item.labels : Array.isArray(data.labels) ? data.labels : [];
   return rawLabels.flatMap((raw): CompilerLabel[] => {
     const label = record(raw);
-    const span = spanOffsets(label.span ?? label, text, bytes, fallbackSource);
+    const rawSpan = record(label.span ?? label);
+    const source = string(rawSpan.source) ?? string(rawSpan.uri) ?? fallbackSource;
+    const sameFile = sourceMatches(source, fallbackSource, cwd);
+    const byteStart = number(rawSpan.start_byte) ?? number(rawSpan.startByte);
+    const byteEnd = number(rawSpan.end_byte) ?? number(rawSpan.endByte);
+    const span = !sameFile && byteStart !== undefined && byteEnd !== undefined
+      ? { source, start: byteStart, end: byteEnd }
+      : spanOffsets(rawSpan, text, bytes, source);
     const message = string(label.message);
-    return span && message ? [{ ...span, style: string(label.style), message }] : [];
+    const range = record(rawSpan.range);
+    const rangeStart = record(range.start);
+    const rangeEnd = record(range.end);
+    const lineRange = number(rangeStart.line) !== undefined && number(rangeStart.character) !== undefined
+        && number(rangeEnd.line) !== undefined && number(rangeEnd.character) !== undefined
+      ? {
+          startLine: number(rangeStart.line)!,
+          startCharacter: number(rangeStart.character)!,
+          endLine: number(rangeEnd.line)!,
+          endCharacter: number(rangeEnd.character)!,
+        }
+      : undefined;
+    return span && message ? [{
+      ...span,
+      style: string(label.style),
+      message,
+      offsetUnit: sameFile ? undefined : byteStart !== undefined && byteEnd !== undefined ? "utf8-byte" : "utf16",
+      lineRange,
+    }] : [];
   });
 }
 
-function relatedFrom(item: JsonRecord, data: JsonRecord, text: string, bytes: Buffer, fallbackSource: string): CompilerRelatedLocation[] {
+function relatedFrom(item: JsonRecord, data: JsonRecord, text: string, bytes: Buffer, fallbackSource: string, cwd: string): CompilerRelatedLocation[] {
   const result: CompilerRelatedLocation[] = [];
   const rawRelated = Array.isArray(item.relatedInformation)
     ? item.relatedInformation
@@ -161,8 +195,14 @@ function relatedFrom(item: JsonRecord, data: JsonRecord, text: string, bytes: Bu
     const lspStart = record(lspRange.start);
     const lspEnd = record(lspRange.end);
     const lspSource = string(location.uri) ?? string(related.source);
-    const span = spanOffsets(location.range ? { ...location, range: location.range } : related.span ?? related, text, bytes,
-      lspSource ?? fallbackSource);
+    const rawSpan = record(location.range ? { ...location, range: location.range } : related.span ?? related);
+    const source = lspSource ?? string(rawSpan.source) ?? fallbackSource;
+    const sameFile = sourceMatches(source, fallbackSource, cwd);
+    const byteStart = number(rawSpan.start_byte) ?? number(rawSpan.startByte);
+    const byteEnd = number(rawSpan.end_byte) ?? number(rawSpan.endByte);
+    const span = !sameFile && byteStart !== undefined && byteEnd !== undefined
+      ? { source, start: byteStart, end: byteEnd }
+      : spanOffsets(rawSpan, text, bytes, source);
     const message = string(related.message) ?? string(related.label);
     if (message && number(lspStart.line) !== undefined && number(lspStart.character) !== undefined
         && number(lspEnd.line) !== undefined && number(lspEnd.character) !== undefined) {
@@ -178,13 +218,17 @@ function relatedFrom(item: JsonRecord, data: JsonRecord, text: string, bytes: Bu
           endCharacter: number(lspEnd.character)!,
         },
       });
-    } else if (span && message) result.push({ ...span, message });
+    } else if (span && message) result.push({
+      ...span,
+      message,
+      offsetUnit: sameFile ? undefined : byteStart !== undefined && byteEnd !== undefined ? "utf8-byte" : "utf16",
+    });
   }
 
   // Secondary compiler labels carry the same useful source context when an LSP
   // server did not also produce standard `relatedInformation` entries.
   if (rawRelated.length === 0) {
-    result.push(...labelsFrom(item, data, text, bytes, fallbackSource)
+    result.push(...labelsFrom(item, data, text, bytes, fallbackSource, cwd)
       .filter(label => label.style !== 'primary')
       .map(({ style: _style, ...label }) => label));
   }
@@ -199,11 +243,18 @@ function suggestionsFrom(item: JsonRecord, data: JsonRecord, text: string, bytes
       string(suggestion.source) ?? fallbackSource);
     const applicability = string(suggestion.applicability)?.toLowerCase();
     if (!span || !applicability) return [];
+    const candidateRecord = record(suggestion.candidate);
+    const destinationRecord = record(suggestion.destination);
     return [{
       ...span,
       message: string(suggestion.message) ?? 'Apply compiler suggestion',
       replacement: typeof suggestion.replacement === 'string' ? suggestion.replacement : undefined,
       applicability,
+      kind: string(suggestion.kind) ?? string(suggestion.action),
+      candidate: string(suggestion.candidate) ?? string(candidateRecord.name),
+      destination: string(suggestion.destination) ?? string(destinationRecord.path) ?? string(destinationRecord.module),
+      candidateCount: number(suggestion.candidateCount) ?? number(suggestion.candidate_count),
+      destinationCount: number(suggestion.destinationCount) ?? number(suggestion.destination_count),
     }];
   });
 }
@@ -265,7 +316,7 @@ export function normalizeCompilerDiagnostics(payload: unknown, text: string, fil
       if (!byteDelta || !sourceMatches(entry.source, file, cwd)) return entry;
       return { ...entry, start: entry.start + byteDelta, end: entry.end + byteDelta };
     });
-    const labels = shiftSameFile(labelsFrom(item, data, text, bytes, source ?? fallbackSource));
+    const labels = shiftSameFile(labelsFrom(item, data, text, bytes, source ?? fallbackSource, cwd));
     result.push({
       start,
       end,
@@ -278,7 +329,7 @@ export function normalizeCompilerDiagnostics(payload: unknown, text: string, fil
       title: string(item.title) ?? string(item.message),
       help: helpFrom(item, data),
       labels: labels.map(label => ({ ...label, source: label.source && sourceMatches(label.source, file, cwd) ? file : label.source })),
-      related: shiftSameFile(relatedFrom(item, data, text, bytes, source ?? fallbackSource)),
+      related: shiftSameFile(relatedFrom(item, data, text, bytes, source ?? fallbackSource, cwd)),
       suggestions: shiftSameFile(suggestionsFrom(item, data, text, bytes, source ?? fallbackSource))
         .map(suggestion => ({ ...suggestion, source: suggestion.source && sourceMatches(suggestion.source, file, cwd) ? file : suggestion.source })),
       expected: string(data.expected) ?? string(record(item.context).expected),
@@ -287,6 +338,7 @@ export function normalizeCompilerDiagnostics(payload: unknown, text: string, fil
       actualType: string(data.actualType) ?? string(data.actual_type),
       phase: string(data.phase) ?? string(item.phase),
       category: string(data.category) ?? string(item.category),
+      origin: string(data.origin) ?? string(item.origin),
     });
   }
   return result;

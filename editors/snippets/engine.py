@@ -37,6 +37,7 @@ def generated_files(root):
     ulti = ['# Generated from editors/snippets/catalog.json.']
     geany = ['# Generated from editors/snippets/catalog.json.', '[Vitte]']
     vscode = {}
+    packaged_vscode = {}
     for entry in catalog:
         prefix, description, body = entry['prefix'], entry['description'], entry['body']
         ulti += ['', f'snippet {prefix} "{description}"', body, 'endsnippet']
@@ -50,15 +51,36 @@ def generated_files(root):
             lambda m: (m.group(2) or '') + '%cursor%', body)
         geany.append(prefix + '=' + geany_body.replace('\\', '\\\\').replace('\t', '\\t').replace('\n', '\\n'))
         vscode[description] = {'prefix': prefix, 'body': body.splitlines(), 'description': description}
+        packaged_vscode[description] = {
+            'scope': 'vit,vitte',
+            'prefix': prefix,
+            'body': body.splitlines(),
+            'description': description,
+        }
     result[root / 'vim/ultisnips/vitte.snippets'] = '\n'.join(ulti) + '\n'
     result[root / 'geany/snippets.vitte.conf'] = '\n'.join(geany) + '\n'
     result[root / 'snippets/vitte.code-snippets'] = json.dumps(vscode, indent=2) + '\n'
+    vscode_package = root.parent / 'vscode/VitteLangVsCode-main'
+    if (vscode_package / 'package.json').is_file():
+        result[vscode_package / 'snippets/vitte.json'] = json.dumps(packaged_vscode, indent=2, ensure_ascii=False) + '\n'
     return result
 
 
 def generate(root, check=False):
     stale = []
-    for path, content in generated_files(root).items():
+    files = generated_files(root)
+    emacs_dir = root / 'emacs/snippets/vitte-mode'
+    expected_emacs = {path for path in files if path.parent == emacs_dir}
+    if emacs_dir.is_dir():
+        for path in emacs_dir.iterdir():
+            if path in expected_emacs or not path.is_file():
+                continue
+            if path.read_text(encoding='utf-8').startswith('# -*- mode: snippet -*-\n# name: '):
+                if check:
+                    stale.append(str(path))
+                else:
+                    path.unlink()
+    for path, content in files.items():
         if check:
             if not path.is_file() or path.read_text() != content: stale.append(str(path))
         else:

@@ -49,11 +49,17 @@ You can invoke this action from the status bar menu, the startup toast, or direc
 
 ## Running the Debugger
 
-Launch configurations for Vitte targets are generated automatically. To debug:
+The bundled native debugger is experimental and disabled by default. Enable
+`vitte.debug.nativeBackend` in the active workspace folder's settings to expose
+its launch templates. Linux x86_64 / Ubuntu 24.04 with Vitte CLI 0.1.1, LLDB
+and Expect is the only platform candidate; CI still needs to validate this exact
+extension revision. To debug:
 
 1. Set a breakpoint in the active `.vit`, `.vitl`, or legacy `.vitte` document.
-2. Press **F5** (Vitte: Launch current file) or select another configuration from the Run and Debug view.
-3. Step through code, inspect scalar locals and simple integer expressions, and review the call stack as you would in any Visual Studio Code debugging session. Complex values still require an external DAP adapter.
+2. On that candidate platform, select **Vitte: Launch current file (native, experimental)** to compile with debug flags, or **Vitte: Debug built executable (DWARF)** to build the active file and launch its executable. The current extension revision still needs its own CI validation.
+3. When DWARF is present, the adapter exposes source and conditional breakpoints, stepping, continue, pause, termination, locals, parameters, aggregate values, watches and call frames. Native signals map to Vitte lines only when line metadata exists; structured runtime diagnostics and generated multi-module mappings are unavailable.
+
+Other platforms, non-default native targets, or executables without Vitte DWARF are unsupported by the bundled backend. Configure an external DAP adapter, or use **Vitte: Build** and **Vitte: Run** with the selected compiler and project settings. The extension never switches compiler frontend or project configuration silently.
 
 Define reusable launch recipes in `.vscode/launch.json` when you need additional control:
 
@@ -62,12 +68,16 @@ Define reusable launch recipes in `.vscode/launch.json` when you need additional
   "type": "vitte",
   "request": "launch",
   "name": "Vitte: Launch current file",
-  "program": "vitte",
-  "args": ["run", "${file}"],
-  "cwd": "${workspaceFolder}",
+  "program": "${file}",
+  "nativeBackend": true,
+  "args": [],
   "stopOnEntry": true
 }
 ```
+
+This native launch recipe is verified only on Linux x86_64 / Ubuntu 24.04 with compiler 0.1.1. It uses the selected workspace folder's project root, compiler, `vitte.build.env`, `vitte.modulePaths`, `vitte.build.target`, manifest and compiler arguments. A custom `target`, `compilerArgs` or `manifestPath` in `launch.json` overrides its corresponding setting.
+
+Compiler 0.1.1 does not expose reliable test discovery metadata or structured test results. The extension therefore does not populate the Test Explorer; **Vitte: Test Current File** explains this limit, while a compiler checkout's existing Make `test` target remains available as a task.
 
 Use `tests/strict_ok.vit` in the main Vitte repository as a small smoke fixture when validating local toolchain behavior.
 

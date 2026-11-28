@@ -30,10 +30,40 @@ const { findUniqueModulePathFileMove } = require('../server/out/src/moduleResolv
 const { indexDocument, getDocumentIndex, clearIndex } = require('../server/out/src/indexer');
 const { provideSignatureHelp, provideSignatureHelpWithImports } = require('../server/out/src/signatureHelp');
 const { provideHover, provideHoverWithImports } = require('../server/out/src/semantic');
-const { provideFormattingEdits, provideRangeFormattingEdits } = require('../server/out/src/formatting');
+const { provideInlayHints } = require('../server/out/src/inlay');
+const { provideFoldingRanges, provideSelectionRanges } = require('../server/out/src/documentFeatures');
+const { provideDocumentLinks } = require('../server/out/src/documentLinks');
+const { resolveVitteProjectScope, resolveProjectPath } = require('../server/out/src/projectScope');
 const { isCapabilityAdvertised } = require('../server/out/src/intellisenseCapabilities');
 const root = path.resolve(__dirname, '..');
 const doc = (text) => TextDocument.create('file:///vitte-editor-test.vit', 'vit', 1, text);
+
+test('multi-root LSP project scopes select the containing folder and its own CLI config', (t) => {
+  const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-project-scope-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const alpha = path.join(temp, 'alpha');
+  const nested = path.join(alpha, 'nested');
+  const beta = path.join(temp, 'beta');
+  fs.mkdirSync(path.join(nested, 'src'), { recursive: true });
+  fs.mkdirSync(path.join(beta, '.vitte'), { recursive: true });
+  fs.writeFileSync(path.join(alpha, 'vitte.toml'), 'profile = "debug"\n');
+  fs.writeFileSync(path.join(beta, '.vitte', 'config'), 'profile = "release"\n');
+  const alphaFile = path.join(nested, 'src', 'main.vit');
+  const betaFile = path.join(beta, 'main.vit');
+  fs.writeFileSync(alphaFile, 'proc main() {}\n');
+  fs.writeFileSync(betaFile, 'proc main() {}\n');
+
+  const alphaScope = resolveVitteProjectScope(require('node:url').pathToFileURL(alphaFile).toString(), [alpha, nested, beta]);
+  const betaScope = resolveVitteProjectScope(require('node:url').pathToFileURL(betaFile).toString(), [alpha, beta]);
+  assert.equal(alphaScope.workspaceRoot, nested, 'the most specific VS Code folder owns the file');
+  assert.equal(alphaScope.projectRoot, alpha, 'nearest parent CLI config is detected');
+  assert.equal(alphaScope.configFile, path.join(alpha, 'vitte.toml'));
+  assert.equal(betaScope.workspaceRoot, beta);
+  assert.equal(betaScope.projectRoot, beta);
+  assert.equal(betaScope.configFile, path.join(beta, '.vitte', 'config'));
+  assert.equal(resolveVitteProjectScope(require('node:url').pathToFileURL(alphaFile).toString(), [alpha, nested], 'build').projectRoot, path.join(nested, 'build'));
+  assert.equal(resolveProjectPath('modules', alphaScope.projectRoot), path.join(alpha, 'modules'));
+});
 let grammar;
 before(async () => {
   const wasm = fs.readFileSync(require.resolve('vscode-oniguruma/release/onig.wasm'));
@@ -66,7 +96,9 @@ function semanticTokens(text) {
     const value = document.getText({ start: { line, character }, end: { line, character: character + data[i + 2] } });
     assert.ok(data[i + 2] > 0);
     assert.ok(!/[\r\n]/.test(value));
-    tokens.push({ value, type: types[data[i + 3]] });
+    const modifiers = getSemanticTokensLegend().tokenModifiers;
+    const modifierBits = data[i + 4];
+    tokens.push({ value, type: types[data[i + 3]], modifiers: modifiers.filter((_, index) => modifierBits & (1 << index)) });
   }
   return tokens;
 }
@@ -525,19 +557,6 @@ test('rename resolves symbol identity, keeps aliases scoped, and ignores comment
   assert.equal(unresolvedNamespaceTarget.target, undefined, 'a same-named global in another namespace is not treated as a reference');
 });
 
-test('formatter normalizes whitespace and is idempotent', () => {
-  const original = doc('proc  main()   {  return 0; }   ');
-  const edits = provideFormattingEdits(original);
-  assert.equal(edits.length, 1);
-  assert.match(edits[0].newText, /proc main\(\)/);
-  assert.ok(edits[0].newText.endsWith('\n'));
-  const formatted = doc(edits[0].newText);
-  assert.deepEqual(provideFormattingEdits(formatted), []);
-  const rangeEdits = provideRangeFormattingEdits(original, { start: { line: 0, character: 0 }, end: { line: 0, character: original.getText().length } });
-  assert.equal(rangeEdits.length, 1);
-  assert.match(rangeEdits[0].newText, /proc main\(\)/);
-});
-
 test('semantic tokens classify types, mutable bindings, fields and canonical numbers', () => {
   const text = 'form Point { x: i32 }\r\nproc run() -> i32 {\r\n let mut result: i32 = 0XFF;\r\n /* outer\r\n\r\n /* inner */ tail */\r\n return result;\r\n}\r\n';
   const tokens = semanticTokens(text);
@@ -550,6 +569,66 @@ test('semantic tokenization colors logical word operators and ordinary identifie
   const tokens = semanticTokens('proc run(left: bool, right: bool) -> bool { return left and not right or left is true; }');
   for (const word of ['and', 'not', 'or', 'is']) assert.ok(tokens.some(token => token.value === word && token.type === 'operator'), word);
   assert.ok(tokens.some(token => token.value === 'left' && token.type === 'parameter'));
+});
+
+test('semantic tokens classify declarations, attributes, variants, modifiers and punctuation while masking strings and comments', () => {
+  const text = 'pub async proc run(value: bool) { #[hot::cold] let mut item = value && true; const fixed = 1; /* run(fake) */ let text = "item && run"; }\npick State { Ready, Busy }';
+  const tokens = semanticTokens(text);
+  const token = (value, type) => tokens.find(candidate => candidate.value === value && (!type || candidate.type === type));
+  assert.equal(token('run', 'function')?.modifiers.includes('declaration'), true);
+  assert.equal(token('run', 'function')?.modifiers.includes('public'), true);
+  assert.equal(token('run', 'function')?.modifiers.includes('async'), true);
+  assert.ok(token('hot', 'decorator'));
+  assert.ok(token('cold', 'decorator'));
+  assert.ok(token('Ready', 'enumMember'));
+  assert.ok(token('&&', 'operator'));
+  assert.equal(token('item', 'variable')?.modifiers.includes('modification'), true);
+  assert.equal(token('fixed', 'variable')?.modifiers.includes('readonly'), true);
+  assert.ok(!tokens.some(candidate => candidate.value === 'fake'));
+  assert.equal(tokens.filter(candidate => candidate.value === 'item' && candidate.type === 'variable').length, 1, 'string contents do not leak into identifier tokens');
+  const legend = getSemanticTokensLegend();
+  assert.ok(legend.tokenModifiers.includes('readonly'));
+  assert.ok(legend.tokenModifiers.includes('modification'));
+});
+
+test('inlay hints show only literal types and uniquely resolved parameter names', async () => {
+  const document = doc('proc combine(left: i32, right: bool) -> i32 { return left; }\nproc main() { let count = 3; combine("word", true); }');
+  const hints = await provideInlayHints(document, { start: { line: 0, character: 0 }, end: { line: 1, character: 100 } }, {}, {});
+  assert.ok(hints.some(hint => hint.label === ': int'));
+  assert.ok(hints.some(hint => hint.label === 'left:'));
+  assert.ok(hints.some(hint => hint.label === 'right:'));
+  assert.ok(!hints.some(hint => /^arg\d+:$/.test(hint.label)));
+  assert.deepEqual(await provideInlayHints(document, { start: { line: 0, character: 0 }, end: { line: 1, character: 100 } }, { typeHints: false, parameterHints: false }, {}), []);
+});
+
+test('folding and selection ranges follow lexical comments and canonical brace scopes', () => {
+  const document = doc('proc outer() {\n  /* comment {\n     body }\n  */\n  let text = "{ ignored }";\n  if true {\n    return 1;\n  }\n}\n');
+  const folds = provideFoldingRanges(document);
+  assert.ok(folds.some(range => range.startLine === 0 && range.endLine === 8));
+  assert.ok(folds.some(range => range.kind === 'comment' && range.startLine === 1 && range.endLine === 3));
+  assert.ok(folds.some(range => range.startLine === 5 && range.endLine === 7));
+  const selections = provideSelectionRanges(document, [{ line: 6, character: 11 }]);
+  const chain = [];
+  for (let range = selections[0]; range; range = range.parent) chain.push(document.getText(range.range));
+  assert.ok(chain.some(value => value.includes('return 1;')));
+  assert.ok(chain.some(value => value.includes('if true')));
+  assert.ok(chain.some(value => value.includes('proc outer')));
+});
+
+test('document links resolve one workspace module and omit ambiguous or external targets', async () => {
+  const workspace = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-doclinks-'));
+  try {
+    fs.writeFileSync(path.join(workspace, 'lib.vit'), 'export proc api() {}');
+    const importer = TextDocument.create(require('node:url').pathToFileURL(path.join(workspace, 'main.vit')).toString(), 'vit', 1, 'use lib;\n// use missing;\nlet text = "use missing";');
+    const links = await provideDocumentLinks(importer, { workspaceRoots: [workspace] });
+    assert.equal(links.length, 1);
+    assert.match(links[0].target, /lib\.vit$/);
+    assert.equal(importer.getText(links[0].range), 'lib');
+    fs.writeFileSync(path.join(workspace, 'lib.vitte'), 'export proc api() {}');
+    assert.deepEqual(await provideDocumentLinks(importer, { workspaceRoots: [workspace] }), [], 'ambiguous module mappings are not linked');
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
 });
 
 test('TextMate highlights current keywords and every canonical numeric form', () => {
@@ -572,10 +651,38 @@ test('TextMate retains nested comments and raw strings until their real terminat
 
 test('snippets use parser-compatible match, pick, import and external declarations', () => {
   const snippets = JSON.parse(fs.readFileSync(path.join(root, 'snippets/vitte.json'), 'utf8'));
-  assert.ok(snippets['match expression'].body.join('\n').includes(' => {'));
-  assert.ok(!snippets['pick declaration'].body.join('\n').includes('case '));
-  assert.ok(snippets['extern C block'].body.join('\n').startsWith('extern "C" proc '));
-  for (const name of ['use declaration', 'use alias', 'export symbols', 'type alias', 'constant', 'return value']) assert.ok(snippets[name].body.at(-1).endsWith(';'), name);
+  const byPrefix = Object.fromEntries(Object.values(snippets).map(snippet => [snippet.prefix, snippet]));
+  assert.ok(byPrefix.match.body.join('\n').includes(' => {'));
+  assert.ok(!byPrefix.pick.body.join('\n').includes('case '));
+  assert.ok(byPrefix.extern.body.join('\n').startsWith('extern "C" proc '));
+  assert.match(byPrefix.use.body.join('\n'), /use .*::\{.*\};/);
+  assert.match(byPrefix.module.body.join('\n'), /^space .*;\n\n\$0$/);
+  for (const prefix of ['use', 'useas', 'exports', 'type', 'const', 'return']) assert.ok(byPrefix[prefix].body.at(-1).trim().endsWith(';'), prefix);
+  const allBodies = Object.values(snippets).map(snippet => snippet.body.join('\n')).join('\n');
+  assert.doesNotMatch(allBodies, /\bgive\b|<<<|package\/module\.\$\{/);
+
+  const sharedCatalogPath = path.resolve(root, '../../editors/snippets/catalog.json');
+  if (fs.existsSync(sharedCatalogPath)) {
+    const catalog = JSON.parse(fs.readFileSync(sharedCatalogPath, 'utf8'));
+    const expected = Object.fromEntries(catalog.map(entry => [entry.description, {
+      scope: 'vit,vitte', prefix: entry.prefix, body: entry.body.split('\n'), description: entry.description,
+    }]));
+    assert.deepEqual(snippets, expected, 'the packaged VS Code snippets must be generated from the maintained shared catalog');
+  }
+});
+
+test('language configuration uses canonical comment pairs and stable block indentation', () => {
+  const config = JSON.parse(fs.readFileSync(path.join(root, 'language-configuration.json'), 'utf8'));
+  assert.equal(config.comments.lineComment, '//');
+  assert.deepEqual(config.comments.blockComment, ['/*', '*/']);
+  for (const pair of [['{', '}'], ['[', ']'], ['(', ')']]) assert.ok(config.brackets.some(item => JSON.stringify(item) === JSON.stringify(pair)));
+  for (const pair of [['{', '}'], ['[', ']'], ['(', ')'], ['/*', '*/']]) {
+    assert.ok(config.autoClosingPairs.some(item => item.open === pair[0] && item.close === pair[1]), `missing auto-close ${pair.join('')}`);
+    assert.ok(config.surroundingPairs.some(item => item.open === pair[0] && item.close === pair[1]), `missing surround ${pair.join('')}`);
+  }
+  assert.ok(config.onEnterRules.some(rule => /proc\|form\|pick/.test(rule.beforeText ?? '')));
+  assert.ok(config.indentationRules.increaseIndentPattern.includes('\\{'));
+  assert.doesNotMatch(JSON.stringify(config), /<<<|>>>|\bcompiler\||\bquery\|/);
 });
 
 test('versioned capability matrix records evidence and gates advertised behavior', () => {
@@ -593,6 +700,12 @@ test('versioned capability matrix records evidence and gates advertised behavior
   const nativeDebug = matrix.editorFeatures.find(feature => feature.id === 'native-debug');
   assert.equal(nativeDebug.advertised, false, 'native debugging is not advertised without passing evidence for the active toolchain/platform');
   assert.equal(nativeDebug.followUp, 'CAP-DBG-001');
+  const formatting = matrix.editorFeatures.find(feature => feature.id === 'formatting');
+  assert.equal(formatting.status, 'unavailable');
+  assert.equal(formatting.advertised, false, 'formatting needs a canonical compatible formatter');
+  assert.equal(matrix.editorFeatures.find(feature => feature.id === 'editor-configuration').advertised, true);
+  assert.equal(matrix.editorFeatures.find(feature => feature.id === 'on-type-formatting').advertised, false, 'unverified typing rewrites stay disabled');
+  assert.equal(matrix.editorFeatures.find(feature => feature.id === 'organize-imports').advertised, false);
   for (const group of [matrix.compilerFrontends, matrix.cliCommands, matrix.platforms]) {
     for (const entry of group) assert.ok(entry.evidence?.length, `${entry.id} has no evidence`);
   }
@@ -606,23 +719,34 @@ test('versioned capability matrix records evidence and gates advertised behavior
   assert.ok(docs.includes(matrix.matrixVersion), 'documentation must identify the same matrix version');
 });
 
-test('extension manifest exposes the matrix and keeps heuristic defaults off', () => {
+test('extension manifest exposes the matrix and keeps unverified hints off', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const commands = manifest.contributes.commands.map(command => command.command);
   assert.ok(commands.includes('vitte.showCapabilities'));
+  assert.ok(commands.includes('vitte.detectProject'));
+  assert.ok(commands.includes('vitte.check'));
+  assert.ok(commands.includes('vitte.formatDocument'));
+  assert.match(manifest.contributes.commands.find(command => command.command === 'vitte.formatDocument').title, /Unavailable/);
   const settings = manifest.contributes.configuration.properties;
+  assert.equal(settings['vitte.features.formatting'], undefined);
+  assert.equal(settings['vitte.format.onSave'], undefined);
+  assert.match(settings['vitte.fmt.path'].description, /playground stdin protocol only/i);
   assert.equal(settings['vitte.suggestions.localEngine.enabled'].default, false);
   assert.equal(settings['vitte.suggestions.ghostTextTop1Stable'].default, false);
   assert.equal(settings['vitte.features.workspaceSymbols'].default, true);
-  assert.equal(settings['vitte.features.inlayHints'].default, false);
-  assert.match(settings['vitte.features.inlayHints'].description, /not advertised/i);
+  assert.equal(settings['vitte.features.inlayHints'].default, true);
+  assert.match(settings['vitte.features.inlayHints'].description, /source-derived/i);
+  assert.equal(settings['vitte.inlayHints.returnHints'].default, false);
+  assert.equal(settings['vitte.inlayHints.aliasHints'].default, false);
+  assert.ok(!commands.includes('vitte.codelens.runProc'));
+  assert.ok(!commands.includes('vitte.codelens.explainCode'));
   assert.equal(manifest.main, './out/extension.js');
   assert.equal(manifest.engines.vscode, '^1.105.0');
   const capabilityMatrix = JSON.parse(fs.readFileSync(path.join(root, 'server/src/capability-matrix.json'), 'utf8'));
   assert.equal(capabilityMatrix.versions.extension, manifest.version);
   assert.equal(capabilityMatrix.versions.languageServer.split('.').slice(0, 2).join('.'), manifest.version.split('.').slice(0, 2).join('.'));
   assert.deepEqual(new Set(manifest.contributes.languages.flatMap(language => language.extensions)), new Set(['.vit', '.vitl', '.vitte']));
-  for (const event of ['onLanguage:vit', 'onLanguage:vitte', 'workspaceContains:vitte.toml']) {
+  for (const event of ['onLanguage:vit', 'onLanguage:vitte', 'workspaceContains:vitte.toml', 'workspaceContains:.vitte/config']) {
     assert.ok(manifest.activationEvents.includes(event), `missing activation event ${event}`);
   }
   assert.ok(!manifest.activationEvents.includes('*'));
@@ -636,9 +760,16 @@ test('extension manifest exposes the matrix and keeps heuristic defaults off', (
   assert.equal(settings['vitte.lsp.path'].type, 'string');
   assert.equal(settings['vitte.lsp.args'].type, 'array');
   assert.equal(settings['vitte.build.args'].type, 'array');
+  assert.equal(settings['vitte.build.target'].type, 'string');
+  assert.equal(settings['vitte.build.target'].scope, 'resource');
+  assert.equal(settings['vitte.project.manifestPath'].type, 'string');
   assert.equal(settings['vitte.modulePaths'].type, 'array');
   assert.equal(settings['vitte.modulePaths'].scope, 'resource');
   assert.equal(settings['vitte.modulePaths'].default.length, 0);
+  const taskDefinition = manifest.contributes.taskDefinitions.find(task => task.type === 'vitte');
+  assert.ok(taskDefinition.properties.command.enum.includes('check'));
+  assert.equal(taskDefinition.properties.programArgs.type, 'array');
+  assert.equal(manifest.contributes.problemMatchers.find(matcher => matcher.name === '$vitte').owner, 'vitte');
   assert.ok(!manifest.files, 'package uses .vscodeignore so VSCE includes runtime dependencies by default');
 });
 
@@ -662,6 +793,7 @@ test('bundled server serves editor features, navigation and workspace symbols ov
     capabilities: {
       workspace: {
         workspaceEdit: { documentChanges: true },
+        workspaceFolders: true,
         fileOperations: { willRename: true },
       },
     },
@@ -671,17 +803,21 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   assert.ok(initialized.capabilities.completionProvider);
   assert.ok(initialized.capabilities.completionProvider.triggerCharacters.length > 0);
   assert.equal(initialized.capabilities.completionProvider.resolveProvider, true);
-  for (const capability of ['hoverProvider', 'signatureHelpProvider', 'documentSymbolProvider', 'workspaceSymbolProvider', 'documentFormattingProvider', 'documentRangeFormattingProvider', 'definitionProvider', 'declarationProvider', 'typeDefinitionProvider', 'implementationProvider', 'referencesProvider', 'renameProvider', 'codeActionProvider', 'semanticTokensProvider']) {
+  for (const capability of ['hoverProvider', 'signatureHelpProvider', 'documentSymbolProvider', 'workspaceSymbolProvider', 'definitionProvider', 'declarationProvider', 'typeDefinitionProvider', 'implementationProvider', 'referencesProvider', 'renameProvider', 'codeActionProvider', 'semanticTokensProvider', 'inlayHintProvider', 'codeLensProvider', 'foldingRangeProvider', 'selectionRangeProvider', 'documentLinkProvider']) {
     assert.ok(initialized.capabilities[capability], `missing tested LSP capability ${capability}`);
   }
-  for (const capability of ['inlayHintProvider', 'callHierarchyProvider', 'typeHierarchyProvider']) {
+  assert.equal(initialized.capabilities.documentFormattingProvider, undefined, 'no canonical compatible formatter is available');
+  assert.equal(initialized.capabilities.documentRangeFormattingProvider, undefined, 'range formatting is unavailable without the canonical formatter');
+  assert.equal(initialized.capabilities.documentOnTypeFormattingProvider, undefined, 'typing must not trigger unverified source rewrites');
+  for (const capability of ['callHierarchyProvider', 'typeHierarchyProvider']) {
     assert.equal(initialized.capabilities[capability], undefined, `unverified capability ${capability} must not be advertised`);
   }
   assert.ok(initialized.capabilities.workspace.fileOperations.willRename);
+  assert.equal(initialized.capabilities.workspace.workspaceFolders.changeNotifications, true);
   await connection.sendNotification('initialized', {});
   const matrix = await connection.sendRequest('vitte/capabilityMatrix');
   assert.equal(matrix.schema, 'vitte-capabilities@1');
-  assert.ok(matrix.editorFeatures.some(feature => feature.id === 'inlay-hints' && !feature.advertised && !feature.enabled));
+  assert.ok(matrix.editorFeatures.some(feature => feature.id === 'inlay-hints' && feature.advertised && feature.enabled));
   assert.ok(matrix.editorFeatures.filter(feature => feature.advertised).every(feature => feature.evidence.length > 0));
   const uri = 'file:///vitte-protocol-test.vit';
   const text = 'space editor_test;\nproc editorTarget() -> i32 { return 0; }\nret';
@@ -690,6 +826,12 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   assert.ok((Array.isArray(completions) ? completions : completions.items).some(item => item.label === 'return'));
   const tokens = await connection.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri } });
   assert.ok(tokens.data.length > 0);
+  assert.ok(tokens.resultId);
+  const changedText = text.replace('return 0', 'return 1000');
+  await connection.sendNotification('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: changedText }] });
+  const delta = await connection.sendRequest('textDocument/semanticTokens/full/delta', { textDocument: { uri }, previousResultId: tokens.resultId });
+  assert.ok(delta.resultId && Array.isArray(delta.edits), 'semantic tokens return a versioned delta');
+  assert.ok(delta.edits.some(edit => edit.deleteCount > 0 || edit.data?.length > 0));
   const notRenameable = await connection.sendRequest('textDocument/prepareRename', { textDocument: { uri }, position: { line: 2, character: 1 } });
   assert.equal(notRenameable, null, 'unsupported and unresolved tokens have an explicit unavailable prepare-rename result');
   const symbols = await connection.sendRequest('textDocument/documentSymbol', { textDocument: { uri } });
@@ -721,6 +863,34 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   assert.ok(implementations.some(location => location.range.start.line === 2));
   const references = await connection.sendRequest('textDocument/references', { textDocument: { uri: navigationUri }, position: navAt('editorUse', 2), context: { includeDeclaration: true } });
   assert.ok(references.some(location => location.range.start.line === 3));
+  const lenses = await connection.sendRequest('textDocument/codeLens', { textDocument: { uri: navigationUri } });
+  assert.ok(lenses.some(lens => lens.command?.title === 'Find references' && lens.command.command === 'vitte.codelens.openRefs'));
+
+  const presentationUri = 'file:///vitte-presentation.vit';
+  const presentationText = [
+    'proc combine(left: i32, right: bool) -> i32 {',
+    '  return left;',
+    '}',
+    'proc main() {',
+    '  let count = 3;',
+    '  combine(count, true);',
+    '}',
+  ].join('\n');
+  await connection.sendNotification('textDocument/didOpen', { textDocument: { uri: presentationUri, languageId: 'vit', version: 1, text: presentationText } });
+  const presentationDoc = TextDocument.create(presentationUri, 'vit', 1, presentationText);
+  const inlayHints = await connection.sendRequest('textDocument/inlayHint', {
+    textDocument: { uri: presentationUri },
+    range: { start: { line: 0, character: 0 }, end: { line: 6, character: 0 } },
+  });
+  assert.ok(inlayHints.some(hint => hint.label === ': int'));
+  assert.ok(inlayHints.some(hint => hint.label === 'left:'));
+  const folds = await connection.sendRequest('textDocument/foldingRange', { textDocument: { uri: presentationUri } });
+  assert.ok(folds.some(range => range.startLine === 0 && range.endLine === 2));
+  const selection = await connection.sendRequest('textDocument/selectionRange', {
+    textDocument: { uri: presentationUri },
+    positions: [presentationDoc.positionAt(presentationText.indexOf('return left'))],
+  });
+  assert.ok(selection[0]?.parent, 'selection ranges include enclosing syntax scopes');
 
   const importerPath = path.join(workspace, 'disk-use.vit');
   const importerUri = require('node:url').pathToFileURL(importerPath).toString();
@@ -733,6 +903,9 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   });
   assert.ok(crossFileReferences.some(location => location.uri.endsWith('/diskapi.vit')));
   assert.ok(crossFileReferences.some(location => location.uri === importerUri));
+  const links = await connection.sendRequest('textDocument/documentLink', { textDocument: { uri: importerUri } });
+  assert.equal(links.length, 1);
+  assert.ok(links[0].target.endsWith('/diskapi.vit'));
 
   const workspaceApi = path.join(workspace, 'diskapi.vit');
   const workspaceApiUri = require('node:url').pathToFileURL(workspaceApi).toString();
@@ -817,7 +990,10 @@ test('bundled server serves editor features, navigation and workspace symbols ov
     range: actionRange,
     context: { diagnostics: [{ range: actionRange, message: 'trailing whitespace', severity: 2, code: 'format.trailingWhitespace' }] },
   });
-  assert.ok(whitespaceActions.some(action => action.title === 'Vitte: Trim trailing whitespace'));
+  const trimWhitespace = whitespaceActions.find(action => action.title === 'Vitte: Trim trailing whitespace');
+  assert.ok(trimWhitespace);
+  assert.equal(trimWhitespace.isPreferred, false, 'a safe edit is still applied only after the user selects it');
+  assert.ok(trimWhitespace.title.length <= 80, 'the action title explains the resulting change briefly');
   const syntaxActions = await connection.sendRequest('textDocument/codeAction', {
     textDocument: { uri: actionUri },
     range: actionRange,

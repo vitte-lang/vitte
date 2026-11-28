@@ -1,6 +1,6 @@
 // server.ts — Vitte/Vit hardened LSP server
 // Goals:
-// - Full capabilities: completion, hover, symbols, def/refs, rename, formatting, diagnostics, semantic tokens
+// - Tested capabilities: completion, hover, symbols, def/refs, rename, diagnostics, semantic tokens
 // - Dynamic config management + watchers + graceful shutdown
 // - Lint with debounce, size guards, cancellation
 // - Controlled logging, lightweight metrics, pervasive try/catch
@@ -15,6 +15,8 @@ import {
   Range,
   DidChangeConfigurationNotification,
   FileChangeType,
+  CodeLens,
+  Range as LspRange,
 } from "vscode-languageserver/node";
 import type {
   Connection,
@@ -26,11 +28,19 @@ import type {
   Hover,
   DocumentSymbolParams,
   DocumentSymbol,
-  DocumentFormattingParams,
-  DocumentRangeFormattingParams,
   SemanticTokens,
   SemanticTokensParams,
+  SemanticTokensDeltaParams,
+  SemanticTokensDelta,
+  SemanticTokensEdit,
   SemanticTokensLegend,
+  CodeLensParams,
+  FoldingRangeParams,
+  SelectionRangeParams,
+  DocumentLink,
+  DocumentLinkParams,
+  FoldingRange,
+  SelectionRange,
   WorkspaceSymbolParams,
   WorkspaceSymbol,
   DefinitionParams,
@@ -89,9 +99,11 @@ import {
   typeHierarchySupertypes,
   typeHierarchySubtypes,
 } from "./navigation.js";
-import { provideFormattingEdits, provideRangeFormattingEdits } from "./formatting.js";
+import { sourceIndex } from "./sourceSymbols.js";
 import { getSemanticTokensLegend, buildSemanticTokens, provideHoverWithImports } from "./semantic.js";
 import { provideInlayHints, type InlayHintPrefs } from "./inlay.js";
+import { provideFoldingRanges, provideSelectionRanges } from "./documentFeatures.js";
+import { provideDocumentLinks } from "./documentLinks.js";
 import { provideSignatureHelpWithImports } from "./signatureHelp.js";
 import { getIntelliSenseCapabilities, isCapabilityAdvertised, LANGUAGE_SERVER_VERSION } from "./intellisenseCapabilities.js";
 import { lintToPublishable } from "./lint.js";
@@ -101,7 +113,7 @@ import * as fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { Dirent } from "node:fs";
+import { resolveProjectPath, resolveVitteProjectScope } from "./projectScope";
 
 const createSemanticTokens: (doc: TextDocument) => SemanticTokens = buildSemanticTokens;
 
@@ -126,13 +138,32 @@ const documents = new TextDocuments<TextDocument>(TextDocument);
 function emptySemanticTokens(): SemanticTokens {
   return { data: [] };
 }
+const semanticTokenHistory = new Map<string, Map<string, number[]>>();
+let semanticTokenResultSequence = 0;
+
+function rememberSemanticTokens(uri: string, data: number[]): string {
+  const resultId = `vitte-${++semanticTokenResultSequence}`;
+  // Large documents still receive correct full semantic tokens, but do not
+  // retain oversized snapshots solely to calculate future deltas.
+  if (data.length > 50_000) return resultId;
+  let history = semanticTokenHistory.get(uri);
+  if (!history) {
+    history = new Map<string, number[]>();
+    semanticTokenHistory.set(uri, history);
+  }
+  semanticTokenHistory.delete(uri);
+  semanticTokenHistory.set(uri, history);
+  history.set(resultId, data);
+  while (history.size > 2) history.delete(history.keys().next().value!);
+  while (semanticTokenHistory.size > 32) semanticTokenHistory.delete(semanticTokenHistory.keys().next().value!);
+  return resultId;
+}
 
 /* ------------------------------- Configuration --------------------------- */
 interface ServerSettings {
   trace: "off" | "messages" | "verbose";
   traceSampleRate: number;
   lintDebounceMs: number;
-  enableFormatting: boolean;
   maxFileSizeKB: number; // above this limit, skip lint + semantic tokens to preserve perf
   requestTimeoutMs: number;
   requestTimeouts: {
@@ -144,7 +175,6 @@ interface ServerSettings {
     documentSymbols?: number;
     workspaceSymbols?: number;
     semanticTokens?: number;
-    formatting?: number;
     inlayHints?: number;
     signatureHelp?: number;
   };
@@ -182,7 +212,6 @@ interface ServerSettings {
     documentSymbols: boolean;
     workspaceSymbols: boolean;
     semanticTokens: boolean;
-    formatting: boolean;
     lint: boolean;
     inlayHints: boolean;
     signatureHelp: boolean;
@@ -193,7 +222,6 @@ const DEFAULT_SETTINGS: ServerSettings = {
   trace: "off",
   traceSampleRate: 0.01,
   lintDebounceMs: 200,
-  enableFormatting: true,
   maxFileSizeKB: 1024, // 1 MB
   requestTimeoutMs: 800,
   requestTimeouts: {},
@@ -204,8 +232,8 @@ const DEFAULT_SETTINGS: ServerSettings = {
   inlayHints: {
     parameterHints: true,
     typeHints: true,
-    returnHints: true,
-    aliasHints: true,
+    returnHints: false,
+    aliasHints: false,
   },
   completion: {
     enabledInComments: false,
@@ -226,22 +254,28 @@ const DEFAULT_SETTINGS: ServerSettings = {
     documentSymbols: true,
     workspaceSymbols: true,
     semanticTokens: true,
-    formatting: true,
     lint: true,
-    inlayHints: false,
+    inlayHints: true,
     signatureHelp: true,
   },
 };
 
 let globalSettings: ServerSettings = { ...DEFAULT_SETTINGS };
 let hasConfigurationCapability = false;
+let clientSupportsWorkspaceFolders = false;
 let workspaceRoot: string | undefined;
 let workspaceRoots: string[] | undefined;
 let clientSupportsDocumentChanges = false;
+let serverShuttingDown = false;
+let configurationRequestSequence = 0;
+let configurationRevision = 0;
+let workspaceContentRevision = 0;
+let workspaceFolderRequestSequence = 0;
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const capabilities = params.capabilities;
   hasConfigurationCapability = !!capabilities.workspace?.configuration;
+  clientSupportsWorkspaceFolders = Boolean(capabilities.workspace?.workspaceFolders);
   clientSupportsDocumentChanges = Boolean(capabilities.workspace?.workspaceEdit?.documentChanges);
   const initialRoots = (params.workspaceFolders ?? [])
     .map((folder) => folder.uri.startsWith("file://") ? fileURLToPath(folder.uri) : "")
@@ -259,8 +293,14 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   const serverCapabilities: NonNullable<InitializeResult["capabilities"]> = {
     textDocumentSync: TextDocumentSyncKind.Incremental,
   };
+  if (capabilities.workspace?.workspaceFolders) {
+    serverCapabilities.workspace = {
+      workspaceFolders: { changeNotifications: true },
+    };
+  }
   if (capabilities.workspace?.fileOperations?.willRename) {
     serverCapabilities.workspace = {
+      ...serverCapabilities.workspace,
       fileOperations: {
         willRename: {
           filters: [".vit", ".vitl", ".vitte"].map((extension) => ({
@@ -280,10 +320,6 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   }
   if (isCapabilityAdvertised("document-symbols")) serverCapabilities.documentSymbolProvider = true;
   if (isCapabilityAdvertised("workspace-symbols")) serverCapabilities.workspaceSymbolProvider = true;
-  if (isCapabilityAdvertised("formatting")) {
-    serverCapabilities.documentFormattingProvider = true;
-    serverCapabilities.documentRangeFormattingProvider = true;
-  }
   if (isCapabilityAdvertised("definition")) serverCapabilities.definitionProvider = true;
   if (isCapabilityAdvertised("declaration")) serverCapabilities.declarationProvider = true;
   if (isCapabilityAdvertised("type-definition")) serverCapabilities.typeDefinitionProvider = true;
@@ -294,8 +330,13 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     serverCapabilities.codeActionProvider = { codeActionKinds: ["quickfix"] };
   }
   if (isCapabilityAdvertised("semantic-tokens")) {
-    serverCapabilities.semanticTokensProvider = { legend, full: true, range: false };
+    serverCapabilities.semanticTokensProvider = { legend, full: { delta: true }, range: false };
   }
+  if (isCapabilityAdvertised("inlay-hints")) serverCapabilities.inlayHintProvider = true;
+  if (isCapabilityAdvertised("code-lens")) serverCapabilities.codeLensProvider = { resolveProvider: false };
+  if (isCapabilityAdvertised("folding-ranges")) serverCapabilities.foldingRangeProvider = true;
+  if (isCapabilityAdvertised("selection-ranges")) serverCapabilities.selectionRangeProvider = true;
+  if (isCapabilityAdvertised("document-links")) serverCapabilities.documentLinkProvider = { resolveProvider: false };
 
   const result: InitializeResult = {
     capabilities: serverCapabilities,
@@ -306,15 +347,58 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 });
 
 connection.onInitialized(() => {
+  if (clientSupportsWorkspaceFolders) {
+    connection.workspace.onDidChangeWorkspaceFolders(async () => {
+      const requestSequence = ++workspaceFolderRequestSequence;
+      configurationRevision += 1;
+      workspaceContentRevision += 1;
+      try {
+        const folders = await connection.workspace.getWorkspaceFolders();
+        if (!folders || requestSequence !== workspaceFolderRequestSequence) return;
+        workspaceRoots = folders.map((folder) => folder.uri.startsWith("file://") ? fileURLToPath(folder.uri) : "").filter(Boolean);
+        workspaceRoot = workspaceRoots[0];
+        workspaceSourceCache.clear();
+        clearIndex();
+        for (const doc of documents.all()) safeIndexDocument(doc);
+      } catch (error) {
+        logErr("workspaceFolders.changed", error);
+      }
+    });
+  }
   registerCommands(connection);
   if (hasConfigurationCapability) {
     void connection.client.register(DidChangeConfigurationNotification.type, undefined);
   }
   // Watch classiques pour compat large versions du client
   connection.onDidChangeWatchedFiles((change) => {
+    let invalidateSources = false;
+    let invalidateProjectState = false;
     for (const ev of change.changes) {
-      if (ev.type === FileChangeType.Deleted) {
-        void connection.sendDiagnostics({ uri: ev.uri, diagnostics: [] });
+      let filePath = "";
+      try { if (ev.uri.startsWith("file://")) filePath = fileURLToPath(ev.uri); } catch { /* malformed URI */ }
+      const name = path.basename(filePath).toLocaleLowerCase();
+      if (/\.(?:vit|vitl|vitte)$/i.test(filePath)) {
+        invalidateSources = true;
+        if (ev.type === FileChangeType.Deleted) {
+          removeWorkspaceDocument(ev.uri);
+          void connection.sendDiagnostics({ uri: ev.uri, diagnostics: [] });
+        }
+      }
+      if (["vitte.toml", ".vitteconfig", "vitte.config.json", "config", "config.json"].includes(name)) {
+        invalidateProjectState = true;
+      }
+    }
+    if (invalidateSources) { workspaceSourceCache.clear(); workspaceContentRevision += 1; }
+    if (invalidateProjectState) {
+      configurationRevision += 1;
+      workspaceContentRevision += 1;
+      workspaceSourceCache.clear();
+      lintResultCache.clear();
+      clearIndex();
+      for (const doc of documents.all()) {
+        void connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+        safeIndexDocument(doc);
+        scheduleLint(doc);
       }
     }
   });
@@ -443,15 +527,24 @@ connection.onRequest("vitte/symbolGraph", (params?: unknown): SymbolGraphPayload
   };
 });
 
-connection.onShutdown(() => {
+connection.onShutdown(async () => {
+  serverShuttingDown = true;
   for (const t of lintTimers.values()) clearTimeout(t);
   lintTimers.clear();
-  void saveIndexCache();
+  for (const timer of indexTimers.values()) clearTimeout(timer);
+  indexTimers.clear();
+  lintQueue.length = 0;
+  lintQueued.clear();
+  lintResultCache.clear();
+  semanticTokenHistory.clear();
+  workspaceSourceCache.clear();
+  await saveIndexCache();
   clearIndex();
 });
 
 /* ------------------------------- Config updates --------------------------- */
 async function applyConfiguration(): Promise<void> {
+  const requestSequence = ++configurationRequestSequence;
   const workspace = Reflect.get(connection, "workspace") as RemoteWorkspace | undefined;
   if (hasConfigurationCapability && workspace) {
     try {
@@ -475,20 +568,39 @@ async function applyConfiguration(): Promise<void> {
       merged.indexerMaxRssMB = clampNumber(merged.indexerMaxRssMB, 256, 8192, DEFAULT_SETTINGS.indexerMaxRssMB);
       merged.indexerCacheEnabled = cfg?.indexerCacheEnabled ?? DEFAULT_SETTINGS.indexerCacheEnabled;
       merged.requestTimeouts = { ...DEFAULT_SETTINGS.requestTimeouts, ...(cfg?.requestTimeouts ?? {}) };
+      if (requestSequence !== configurationRequestSequence) return;
       globalSettings = merged;
       configureCompletions(globalSettings.completion);
     } catch {
+      if (requestSequence !== configurationRequestSequence) return;
       globalSettings = { ...DEFAULT_SETTINGS };
       configureCompletions(globalSettings.completion);
     }
   } else {
+    if (requestSequence !== configurationRequestSequence) return;
     globalSettings = { ...DEFAULT_SETTINGS };
     configureCompletions(globalSettings.completion);
   }
-  for (const doc of documents.all()) scheduleLint(doc);
+  configurationRevision += 1;
+  // Configuration affects diagnostics and feature output even when the source
+  // text did not change. Drop derived state before scheduling fresh results.
+  lintResultCache.clear();
+  workspaceSourceCache.clear();
+  clearIndex();
+  for (const doc of documents.all()) {
+    safeIndexDocument(doc);
+    scheduleLint(doc);
+  }
 }
 
 connection.onDidChangeConfiguration(() => {
+  configurationRevision += 1;
+  for (const timer of lintTimers.values()) clearTimeout(timer);
+  lintTimers.clear();
+  lintQueue.length = 0;
+  lintQueued.clear();
+  lintResultCache.clear();
+  for (const doc of documents.all()) void connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
   void applyConfiguration();
 });
 
@@ -499,6 +611,19 @@ function tooLarge(doc: TextDocument): boolean {
 }
 
 function cancelled(token?: CancellationToken): boolean { return !!token?.isCancellationRequested; }
+
+function documentIsCurrent(doc: TextDocument, token?: CancellationToken, expectedConfigurationRevision = configurationRevision): boolean {
+  return !cancelled(token) && configurationRevision === expectedConfigurationRevision && documents.get(doc.uri)?.version === doc.version;
+}
+
+function requestDocumentIsCurrent(
+  doc: TextDocument,
+  requestedVersion: number | undefined,
+  token: CancellationToken | undefined,
+  requestedConfigurationRevision: number,
+): boolean {
+  return doc.version === requestedVersion && documentIsCurrent(doc, token, requestedConfigurationRevision);
+}
 
 async function resolveWorkspaceRoot(): Promise<string | undefined> {
   if (workspaceRoot) return workspaceRoot;
@@ -551,20 +676,21 @@ async function resolveCompletionEnvironment(uri: string): Promise<CompletionEnvi
     }
     return current;
   };
-  const firstRoot = roots[0] ?? process.cwd();
   const configuredRoot = readSetting("project.root");
-  const projectRoot = typeof configuredRoot === "string" && configuredRoot.trim()
-    ? path.resolve(firstRoot, configuredRoot.trim())
-    : undefined;
+  const scope = resolveVitteProjectScope(uri, roots, typeof configuredRoot === "string" ? configuredRoot : undefined);
+  const folderRoot = scope.workspaceRoot;
+  const projectRoot = scope.projectRoot;
   const configuredPaths = readSetting("modulePaths");
   const modulePaths = Array.isArray(configuredPaths)
-    ? configuredPaths.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => path.resolve(projectRoot ?? firstRoot, value.trim()))
+    ? configuredPaths.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => resolveProjectPath(value.trim(), projectRoot))
     : [];
   const configuredCompiler = readSetting("compiler.path");
   const compilerPath = typeof configuredCompiler === "string" && configuredCompiler.trim()
-    ? path.resolve(firstRoot, configuredCompiler.trim())
+    ? resolveProjectPath(configuredCompiler.trim(), folderRoot)
     : undefined;
-  return { workspaceRoots: roots, projectRoot, modulePaths, compilerPath };
+  // A document receives only its own workspace folder and project roots. This
+  // keeps module lookup isolated when multi-root folders use different toolchains.
+  return { workspaceRoots: [folderRoot], projectRoot, modulePaths, compilerPath };
 }
 
 async function getIndexCachePath(): Promise<string | undefined> {
@@ -608,25 +734,46 @@ function isIndexSnapshot(value: unknown): value is IndexSnapshot {
 
 async function loadIndexCache(): Promise<void> {
   if (!globalSettings.indexerCacheEnabled) return;
+  const folderSequence = workspaceFolderRequestSequence;
   const cachePaths = await getIndexCachePaths();
-  if (cachePaths.length === 0) return;
+  if (cachePaths.length === 0 || folderSequence !== workspaceFolderRequestSequence) return;
   const mergedEntries: IndexSnapshot["entries"] = [];
   for (const cachePath of cachePaths) {
     try {
+      const cacheStat = await fs.stat(cachePath);
+      if (!cacheStat.isFile() || cacheStat.size > 32 * 1024 * 1024) continue;
       const raw = await fs.readFile(cachePath, "utf8");
       const parsed = JSON.parse(raw) as unknown;
       const snapshot: IndexSnapshot | null = isIndexSnapshot(parsed) ? parsed : null;
       if (!snapshot) continue;
-      mergedEntries.push(...snapshot.entries);
-      connection.console.log(`[index] loaded cache ${cachePath} (${snapshot.entries.length} files)`);
+      const cacheRoot = path.dirname(path.dirname(cachePath));
+      let validatedBytes = 0;
+      for (const entry of snapshot.entries.slice(0, 4096)) {
+        if (mergedEntries.length >= 4096) break;
+        if (validatedBytes >= 16 * 1024 * 1024) break;
+        if (!isPathWithinRoots(entry.uri, [cacheRoot])) continue;
+        try {
+          const sourcePath = fileURLToPath(entry.uri);
+          const sourceStat = await fs.stat(sourcePath);
+          if (!sourceStat.isFile() || sourceStat.size > 1024 * 1024 || validatedBytes + sourceStat.size > 16 * 1024 * 1024) continue;
+          const currentText = await fs.readFile(sourcePath, "utf8");
+          validatedBytes += sourceStat.size;
+          // Cache snapshots can outlive branch switches. Only restore entries
+          // whose current disk content still matches the cached source hash.
+          if (fastHash(currentText) === entry.hash) mergedEntries.push(entry);
+        } catch { /* removed or inaccessible since the snapshot */ }
+      }
+      connection.console.log(`[index] validated cache ${cachePath} (${mergedEntries.length} current files)`);
     } catch {
       // ignore cache errors
     }
   }
-  if (mergedEntries.length > 0) {
+  if (mergedEntries.length > 0 && folderSequence === workspaceFolderRequestSequence) {
     const unique = new Map<string, IndexSnapshot["entries"][number]>();
     for (const e of mergedEntries) unique.set(e.uri, e);
     const count = loadIndexSnapshot({ version: 2, entries: Array.from(unique.values()) });
+    // Open buffers are authoritative, including unsaved contents.
+    for (const doc of documents.all()) indexWorkspaceDocument(doc);
     connection.console.log(`[index] merged cache (${count} files)`);
   }
 }
@@ -635,12 +782,20 @@ async function saveIndexCache(): Promise<void> {
   if (!globalSettings.indexerCacheEnabled) return;
   const cachePaths = await getIndexCachePaths();
   if (cachePaths.length === 0) return;
+  const snapshot = exportIndexSnapshot();
   for (const cachePath of cachePaths) {
     try {
+      const cacheRoot = path.dirname(path.dirname(cachePath));
+      const scopedSnapshot: IndexSnapshot = {
+        version: 2,
+        entries: snapshot.entries.filter((entry) => isPathWithinRoots(entry.uri, [cacheRoot])).slice(0, 4096),
+      };
       await fs.mkdir(path.dirname(cachePath), { recursive: true });
-      const snapshot = exportIndexSnapshot();
-      await fs.writeFile(cachePath, JSON.stringify(snapshot), "utf8");
+      const temporaryPath = `${cachePath}.${process.pid}.tmp`;
+      await fs.writeFile(temporaryPath, JSON.stringify(scopedSnapshot), "utf8");
+      await fs.rename(temporaryPath, cachePath);
     } catch {
+      await fs.unlink(`${cachePath}.${process.pid}.tmp`).catch(() => undefined);
       // ignore cache errors
     }
   }
@@ -651,7 +806,8 @@ async function saveIndexCache(): Promise<void> {
 const breaker = { consecutiveErrors: 0, until: 0 };
 const BREAKER_THRESHOLD = 5;
 const BREAKER_COOLDOWN_MS = 30000;
-const requestQueue: (() => void)[] = [];
+const MAX_QUEUED_REQUESTS = 64;
+const requestQueue: Array<() => void> = [];
 let activeRequests = 0;
 
 function isBreakerActive(): boolean {
@@ -692,13 +848,35 @@ function timeoutFor(feature: keyof ServerSettings["requestTimeouts"]): number {
   return globalSettings.requestTimeoutMs;
 }
 
-async function withBackpressure<T>(fn: () => Promise<T>): Promise<T> {
+async function withBackpressure<T>(fn: () => Promise<T>, token?: CancellationToken): Promise<T> {
+  if (cancelled(token)) throw new Error("Request cancelled.");
   const max = Math.max(1, globalSettings.requestMaxConcurrent | 0);
   if (activeRequests >= max) {
+    if (requestQueue.length >= MAX_QUEUED_REQUESTS) {
+      connection.console.warn(`[request] queue full (${MAX_QUEUED_REQUESTS}); rejecting request`);
+      throw new Error("Language server is busy; retry the request shortly.");
+    }
     return new Promise<T>((resolve, reject) => {
-      requestQueue.push(() => {
-        void withBackpressure(fn).then(resolve, reject);
+      let cancellationSubscription: { dispose(): void } | undefined;
+      const queuedTask = (): void => {
+        cancellationSubscription?.dispose();
+        if (cancelled(token)) { reject(new Error("Request cancelled.")); return; }
+        void withBackpressure(fn, token).then(resolve, reject);
+      };
+      cancellationSubscription = token?.onCancellationRequested(() => {
+        const queueIndex = requestQueue.indexOf(queuedTask);
+        if (queueIndex < 0) return;
+        requestQueue.splice(queueIndex, 1);
+        cancellationSubscription?.dispose();
+        reject(new Error("Request cancelled."));
       });
+      requestQueue.push(queuedTask);
+      if (cancelled(token)) {
+        const queueIndex = requestQueue.indexOf(queuedTask);
+        if (queueIndex >= 0) requestQueue.splice(queueIndex, 1);
+        cancellationSubscription?.dispose();
+        reject(new Error("Request cancelled."));
+      }
     });
   }
   activeRequests += 1;
@@ -718,6 +896,7 @@ const unavailableNotices = new Set<string>();
 function explainUnavailable(feature: string, reason: string): void {
   const key = `${feature}:${reason}`;
   if (unavailableNotices.has(key)) return;
+  if (unavailableNotices.size >= 256) unavailableNotices.clear();
   unavailableNotices.add(key);
   const message = `Vitte ${feature} did not return a result: ${reason}. See “Vitte: Show Capabilities” for scope and status.`;
   connection.console.warn(`[capability] ${message}`);
@@ -734,6 +913,10 @@ function failFast(feature: keyof ServerSettings["features"]): boolean {
     return true;
   }
   return false;
+}
+
+function explainLargeDocument(feature: string): void {
+  explainUnavailable(feature, `Le document dépasse la limite configurée de ${globalSettings.maxFileSizeKB} Kio.`);
 }
 
 function memoryExceeded(): boolean {
@@ -763,31 +946,39 @@ function withHierarchyBackpressure<T>(
   if (contextName.startsWith("callHierarchy") && !isCapabilityAdvertised("call-hierarchy")) return Promise.resolve(null);
   if (contextName.startsWith("typeHierarchy") && !isCapabilityAdvertised("type-hierarchy")) return Promise.resolve(null);
   if (isBreakerActive()) return Promise.resolve(null);
+  const requestedVersion = uri ? documents.get(uri)?.version : undefined;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(() => {
     if (!uri) return Promise.resolve(null);
     const doc = documents.get(uri);
-    if (!doc || cancelled(token)) return Promise.resolve(null);
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return Promise.resolve(null);
+    if (tooLarge(doc)) { explainLargeDocument(contextName); return Promise.resolve(null); }
     try {
       return Promise.resolve(compute(doc));
     } catch (e) {
       logErr(contextName, e);
       return Promise.resolve(null);
     }
-  });
+  }, token);
 }
 
 connection.onCompletion(async (params: CompletionParams, token?: CancellationToken): Promise<CompletionItem[]> => {
   if (failFast("completion")) return [];
   if (isBreakerActive()) return [];
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+    if (tooLarge(doc)) { explainLargeDocument("completion"); return []; }
     try {
       const result = await withTimeout((async () => {
         const environment = await resolveCompletionEnvironment(doc.uri);
+        if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
         return provideCompletions(doc, params.position, environment);
       })(), timeoutFor("completion"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       metric("completion", start, doc.uri, result.length);
       recordSuccess();
       return result;
@@ -797,7 +988,7 @@ connection.onCompletion(async (params: CompletionParams, token?: CancellationTok
       logErr("completion", e);
       return [];
     }
-  });
+  }, token);
 });
 
 // Allow the client to resolve/enrich completion items on demand (details, docs)
@@ -823,13 +1014,18 @@ connection.onCompletionResolve(async (item: CompletionItem): Promise<CompletionI
 connection.onHover(async (params: HoverParams, token?: CancellationToken): Promise<Hover | null> => {
   if (failFast("hover")) return null;
   if (isBreakerActive()) return null;
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return null;
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
+    if (tooLarge(doc)) { explainLargeDocument("hover"); return null; }
     try {
       const environment = await resolveCompletionEnvironment(doc.uri);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       const hover = await withTimeout(provideHoverWithImports(doc, params.position, environment), timeoutFor("hover"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       metric("hover", start, doc.uri);
       recordSuccess();
       return hover;
@@ -839,7 +1035,7 @@ connection.onHover(async (params: HoverParams, token?: CancellationToken): Promi
       logErr("hover", e);
       return null;
     }
-  });
+  }, token);
 });
 
 connection.onSignatureHelp(async (
@@ -848,15 +1044,20 @@ connection.onSignatureHelp(async (
 ): Promise<SignatureHelp | null> => {
   if (failFast("signatureHelp")) return null;
   if (isBreakerActive()) return null;
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token) || tooLarge(doc)) return null;
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
+    if (tooLarge(doc)) { explainLargeDocument("signatureHelp"); return null; }
     try {
       const help = await withTimeout((async () => {
         const environment = await resolveCompletionEnvironment(doc.uri);
+        if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
         return provideSignatureHelpWithImports(doc, params.position, environment);
       })(), timeoutFor("signatureHelp"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       metric("signatureHelp", start, doc.uri, help?.signatures.length ?? 0);
       recordSuccess();
       return help ?? null;
@@ -866,18 +1067,22 @@ connection.onSignatureHelp(async (
       logErr("signatureHelp", e);
       return null;
     }
-  });
+  }, token);
 });
 
 connection.onDocumentSymbol(async (params: DocumentSymbolParams, token?: CancellationToken): Promise<DocumentSymbol[]> => {
   if (failFast("documentSymbols")) return [];
   if (isBreakerActive()) return [];
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+    if (tooLarge(doc)) { explainLargeDocument("documentSymbols"); return []; }
     try {
       const symbols = await withTimeout(Promise.resolve(documentSymbols(doc)), timeoutFor("documentSymbols"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       metric("documentSymbols", start, doc.uri, symbols.length);
       recordSuccess();
       return symbols;
@@ -887,54 +1092,7 @@ connection.onDocumentSymbol(async (params: DocumentSymbolParams, token?: Cancell
       logErr("documentSymbols", e);
       return [];
     }
-  });
-});
-
-connection.onDocumentFormatting(async (params: DocumentFormattingParams, token?: CancellationToken) => {
-  if (!globalSettings.enableFormatting) return [];
-  if (failFast("formatting")) return [];
-  if (isBreakerActive()) return [];
-  return withBackpressure(async () => {
-    const start = now();
-    const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
-    try {
-      const edits = await withTimeout(Promise.resolve(provideFormattingEdits(doc, params.options)), timeoutFor("formatting"));
-      metric("formatting", start, doc.uri, edits.length);
-      recordSuccess();
-      return edits;
-    } catch (e) {
-      metric("formatting", start, doc?.uri ?? "unknown", undefined, e);
-      recordFailure();
-      logErr("formatting", e);
-      return [];
-    }
-  });
-});
-
-connection.onDocumentRangeFormatting(async (params: DocumentRangeFormattingParams, token?: CancellationToken) => {
-  if (!globalSettings.enableFormatting) return [];
-  if (failFast("formatting")) return [];
-  if (isBreakerActive()) return [];
-  return withBackpressure(async () => {
-    const start = now();
-    const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
-    try {
-      const edits = await withTimeout(
-        Promise.resolve(provideRangeFormattingEdits(doc, params.range, params.options)),
-        timeoutFor("formatting")
-      );
-      metric("rangeFormatting", start, doc.uri, edits.length);
-      recordSuccess();
-      return edits;
-    } catch (e) {
-      metric("rangeFormatting", start, doc?.uri ?? "unknown", undefined, e);
-      recordFailure();
-      logErr("rangeFormatting", e);
-      return [];
-    }
-  });
+  }, token);
 });
 
 connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
@@ -954,13 +1112,18 @@ connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
 connection.onDefinition(async (params: DefinitionParams, token?: CancellationToken): Promise<Location[]> => {
   if (failFast("definition")) return [];
   if (isBreakerActive()) return [];
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+    if (tooLarge(doc)) { explainLargeDocument("definition"); return []; }
     try {
       const environment = await resolveCompletionEnvironment(doc.uri);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       const outcome = await withTimeout(definitionAtPositionWithImports(doc, params.position, environment), timeoutFor("definition"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       if (outcome.locations.length === 0 && outcome.unavailableReason) explainUnavailable("definition", outcome.unavailableReason);
       metric("definition", start, doc.uri, outcome.locations.length);
       recordSuccess();
@@ -971,75 +1134,103 @@ connection.onDefinition(async (params: DefinitionParams, token?: CancellationTok
       logErr("definition", e);
       return [];
     }
-  });
+  }, token);
 });
 
 connection.onDeclaration(async (params: DeclarationParams, token?: CancellationToken): Promise<Location[]> => {
   if (failFast("declaration")) return [];
   if (isBreakerActive()) return [];
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(async () => {
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+    if (tooLarge(doc)) { explainLargeDocument("declaration"); return []; }
     try {
       const environment = await resolveCompletionEnvironment(doc.uri);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       const outcome = await withTimeout(declarationAtPositionWithImports(doc, params.position, environment), timeoutFor("definition"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       if (!outcome.locations.length && outcome.unavailableReason) explainUnavailable("declaration", outcome.unavailableReason);
       return outcome.locations;
     } catch (error) {
       logErr("declaration", error);
       return [];
     }
-  });
+  }, token);
 });
 
 connection.onTypeDefinition(async (params: TypeDefinitionParams, token?: CancellationToken): Promise<Location[]> => {
   if (failFast("typeDefinition")) return [];
   if (isBreakerActive()) return [];
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(async () => {
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+    if (tooLarge(doc)) { explainLargeDocument("typeDefinition"); return []; }
     try {
       const environment = await resolveCompletionEnvironment(doc.uri);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       const outcome = await withTimeout(typeDefinitionAtPositionWithImports(doc, params.position, environment), timeoutFor("definition"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       if (!outcome.locations.length && outcome.unavailableReason) explainUnavailable("type definition", outcome.unavailableReason);
       return outcome.locations;
     } catch (error) {
       logErr("typeDefinition", error);
       return [];
     }
-  });
+  }, token);
 });
 
 connection.onImplementation(async (params: ImplementationParams, token?: CancellationToken): Promise<Location[]> => {
   if (failFast("implementation")) return [];
   if (isBreakerActive()) return [];
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
+  const requestedWorkspaceRevision = workspaceContentRevision;
   return withBackpressure(async () => {
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+    if (tooLarge(doc)) { explainLargeDocument("implementation"); return []; }
     try {
       const environment = await resolveCompletionEnvironment(doc.uri);
-      const workspaceDocs = await collectWorkspaceSourceDocuments(environment);
-      const outcome = await withTimeout(implementationAtPositionWithImports(doc, params.position, environment, workspaceDocs), timeoutFor("definition"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+      const scan = await collectWorkspaceSourceDocuments(environment, token, () => requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision) && workspaceContentRevision === requestedWorkspaceRevision);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+      if (workspaceContentRevision !== requestedWorkspaceRevision) return [];
+      if (!scan.complete) { explainUnavailable("implementation", scan.reason ?? "Le scan du workspace a atteint sa limite de ressources."); return []; }
+      const outcome = await withTimeout(implementationAtPositionWithImports(doc, params.position, environment, scan.documents), timeoutFor("definition"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       if (!outcome.locations.length && outcome.unavailableReason) explainUnavailable("implementation", outcome.unavailableReason);
       return outcome.locations;
     } catch (error) {
       logErr("implementation", error);
       return [];
     }
-  });
+  }, token);
 });
 
 connection.onReferences(async (params: ReferenceParams, token?: CancellationToken): Promise<Location[]> => {
   if (failFast("references")) return [];
   if (isBreakerActive()) return [];
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
+  const requestedWorkspaceRevision = workspaceContentRevision;
   return withBackpressure(async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+    if (tooLarge(doc)) { explainLargeDocument("references"); return []; }
     try {
       const environment = await resolveCompletionEnvironment(doc.uri);
-      const workspaceDocs = await collectWorkspaceSourceDocuments(environment);
-      const outcome = await withTimeout(referencesAtPositionWithWorkspace(doc, params.position, environment, workspaceDocs, params.context.includeDeclaration), timeoutFor("references"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+      const scan = await collectWorkspaceSourceDocuments(environment, token, () => requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision) && workspaceContentRevision === requestedWorkspaceRevision);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+      if (workspaceContentRevision !== requestedWorkspaceRevision) return [];
+      if (!scan.complete) { explainUnavailable("references", scan.reason ?? "Le scan du workspace a atteint sa limite de ressources."); return []; }
+      const outcome = await withTimeout(referencesAtPositionWithWorkspace(doc, params.position, environment, scan.documents, params.context.includeDeclaration), timeoutFor("references"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       if (!outcome.locations.length && outcome.unavailableReason) explainUnavailable("references", outcome.unavailableReason);
       metric("references", start, doc.uri, outcome.locations.length);
       recordSuccess();
@@ -1050,7 +1241,7 @@ connection.onReferences(async (params: ReferenceParams, token?: CancellationToke
       logErr("references", e);
       return [];
     }
-  });
+  }, token);
 });
 
 connection.languages.callHierarchy.onPrepare((params: CallHierarchyPrepareParams, token?: CancellationToken): Promise<CallHierarchyItem[] | null> => {
@@ -1112,13 +1303,18 @@ connection.onPrepareRename(async (params: PrepareRenameParams, token?: Cancellat
   if (isBreakerActive()) return null;
   // Rename is an interactive request and must not wait behind background
   // semantic work. Its own computation is bounded below.
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return (async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return null;
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
+    if (tooLarge(doc)) { explainLargeDocument("rename"); return null; }
     try {
       const environment = await resolveCompletionEnvironment(doc.uri);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       const result = await withTimeout(resolveRenameTarget(doc, params.position, environment), timeoutFor("rename"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       if (!result.target && result.unavailableReason) explainUnavailable("rename", result.unavailableReason);
       if (result.target) metric("prepareRename", start, doc.uri);
       recordSuccess();
@@ -1138,13 +1334,18 @@ connection.onRenameRequest(async (params: RenameParams, token?: CancellationToke
   if (isBreakerActive()) return null;
   // Rename is an interactive request and must not wait behind background
   // semantic work. Its own computation is bounded below.
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return (async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return null;
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
+    if (tooLarge(doc)) { explainLargeDocument("rename"); return null; }
     try {
       const environment = await resolveCompletionEnvironment(doc.uri);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       const resolution = await withTimeout(resolveRenameTarget(doc, params.position, environment), timeoutFor("rename"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       const target = resolution.target;
       if (!target) {
         explainUnavailable("rename", resolution.unavailableReason ?? "Le symbole sous le curseur n’est pas renommable.");
@@ -1161,8 +1362,9 @@ connection.onRenameRequest(async (params: RenameParams, token?: CancellationToke
       }
 
       const scan = requiresWorkspaceRenameScan(target)
-        ? await collectWorkspaceRenameDocuments(environment, renameTargetUri(target))
+        ? await collectWorkspaceRenameDocuments(environment, renameTargetUri(target), token, () => requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision))
         : openDocumentRenameSnapshot(doc.uri);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       if (requiresWorkspaceRenameScan(target) && !scan.complete) {
         explainUnavailable("rename", scan.reason ?? "Le workspace n’a pas pu être indexé entièrement; aucun edit partiel ne sera proposé.");
         return null;
@@ -1171,6 +1373,7 @@ connection.onRenameRequest(async (params: RenameParams, token?: CancellationToke
         renameReferencesForTarget(doc, params.position, target, environment, scan.documents),
         Math.max(timeoutFor("rename"), 2500),
       );
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       if (referenceOutcome.unavailableReason || referenceOutcome.locations.length === 0) {
         explainUnavailable("rename", referenceOutcome.unavailableReason ?? "Aucune référence fiable n’a été trouvée.");
         return null;
@@ -1180,7 +1383,8 @@ connection.onRenameRequest(async (params: RenameParams, token?: CancellationToke
         explainUnavailable("rename", validation);
         return null;
       }
-      const snapshotError = await validateRenameSnapshot(scan);
+      const snapshotError = await validateRenameSnapshot(scan, token, () => requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return null;
       if (snapshotError) {
         explainUnavailable("rename", snapshotError);
         return null;
@@ -1210,7 +1414,10 @@ connection.onRenameRequest(async (params: RenameParams, token?: CancellationToke
   })();
 });
 
-connection.workspace.onWillRenameFiles(async (params: RenameFilesParams): Promise<WorkspaceEdit | null> => {
+connection.workspace.onWillRenameFiles(async (params: RenameFilesParams, token?: CancellationToken): Promise<WorkspaceEdit | null> => {
+  const requestedConfigurationRevision = configurationRevision;
+  const requestedWorkspaceRevision = workspaceContentRevision;
+  const keepGoing = (): boolean => configurationRevision === requestedConfigurationRevision && workspaceContentRevision === requestedWorkspaceRevision;
   if (!clientSupportsDocumentChanges) {
     explainUnavailable("file rename", "Le client ne prend pas en charge les edits versionnés; les imports ne peuvent pas être modifiés en sécurité.");
     return null;
@@ -1218,7 +1425,9 @@ connection.workspace.onWillRenameFiles(async (params: RenameFilesParams): Promis
   if (params.files.length === 0) return null;
   try {
     const environment = await resolveCompletionEnvironment(params.files[0]?.oldUri ?? "");
-    const edit = await prepareModulePathFileRename(params, environment);
+    if (cancelled(token) || !keepGoing()) return null;
+    const edit = await prepareModulePathFileRename(params, environment, token, keepGoing);
+    if (cancelled(token) || !keepGoing()) return null;
     if (edit.reason) {
       explainUnavailable("file rename", edit.reason);
       return null;
@@ -1234,17 +1443,24 @@ connection.workspace.onWillRenameFiles(async (params: RenameFilesParams): Promis
 connection.languages.inlayHint.on(async (params: InlayHintParams, token?: CancellationToken): Promise<InlayHint[]> => {
   if (failFast("inlayHints")) return [];
   if (isBreakerActive()) return [];
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return [];
-    if (tooLarge(doc) || !featureEnabled("inlayHints")) return [];
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+    if (tooLarge(doc)) { explainLargeDocument("inlayHints"); return []; }
+    if (!featureEnabled("inlayHints")) return [];
     try {
+      const environment = await resolveCompletionEnvironment(doc.uri);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       const prefs = await resolveInlayPrefs(params.textDocument.uri);
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       const hints = await withTimeout(
-        Promise.resolve(provideInlayHints(doc, params.range, prefs)),
+        provideInlayHints(doc, params.range, prefs, environment),
         timeoutFor("inlayHints")
       );
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
       metric("inlayHints", start, doc.uri, hints.length);
       recordSuccess();
       return hints;
@@ -1254,42 +1470,119 @@ connection.languages.inlayHint.on(async (params: InlayHintParams, token?: Cancel
       logErr("inlayHints", e);
       return [];
     }
-  });
+  }, token);
+});
+
+connection.onCodeLens((params: CodeLensParams): CodeLens[] => {
+  if (!isCapabilityAdvertised("code-lens")) return [];
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) return [];
+  if (tooLarge(doc)) { explainLargeDocument("code lens"); return []; }
+  return sourceIndex(doc).symbols
+    .filter((symbol) => symbol.role === "procedure" || symbol.role === "type")
+    .map((symbol) => {
+      const position = doc.positionAt(symbol.nameStart);
+      const lens = CodeLens.create(LspRange.create(position, position));
+      lens.command = {
+        title: "Find references",
+        command: "vitte.codelens.openRefs",
+        arguments: [doc.uri, position],
+      };
+      return lens;
+    });
+});
+
+connection.onFoldingRanges((params: FoldingRangeParams): FoldingRange[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || !isCapabilityAdvertised("folding-ranges")) return [];
+  if (tooLarge(doc)) { explainLargeDocument("folding ranges"); return []; }
+  return provideFoldingRanges(doc);
+});
+
+connection.onSelectionRanges((params: SelectionRangeParams): SelectionRange[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || !isCapabilityAdvertised("selection-ranges")) return [];
+  if (tooLarge(doc)) { explainLargeDocument("selection ranges"); return []; }
+  return provideSelectionRanges(doc, params.positions);
+});
+
+connection.onDocumentLinks(async (params: DocumentLinkParams, token?: CancellationToken): Promise<DocumentLink[]> => {
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision) || !isCapabilityAdvertised("document-links")) return [];
+  if (tooLarge(doc)) { explainLargeDocument("document links"); return []; }
+  try {
+    const environment = await resolveCompletionEnvironment(doc.uri);
+    if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return [];
+    const links = await provideDocumentLinks(doc, environment);
+    return requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision) ? links : [];
+  } catch (error) {
+    logErr("documentLinks", error);
+    return [];
+  }
 });
 
 connection.onWorkspaceSymbol(async (params: WorkspaceSymbolParams, token?: CancellationToken): Promise<WorkspaceSymbol[]> => {
   if (failFast("workspaceSymbols")) return [];
   if (isBreakerActive()) return [];
+  const requestedConfigurationRevision = configurationRevision;
+  const requestedWorkspaceRevision = workspaceContentRevision;
   return withBackpressure(async () => {
     const start = now();
-    if (cancelled(token)) return [];
+    if (cancelled(token) || configurationRevision !== requestedConfigurationRevision || workspaceContentRevision !== requestedWorkspaceRevision) return [];
     try {
-      const activeDocument = documents.all()[0];
-      const environment = await resolveCompletionEnvironment(activeDocument?.uri ?? (workspaceRoot ? pathToFileURL(workspaceRoot).toString() : ""));
-      const sourceDocs = await collectWorkspaceSourceDocuments(environment);
+      const roots = await resolveWorkspaceRoots();
+      const sourceDocsByUri = new Map<string, TextDocument>();
+      const scanDeadline = Date.now() + 450;
+      for (const root of roots) {
+        if (cancelled(token) || configurationRevision !== requestedConfigurationRevision || workspaceContentRevision !== requestedWorkspaceRevision) return [];
+        if (sourceDocsByUri.size >= 256 || Date.now() >= scanDeadline) {
+          explainUnavailable("workspace symbols", "Le scan a dépassé sa limite de 256 documents ou de 450 ms.");
+          return [];
+        }
+        const environment = await resolveCompletionEnvironment(pathToFileURL(root).toString());
+        if (cancelled(token) || configurationRevision !== requestedConfigurationRevision || workspaceContentRevision !== requestedWorkspaceRevision) return [];
+        const scan = await collectWorkspaceSourceDocuments(environment, token, () => configurationRevision === requestedConfigurationRevision && workspaceContentRevision === requestedWorkspaceRevision, scanDeadline);
+        if (!scan.complete) {
+          explainUnavailable("workspace symbols", scan.reason ?? "Le workspace symbol scan exceeded its resource budget.");
+          return [];
+        }
+        for (const item of scan.documents) {
+          if (cancelled(token)) return [];
+          sourceDocsByUri.set(item.uri, item.doc);
+          if (sourceDocsByUri.size >= 256) break;
+        }
+      }
+      if (cancelled(token) || configurationRevision !== requestedConfigurationRevision || workspaceContentRevision !== requestedWorkspaceRevision) return [];
+      const sourceDocs = [...sourceDocsByUri].map(([uri, doc]) => ({ uri, doc }));
       const symbols = await withTimeout(Promise.resolve(workspaceSymbols(params.query ?? "", sourceDocs, 200)), timeoutFor("workspaceSymbols"));
       metric("workspaceSymbols", start, params.query ?? "", symbols.length);
       recordSuccess();
-      return symbols;
+      return cancelled(token) || configurationRevision !== requestedConfigurationRevision || workspaceContentRevision !== requestedWorkspaceRevision ? [] : symbols;
     } catch (e) {
       metric("workspaceSymbols", start, params.query ?? "workspaceSymbols", undefined, e);
       recordFailure();
       logErr("workspaceSymbols", e);
       return [];
     }
-  });
+  }, token);
 });
 
 connection.languages.semanticTokens.on(async (params: SemanticTokensParams, token?: CancellationToken) => {
   if (failFast("semanticTokens")) return emptySemanticTokens();
   if (isBreakerActive()) return emptySemanticTokens();
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
   return withBackpressure(async () => {
     const start = now();
     const doc = documents.get(params.textDocument.uri);
-    if (!doc || cancelled(token)) return emptySemanticTokens();
-    if (tooLarge(doc)) return emptySemanticTokens();
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return emptySemanticTokens();
+    if (tooLarge(doc)) { explainLargeDocument("semantic tokens"); return emptySemanticTokens(); }
     try {
       const tokens = await withTimeout(Promise.resolve(createSemanticTokens(doc)), timeoutFor("semanticTokens"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return emptySemanticTokens();
+      tokens.resultId = rememberSemanticTokens(doc.uri, tokens.data);
       metric("semanticTokens", start, doc.uri, tokens.data.length / 5);
       recordSuccess();
       return tokens;
@@ -1299,8 +1592,54 @@ connection.languages.semanticTokens.on(async (params: SemanticTokensParams, toke
       logErr("semanticTokens", e);
       return emptySemanticTokens();
     }
-  });
+  }, token);
 });
+
+connection.languages.semanticTokens.onDelta(async (params: SemanticTokensDeltaParams, token?: CancellationToken): Promise<SemanticTokens | SemanticTokensDelta> => {
+  const requestedVersion = documents.get(params.textDocument.uri)?.version;
+  const requestedConfigurationRevision = configurationRevision;
+  const full = async (): Promise<SemanticTokens> => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return { ...emptySemanticTokens(), resultId: rememberSemanticTokens(params.textDocument.uri, []) };
+    if (tooLarge(doc)) { explainLargeDocument("semantic tokens"); return { ...emptySemanticTokens(), resultId: rememberSemanticTokens(params.textDocument.uri, []) }; }
+    try {
+      const tokens = await withTimeout(Promise.resolve(createSemanticTokens(doc)), timeoutFor("semanticTokens"));
+      if (!requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return { ...emptySemanticTokens(), resultId: rememberSemanticTokens(params.textDocument.uri, []) };
+      tokens.resultId = rememberSemanticTokens(doc.uri, tokens.data);
+      return tokens;
+    } catch (error) {
+      logErr("semanticTokensDelta", error);
+      return { ...emptySemanticTokens(), resultId: rememberSemanticTokens(doc.uri, []) };
+    }
+  };
+  if (failFast("semanticTokens") || isBreakerActive()) return full();
+  return withBackpressure(async () => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc || !requestDocumentIsCurrent(doc, requestedVersion, token, requestedConfigurationRevision)) return full();
+    const previous = semanticTokenHistory.get(doc.uri)?.get(params.previousResultId);
+    if (!previous) return full();
+    const current = await full();
+    const next = current.data;
+    let prefix = 0;
+    const oldCount = Math.floor(previous.length / 5), newCount = Math.floor(next.length / 5);
+    while (prefix < oldCount && prefix < newCount && sameSemanticToken(previous, next, prefix)) prefix++;
+    if (prefix === oldCount && prefix === newCount) return { resultId: current.resultId, edits: [] };
+    let suffix = 0;
+    while (suffix < oldCount - prefix && suffix < newCount - prefix && sameSemanticToken(previous, next, oldCount - suffix - 1, newCount - suffix - 1)) suffix++;
+    const edit: SemanticTokensEdit = {
+      start: prefix * 5,
+      deleteCount: (oldCount - prefix - suffix) * 5,
+      data: next.slice(prefix * 5, (newCount - suffix) * 5),
+    };
+    return { resultId: current.resultId, edits: [edit] };
+  }, token);
+});
+
+function sameSemanticToken(left: number[], right: number[], leftIndex: number, rightIndex = leftIndex): boolean {
+  const offsetLeft = leftIndex * 5, offsetRight = rightIndex * 5;
+  for (let field = 0; field < 5; field++) if (left[offsetLeft + field] !== right[offsetRight + field]) return false;
+  return true;
+}
 
 /* -------------------------------- Diagnostics ----------------------------- */
 const lintTimers = new Map<string, NodeJS.Timeout>();
@@ -1312,12 +1651,14 @@ const lintResultCache = new Map<string, { hash: number; diagnostics: ReturnType<
 function runLint(doc: TextDocument): void {
   const t0 = now();
   try {
-    if (!featureEnabled("lint")) return;
-    if (isBreakerActive()) return;
+    if (!featureEnabled("lint") || isBreakerActive()) {
+      void connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+      return;
+    }
     if (tooLarge(doc)) { void connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] }); return; }
     const text = doc.getText();
     const uri = doc.uri;
-    const hash = fastHash(text);
+    const hash = fastHash(`${text}\0${JSON.stringify(globalSettings.lint)}`);
     const cached = lintResultCache.get(uri);
     const diags = cached?.hash === hash
       ? (cached.diagnostics ?? [])
@@ -1332,7 +1673,13 @@ function runLint(doc: TextDocument): void {
 }
 
 function scheduleLint(doc: TextDocument): void {
-  if (!featureEnabled("lint")) return;
+  if (!featureEnabled("lint")) {
+    const timer = lintTimers.get(doc.uri);
+    if (timer) clearTimeout(timer);
+    lintTimers.delete(doc.uri);
+    void connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
+    return;
+  }
   const key = doc.uri;
   const base = Math.max(0, globalSettings.lintDebounceMs | 0);
   const sizeKB = Buffer.byteLength(doc.getText(), "utf8") / 1024;
@@ -1346,15 +1693,44 @@ function scheduleLint(doc: TextDocument): void {
 }
 
 function safeIndexDocument(doc: TextDocument): void {
-  if (memoryExceeded()) {
-    connection.console.warn("[index] skipped due to memory quota");
+  const maxIndexedDocuments = 4096;
+  const alreadyIndexed = getIndex().has(doc.uri);
+  if (tooLarge(doc) || memoryExceeded() || (!alreadyIndexed && getIndex().size >= maxIndexedDocuments)) {
+    removeWorkspaceDocument(doc.uri);
+    const prior = indexTimers.get(doc.uri);
+    if (prior) clearTimeout(prior);
+    indexTimers.delete(doc.uri);
+    connection.console.warn(`[index] skipped document within configured resource limits (${safeDocumentLabel(doc.uri)})`);
     return;
   }
-  indexWorkspaceDocument(doc);
+  // Debounce full source indexing during typing. The open TextDocument remains
+  // authoritative for live LSP requests; this index serves workspace views.
+  removeWorkspaceDocument(doc.uri);
+  const prior = indexTimers.get(doc.uri);
+  if (prior) clearTimeout(prior);
+  const version = doc.version;
+  indexTimers.set(doc.uri, setTimeout(() => {
+    indexTimers.delete(doc.uri);
+    const current = documents.get(doc.uri);
+    if (!current || current.version !== version || serverShuttingDown) return;
+    if (memoryExceeded() || getIndex().size >= maxIndexedDocuments) return;
+    indexWorkspaceDocument(current);
+  }, 120));
 }
+
+const MAX_LINT_QUEUE = 512;
+const indexTimers = new Map<string, NodeJS.Timeout>();
 
 function enqueueLint(uri: string): void {
   if (lintQueued.has(uri)) return;
+  if (lintQueue.length >= MAX_LINT_QUEUE) {
+    const dropped = lintQueue.shift();
+    if (dropped) {
+      lintQueued.delete(dropped);
+      void connection.sendDiagnostics({ uri: dropped, diagnostics: [] });
+      connection.console.warn(`[lint] queue limit reached; cleared pending diagnostics for ${safeDocumentLabel(dropped)}`);
+    }
+  }
   lintQueued.add(uri);
   lintQueue.push(uri);
   void processLintQueue();
@@ -1363,30 +1739,39 @@ function enqueueLint(uri: string): void {
 function processLintQueue(): void {
   if (lintWorkerRunning) return;
   lintWorkerRunning = true;
-  try {
-    while (lintQueue.length > 0) {
-      const uri = lintQueue.shift()!;
-      lintQueued.delete(uri);
-      const doc = documents.get(uri);
-      if (!doc) continue;
-      runLint(doc);
-    }
-  } finally {
-    lintWorkerRunning = false;
-  }
+  const next = (): void => {
+    if (serverShuttingDown) { lintWorkerRunning = false; return; }
+    const uri = lintQueue.shift();
+    if (!uri) { lintWorkerRunning = false; return; }
+    lintQueued.delete(uri);
+    const doc = documents.get(uri);
+    if (doc) runLint(doc);
+    setImmediate(next);
+  };
+  setImmediate(next);
 }
 
 /* --------------------------------- Events -------------------------------- */
 
-documents.onDidOpen((e) => { safeIndexDocument(e.document); scheduleLint(e.document); });
-documents.onDidChangeContent((e) => { safeIndexDocument(e.document); scheduleLint(e.document); });
+documents.onDidOpen((e) => { workspaceContentRevision += 1; safeIndexDocument(e.document); scheduleLint(e.document); });
+documents.onDidChangeContent((e) => {
+  workspaceContentRevision += 1;
+  safeIndexDocument(e.document);
+  void connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
+  scheduleLint(e.document);
+});
 documents.onDidClose((e) => {
+  workspaceContentRevision += 1;
   removeWorkspaceDocument(e.document.uri);
   void connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
   const timer = lintTimers.get(e.document.uri);
   if (timer) clearTimeout(timer);
   lintTimers.delete(e.document.uri);
+  const indexTimer = indexTimers.get(e.document.uri);
+  if (indexTimer) clearTimeout(indexTimer);
+  indexTimers.delete(e.document.uri);
   lintResultCache.delete(e.document.uri);
+  semanticTokenHistory.delete(e.document.uri);
 });
 
 /* --------------------------------- Launch -------------------------------- */
@@ -1402,6 +1787,10 @@ function now(): number {
     return sec * 1000 + nanosec / 1e6;
   }
   return Date.now();
+}
+
+function safeDocumentLabel(uri: string): string {
+  try { return path.basename(fileURLToPath(uri)) || "workspace"; } catch { return "document"; }
 }
 
 function metric(what: string, startMs: number, uri: string, n?: number, err?: unknown) {
@@ -1503,6 +1892,7 @@ function quickFixForDiagnostic(doc: TextDocument, d: Diagnostic): CodeAction | n
     return {
       title: "Vitte: Trim trailing whitespace",
       kind: "quickfix",
+      isPreferred: false,
       diagnostics: [d],
       edit: { changes: { [doc.uri]: [TextEdit.replace(lineRange, fixed)] } },
     };
@@ -1514,6 +1904,7 @@ function quickFixForDiagnostic(doc: TextDocument, d: Diagnostic): CodeAction | n
     return {
       title: "Vitte: Convert tabs to spaces",
       kind: "quickfix",
+      isPreferred: false,
       diagnostics: [d],
       edit: { changes: { [doc.uri]: [TextEdit.replace(lineRange, fixed)] } },
     };
@@ -1563,6 +1954,8 @@ function openDocumentRenameSnapshot(primaryUri?: string): RenameWorkspaceSnapsho
 async function collectWorkspaceRenameDocuments(
   environment: CompletionEnvironment,
   targetUri?: string,
+  token?: CancellationToken,
+  keepGoing: () => boolean = () => true,
 ): Promise<RenameWorkspaceSnapshot> {
   const roots = Array.from(new Set([...(environment.workspaceRoots ?? []), environment.projectRoot, ...(environment.modulePaths ?? [])]
     .filter((root): root is string => Boolean(root)).map((root) => path.resolve(root))));
@@ -1593,11 +1986,30 @@ async function collectWorkspaceRenameDocuments(
     return { ...open, complete: false, reason: "La déclaration ciblée se trouve hors des racines indexées; les références du projet ne peuvent pas être vérifiées.", diskFiles };
   }
 
+  const realRoots: string[] = [];
+  try {
+    for (const root of roots) realRoots.push(await fs.realpath(root));
+  } catch {
+    return { ...open, complete: false, reason: "Une racine de workspace ou de modules n’est pas accessible; le renommage est refusé.", diskFiles };
+  }
+  const realPathWithinRoots = (candidate: string): boolean => realRoots.some((root) => {
+    const relative = path.relative(normalizedPathForComparison(root), normalizedPathForComparison(candidate));
+    return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+  });
+  const openRealPaths = new Set<string>();
+  for (const document of openDocuments) {
+    try { openRealPaths.add(normalizedPathForComparison(await fs.realpath(fileURLToPath(document.uri)))); } catch { /* untitled or removed buffer */ }
+  }
+  if (targetUri) {
+    try { openRealPaths.add(normalizedPathForComparison(await fs.realpath(fileURLToPath(targetUri)))); } catch { /* the target read reports the failure */ }
+  }
+
   const deadline = Date.now() + 2000;
   const fileLimit = 1024;
   const totalByteLimit = 64 * 1024 * 1024;
   const filePaths = new Set<string>();
   const visitedDirectories = new Set<string>();
+  const maxQueuedDirectories = 4096;
   const directorySnapshots = new Map<string, { mtimeMs: number; ctimeMs: number }>();
   const queue = [...roots];
   const skip = new Set([".git", "node_modules", ".vscode", "out", "dist", "build", "target", ".next"]);
@@ -1606,6 +2018,11 @@ async function collectWorkspaceRenameDocuments(
   let reason: string | undefined;
 
   while (queue.length > 0) {
+    if (cancelled(token) || !keepGoing()) {
+      complete = false;
+      reason = "Le renommage a été annulé après un changement de document, configuration ou workspace.";
+      break;
+    }
     if (Date.now() >= deadline) {
       complete = false;
       reason = "Le scan de renommage a atteint sa limite de temps; aucun résultat partiel ne sera appliqué.";
@@ -1613,50 +2030,102 @@ async function collectWorkspaceRenameDocuments(
     }
     const directory = queue.shift()!;
     const normalizedDirectory = path.resolve(directory);
-    if (visitedDirectories.has(normalizedDirectory)) continue;
-    visitedDirectories.add(normalizedDirectory);
-    let entries: Dirent[];
+    let realDirectory: string;
+    try { realDirectory = await fs.realpath(normalizedDirectory); } catch {
+      complete = false;
+      reason = `Le dossier « ${normalizedDirectory} » ne peut pas être résolu; l’ensemble des références est inconnu.`;
+      continue;
+    }
+    if (!realPathWithinRoots(realDirectory)) continue;
+    const canonicalDirectory = normalizedPathForComparison(realDirectory);
+    if (visitedDirectories.has(canonicalDirectory)) continue;
+    visitedDirectories.add(canonicalDirectory);
+    let directoryHandle: Awaited<ReturnType<typeof fs.opendir>>;
     try {
-      entries = await fs.readdir(normalizedDirectory, { withFileTypes: true });
-      const stats = await fs.stat(normalizedDirectory);
-      directorySnapshots.set(normalizedDirectory, { mtimeMs: stats.mtimeMs, ctimeMs: stats.ctimeMs });
+      directoryHandle = await fs.opendir(normalizedDirectory);
+      const stats = await fs.stat(realDirectory);
+      directorySnapshots.set(realDirectory, { mtimeMs: stats.mtimeMs, ctimeMs: stats.ctimeMs });
     } catch {
       complete = false;
       reason = `Le dossier « ${normalizedDirectory} » ne peut pas être lu; l’ensemble des références est inconnu.`;
       continue;
     }
-    for (const entry of entries) {
-      if (Date.now() >= deadline) {
-        complete = false;
-        reason = "Le scan de renommage a atteint sa limite de temps; aucun résultat partiel ne sera appliqué.";
-        break;
+    try {
+      for await (const entry of directoryHandle) {
+        if (cancelled(token) || !keepGoing()) {
+          complete = false;
+          reason = "Le renommage a été annulé après un changement de document, configuration ou workspace.";
+          break;
+        }
+        if (Date.now() >= deadline) {
+          complete = false;
+          reason = "Le scan de renommage a atteint sa limite de temps; aucun résultat partiel ne sera appliqué.";
+          break;
+        }
+        const absolute = path.join(normalizedDirectory, entry.name);
+        let isDirectory = entry.isDirectory();
+        let isFile = entry.isFile();
+        if (entry.isSymbolicLink()) {
+          try {
+            const targetStats = await fs.stat(absolute);
+            const realTarget = await fs.realpath(absolute);
+            if (!realPathWithinRoots(realTarget)) continue;
+            isDirectory = targetStats.isDirectory();
+            isFile = targetStats.isFile();
+          } catch { continue; }
+        }
+        if (isDirectory) {
+          if (skip.has(entry.name)) continue;
+          if (queue.length >= maxQueuedDirectories) {
+            complete = false;
+            reason = "Le parcours du workspace dépasse la limite de 4 096 dossiers.";
+            break;
+          }
+          queue.push(absolute);
+          continue;
+        }
+        if (!isFile || !/\.(?:vit|vitl|vitte)$/i.test(entry.name)) continue;
+        try {
+          const realFile = await fs.realpath(absolute);
+          if (realPathWithinRoots(realFile)) filePaths.add(path.resolve(realFile));
+        } catch {
+          complete = false;
+          reason = `Le fichier « ${absolute} » ne peut pas être résolu; l’ensemble des références est inconnu.`;
+        }
+        if (filePaths.size > fileLimit) {
+          complete = false;
+          reason = `Le workspace dépasse la limite sûre de ${fileLimit} fichiers Vitte pour le renommage.`;
+          break;
+        }
       }
-      const absolute = path.join(normalizedDirectory, entry.name);
-      if (entry.isDirectory()) {
-        if (!skip.has(entry.name)) queue.push(absolute);
-        continue;
-      }
-      if (!entry.isFile() || !/\.(?:vit|vitl|vitte)$/i.test(entry.name)) continue;
-      filePaths.add(path.resolve(absolute));
-      if (filePaths.size > fileLimit) {
-        complete = false;
-        reason = `Le workspace dépasse la limite sûre de ${fileLimit} fichiers Vitte pour le renommage.`;
-        break;
-      }
+    } catch {
+      complete = false;
+      reason = `Le contenu du dossier « ${normalizedDirectory} » n’a pas pu être parcouru complètement.`;
     }
-    if (!complete && reason?.includes("limite de temps")) break;
+    if (!complete) break;
   }
 
   for (const file of filePaths) {
+    if (cancelled(token) || !keepGoing()) {
+      complete = false;
+      reason = "Le renommage a été annulé après un changement de document, configuration ou workspace.";
+      break;
+    }
     if (Date.now() >= deadline) {
       complete = false;
       reason = "Le scan de renommage a atteint sa limite de temps; aucun résultat partiel ne sera appliqué.";
       break;
     }
+    if (openRealPaths.has(normalizedPathForComparison(file))) continue;
     const uri = pathToFileURL(file).toString();
     if (out.has(uri)) continue;
     try {
       const stats = await fs.stat(file);
+      if (cancelled(token) || !keepGoing()) {
+        complete = false;
+        reason = "Le renommage a été annulé après un changement de document, configuration ou workspace.";
+        break;
+      }
       if (!stats.isFile() || stats.size > 1024 * 1024 || totalBytes + stats.size > totalByteLimit) {
         complete = false;
         reason = `Le fichier « ${file} » dépasse la limite de lecture sûre pour le renommage.`;
@@ -1664,6 +2133,11 @@ async function collectWorkspaceRenameDocuments(
       }
       totalBytes += stats.size;
       const source = await fs.readFile(file, "utf8");
+      if (cancelled(token) || !keepGoing()) {
+        complete = false;
+        reason = "Le renommage a été annulé après un changement de document, configuration ou workspace.";
+        break;
+      }
       out.set(uri, TextDocument.create(uri, file.endsWith(".vitte") ? "vitte" : "vit", 0, source));
       diskFiles.set(uri, { path: file, mtimeMs: stats.mtimeMs, size: stats.size, contentHash: hashRenameText(source) });
     } catch {
@@ -1701,7 +2175,12 @@ async function collectWorkspaceRenameDocuments(
   };
 }
 
-async function validateRenameSnapshot(snapshot: RenameWorkspaceSnapshot): Promise<string | undefined> {
+async function validateRenameSnapshot(
+  snapshot: RenameWorkspaceSnapshot,
+  token?: CancellationToken,
+  keepGoing: () => boolean = () => true,
+): Promise<string | undefined> {
+  if (cancelled(token) || !keepGoing()) return "Le renommage a été annulé après un changement de document, configuration ou workspace.";
   if (snapshot.roots) {
     for (const doc of documents.all()) {
       if (!doc.uri.startsWith("file:") || snapshot.openVersions.has(doc.uri)) continue;
@@ -1718,6 +2197,7 @@ async function validateRenameSnapshot(snapshot: RenameWorkspaceSnapshot): Promis
     if (current?.version !== version) return "Un buffer ouvert a changé pendant l’analyse; relancez le renommage.";
   }
   for (const file of snapshot.diskFiles.values()) {
+    if (cancelled(token) || !keepGoing()) return "Le renommage a été annulé après un changement de document, configuration ou workspace.";
     try {
       const current = await fs.stat(file.path);
       if (current.mtimeMs !== file.mtimeMs || current.size !== file.size) return `Le fichier « ${file.path} » a changé pendant l’analyse; relancez le renommage.`;
@@ -1728,6 +2208,7 @@ async function validateRenameSnapshot(snapshot: RenameWorkspaceSnapshot): Promis
     }
   }
   for (const [directory, before] of snapshot.directories ?? []) {
+    if (cancelled(token) || !keepGoing()) return "Le renommage a été annulé après un changement de document, configuration ou workspace.";
     try {
       const current = await fs.stat(directory);
       if (current.mtimeMs !== before.mtimeMs || current.ctimeMs !== before.ctimeMs) {
@@ -1755,11 +2236,14 @@ interface FileModuleMapping {
 async function prepareModulePathFileRename(
   params: RenameFilesParams,
   environment: CompletionEnvironment,
+  token?: CancellationToken,
+  keepGoing: () => boolean = () => true,
 ): Promise<{ workspaceEdit?: WorkspaceEdit; reason?: string }> {
   const roots = Array.from(new Set([...(environment.workspaceRoots ?? []), environment.projectRoot, ...(environment.modulePaths ?? [])]
     .filter((root): root is string => Boolean(root)).map((root) => path.resolve(root))));
   const mappings: FileModuleMapping[] = [];
   for (const file of params.files) {
+    if (cancelled(token) || !keepGoing()) return { reason: "Le renommage du fichier a été annulé après un changement de configuration ou de workspace." };
     if (!file.oldUri.startsWith("file:") || !file.newUri.startsWith("file:")) continue;
     const oldPath = fileURLToPath(file.oldUri);
     const newPath = fileURLToPath(file.newUri);
@@ -1770,11 +2254,13 @@ async function prepareModulePathFileRename(
     }
     const mapping = result.mapping;
     const resolvedOld = await resolveModuleFiles(mapping.oldModule, file.oldUri, environment);
+    if (cancelled(token) || !keepGoing()) return { reason: "Le renommage du fichier a été annulé après un changement de configuration ou de workspace." };
     if (resolvedOld.length !== 1 || path.resolve(resolvedOld[0] ?? "") !== path.resolve(oldPath)) {
       return { reason: `Le chemin « ${mapping.oldModule} » ne désigne pas uniquement « ${oldPath} » dans les racines Vitte.` };
     }
     if (mapping.newModule !== mapping.oldModule) {
       const resolvedNew = await resolveModuleFiles(mapping.newModule, file.oldUri, environment);
+      if (cancelled(token) || !keepGoing()) return { reason: "Le renommage du fichier a été annulé après un changement de configuration ou de workspace." };
       if (resolvedNew.some((candidate) => path.resolve(candidate) !== path.resolve(oldPath))) {
         return { reason: `Le nouveau chemin « ${mapping.newModule} » existe déjà ou se résout vers plusieurs fichiers.` };
       }
@@ -1783,11 +2269,12 @@ async function prepareModulePathFileRename(
   }
   if (mappings.length === 0) return {};
 
-  const scan = await collectWorkspaceRenameDocuments(environment, mappings[0]?.oldUri);
+  const scan = await collectWorkspaceRenameDocuments(environment, mappings[0]?.oldUri, token, keepGoing);
   if (!scan.complete) return { reason: scan.reason ?? "Le workspace n’a pas pu être indexé entièrement avant le renommage du fichier." };
   const grouped = new Map<string, TextEdit[]>();
   const imports = /\b(?:use|pull)\s+([A-Za-z_]\w*(?:\s*(?:::|\/)\s*[A-Za-z_]\w*)*)/g;
   for (const { uri, doc } of scan.documents) {
+    if (cancelled(token) || !keepGoing()) return { reason: "Le renommage du fichier a été annulé après un changement de configuration ou de workspace." };
     const code = maskNonCode(doc.getText());
     for (const mapping of mappings) {
       if (uri === mapping.oldUri && mapping.newModule !== mapping.oldModule) {
@@ -1807,6 +2294,7 @@ async function prepareModulePathFileRename(
         const normalized = rawPath.replace(/\s+/g, "").replace(/\//g, "::");
         if (normalized !== mapping.oldModule) continue;
         const resolved = await resolveModuleFiles(normalized, uri, environment);
+        if (cancelled(token) || !keepGoing()) return { reason: "Le renommage du fichier a été annulé après un changement de configuration ou de workspace." };
         if (resolved.length > 1) {
           return { reason: `L’import « ${mapping.oldModule} » se résout vers plusieurs modules depuis « ${uri} »; le renommage du fichier est refusé.` };
         }
@@ -1822,7 +2310,7 @@ async function prepareModulePathFileRename(
       }
     }
   }
-  const snapshotError = await validateRenameSnapshot(scan);
+  const snapshotError = await validateRenameSnapshot(scan, token, keepGoing);
   if (snapshotError) return { reason: snapshotError };
   if (grouped.size === 0) return {};
   const documentChanges = Array.from(grouped, ([uri, edits]) => ({
@@ -1838,72 +2326,157 @@ function addFileRenameEdit(grouped: Map<string, TextEdit[]>, uri: string, doc: T
   grouped.set(uri, edits);
 }
 
-async function walkVitteFiles(root: string, limit: number, deadline: number): Promise<string[]> {
-  const out: string[] = [];
-  const queue: string[] = [root];
-  const skip = new Set([".git", "node_modules", ".vscode", "out", "dist", "build", "target", ".next"]);
-
-  while (queue.length > 0 && out.length < limit && Date.now() < deadline) {
-    const dir = queue.shift()!;
-    let entries: Dirent[];
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const e of entries) {
-      if (out.length >= limit || Date.now() >= deadline) break;
-      if (e.isDirectory()) {
-        if (skip.has(e.name)) continue;
-        queue.push(path.join(dir, e.name));
-        continue;
-      }
-      if (!e.isFile()) continue;
-      if (!e.name.endsWith(".vit") && !e.name.endsWith(".vitl") && !e.name.endsWith(".vitte")) continue;
-      out.push(path.join(dir, e.name));
-    }
-  }
-  return out;
+interface WorkspaceSourceScan {
+  documents: { uri: string; doc: TextDocument }[];
+  complete: boolean;
+  reason?: string;
 }
 
-const workspaceSourceCache = new Map<string, { mtimeMs: number; size: number; doc: TextDocument }>();
+async function walkVitteFiles(root: string, limit: number, deadline: number, token?: CancellationToken, keepGoing: () => boolean = () => true): Promise<{ paths: string[]; complete: boolean }> {
+  const out: string[] = [];
+  const queue: string[] = [root];
+  const visitedDirectories = new Set<string>();
+  const maxQueuedDirectories = 4096;
+  let realRoot: string;
+  try { realRoot = await fs.realpath(root); } catch { return { paths: out, complete: false }; }
+  let complete = true;
+  const skip = new Set([".git", "node_modules", ".vscode", "out", "dist", "build", "target", ".next"]);
 
-async function collectWorkspaceSourceDocuments(environment: CompletionEnvironment): Promise<{ uri: string; doc: TextDocument }[]> {
+  while (queue.length > 0 && out.length < limit && Date.now() < deadline && !cancelled(token) && keepGoing()) {
+    const dir = queue.shift()!;
+    let realDirectory: string;
+    try { realDirectory = await fs.realpath(dir); } catch { complete = false; continue; }
+    const relativeDirectory = path.relative(realRoot, realDirectory);
+    if (relativeDirectory.startsWith(`..${path.sep}`) || relativeDirectory === ".." || path.isAbsolute(relativeDirectory)) continue;
+    if (visitedDirectories.has(realDirectory)) continue;
+    visitedDirectories.add(realDirectory);
+    let directoryHandle: Awaited<ReturnType<typeof fs.opendir>>;
+    try {
+      directoryHandle = await fs.opendir(dir);
+    } catch {
+      complete = false;
+      continue;
+    }
+    try {
+      for await (const e of directoryHandle) {
+        if (out.length >= limit || Date.now() >= deadline || cancelled(token) || !keepGoing()) break;
+        const entryPath = path.join(dir, e.name);
+        let isDirectory = e.isDirectory();
+        let isFile = e.isFile();
+        if (e.isSymbolicLink()) {
+          try {
+            const target = await fs.stat(entryPath);
+            isDirectory = target.isDirectory();
+            isFile = target.isFile();
+            const realTarget = await fs.realpath(entryPath);
+            const relativeTarget = path.relative(realRoot, realTarget);
+            if (relativeTarget.startsWith(`..${path.sep}`) || relativeTarget === ".." || path.isAbsolute(relativeTarget)) continue;
+          } catch { continue; }
+        }
+        if (isDirectory) {
+          if (skip.has(e.name)) continue;
+          if (queue.length >= maxQueuedDirectories) return { paths: out, complete: false };
+          queue.push(entryPath);
+          continue;
+        }
+        if (!isFile) continue;
+        const extension = path.extname(e.name).toLocaleLowerCase();
+        if (extension !== ".vit" && extension !== ".vitl" && extension !== ".vitte") continue;
+        out.push(entryPath);
+      }
+    } catch {
+      return { paths: out, complete: false };
+    }
+  }
+  if (cancelled(token) || !keepGoing() || Date.now() >= deadline || out.length >= limit || queue.length > 0) complete = false;
+  return { paths: out, complete };
+}
+
+const workspaceSourceCache = new Map<string, { mtimeMs: number; ctimeMs: number; size: number; doc: TextDocument }>();
+
+function normalizedPathForComparison(value: string): string {
+  const normalized = path.resolve(value);
+  return process.platform === "win32" ? normalized.toLocaleLowerCase("en-US") : normalized;
+}
+
+function isPathWithinRoots(uri: string, roots: string[]): boolean {
+  if (!uri.startsWith("file://") || roots.length === 0) return false;
+  let candidate: string;
+  try { candidate = normalizedPathForComparison(fileURLToPath(uri)); } catch { return false; }
+  return roots.some((root) => {
+    const normalizedRoot = normalizedPathForComparison(root);
+    const relative = path.relative(normalizedRoot, candidate);
+    return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+  });
+}
+
+async function collectWorkspaceSourceDocuments(environment: CompletionEnvironment, token?: CancellationToken, keepGoing: () => boolean = () => true, sharedDeadline?: number): Promise<WorkspaceSourceScan> {
   const out = new Map<string, TextDocument>();
-  for (const document of documents.all()) out.set(document.uri, document);
   const roots = Array.from(new Set([...(environment.workspaceRoots ?? []), environment.projectRoot, ...(environment.modulePaths ?? [])].filter((root): root is string => Boolean(root))));
-  const deadline = Date.now() + 450;
-  const fileLimit = 256;
+  if (roots.length === 0) return { documents: [], complete: true };
+  const cacheScope = createHash("sha256").update(JSON.stringify({
+    roots: roots.map(normalizedPathForComparison).sort(),
+    compilerPath: environment.compilerPath ? normalizedPathForComparison(environment.compilerPath) : "",
+  })).digest("hex").slice(0, 16);
+  // Use open buffers only when they belong to this project. Their unsaved text
+  // takes precedence over the on-disk copy below.
   const totalByteLimit = 16 * 1024 * 1024;
   let totalBytes = 0;
+  for (const document of documents.all()) {
+    if (cancelled(token) || !keepGoing()) return { documents: [], complete: false, reason: "La requête a été annulée après un changement de document ou de workspace." };
+    if (!isPathWithinRoots(document.uri, roots)) continue;
+    const bytes = Buffer.byteLength(document.getText(), "utf8");
+    if (bytes > 1024 * 1024) return { documents: [], complete: false, reason: "Un buffer ouvert dépasse la limite de 1 Mio par fichier." };
+    if (out.size >= 256 || totalBytes + bytes > totalByteLimit) return { documents: [], complete: false, reason: "Le scan dépasse sa limite de 256 documents ou de 16 Mio." };
+    totalBytes += bytes;
+    out.set(document.uri, document);
+  }
+  const deadline = Math.min(Date.now() + 450, sharedDeadline ?? Number.POSITIVE_INFINITY);
+  const fileLimit = 256;
+  let reason: string | undefined;
   for (const root of roots) {
-    if (Date.now() >= deadline || out.size >= fileLimit) break;
-    const paths = await walkVitteFiles(root, fileLimit - out.size, deadline);
-    for (const file of paths) {
-      if (Date.now() >= deadline || out.size >= fileLimit || totalBytes >= totalByteLimit) break;
+    if (cancelled(token) || !keepGoing()) return { documents: [], complete: false, reason: "La requête a été annulée après un changement de document ou de workspace." };
+    if (Date.now() >= deadline) { reason = "Le scan du workspace a dépassé sa limite de 450 ms."; break; }
+    if (out.size >= fileLimit) { reason = "Le scan du workspace a dépassé sa limite de 256 documents."; break; }
+    const walk = await walkVitteFiles(root, fileLimit - out.size, deadline, token, keepGoing);
+    if (!walk.complete) { reason = cancelled(token) || !keepGoing() ? "La requête a été annulée après un changement de document ou de workspace." : "Le scan du workspace a atteint une limite de temps, de parcours ou d’accès aux dossiers."; break; }
+    for (const file of walk.paths) {
+      if (cancelled(token) || !keepGoing()) return { documents: [], complete: false, reason: "La requête a été annulée après un changement de document ou de workspace." };
+      if (Date.now() >= deadline) { reason = "Le scan du workspace a dépassé sa limite de 450 ms."; break; }
+      if (out.size >= fileLimit) { reason = "Le scan du workspace a dépassé sa limite de 256 documents."; break; }
+      if (totalBytes >= totalByteLimit) { reason = "Le scan du workspace a dépassé sa limite de 16 Mio."; break; }
       const uri = pathToFileURL(file).toString();
       if (out.has(uri)) continue;
       try {
         const stats = await fs.stat(file);
-        if (!stats.isFile() || stats.size > 1024 * 1024 || totalBytes + stats.size > totalByteLimit) continue;
+        if (cancelled(token) || !keepGoing()) return { documents: [], complete: false, reason: "Request cancelled because the document or request changed." };
+        if (!stats.isFile() || stats.size > 1024 * 1024 || totalBytes + stats.size > totalByteLimit) {
+          reason = "Un fichier source dépasse la limite de 1 Mio par fichier ou de 16 Mio pour le workspace.";
+          break;
+        }
         totalBytes += stats.size;
-        const cached = workspaceSourceCache.get(uri);
-        if (cached && cached.mtimeMs === stats.mtimeMs && cached.size === stats.size) {
+        const cacheKey = `${cacheScope}\0${uri}`;
+        const cached = workspaceSourceCache.get(cacheKey);
+        if (cached && cached.mtimeMs === stats.mtimeMs && cached.ctimeMs === stats.ctimeMs && cached.size === stats.size) {
           out.set(uri, cached.doc);
           continue;
         }
         const source = await fs.readFile(file, "utf8");
-        const doc = TextDocument.create(uri, file.endsWith(".vitte") ? "vitte" : "vit", 0, source);
+        if (cancelled(token) || !keepGoing()) return { documents: [], complete: false, reason: "La requête a été annulée après un changement de document ou de workspace." };
+        const doc = TextDocument.create(uri, path.extname(file).toLocaleLowerCase() === ".vitte" ? "vitte" : "vit", 0, source);
         if (workspaceSourceCache.size >= 512) {
           const oldest = workspaceSourceCache.keys().next().value;
           if (oldest) workspaceSourceCache.delete(oldest);
         }
-        workspaceSourceCache.set(uri, { mtimeMs: stats.mtimeMs, size: stats.size, doc });
+        workspaceSourceCache.set(cacheKey, { mtimeMs: stats.mtimeMs, ctimeMs: stats.ctimeMs, size: stats.size, doc });
         out.set(uri, doc);
       } catch {
-        // Files can disappear between traversal and indexing.
+        reason = "Un fichier source a changé ou est devenu inaccessible pendant le scan du workspace.";
+        break;
       }
     }
+    if (reason) break;
   }
-  return Array.from(out, ([uri, doc]) => ({ uri, doc }));
+  if (!reason && (cancelled(token) || !keepGoing())) reason = "La requête a été annulée après un changement de document ou de workspace.";
+  return { documents: Array.from(out, ([uri, doc]) => ({ uri, doc })), complete: !reason, ...(reason ? { reason } : {}) };
 }

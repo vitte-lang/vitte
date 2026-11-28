@@ -5,6 +5,76 @@ and adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.9] — 2026-11-28
+### Added
+- Generate extension-owned Check/Build/Run task templates so workspace tasks use folder-scoped CLI, project root, environment, module paths, targets and manifest settings; keep compiler-repository Make build as an explicit separate task.
+- Add shared `vitte.build.env` support for CLI tasks and native debug compilation; forward project module roots, target, manifest and compiler arguments to the selected native debug compiler.
+- Offer native launch templates only after explicit opt-in on the Linux x86_64 / Ubuntu 24.04 candidate with CLI 0.1.1; external DAP adapters remain configurable elsewhere.
+- Explain that standalone Test Explorer discovery and structured execution results are unavailable until the CLI exposes reliable test metadata.
+- Keep native debugging explicitly opt-in, add a DWARF executable launch template, accept breakpoints from Vitte DWARF line tables, and terminate the owned debuggee explicitly.
+
+### Changed
+- Make `vitte.debug.nativeBackend` opt-in by default and reject native launches on unverified platforms rather than silently substituting a toolchain.
+- Report CLI-only options or conflicting Vitte project configuration on compiler-repository Make tasks instead of silently ignoring them; Check/Build use the active source CLI and Make build is an explicit separate task.
+- Reject LSP responses computed for an older document, workspace, configuration or source-tree revision; cancel stale workspace scans and clear diagnostics when linting is disabled.
+- Bound queued LSP requests, open-document indexing, workspace scans, lint work, semantic-token history, and live compiler diagnostic output. Verify cached index entries against current source before reuse.
+- Scope workspace source scans to their configured roots, prefer unsaved buffers, follow only in-root symlinks, and refresh compiler diagnostics after project/toolchain changes.
+- Bump the capability matrix to 1.0.12; record the remaining cancellation, race and cross-platform regression work as CAP-LSP-004.
+
+### Evidence
+- `src/utils/project.ts`: dynamic Vitte task templates and command planning.
+- `src/tasks/buildTasks.ts`: task execution, arguments, environment and test-target gating.
+- `src/debug/configurationProvider.ts` / `src/debug/nativeAdapter.ts`: scoped compiler and project settings passed through native launch.
+- Active native CLI `0.1.1`: `vitte test` has no test discovery or result contract; native DAP evidence is limited to Linux x86_64 / Ubuntu 24.04.
+- `npm run build`: TypeScript client/server compilation passes on the local macOS arm64 host; automated request-lifecycle race tests remain follow-up work.
+
+## [2.3.8] — 2026-11-27
+### Added
+- Detect the nearest CLI project configuration (`vitte.toml` or `.vitte/config`) and expose `Vitte: Detect Project` with the selected root and config path.
+- Isolate project roots, compiler discovery, compiler settings and module paths by workspace folder in multi-root workspaces.
+- Add active-file Check, build/run CLI arguments, target and module-root forwarding, compiler-repository Make target detection, and a Vitte problem matcher for task diagnostics.
+
+### Changed
+- Add progress and explicit exit status for command-driven check/build/run/test actions; retain standalone `vitte test` as unavailable.
+- Bump the capability matrix to 1.0.9 and document which JSON files activate the extension without being CLI configuration.
+
+### Evidence
+- `test/project.test.cjs`: project markers, command arguments, module roots, task matcher and Make target support.
+- `test/language.test.cjs`: per-document workspace folder selection in LSP project scopes.
+- Vitte compiler `0.1.1`: CLI `check`, `compile`, `run`, `--manifest-path`, `--target`, and `VITTE_MODULE_PATH`; its dispatcher rejects `--project-root`.
+
+## [2.3.7] — 2026-11-27
+### Added
+- Generate the packaged VS Code snippets from the shared catalog and verify every expanded snippet with the active parser.
+- Add canonical block-comment pairs, block-aware editor indentation, and short effect-focused titles for manual code actions.
+
+### Changed
+- Remove legacy `give` and `<<< >>>` examples, use canonical grouped imports, and keep text formatting edits disabled while typing.
+- Bump the capability matrix to 1.0.8; on-type formatting remains unavailable without a verified formatter contract.
+
+## [2.3.6] — 2026-11-27
+### Added
+- Run structured compiler diagnostics against the current unsaved source snapshot and preserve compiler metadata and exact source locations.
+- Mark diagnostic explanations as advisory and expose only compiler-marked machine-applicable error edits as quick fixes.
+- Add explicit unavailable explanations for import organization and document formatting until symbol-usage analysis and a canonical formatter exist.
+
+### Changed
+- Remove heuristic syntax diagnostics that duplicated or contradicted compiler results; editor lint now publishes only non-semantic advisories.
+- Remove text-based import, naming, style, contract and fix-all rewrites; keep symbol-aware rename as the only multi-location refactoring.
+- Stop advertising document/range formatting and remove the fake LSP formatter commands.
+- Bump the extension and language server to 2.3.6 and the capability matrix to 1.0.7.
+
+## [2.3.5] — 2026-11-27
+### Added
+- Expanded semantic tokens for source-indexed declarations/references, types, fields, variants, attributes, modifiers and operators, with delta updates and lexical masking.
+- Added conservative type/parameter inlay hints, reference code lenses, comment/block folding, syntax-aware selection ranges and unambiguous project-local import links.
+- Added provider regressions and documented each feature's tested source-derived scope and compiler API limitations in capability matrix 1.0.6.
+
+### Changed
+- Removed heuristic Run file and diagnostic Explain code lenses; test execution remains unavailable in compiler 0.1.1.
+- Keep return and import alias inlay hints disabled until the frontend can prove them.
+- Bump the extension and language server to 2.3.5.
+
 ## [2.3.4] — 2026-11-27
 ### Added
 - Symbol-aware rename for scoped source declarations, explicit imports, imported aliases and module aliases; comments, strings and shadowed bindings are excluded.

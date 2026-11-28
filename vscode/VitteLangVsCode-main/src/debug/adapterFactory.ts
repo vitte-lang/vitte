@@ -30,8 +30,13 @@ export class VitteDebugAdapterDescriptorFactory implements vscode.DebugAdapterDe
   createDebugAdapterDescriptor(session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
     const config = session.configuration as Record<string, unknown>;
     const request = config.request;
-    const settings = vscode.workspace.getConfiguration('vitte');
+    const settings = vscode.workspace.getConfiguration('vitte', session.workspaceFolder?.uri);
     const transport = this.getTransport(config, settings, request);
+    const nativeRequested = readBoolean(config.nativeBackend) === true;
+
+    if (nativeRequested && request === 'launch' && transport !== 'stdio') {
+      throw new Error('The bundled native debugger uses stdio. Select stdio for this launch, configure an external DAP adapter, or use Vitte: Build / Vitte: Run.');
+    }
 
     if (transport === 'tcp') {
       const port = config.port;
@@ -46,7 +51,9 @@ export class VitteDebugAdapterDescriptorFactory implements vscode.DebugAdapterDe
       throw new Error('Vitte DAP stdio transport supports launch requests only; use TCP for attach.');
     }
 
-    const adapter = this.resolveAdapter(config, settings);
+    // An explicit native launch must not fall through to a saved external
+    // adapter path; the launch configuration selected the backend.
+    const adapter = nativeRequested ? undefined : this.resolveAdapter(config, settings);
 
     const adapterArgs = readStringArray(config.adapterArgs)
       ?? readStringArray(settings.get('debug.adapterArgs'))

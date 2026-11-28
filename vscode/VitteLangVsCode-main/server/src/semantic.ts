@@ -41,9 +41,27 @@ const TOKEN_TYPES = [
   "string",    // 9
   "comment",   // 10
   "operator",  // 11
+  "enumMember", // 12
+  "decorator", // 13
 ] as const;
 
-const TOKEN_MODIFIERS: string[] = [];
+const TOKEN_MODIFIERS = ["declaration", "definition", "readonly", "public", "async", "modification"];
+const MODIFIER_BIT = {
+  declaration: 1 << 0,
+  definition: 1 << 1,
+  readonly: 1 << 2,
+  public: 1 << 3,
+  async: 1 << 4,
+  modification: 1 << 5,
+} as const;
+
+interface SemanticSpan {
+  start: number;
+  end: number;
+  type: number;
+  modifiers: number;
+  priority: number;
+}
 
 const TYPE_INDEX = {
   namespace: 0,
@@ -58,6 +76,8 @@ const TYPE_INDEX = {
   string: 9,
   comment: 10,
   operator: 11,
+  enumMember: 12,
+  decorator: 13,
 } as const;
 
 export function getSemanticTokensLegend(): SemanticTokensLegend {
@@ -255,22 +275,31 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
   const nlIdx = buildLineIndex(text);
 
   // On collecte d’abord tous les spans, puis on trie, puis on émet
-  interface Span { start: number; end: number; type: number; }
-  const spans: Span[] = [];
+  const spans: SemanticSpan[] = [];
 
   // 1) commentaires et chaînes (priorité forte)
-  for (const span of lex.spans) insertSpan(spans, span.start, span.end, TYPE_INDEX[span.kind]);
+  for (const span of lex.spans) insertSpan(spans, span.start, span.end, TYPE_INDEX[span.kind], 0, 100);
 
   // 2) nombres en zones de code
   for (const m of matchAll(NUMBER_PATTERN, text)) {
     if (!lex.mask[m.index]) continue;
-    insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.number);
+    insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.number, 0, 30);
+  }
+
+  // Attributes are syntax names even when they spell a language keyword.
+  for (const m of matchAll(/#!?\[\s*([A-Za-z_]\w*(?:(?:::\s*[A-Za-z_]\w*)*)?)/g, text)) {
+    const raw = m[1] ?? "";
+    const base = m.index + m[0].indexOf(raw);
+    for (const segment of matchAll(/[A-Za-z_]\w*/g, raw)) {
+      const start = base + segment.index;
+      if (lex.mask[start]) insertSpan(spans, start, start + segment[0].length, TYPE_INDEX.decorator, 0, 70);
+    }
   }
 
   // 3) codes diagnostics en zones de code (ex: VITTE-1001)
   for (const m of matchAll(/\bVITTE-[A-Z0-9][A-Z0-9_-]*\b/g, text)) {
     if (!lex.mask[m.index]) continue;
-    insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.macro);
+    insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.macro, 0, 50);
   }
 
   // 4) mots-clés en zones de code
@@ -280,55 +309,59 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
     const type = WORD_OPERATORS.has(m[0])
       ? TYPE_INDEX.operator
       : PRIMITIVE_TYPE_SET.has(m[0]) ? TYPE_INDEX.type : TYPE_INDEX.keyword;
-    insertSpan(spans, m.index, m.index + m[0].length, type);
+    const modifiers = m[0] === "pub" || m[0] === "export"
+      ? MODIFIER_BIT.public
+      : m[0] === "async" ? MODIFIER_BIT.async
+        : m[0] === "mut" ? MODIFIER_BIT.modification : 0;
+    insertSpan(spans, m.index, m.index + m[0].length, type, modifiers, 40);
   }
 
-  // 5) déclarations: colorer uniquement le nom
-  addPathDeclSpans(text, lex.mask, /\bspace\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
-  addPathDeclSpans(text, lex.mask, /\b(?:use|pull)\s+([A-Za-z_][\w./:]*)/g, 1, TYPE_INDEX.namespace, spans);
-  addDeclSpans(text, lex.mask, /\bform\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\bpick\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\btrait\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\btype\s+([A-Za-z_]\w*)/g, 1, TYPE_INDEX.type, spans);
-  addDeclSpans(text, lex.mask, /\bproc\s+([A-Za-z_]\w*)\s*\(/g, 1, TYPE_INDEX.function, spans);
-  addDeclSpans(text, lex.mask, /\b(?:let|const|static)\s+(?:mut\s+)?([A-Za-z_]\w*)/g, 1, TYPE_INDEX.variable, spans);
-
-  // 6) paramètres de fonctions
-  for (const m of matchAll(/\bproc\s+[A-Za-z_]\w*\s*\(([^)]*)\)/g, text)) {
-    if (!lex.mask[m.index]) continue;
-    const params = (m[1] ?? "").split(",");
-    const base = m.index + m[0].indexOf("(") + 1;
-    let offset = 0;
-    for (const p of params) {
-      const mm = /\s*([A-Za-z_]\w*)/.exec(p);
-      if (!mm) { offset += p.length + 1; continue; }
-      const name = mm[1];
-      const local = p.indexOf(name);
-      const off = base + offset + (local >= 0 ? local : 0);
-      if (name && lex.mask[off]) insertSpan(spans, off, off + name.length, TYPE_INDEX.parameter);
-      offset += p.length + 1; // +1 pour la virgule
+  // Compiler-independent source symbols give declarations and resolvable local
+  // references stable roles; unresolved names retain lexical fallback below.
+  const index = sourceIndex(doc);
+  const knownSymbolNames = new Set(index.symbols.map((symbol) => symbol.name));
+  for (const symbol of index.symbols) {
+    const type = semanticTypeForRole(symbol.role);
+    if (type === undefined) continue;
+    let modifiers = MODIFIER_BIT.declaration | MODIFIER_BIT.definition;
+    if (symbol.isPublic) modifiers |= MODIFIER_BIT.public;
+    modifiers |= bindingModifiers(text, symbol);
+    if (symbol.role === "procedure") {
+      const prefix = text.slice(Math.max(0, symbol.start - 48), symbol.start);
+      if (/\basync\s*$/.test(prefix)) modifiers |= MODIFIER_BIT.async;
     }
+    upsertSpan(spans, symbol.nameStart, symbol.nameEnd, type, modifiers, 90);
   }
 
-  // 7) champs nommés dans les forms
-  for (const m of matchAll(/\bform\s+[A-Za-z_]\w*\s*\{([\s\S]*?)\}/g, text)) {
-    const body = m[1] ?? "";
-    const bodyStart = m.index + m[0].indexOf("{") + 1;
-    for (const fm of matchAll(/\b([A-Za-z_]\w*)\s*(?=:)/g, body)) {
-      const name = fm[1];
-      const off = bodyStart + fm.index + fm[0].lastIndexOf(name);
-      if (lex.mask[off]) insertSpan(spans, off, off + name.length, TYPE_INDEX.property);
-    }
+  // Resolved references use the declaration's role and lexical fallback only
+  // applies when the active source index cannot prove a target.
+  for (const m of matchAll(/[A-Za-z_]\w*/g, text)) {
+    const start = m.index;
+    if (!lex.mask[start]) continue;
+    if (!knownSymbolNames.has(m[0])) continue;
+    const symbol = resolveSourceSymbol(doc, doc.positionAt(start))?.symbol;
+    if (!symbol) continue;
+    const type = semanticTypeForRole(symbol.role);
+    if (type === undefined) continue;
+    const modifiers = bindingModifiers(text, symbol);
+    insertSpan(spans, start, start + m[0].length, type, modifiers, 80);
   }
 
-  // 8) identifiants ordinaires : évite qu’ils restent tous au scope par défaut
-  // (souvent blanc), tout en laissant les déclarations et mots-clés prioritaires.
   addIdentifierSpans(text, lex.mask, spans);
+  for (const m of matchAll(/(?:\.\.=?|\?\?|\?\.|::|->|=>|==|!=|<=|>=|&&|\|\||<<|>>|\+=|-=|\*=|\/=|%=|[=+\-*\/%&|^!~<>.])/g, text)) {
+    if (lex.mask[m.index]) insertSpan(spans, m.index, m.index + m[0].length, TYPE_INDEX.operator, 0, 5);
+  }
 
-  // Tri global et émission
-  spans.sort((a, b) => a.start - b.start || a.end - b.end);
+  // Resolve overlaps after collection. This keeps classification O(n log n)
+  // instead of scanning every previous token for each identifier.
+  spans.sort((a, b) => a.start - b.start || b.priority - a.priority || b.end - a.end);
   const builder = new SemanticTokensBuilder();
-  for (const s of spans) pushMultiline(builder, text, nlIdx, s.start, s.end, s.type);
+  let previousEnd = -1;
+  for (const s of spans) {
+    if (s.start < previousEnd) continue;
+    pushMultiline(builder, text, nlIdx, s.start, s.end, s.type, s.modifiers);
+    previousEnd = s.end;
+  }
 
   const tokens = builder.build();
   semCache.set(doc, { version: doc.version, tokens });
@@ -338,7 +371,7 @@ export function buildSemanticTokens(doc: TextDocument): SemanticTokens {
 function addIdentifierSpans(
   text: string,
   mask: Uint8Array,
-  spans: { start: number; end: number; type: number }[],
+  spans: SemanticSpan[],
 ) {
   for (const m of matchAll(/[A-Za-z_]\w*/g, text)) {
     const start = m.index;
@@ -357,7 +390,7 @@ function addIdentifierSpans(
     else if (after === "(") type = TYPE_INDEX.function;
     else if (text[beforeOffset] === "." || previousPair === "::") type = TYPE_INDEX.property;
     else type = TYPE_INDEX.variable;
-    insertSpan(spans, start, end, type);
+    insertSpan(spans, start, end, type, 0, 10);
   }
 }
 
@@ -398,6 +431,7 @@ function pushMultiline(
   startOff: number,
   endOff: number,
   tokenType: number,
+  tokenModifiers: number,
 ) {
   const [sLine] = offsetToLC(nlIdx, startOff);
   const [eLine] = offsetToLC(nlIdx, endOff);
@@ -405,61 +439,40 @@ function pushMultiline(
     const start = Math.max(startOff, nlIdx[line]);
     let end = Math.min(endOff, nlIdx[line + 1] ?? text.length);
     while (end > start && (text[end - 1] === "\n" || text[end - 1] === "\r")) end--;
-    if (end > start) builder.push(line, start - nlIdx[line], end - start, tokenType, 0);
+    if (end > start) builder.push(line, start - nlIdx[line], end - start, tokenType, tokenModifiers);
   }
 }
 
-function addDeclSpans(
-  text: string,
-  mask: Uint8Array,
-  rx: RegExp,
-  group: number,
-  tokenTypeIndex: number,
-  spans: { start: number; end: number; type: number }[]
-) {
-  rx.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = rx.exec(text))) {
-    const name = m[group];
-    if (!name || !/^[A-Za-z_]\w*$/.test(name)) continue;
-    const nameOff = (m.index ?? 0) + m[0].indexOf(name);
-    if (!mask[nameOff]) continue;
-    insertSpan(spans, nameOff, nameOff + name.length, tokenTypeIndex);
+function semanticTypeForRole(role: SourceSymbol["role"]): number | undefined {
+  switch (role) {
+    case "module": return TYPE_INDEX.namespace;
+    case "type":
+    case "implementation": return TYPE_INDEX.type;
+    case "procedure": return TYPE_INDEX.function;
+    case "binding":
+    case "global": return TYPE_INDEX.variable;
+    case "parameter": return TYPE_INDEX.parameter;
+    case "field": return TYPE_INDEX.property;
+    case "variant": return TYPE_INDEX.enumMember;
   }
 }
 
-function addPathDeclSpans(
-  text: string,
-  mask: Uint8Array,
-  rx: RegExp,
-  group: number,
-  tokenTypeIndex: number,
-  spans: { start: number; end: number; type: number }[]
-) {
-  rx.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = rx.exec(text))) {
-    const raw = m[group];
-    if (!raw) continue;
-    const base = (m.index ?? 0) + m[0].indexOf(raw);
-    const segRx = /[A-Za-z_]\w*/g;
-    let seg: RegExpExecArray | null;
-    while ((seg = segRx.exec(raw))) {
-      const off = base + seg.index;
-      const name = seg[0];
-      if (!mask[off]) continue;
-      insertSpan(spans, off, off + name.length, tokenTypeIndex);
-    }
+function bindingModifiers(text: string, symbol: SourceSymbol): number {
+  let modifiers = symbol.detail?.startsWith("const ") ? MODIFIER_BIT.readonly : 0;
+  if (symbol.role === "binding" || symbol.role === "global") {
+    const declarationPrefix = text.slice(symbol.start, symbol.nameStart);
+    if (/\bmut\s*$/.test(declarationPrefix)) modifiers |= MODIFIER_BIT.modification;
   }
+  return modifiers;
 }
 
-function insertSpan(spans: { start: number; end: number; type: number }[], start: number, end: number, type: number) {
+function upsertSpan(spans: SemanticSpan[], start: number, end: number, type: number, modifiers: number, priority = 90): void {
+  insertSpan(spans, start, end, type, modifiers, priority);
+}
+
+function insertSpan(spans: SemanticSpan[], start: number, end: number, type: number, modifiers = 0, priority = 20) {
   if (end <= start) return;
-  // éviter les chevauchements: si recouvrement détecté, on ignore la nouvelle plage
-  for (const s of spans) {
-    if (!(end <= s.start || start >= s.end)) return;
-  }
-  spans.push({ start, end, type });
+  spans.push({ start, end, type, modifiers, priority });
 }
 
 function* matchAll(rx: RegExp, s: string): Generator<RegExpMatchArray & { index: number }> {

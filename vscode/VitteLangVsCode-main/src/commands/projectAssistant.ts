@@ -1,5 +1,5 @@
 import { workspaceConfiguration, projectSource, PROJECT_CONFIG } from "../utils/project";
-import { isSupportedVitteCompilerVersion, locateVitteRuntime, VITTE_COMPILER_EVIDENCE_VERSION } from "../debug/runtimeLocator";
+import { isNativeDebugCandidatePlatform, isSupportedVitteCompilerVersion, locateVitteRuntime, VITTE_COMPILER_EVIDENCE_VERSION } from "../debug/runtimeLocator";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import * as vscode from "vscode";
@@ -98,8 +98,13 @@ async function writeWithOverwriteConfirm(p: string, content: string): Promise<bo
 async function generateWorkspaceVscodeFiles(base: string): Promise<void> {
   const tasksPath = path.join(base, ".vscode", "tasks.json");
   const launchPath = path.join(base, ".vscode", "launch.json");
-  const runtime = await locateVitteRuntime();
-  const { tasks, launch } = workspaceConfiguration(base, runtime.cliPath ?? "vitte");
+  const resource = vscode.Uri.file(base);
+  const runtime = await locateVitteRuntime(undefined, resource);
+  const settings = vscode.workspace.getConfiguration('vitte', resource);
+  const nativeOptIn = settings.get<boolean>('debug.nativeBackend', false);
+  const nativeLaunch = nativeOptIn && isNativeDebugCandidatePlatform() && runtime.found && isSupportedVitteCompilerVersion(runtime.versions?.cli);
+  const externalLaunch = Boolean(settings.get<string>('debug.program', '').trim());
+  const { tasks, launch } = workspaceConfiguration(base, { enabled: nativeLaunch || externalLaunch, nativeBackend: nativeLaunch });
 
   await writeIfMissing(tasksPath, `${JSON.stringify(tasks, null, 2)}\n`);
   await writeIfMissing(launchPath, `${JSON.stringify(launch, null, 2)}\n`);

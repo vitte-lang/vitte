@@ -3,7 +3,7 @@
  * Inspiré de C/C++, rust-analyzer, TypeScript
  * -------------------------------------------------------------------------- */
 
-import { TextEdit, Range, Position } from "vscode-languageserver/node";
+import { TextEdit, Position } from "vscode-languageserver/node";
 import type {
   Connection,
   ExecuteCommandParams,
@@ -23,9 +23,6 @@ export const VITTE_COMMANDS = {
   RUN_ACTION_ARGS: "vitte.runActionWithArgs",
   DEBUG_RUN_FILE: "vitte.debug.runFile",
   DEBUG_ATTACH: "vitte.debug.attachServer",
-  FORMAT_DOC: "vitte.formatDocument",
-  ORGANIZE_IMPORTS: "vitte.organizeImports",
-  FIX_ALL: "vitte.fixAll",
   APPLY_EDIT_SAMPLE: "vitte.applyEditSample",
   PROGRESS_SAMPLE: "vitte.progressSample",
   SHOW_INFO: "vitte.showInfo"
@@ -42,13 +39,6 @@ interface DebugAttachArgs {
   port?: number;     // default 6009
   timeoutMs?: number; // default 10000
 }
-
-interface PosLike { line: number; character: number; }
-interface RangeLike { start: PosLike; end: PosLike; }
-
-type FormatArgs =
-  | string
-  | { uri: string; range?: RangeLike };
 
 interface ApplyEditSampleArgs {
   uri: string;
@@ -124,21 +114,6 @@ async function handleCommand(connection: Connection, params: ExecuteCommandParam
       return debugAttach(connection, a);
     }
 
-    case VITTE_COMMANDS.FORMAT_DOC: {
-      const a = readFormatArgs(args, 0);
-      return formatDocument(connection, a);
-    }
-
-    case VITTE_COMMANDS.ORGANIZE_IMPORTS: {
-      const uri = readUri(args, 0);
-      return organizeImports(connection, uri);
-    }
-
-    case VITTE_COMMANDS.FIX_ALL: {
-      const uri = readUri(args, 0);
-      return fixAllProblems(connection, uri);
-    }
-
     case VITTE_COMMANDS.APPLY_EDIT_SAMPLE: {
       const a = readObjectArg<ApplyEditSampleArgs>(args, 0);
       if (!a?.uri) throw new Error("applyEditSample: uri manquant.");
@@ -178,52 +153,6 @@ function debugAttach(connection: Connection, a: DebugAttachArgs): CommandResult 
   const port = a.port ?? 6009;
   const timeout = a.timeoutMs ?? 10_000;
   connection.console.log(`🐞 Attach au serveur debug ${host}:${port} (timeout ${timeout}ms).`);
-  return ok();
-}
-
-/** Formatage: exemple d’édition — insère un header au début du fichier ou de la plage */
-async function formatDocument(connection: Connection, arg?: FormatArgs): Promise<CommandResult> {
-  if (!arg) return ok();
-  const { uri, range } = normalizeFormatArgs(arg);
-  const where = range ? range.start : Position.create(0, 0);
-
-  const edit: WorkspaceEdit = {
-    changes: {
-      [uri]: [TextEdit.insert(where, "// formatted by Vitte LSP\n")]
-    }
-  };
-  await connection.workspace.applyEdit(edit);
-  return ok();
-}
-
-/** Organize imports: squelette — à remplacer par analyse réelle */
-async function organizeImports(connection: Connection, uri?: string): Promise<CommandResult> {
-  if (!uri) return ok();
-  connection.console.log(`📦 Organize imports sur ${uri}`);
-
-  const edit: WorkspaceEdit = {
-    changes: {
-      [uri]: [
-        TextEdit.replace(
-          Range.create(Position.create(0, 0), Position.create(0, Number.MAX_SAFE_INTEGER)),
-          "use vitte/core\n"
-        )
-      ]
-    }
-  };
-  await connection.workspace.applyEdit(edit);
-  return ok();
-}
-
-/** Fix all: correctif générique d’exemple */
-async function fixAllProblems(connection: Connection, uri?: string): Promise<CommandResult> {
-  if (!uri) return ok();
-  connection.console.log(`🛠 Fix all sur ${uri}`);
-
-  const edit: WorkspaceEdit = {
-    changes: { [uri]: [TextEdit.insert(Position.create(0, 0), "// fix-all applied\n")] }
-  };
-  await connection.workspace.applyEdit(edit);
   return ok();
 }
 
@@ -267,36 +196,6 @@ function readObjectArg<T>(args: unknown[] | undefined, index: number): T | undef
   return isRecord(v) ? (v as T) : undefined;
 }
 
-function readUri(args: unknown[] | undefined, index: number): string | undefined {
-  const uri = readStringArg(args, index);
-  if (!uri) return undefined;
-  if (uri.startsWith("file://") || uri.includes("://")) return uri;
-  return "file://" + uri;
-}
-
-function readFormatArgs(args: unknown[] | undefined, index: number): FormatArgs | undefined {
-  const v = args?.[index];
-  if (typeof v === "string") return v;
-  if (isRecord(v) && typeof v.uri === "string") {
-    const candidateRange = (v as { range?: unknown }).range;
-    const range = isRangeLike(candidateRange) ? candidateRange : undefined;
-    return { uri: v.uri, range };
-  }
-  return undefined;
-}
-
-function normalizeFormatArgs(arg: FormatArgs): { uri: string; range?: Range } {
-  if (typeof arg === "string") return { uri: arg };
-  const uri = arg.uri;
-  const r = arg.range
-    ? Range.create(
-        Position.create(arg.range.start.line, arg.range.start.character),
-        Position.create(arg.range.end.line, arg.range.end.character)
-      )
-    : undefined;
-  return { uri, range: r };
-}
-
 function safeJson(v: unknown): string {
   try {
     return JSON.stringify(v);
@@ -326,20 +225,4 @@ function fail(): CommandResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isPosLike(value: unknown): value is PosLike {
-  return (
-    isRecord(value) &&
-    typeof value.line === "number" &&
-    typeof value.character === "number"
-  );
-}
-
-function isRangeLike(value: unknown): value is RangeLike {
-  return (
-    isRecord(value) &&
-    isPosLike(value.start) &&
-    isPosLike(value.end)
-  );
 }

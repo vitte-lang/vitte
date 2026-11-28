@@ -1,7 +1,9 @@
 # Shared Vitte snippets
 
 `catalog.json` is the validated source for the Geany, Emacs, UltiSnips, VS Code
-and LSP snippet collections. Regenerate the native files with:
+and LSP snippet collections. When the repository checkout contains the VS Code
+extension, generation also refreshes its packaged `snippets/vitte.json` file.
+Regenerate the native files with:
 
 ```sh
 editors/vitte-editor snippets --generate
