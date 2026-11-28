@@ -24,6 +24,8 @@ if (!tempRootResolved.startsWith(tempPrefix) || !path.basename(tempRootResolved)
 const userDataDir = path.join(tempRoot, "clean user data");
 const extensionsDir = path.join(tempRoot, "extensions with spaces");
 const workspaceDir = path.join(tempRoot, "workspace é project");
+const hostWorkspaceDir = path.join(tempRoot, "host project é");
+const workspaceFile = path.join(tempRoot, "installed-extension-tests.code-workspace");
 const smokeVsix = path.join(tempRoot, "vitte-studio-update.vsix");
 const sourceSentinel = path.join(workspaceDir, "keep-user-data.txt");
 const userSettings = path.join(userDataDir, "User", "settings.json");
@@ -48,9 +50,20 @@ function runCode(executable, args, operation) {
 async function main() {
   await fs.access(sourceVsix);
   await fs.mkdir(workspaceDir, { recursive: true });
+  await fs.mkdir(path.join(hostWorkspaceDir, "src"), { recursive: true });
+  await fs.mkdir(path.join(hostWorkspaceDir, ".vscode"), { recursive: true });
   await fs.mkdir(path.dirname(userSettings), { recursive: true });
   await fs.mkdir(otherExtensionDir, { recursive: true });
   await fs.writeFile(sourceSentinel, "keep-this-project-file\n", "utf8");
+  await fs.writeFile(path.join(hostWorkspaceDir, "vitte.toml"), '[project]\nname = "editor-host-test"\n', "utf8");
+  await fs.writeFile(path.join(hostWorkspaceDir, "src", "main.vit"), "proc main() -> int {\n    give 0;\n}\n", "utf8");
+  await fs.writeFile(path.join(hostWorkspaceDir, ".vscode", "settings.json"), JSON.stringify({ "vitte.compiler.path": process.execPath }, null, 2) + "\n", "utf8");
+  await fs.writeFile(workspaceFile, JSON.stringify({
+    folders: [
+      { path: path.relative(tempRoot, workspaceDir) },
+      { path: path.relative(tempRoot, hostWorkspaceDir) },
+    ],
+  }, null, 2) + "\n", "utf8");
   await fs.writeFile(userSettings, JSON.stringify({ "smoke.preserve": true }, null, 2) + "\n", "utf8");
   await fs.writeFile(path.join(otherExtensionDir, "package.json"), JSON.stringify({
     name: "keep-me",
@@ -89,7 +102,7 @@ async function main() {
   await assertPersistentData();
 
   const launchArgs = [
-    workspaceDir,
+    workspaceFile,
     "--no-sandbox",
     "--disable-gpu-sandbox",
     "--disable-updates",
@@ -109,6 +122,8 @@ async function main() {
       VITTE_SMOKE_EXTENSIONS_DIR: extensionsDir,
       VITTE_SMOKE_SOURCE_ROOT: root,
       VITTE_SMOKE_VERSION: packageManifest.version,
+      VITTE_HOST_TEST_FOLDER: hostWorkspaceDir,
+      VITTE_HOST_TEST_COMPILER: process.execPath,
     },
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,

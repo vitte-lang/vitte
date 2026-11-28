@@ -3,6 +3,9 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { isNativeDebugCandidatePlatform } from '../../debug/runtimeLocator';
+
+const nativeDapTestsEnabled = process.env.VITTE_RUN_NATIVE_DAP_TESTS === '1' && isNativeDebugCandidatePlatform();
 
 interface DapMessage {
   type?: string;
@@ -138,7 +141,8 @@ function responseBody(message: DapMessage, command: string): Record<string, unkn
 }
 
 suite('Vitte native DWARF debugger', () => {
-  test('stopOnEntry stops at the real Vitte entry frame', async () => {
+  test('stopOnEntry stops at the real Vitte entry frame', async function () {
+    if (!nativeDapTestsEnabled) this.skip();
     const repositoryRoot = path.resolve(__dirname, '../../../../..');
     const program = path.join(repositoryRoot, 'src/tests/debug/scopes_arrays.vit');
     let state = 'waiting-for-entry';
@@ -169,7 +173,8 @@ suite('Vitte native DWARF debugger', () => {
     assert.ok(messages.some((message) => message.type === 'event' && message.event === 'stopped'));
   });
 
-  test('models shadowing, lifetimes, nested arrays, and pointers', async () => {
+  test('models shadowing, lifetimes, nested arrays, and pointers', async function () {
+    if (!nativeDapTestsEnabled) this.skip();
     const repositoryRoot = path.resolve(__dirname, '../../../../..');
     const program = path.join(repositoryRoot, 'src/tests/debug/scopes_arrays.vit');
     let state = 'waiting-for-inspect-stop';
@@ -365,7 +370,8 @@ suite('Vitte native DWARF debugger', () => {
     assert.ok(messages.some((message) => message.type === 'event' && message.event === 'stopped'));
   });
 
-  test('applies conditional breakpoints and repeated logpoints', async () => {
+  test('applies conditional breakpoints and repeated logpoints', async function () {
+    if (!nativeDapTestsEnabled) this.skip();
     const repositoryRoot = path.resolve(__dirname, '../../../../..');
     const program = path.join(repositoryRoot, 'src/tests/debug/conditional_logpoints.vit');
     const logs: string[] = [];
@@ -409,7 +415,8 @@ suite('Vitte native DWARF debugger', () => {
     assert.ok(messages.some((message) => message.type === 'event' && message.event === 'terminated'));
   });
 
-  test('reads nested aggregates, strings, floats, scopes, and expressions', async () => {
+  test('reads nested aggregates, strings, floats, scopes, and expressions', async function () {
+    if (!nativeDapTestsEnabled) this.skip();
     const repositoryRoot = path.resolve(__dirname, '../../../../..');
     const program = path.join(repositoryRoot, 'src/tests/debug/dwarf_values.vit');
     let state = 'waiting-for-stop';
@@ -519,7 +526,8 @@ suite('Vitte native DWARF debugger', () => {
     assert.ok(messages.some((message) => message.type === 'event' && message.event === 'stopped'));
   });
 
-  test('reports a native signal through stopped and exceptionInfo', async () => {
+  test('reports a native signal through stopped and exceptionInfo', async function () {
+    if (!nativeDapTestsEnabled) this.skip();
     const repositoryRoot = path.resolve(__dirname, '../../../../..');
     const helperSource = path.join(repositoryRoot, 'src/tests/debug/signal_helper.c');
     const helperDirectory = mkdtempSync(path.join(os.tmpdir(), 'vitte-dap-signal-'));

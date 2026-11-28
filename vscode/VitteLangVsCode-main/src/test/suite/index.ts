@@ -41,12 +41,21 @@ export async function run(): Promise<void> {
   }
 
   await new Promise<void>((resolve, reject) => {
-    mocha.run((failures: number) => {
+    const failedTests: string[] = [];
+    const runner = mocha.run((failures: number) => {
       if (failures > 0) {
-        reject(new Error(`${failures} test(s) ont échoué.`));
+        reject(new Error([
+          `${failures} test(s) ont échoué.`,
+          ...failedTests,
+        ].join("\n")));
       } else {
         resolve();
       }
+    });
+    runner.on("fail", (test, error) => {
+      const title = test.fullTitle();
+      const message = error instanceof Error ? error.stack ?? error.message : String(error);
+      failedTests.push(`- ${title}: ${message}`);
     });
   });
 }

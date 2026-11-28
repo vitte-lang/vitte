@@ -218,6 +218,8 @@ Open **Preferences: Open Settings (UI)** and search for `vitte`.
 
 ## Project
 
+Maintainers: see the [extension testing and capability guide](docs/testing.md) for extension-host tests, protocol fixtures, packaged VSIX checks, and how to add a capability, command or setting.
+
 - Extension: `VitteStudio.vitte-studio` · version `2.3.10`
 - Requires VS Code `1.105` or later
 - License: [MIT](LICENSE)

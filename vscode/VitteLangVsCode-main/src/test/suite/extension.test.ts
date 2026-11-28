@@ -14,11 +14,14 @@ interface ExtensionTestApi {
     restart: true;
     runAction: true;
     serverResolutionTestHook: true;
+    shutdownTestHook: true;
   };
   getStatusText(): string;
   getStatusTooltip(): string;
   getClientState(): unknown;
   runAction(action: string): Promise<void>;
+  shutdownForTest(): Promise<void>;
+  resolveRuntimeForTest(uri: string): Promise<{ found: boolean; cliPath?: string }>;
   resolveServerModuleForTest(ctx: Pick<vscode.ExtensionContext, "asAbsolutePath">): string;
 }
 
@@ -65,6 +68,7 @@ suite("Vitte extension", () => {
     assert.equal(testApi.capabilities.restart, true);
     assert.equal(testApi.capabilities.runAction, true);
     assert.equal(testApi.capabilities.serverResolutionTestHook, true);
+    assert.equal(testApi.capabilities.shutdownTestHook, true);
   });
 
   test("Les commandes principales sont déclarées", async () => {
@@ -134,7 +138,7 @@ suite("Vitte extension", () => {
     await waitUntil(() => testApi.getStatusText().startsWith("$(check)"), 8000);
     const tooltip = testApi.getStatusTooltip().toLowerCase();
     assert.ok(
-      tooltip.includes("opérationnel") || tooltip.includes("running"),
+      tooltip.includes("opérationnel") || tooltip.includes("running") || tooltip.includes("ready") || tooltip.includes("prêt"),
       "Le statut du client n’indique pas qu’il est démarré"
     );
     assert.ok(
@@ -150,7 +154,6 @@ suite("Vitte extension", () => {
 
     const filePath = path.join(
       workspace.uri.fsPath,
-      ".vscode-test",
       `vitte-lsp-capabilities-${Date.now().toString(36)}.vit`,
     );
     const source = [
@@ -265,7 +268,10 @@ suite("Vitte extension", () => {
         8000,
         "Vitte find references",
       );
-      assert.ok((references?.length ?? 0) >= 2, "La déclaration et l’appel doivent être référencés");
+      assert.ok(
+        (references?.length ?? 0) >= 2,
+        `La déclaration et l’appel doivent être référencés; reçu ${JSON.stringify(references ?? [])}`,
+      );
 
       const codeLenses = await withTimeout(
         vscode.commands.executeCommand<vscode.CodeLens[]>("vscode.executeCodeLensProvider", document.uri),
@@ -1149,6 +1155,137 @@ suite("Vitte extension", () => {
       await maybeRun("vitte.diagnostics.copyExplainCommand", { uri: "bad", diagnostic: null });
       await maybeRun("vitte.diagnostics.openDoc", { uri: "bad", diagnostic: null });
     });
+  });
+
+  test("VSIX workflow: folder-scoped compiler discovery, save, and toolchain failures", async function () {
+    this.timeout(30000);
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    const hostProjectPath = process.env.VITTE_HOST_TEST_FOLDER;
+    const expectedCompilerPath = process.env.VITTE_HOST_TEST_COMPILER;
+    assert.ok(hostProjectPath && expectedCompilerPath, "The test runner must provide the isolated multi-root fixture.");
+    const projectRoot = path.resolve(hostProjectPath);
+    const folder = workspaceFolders.find((candidate) => path.resolve(candidate.uri.fsPath) === projectRoot);
+    assert.ok(folder, `The isolated Vitte project must be an independent workspace root. Open folders: ${workspaceFolders.map((candidate) => candidate.uri.fsPath).join(", ")}`);
+    const otherFolder = workspaceFolders.find((candidate) => candidate.uri.toString() !== folder.uri.toString());
+    assert.ok(otherFolder, "A second workspace root is required to prove folder-scoped configuration.");
+    const otherCompilerPathBefore = vscode.workspace.getConfiguration("vitte", otherFolder.uri).get<string>("compiler.path", "");
+    const sourcePath = path.join(projectRoot, "src", "main.vit");
+    assert.ok(fs.existsSync(sourcePath), "The isolated project source fixture is missing.");
+    const initialSource = "proc main() -> int {\n    give 0;\n}\n";
+    fs.writeFileSync(sourcePath, initialSource, "utf8");
+
+    const envKeys = ["PATH", "VITTE_BIN_DIR", "VITTE_TOOLCHAIN_ROOT", "VITTE_ROOT", "VITTE_HOME", "VITTE_TEST_NO_SYSTEM_DISCOVERY"] as const;
+    const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
+    const windowAny = vscode.window as unknown as {
+      showQuickPick: (...args: unknown[]) => Thenable<unknown>;
+      showErrorMessage: (...args: unknown[]) => Thenable<unknown>;
+      showWarningMessage: (...args: unknown[]) => Thenable<unknown>;
+    };
+    const originalQuickPick = windowAny.showQuickPick;
+    const originalError = windowAny.showErrorMessage;
+    const originalWarning = windowAny.showWarningMessage;
+    let detectedChoice: unknown;
+    let errorMessage = "";
+    let warningMessage = "";
+
+    try {
+      const document = await withTimeout(vscode.workspace.openTextDocument(vscode.Uri.file(sourcePath)), 8000, "open the folder-scoped host fixture");
+      assert.equal(document.languageId, "vit");
+      const editor = await withTimeout(vscode.window.showTextDocument(document, { preview: false }), 8000, "show the folder-scoped host fixture");
+      await withTimeout(editor.edit((edit) => edit.insert(new vscode.Position(1, 0), "    // saved from an unsaved editor buffer\n")), 8000, "edit the unsaved host fixture");
+      assert.equal(fs.readFileSync(sourcePath, "utf8"), initialSource, "An edit must remain in the unsaved buffer until save.");
+      await withTimeout(document.save(), 8000, "save the host fixture");
+      assert.match(fs.readFileSync(sourcePath, "utf8"), /saved from an unsaved editor buffer/);
+
+      const scopedConfig = vscode.workspace.getConfiguration("vitte", folder.uri);
+      assert.equal(path.resolve(scopedConfig.get<string>("compiler.path", "")), path.resolve(expectedCompilerPath));
+      const otherConfig = vscode.workspace.getConfiguration("vitte", otherFolder.uri);
+      assert.equal(otherConfig.get<string>("compiler.path", ""), otherCompilerPathBefore, "A compiler configured in one root must not change another folder's setting.");
+
+      await vscode.commands.executeCommand("vitte.clearRuntimeCache");
+      const testApi = api;
+      assert.ok(testApi, "Test API is unavailable.");
+      const detectedRuntime = await withTimeout(Promise.resolve(testApi.resolveRuntimeForTest(folder.uri.toString())), 8000, "resolve the configured host compiler");
+      assert.ok(
+        detectedRuntime.found,
+        `Configured executable was not discovered: ${detectedRuntime.cliPath ?? "no executable path returned"}`,
+      );
+
+      // The VSIX smoke loads this suite from a separate extension path, so its
+      // vscode.window wrapper cannot be stubbed from the test extension. Keep
+      // UI-interaction assertions in the development-host suite and exercise
+      // the installed extension's real discovery path through its test API.
+      if (process.env.VITTE_SMOKE_EXTENSIONS_DIR) {
+        await scopedConfig.update("compiler.path", path.join(projectRoot, "missing compiler"), vscode.ConfigurationTarget.WorkspaceFolder);
+        await scopedConfig.update("toolchain.root", path.join(projectRoot, "missing toolchain"), vscode.ConfigurationTarget.WorkspaceFolder);
+        for (const key of ["VITTE_BIN_DIR", "VITTE_TOOLCHAIN_ROOT", "VITTE_ROOT", "VITTE_HOME"] as const) delete process.env[key];
+        process.env.VITTE_TEST_NO_SYSTEM_DISCOVERY = "1";
+        process.env.PATH = path.join(projectRoot, "empty path");
+        await vscode.commands.executeCommand("vitte.clearRuntimeCache");
+        const missingRuntime = await withTimeout(Promise.resolve(testApi.resolveRuntimeForTest(folder.uri.toString())), 8000, "resolve the missing host compiler");
+        assert.equal(missingRuntime.found, false, `Missing toolchain was unexpectedly resolved: ${missingRuntime.cliPath ?? "no path"}`);
+        return;
+      }
+
+      windowAny.showQuickPick = ((items: readonly unknown[]) => {
+        detectedChoice = items.find((item) => (item as { action?: string }).action === "detected");
+        return Promise.resolve(detectedChoice);
+      }) as typeof windowAny.showQuickPick;
+      await withTimeout(vscode.commands.executeCommand("vitte.selectRuntime", folder.uri.toString()), 8000, "select the configured host compiler");
+      assert.ok(detectedChoice, "The configured executable should appear as a discovered compiler.");
+      assert.equal(
+        path.resolve(scopedConfig.get<string>("compiler.path", "")),
+        path.resolve(expectedCompilerPath),
+        "Selecting a compiler should persist to the active folder scope.",
+      );
+
+      windowAny.showErrorMessage = ((message: unknown) => {
+        errorMessage = typeof message === "string" ? message : "";
+        return Promise.resolve(undefined);
+      }) as typeof windowAny.showErrorMessage;
+      await withTimeout(vscode.commands.executeCommand("vitte.check"), 8000, "report an unsupported host compiler");
+      assert.match(errorMessage, /not verified/i, "An incompatible compiler version must produce an actionable explanation.");
+      assert.ok(errorMessage.includes(folder.name), "Toolchain failures must identify the affected workspace folder.");
+
+      windowAny.showWarningMessage = ((message: unknown) => {
+        warningMessage = typeof message === "string" ? message : "";
+        return Promise.resolve(undefined);
+      }) as typeof windowAny.showWarningMessage;
+      await withTimeout(vscode.commands.executeCommand("vitte.testCurrent"), 8000, "report unavailable test discovery");
+      assert.match(warningMessage, /no test discovery metadata/i, "Unsupported test discovery must be explained in the UI.");
+
+      await scopedConfig.update("compiler.path", path.join(projectRoot, "missing compiler"), vscode.ConfigurationTarget.WorkspaceFolder);
+      await scopedConfig.update("toolchain.root", path.join(projectRoot, "missing toolchain"), vscode.ConfigurationTarget.WorkspaceFolder);
+      for (const key of ["VITTE_BIN_DIR", "VITTE_TOOLCHAIN_ROOT", "VITTE_ROOT", "VITTE_HOME"] as const) delete process.env[key];
+      process.env.VITTE_TEST_NO_SYSTEM_DISCOVERY = "1";
+      process.env.PATH = path.join(projectRoot, "empty path");
+      await vscode.commands.executeCommand("vitte.clearRuntimeCache");
+      assert.equal(process.env.VSCODE_TESTING, "1");
+      assert.equal(process.env.VITTE_TEST_NO_SYSTEM_DISCOVERY, "1");
+      const missingRuntime = await testApi.resolveRuntimeForTest(folder.uri.toString());
+      assert.equal(missingRuntime.found, false, `The test fixture must hide system compilers; found ${missingRuntime.cliPath ?? "no path"}.`);
+      errorMessage = "";
+      await vscode.commands.executeCommand("vitte.check");
+      assert.match(errorMessage, /compiler (?:was )?not found/i, `Missing compiler discovery must give a repair path: ${errorMessage}`);
+    } finally {
+      windowAny.showQuickPick = originalQuickPick;
+      windowAny.showErrorMessage = originalError;
+      windowAny.showWarningMessage = originalWarning;
+      for (const key of envKeys) {
+        const value = originalEnv.get(key);
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+      await vscode.commands.executeCommand("vitte.clearRuntimeCache");
+    }
+  });
+
+  test("Extension host test shuts down language services cleanly", async () => {
+    const testApi = api;
+    assert.ok(testApi, "Test API is unavailable.");
+    await testApi.shutdownForTest();
+    assert.equal(testApi.getClientState(), undefined, "Shutdown must release the active language client.");
   });
 });
 

@@ -4,6 +4,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { VitteDebugAdapterDescriptorFactory } from '../../debug/adapterFactory';
+import { isNativeDebugCandidatePlatform } from '../../debug/runtimeLocator';
+
+const nativeDapTestsEnabled = process.env.VITTE_RUN_NATIVE_DAP_TESTS === '1' && isNativeDebugCandidatePlatform();
 
 interface DapMessage {
   type?: string;
@@ -173,7 +176,8 @@ suite('Vitte debug adapter', () => {
     assert.deepEqual(options.env, { DAP_TRACE: '1' });
   });
 
-  test('native backend reads DWARF frames, locals, watches, and writes', async () => {
+  test('native backend reads DWARF frames, locals, watches, and writes', async function () {
+    if (!nativeDapTestsEnabled) this.skip();
     const messages = await runNativeDapSmoke();
     assert.ok(messages.some((message) => message.type === 'event' && message.event === 'stopped'));
     assert.ok(messages.some((message) => message.type === 'response' && message.command === 'setVariable'));

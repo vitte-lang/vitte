@@ -1090,12 +1090,15 @@ export interface ExtensionApi {
     restart: true;
     runAction: true;
     serverResolutionTestHook: true;
+    shutdownTestHook: true;
   };
   getStatusText(): string;
   getStatusTooltip(): string;
   getClientState(): ClientState | undefined;
   runAction(action: string): Promise<void>;
   restart(): Promise<void>;
+  shutdownForTest(): Promise<void>;
+  resolveRuntimeForTest(uri: string): Promise<{ found: boolean; cliPath?: string }>;
   resolveServerModuleForTest(ctx: Pick<vscode.ExtensionContext, "asAbsolutePath">): string;
 }
 
@@ -3272,6 +3275,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         restart: true,
         runAction: true,
         serverResolutionTestHook: true,
+        shutdownTestHook: true,
       },
       getStatusText: () => statusItem?.text ?? "",
       getStatusTooltip: () => {
@@ -3288,6 +3292,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
       },
       restart: async () => {
         await requestClientRestart(context, "test-api");
+      },
+      shutdownForTest: async () => {
+        await deactivate();
+      },
+      resolveRuntimeForTest: async (uri) => {
+        const runtime = await locateVitteRuntime(undefined, vscode.Uri.parse(uri));
+        return { found: runtime.found, ...(runtime.cliPath ? { cliPath: runtime.cliPath } : {}) };
       },
       resolveServerModuleForTest: (ctx) => resolveServerModule(ctx as vscode.ExtensionContext),
     };

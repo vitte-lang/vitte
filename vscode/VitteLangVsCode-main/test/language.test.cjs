@@ -477,10 +477,7 @@ test('navigation resolves local scopes, trait implementations, imports, aliases 
 });
 
 test('rename resolves symbol identity, keeps aliases scoped, and ignores comments, strings and shadowed bindings', async (t) => {
-  const source = [
-    'export proc compute(value: i32) -> i32 { return value; }',
-    'proc main() { compute(1); { let compute = 2; compute; } let text = "compute"; } // compute',
-  ].join('\n');
+  const source = fs.readFileSync(path.join(root, 'test/fixtures/editor/safe-edits.vit'), 'utf8');
   const project = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-rename-'));
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
   const nestedRoot = path.join(project, 'ambiguous');
@@ -527,10 +524,12 @@ test('rename resolves symbol identity, keeps aliases scoped, and ignores comment
   assert.deepEqual(sourceNames, ['compute', 'compute']);
   assert.deepEqual(importedNames, ['compute'], 'renaming the export preserves the local import alias and its uses');
 
-  const commentDoc = doc('// renameMe\nproc main() { let value = "renameMe"; }');
+  const unsafeEditSource = fs.readFileSync(path.join(root, 'test/fixtures/editor/unsafe-edits.vit'), 'utf8');
+  const commentDoc = doc(unsafeEditSource);
   const invalid = await resolveRenameTarget(commentDoc, { line: 0, character: 5 }, {});
   assert.equal(invalid.target, undefined);
   assert.match(invalid.unavailableReason, /identifiant Vitte/);
+  assert.equal(fs.readFileSync(path.join(root, 'test/fixtures/editor/unsafe-edits.vit'), 'utf8'), unsafeEditSource, 'refusing an unsafe target must leave the source fixture untouched');
 
   const constantsSource = 'export const limit: i32 = 3;\nproc useLimit() { limit; { let limit = 4; limit; } }';
   const constantsPath = path.join(project, 'constants.vit');
@@ -719,6 +718,41 @@ test('versioned capability matrix records evidence and gates advertised behavior
   assert.ok(docs.includes(matrix.matrixVersion), 'documentation must identify the same matrix version');
 });
 
+test('every advertised editor capability has positive and negative regression evidence', () => {
+  const matrix = JSON.parse(fs.readFileSync(path.join(root, 'server/src/capability-matrix.json'), 'utf8'));
+  const coverage = JSON.parse(fs.readFileSync(path.join(root, 'test/fixtures/editor/capability-coverage.json'), 'utf8'));
+  const advertised = matrix.editorFeatures.filter(feature => feature.advertised).map(feature => feature.id).sort();
+  assert.deepEqual(Object.keys(coverage.advertisedFeatures).sort(), advertised, 'newly advertised behavior must add regression evidence');
+  for (const fixture of Object.values(coverage.fixtures)) {
+    const text = fs.readFileSync(path.join(root, 'test/fixtures/editor', fixture), 'utf8');
+    assert.ok(text.trim().length > 0, `${fixture} must not be an empty placeholder`);
+  }
+  const positive = fs.readFileSync(path.join(root, 'test/fixtures/editor', coverage.fixtures.positive), 'utf8');
+  const negative = fs.readFileSync(path.join(root, 'test/fixtures/editor', coverage.fixtures.negative), 'utf8');
+  assert.match(positive, /proc main\(\)/);
+  assert.match(negative, /unresolved_name/);
+  assert.match(negative, /let amount: int = 1\n/);
+
+  for (const [feature, cases] of Object.entries(coverage.advertisedFeatures)) {
+    for (const mode of ['positive', 'negative']) {
+      const evidence = cases[mode];
+      const suiteSource = fs.readFileSync(path.join(root, evidence.file), 'utf8');
+      assert.ok(suiteSource.includes(evidence.title), `${feature} ${mode} test is missing: ${evidence.title}`);
+    }
+  }
+
+  for (const [feature, mutation] of Object.entries(coverage.sourceMutations)) {
+    assert.ok(advertised.includes(feature), `${feature} source mutation is not advertised`);
+    for (const fixture of [mutation.safe, mutation.unsafe]) {
+      assert.ok(fs.readFileSync(path.join(root, 'test/fixtures/editor', fixture), 'utf8').trim(), `${fixture} must contain a source-edit regression case`);
+    }
+    const suiteSource = fs.readFileSync(path.join(root, mutation.fixtureTest.file), 'utf8');
+    assert.ok(suiteSource.includes(mutation.fixtureTest.title), `${feature} fixture test is missing`);
+    assert.ok(suiteSource.includes(mutation.safe) && suiteSource.includes(mutation.unsafe), `${feature} test must load both mutation fixtures`);
+  }
+  assert.deepEqual(Object.keys(coverage.sourceMutations).sort(), ['code-actions', 'rename']);
+});
+
 test('extension manifest exposes the matrix and keeps unverified hints off', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const commands = manifest.contributes.commands.map(command => command.command);
@@ -773,7 +807,7 @@ test('extension manifest exposes the matrix and keeps unverified hints off', () 
   assert.ok(!manifest.files, 'package uses .vscodeignore so VSCE includes runtime dependencies by default');
 });
 
-test('bundled server serves editor features, navigation and workspace symbols over stdio LSP', { timeout: 15000 }, async (t) => {
+test('bundled server serves editor features, navigation and workspace symbols over stdio LSP', { timeout: 30000 }, async (t) => {
   const { spawn } = require('node:child_process');
   const { createMessageConnection, StreamMessageReader, StreamMessageWriter } = require('vscode-jsonrpc/node');
   const workspace = fs.realpathSync(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-lsp-workspace-')));
@@ -982,8 +1016,12 @@ test('bundled server serves editor features, navigation and workspace symbols ov
 
 
   const actionUri = 'file:///vitte-protocol-code-action.vit';
-  const actionText = 'space editor_test;\nproc main() {   \n}\n';
+  const actionText = fs.readFileSync(path.join(root, 'test/fixtures/editor/safe-code-action.vit'), 'utf8')
+    .replace('/*__TRAILING_WHITESPACE__*/', '   ');
+  const unsafeActionUri = 'file:///vitte-protocol-unsafe-code-action.vit';
+  const unsafeActionText = fs.readFileSync(path.join(root, 'test/fixtures/editor/unsafe-code-action.vit'), 'utf8');
   await connection.sendNotification('textDocument/didOpen', { textDocument: { uri: actionUri, languageId: 'vit', version: 1, text: actionText } });
+  await connection.sendNotification('textDocument/didOpen', { textDocument: { uri: unsafeActionUri, languageId: 'vit', version: 1, text: unsafeActionText } });
   const actionRange = { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } };
   const whitespaceActions = await connection.sendRequest('textDocument/codeAction', {
     textDocument: { uri: actionUri },
@@ -995,11 +1033,36 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   assert.equal(trimWhitespace.isPreferred, false, 'a safe edit is still applied only after the user selects it');
   assert.ok(trimWhitespace.title.length <= 80, 'the action title explains the resulting change briefly');
   const syntaxActions = await connection.sendRequest('textDocument/codeAction', {
-    textDocument: { uri: actionUri },
+    textDocument: { uri: unsafeActionUri },
     range: actionRange,
     context: { diagnostics: [{ range: actionRange, message: 'syntax error', severity: 1, code: 'PARSE:E0007' }] },
   });
   assert.deepEqual(syntaxActions, [], 'unverified syntax errors must not receive guessed edits');
+
+  // Cancel a workspace scan while it is in flight. The cancelled response must
+  // settle promptly without poisoning the connection; the following query
+  // must still return normally.
+  const largeSource = `${Array.from({ length: 64 }, (_, index) => `proc cancellationFill${index}() { return ${index}; }`).join('\n')}\nproc cancellationRecoverySymbol() {}\n`;
+  for (let index = 0; index < 128; index += 1) {
+    fs.writeFileSync(path.join(workspace, `cancellation-load-${index}.vit`), largeSource, 'utf8');
+  }
+  const { CancellationTokenSource } = require('vscode-jsonrpc/node');
+  const cancellation = new CancellationTokenSource();
+  const cancelledRequest = connection.sendRequest('workspace/symbol', { query: 'cancellationRecoverySymbol' }, cancellation.token);
+  cancellation.cancel();
+  let cancelledSymbols = [];
+  try {
+    cancelledSymbols = await Promise.race([
+    cancelledRequest,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Cancellation response timed out')), 1500)),
+    ]);
+  } catch (error) {
+    assert.match(String(error?.message ?? error), /cancel/i, 'a cancelled request may complete with the LSP cancellation error');
+  }
+  assert.ok(!cancelledSymbols.some(symbol => symbol.name === 'cancellationRecoverySymbol'), 'cancelled queries must not publish obsolete symbols');
+  cancellation.dispose();
+  const recoveredSymbols = await connection.sendRequest('workspace/symbol', { query: 'workspaceOnly' });
+  assert.ok(recoveredSymbols.some(symbol => symbol.name === 'workspaceOnly'), 'the server should process a fresh request after cancellation');
   await connection.sendRequest('shutdown');
   await connection.sendNotification('exit');
 });

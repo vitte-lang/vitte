@@ -86,6 +86,14 @@ function which(bin: string): string | undefined {
     }
   }
 
+  // The extension-host regression suite uses this opt-in switch to assert the
+  // missing-toolchain path even on maintainer machines with a global install.
+  // It is ignored unless the VS Code test harness is active.
+  if (process.env.VSCODE_TESTING === '1' && process.env.VITTE_TEST_NO_SYSTEM_DISCOVERY === '1') {
+    WHICH_CACHE.set(bin, undefined);
+    return undefined;
+  }
+
   // Common extra roots: Homebrew, /usr/local, Nix, ~/.local/bin
   const candidates: string[] = [];
   const home = os.homedir();

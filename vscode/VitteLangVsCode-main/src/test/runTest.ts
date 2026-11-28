@@ -3,7 +3,8 @@
  */
 
 import * as path from "node:path";
-import { access } from "node:fs/promises";
+import * as os from "node:os";
+import * as fs from "node:fs/promises";
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
 interface TestRunFailedError extends Error {
@@ -13,7 +14,7 @@ interface TestRunFailedError extends Error {
 
 async function existingExecutable(candidate: string): Promise<string | undefined> {
   try {
-    await access(candidate);
+    await fs.access(candidate);
     return candidate;
   } catch {
     return undefined;
@@ -50,7 +51,26 @@ async function resolveTestExecutable(version: string, timeout: number): Promise<
 async function main(): Promise<void> {
   const extensionDevelopmentPath = path.resolve(__dirname, "../../");
   const extensionTestsPath = path.resolve(__dirname, "./suite/index");
-  const workspacePath = extensionDevelopmentPath;
+  const testDataRoot = path.join(extensionDevelopmentPath, ".vscode-test");
+  await fs.mkdir(testDataRoot, { recursive: true });
+  const hostProjectPath = await fs.mkdtemp(path.join(os.tmpdir(), "vitte editor é project "));
+  const hostSourcePath = path.join(hostProjectPath, "src", "main.vit");
+  const hostSettingsPath = path.join(hostProjectPath, ".vscode", "settings.json");
+  const workspaceFile = path.join(testDataRoot, `host-workspace-${process.pid}.code-workspace`);
+  const testProfileRoot = path.join(os.tmpdir(), `vt-${process.pid}`);
+  const testUserData = path.join(testProfileRoot, "u");
+  const testExtensions = path.join(testProfileRoot, "e");
+  await fs.mkdir(path.dirname(hostSourcePath), { recursive: true });
+  await fs.mkdir(path.dirname(hostSettingsPath), { recursive: true });
+  await fs.writeFile(path.join(hostProjectPath, "vitte.toml"), '[project]\nname = "editor-host-test"\n', "utf8");
+  await fs.writeFile(hostSourcePath, "proc main() -> int {\n    give 0;\n}\n", "utf8");
+  await fs.writeFile(hostSettingsPath, JSON.stringify({ "vitte.compiler.path": process.execPath }, null, 2) + "\n", "utf8");
+  await fs.writeFile(workspaceFile, JSON.stringify({
+    folders: [
+      { path: hostProjectPath },
+      { path: extensionDevelopmentPath },
+    ],
+  }, null, 2) + "\n", "utf8");
 
   delete process.env.ELECTRON_RUN_AS_NODE;
   process.env.VSCODE_TESTING = "1";
@@ -59,15 +79,26 @@ async function main(): Promise<void> {
   const timeout = Number(process.env.VSCODE_TEST_DOWNLOAD_TIMEOUT_MS ?? 120_000);
   const vscodeExecutablePath = await resolveTestExecutable(version, timeout);
 
-  await runTests({
-    extensionDevelopmentPath,
-    extensionTestsPath,
-    vscodeExecutablePath,
-    launchArgs: [workspacePath],
-    extensionTestsEnv: {
-      VSCODE_TESTING: "1",
-    },
-  });
+  try {
+    await runTests({
+      extensionDevelopmentPath,
+      extensionTestsPath,
+      vscodeExecutablePath,
+      launchArgs: [workspaceFile, `--user-data-dir=${testUserData}`, `--extensions-dir=${testExtensions}`, "--new-window"],
+      extensionTestsEnv: {
+        VSCODE_TESTING: "1",
+        VITTE_HOST_TEST_FOLDER: hostProjectPath,
+        VITTE_HOST_TEST_COMPILER: process.execPath,
+        ...(process.env.VITTE_TEST_GREP ? { VITTE_TEST_GREP: process.env.VITTE_TEST_GREP } : {}),
+      },
+    });
+  } finally {
+    await fs.rm(hostProjectPath, { recursive: true, force: true });
+    await fs.rm(workspaceFile, { force: true });
+    await fs.rm(testUserData, { recursive: true, force: true });
+    await fs.rm(testExtensions, { recursive: true, force: true });
+    await fs.rm(testProfileRoot, { recursive: true, force: true });
+  }
 }
 
 main().catch((err: TestRunFailedError) => {

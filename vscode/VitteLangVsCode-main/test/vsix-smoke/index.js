@@ -54,4 +54,18 @@ exports.run = async function run() {
   await new Promise((resolve, reject) => {
     mocha.run((failures) => failures === 0 ? resolve() : reject(new Error(`${failures} packaged smoke test(s) failed.`)));
   });
+
+  // Run the editor-host regression suite against the installed extension path.
+  // This keeps the shipped VSIX, rather than the development extension, under test.
+  process.env.VITTE_TEST_GREP = [
+    "Extension s’active sans erreur",
+    "API publique versionnée",
+    "Toutes les commandes contribuées",
+    "La commande restart redémarre le client",
+    "LSP E2E",
+    "VSIX workflow: folder-scoped compiler discovery, save, and toolchain failures",
+    "Extension host test shuts down language services cleanly",
+  ].join("|");
+  const editorSuite = require(path.join(process.env.VITTE_SMOKE_SOURCE_ROOT, "out/test/suite/index.js"));
+  await editorSuite.run();
 };
