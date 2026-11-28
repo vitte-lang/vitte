@@ -75,7 +75,7 @@ export async function readVitteImportNames(repoRoot) {
     if (shouldKeepModuleName(moduleName)) moduleNames.add(moduleName);
   }
 
-  return Array.from(moduleNames).sort((a, b) => a.localeCompare(b));
+  return sortVitteImportNames(Array.from(moduleNames));
 }
 
 export function renderVitteImports(moduleNames) {
@@ -88,4 +88,12 @@ export function renderVitteImports(moduleNames) {
     '];',
     '',
   ].join('\n');
+}
+
+export function sortVitteImportNames(moduleNames) {
+  return [...moduleNames].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+export function normalizeLineEndings(text) {
+  return text.replace(/\r\n/g, '\n');
 }

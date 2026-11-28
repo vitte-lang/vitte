@@ -2,7 +2,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readVitteImportNames, renderVitteImports } from './vitte-imports.mjs';
+import { normalizeLineEndings, readVitteImportNames, renderVitteImports } from './vitte-imports.mjs';
 
 const extensionRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(extensionRoot, '..', '..');
@@ -29,7 +29,7 @@ async function main() {
     process.exit(1);
   }
 
-  if (current !== expected) {
+  if (normalizeLineEndings(current) !== expected) {
     console.error('[imports-check] Generated imports file is out of date.');
     console.error('[imports-check] Expected:', path.relative(repoRoot, outputFile));
     console.error('[imports-check] Fix by running: npm run generate:imports');

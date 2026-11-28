@@ -12,6 +12,15 @@ test('Tcl words escape command substitutions and preserve path characters', () =
   );
 });
 
+test('generated import ordering and line endings are platform independent', async () => {
+  const { normalizeLineEndings, renderVitteImports, sortVitteImportNames } = await import('../scripts/vitte-imports.mjs');
+  const names = sortVitteImportNames(['core::zeta', 'Core::alpha', 'core::alpha']);
+  const generated = renderVitteImports(names);
+
+  assert.match(generated, /  "Core::alpha",\n  "core::alpha",\n  "core::zeta",/);
+  assert.equal(normalizeLineEndings(generated.replace(/\n/g, '\r\n')), generated);
+});
+
 test('managed processes preserve argv and environment and stop cleanly', async () => {
   const argument = 'a path with spaces; $HOME & é "quoted"';
   const child = spawnManaged(
