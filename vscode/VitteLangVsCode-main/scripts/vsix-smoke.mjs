@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { downloadAndUnzipVSCode, resolveCliPathFromVSCodeExecutablePath } from "@vscode/test-electron";
+import { resolveSmokeExecutable } from "./vscode-smoke-executable.mjs";
 
 const require = createRequire(import.meta.url);
 const { createVSIX } = require("@vscode/vsce");
@@ -62,12 +63,13 @@ async function main() {
   await fs.writeFile(otherExtensionSentinel, "keep-this-other-extension\n", "utf8");
 
   const version = process.env.VSCODE_TEST_VERSION ?? "stable";
-  const executable = process.env.VSCODE_EXECUTABLE_PATH
+  const executablePath = process.env.VSCODE_EXECUTABLE_PATH
     ? path.resolve(process.env.VSCODE_EXECUTABLE_PATH)
     : await downloadAndUnzipVSCode({
       version,
       timeout: Number(process.env.VSCODE_TEST_DOWNLOAD_TIMEOUT_MS ?? 120_000),
     });
+  const executable = await resolveSmokeExecutable(executablePath);
 
   const profileArgs = ["--user-data-dir", userDataDir, "--extensions-dir", extensionsDir];
   runCode(executable, ["--install-extension", sourceVsix, "--force", ...profileArgs], "VSIX install");

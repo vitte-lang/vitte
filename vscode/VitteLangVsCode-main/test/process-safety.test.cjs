@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const { spawnManaged, stopManagedProcesses } = require('../out/utils/managedProcesses.js');
 const { quoteTclWord } = require('../out/debug/tcl.js');
@@ -19,6 +22,19 @@ test('generated import ordering and line endings are platform independent', asyn
 
   assert.match(generated, /  "Core::alpha",\n  "core::alpha",\n  "core::zeta",/);
   assert.equal(normalizeLineEndings(generated.replace(/\n/g, '\r\n')), generated);
+});
+
+test('VS Code macOS smoke resolves current Code executable layouts', async () => {
+  const { resolveSmokeExecutable } = await import('../scripts/vscode-smoke-executable.mjs');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vitte-vscode-layout-'));
+  try {
+    const codePath = path.join(root, 'Code');
+    await fs.writeFile(codePath, '');
+    assert.equal(await resolveSmokeExecutable(path.join(root, 'Electron'), 'darwin'), codePath);
+    await assert.rejects(resolveSmokeExecutable(path.join(root, 'Electron'), 'linux'), { code: 'ENOENT' });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test('managed processes preserve argv and environment and stop cleanly', async () => {
