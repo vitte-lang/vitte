@@ -26,6 +26,14 @@ async function existingExecutable(candidate: string): Promise<string | undefined
  * Resolve the downloaded executable once and pass it explicitly to runTests.
  */
 async function resolveTestExecutable(version: string, timeout: number): Promise<string> {
+  const configured = process.env.VSCODE_EXECUTABLE_PATH;
+  if (configured) {
+    const resolved = path.resolve(configured);
+    const executable = await existingExecutable(resolved);
+    if (!executable) throw new Error(`VSCODE_EXECUTABLE_PATH does not exist: ${resolved}`);
+    return executable;
+  }
+
   const downloaded = await downloadAndUnzipVSCode({ version, timeout });
   const direct = await existingExecutable(downloaded);
   if (direct) return direct;

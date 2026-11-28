@@ -1,0 +1,60 @@
+const assert = require('node:assert/strict');
+const { once } = require('node:events');
+const test = require('node:test');
+const { spawnManaged, stopManagedProcesses } = require('../out/utils/managedProcesses.js');
+const { quoteTclWord } = require('../out/debug/tcl.js');
+
+test('Tcl words escape command substitutions and preserve path characters', () => {
+  const input = '$HOME [open /tmp/file] "quote" \\folder\nnext\r';
+  assert.equal(
+    quoteTclWord(input),
+    '"\\$HOME \\[open /tmp/file\\] \\"quote\\" \\\\folder\\nnext\\r"',
+  );
+});
+
+test('managed processes preserve argv and environment and stop cleanly', async () => {
+  const argument = 'a path with spaces; $HOME & é "quoted"';
+  const child = spawnManaged(
+    process.execPath,
+    [
+      '-e',
+      'process.stdout.write(JSON.stringify({args:process.argv.slice(1),value:process.env.VITTE_TEST_VALUE})); setInterval(() => {}, 1000);',
+      '--',
+      argument,
+    ],
+    {
+      shell: false,
+      env: { ...process.env, VITTE_TEST_VALUE: 'environment value with spaces' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => { stdout += chunk; });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('managed child did not report argv')), 5000);
+    child.stdout.once('data', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.once('error', reject);
+  });
+
+  assert.deepEqual(JSON.parse(stdout), {
+    args: [argument],
+    value: 'environment value with spaces',
+  });
+
+  const exited = once(child, 'exit');
+  let exitTimer;
+  await stopManagedProcesses(1000);
+  const exitResult = await Promise.race([
+    exited,
+    new Promise((_, reject) => {
+      exitTimer = setTimeout(() => reject(new Error('managed child was not terminated')), 5000);
+    }),
+  ]).finally(() => clearTimeout(exitTimer));
+  const [code, signal] = exitResult;
+  assert.ok(code !== null || signal !== null, 'managed child must terminate');
+});

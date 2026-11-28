@@ -339,7 +339,7 @@ suite("Vitte extension", () => {
     const warningAny = vscode.window as unknown as { showWarningMessage: (...args: unknown[]) => Thenable<unknown> };
     const originalWarning = warningAny.showWarningMessage;
     warningAny.showWarningMessage = (...args: unknown[]) => {
-      unavailableMessage = String(args[0] ?? "");
+      unavailableMessage = typeof args[0] === "string" ? args[0] : "";
       return Promise.resolve(undefined);
     };
 

@@ -254,6 +254,8 @@ jobs:
       - compiler-runtime
       - compiler-selfhost
       - native-package-install
+      - extension-package-platforms
+      - extension-minimum-engine
     runs-on: ubuntu-24.04
     steps:
       - name: Require all compiler and platform gates
@@ -261,6 +263,8 @@ jobs:
           COMPILER_RUNTIME_RESULT: ${{ needs['compiler-runtime'].result }}
           COMPILER_SELFHOST_RESULT: ${{ needs['compiler-selfhost'].result }}
           NATIVE_PACKAGE_RESULT: ${{ needs['native-package-install'].result }}
+          EXTENSION_PLATFORMS_RESULT: ${{ needs['extension-package-platforms'].result }}
+          EXTENSION_MINIMUM_ENGINE_RESULT: ${{ needs['extension-minimum-engine'].result }}
         run: |
           if [[ "$COMPILER_RUNTIME_RESULT" != success ]]; then
             echo "::error::Compiler/runtime gate result: $COMPILER_RUNTIME_RESULT"
@@ -274,7 +278,15 @@ jobs:
             echo "::error::Native package install gate result: $NATIVE_PACKAGE_RESULT"
             exit 1
           fi
-          echo "All supported compiler release gates passed."
+          if [[ "$EXTENSION_PLATFORMS_RESULT" != success ]]; then
+            echo "::error::Extension platform packaging and activation gate result: $EXTENSION_PLATFORMS_RESULT"
+            exit 1
+          fi
+          if [[ "$EXTENSION_MINIMUM_ENGINE_RESULT" != success ]]; then
+            echo "::error::Minimum VS Code engine gate result: $EXTENSION_MINIMUM_ENGINE_RESULT"
+            exit 1
+          fi
+          echo "All compiler and extension release gates passed."
 
   extension-dap:
     name: Extension and native DAP
@@ -359,3 +371,116 @@ jobs:
         env:
           VITTE_PERF_MAX_ACTIVATION_MS: '20000'
         run: xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' npm test
+
+  extension-package-platforms:
+    name: Extension VSIX lifecycle (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            label: Linux x64
+            node-platform: linux
+            node-arch: x64
+          - runner: macos-15
+            label: macOS arm64
+            node-platform: darwin
+            node-arch: arm64
+          - runner: windows-2025
+            label: Windows x64
+            node-platform: win32
+            node-arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: vscode/VitteLangVsCode-main
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: vscode/VitteLangVsCode-main/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci
+
+      - name: Verify runner architecture
+        env:
+          EXPECTED_NODE_PLATFORM: ${{ matrix.node-platform }}
+          EXPECTED_NODE_ARCH: ${{ matrix.node-arch }}
+        run: node -e "if (process.platform !== process.env.EXPECTED_NODE_PLATFORM || process.arch !== process.env.EXPECTED_NODE_ARCH) { console.error('Unexpected runner:', process.platform, process.arch); process.exit(1); } console.log('Verified extension host:', process.platform, process.arch);"
+
+      - name: Validate manifest and generated imports
+        run: npm run check:imports-sync && npm run check:manifest
+
+      - name: Build and run argument, environment and process tests
+        run: npm run test:unit
+
+      - name: Package VSIX
+        run: npm run vsix
+
+      - name: Verify VSIX metadata, license, dependencies and resources
+        run: npm run vsix:verify-artifact
+
+      - name: Install Linux display server for VS Code
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y xvfb
+
+      - name: Install, update, rollback, activate and uninstall (Linux)
+        if: runner.os == 'Linux'
+        env:
+          VSCODE_TEST_VERSION: stable
+        run: xvfb-run -a npm run vsix:smoke
+
+      - name: Install, update, rollback, activate and uninstall (macOS / Windows)
+        if: runner.os != 'Linux'
+        env:
+          VSCODE_TEST_VERSION: stable
+        run: npm run vsix:smoke
+
+      - name: Upload tested VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitte-studio-${{ matrix.node-platform }}-${{ matrix.node-arch }}
+          path: vscode/VitteLangVsCode-main/vitte-studio.vsix
+          if-no-files-found: error
+          retention-days: 14
+
+  extension-minimum-engine:
+    name: Extension minimum VS Code engine (1.105.0)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: vscode/VitteLangVsCode-main
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: vscode/VitteLangVsCode-main/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci
+
+      - name: Package VSIX
+        run: npm run vsix
+
+      - name: Install Linux display server for VS Code
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y xvfb
+
+      - name: Install and activate on the declared minimum engine
+        env:
+          VSCODE_TEST_VERSION: '1.105.0'
+        run: xvfb-run -a npm run vsix:smoke

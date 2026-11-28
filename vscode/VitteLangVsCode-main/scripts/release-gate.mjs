@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 
-function runStep(name, cmd, args) {
+const npmCli = process.env.npm_execpath;
+if (process.platform === "win32" && !npmCli) {
+  throw new Error("Run this gate as `npm run ci:release-gate` on Windows so npm can be started without a shell.");
+}
+const npmCommand = process.platform === "win32" ? process.execPath : "npm";
+const npmPrefix = process.platform === "win32" ? [npmCli] : [];
+
+function runStep(name, args) {
   return new Promise((resolve, reject) => {
     process.stdout.write(`\n[release-gate] ${name}\n`);
-    const child = spawn(cmd, args, {
+    const child = spawn(npmCommand, [...npmPrefix, ...args], {
       stdio: "inherit",
-      shell: process.platform === "win32",
+      shell: false,
     });
     child.on("error", reject);
     child.on("close", (code) => {
@@ -17,15 +24,16 @@ function runStep(name, cmd, args) {
 }
 
 const steps = [
-  { name: "lint", cmd: "npm", args: ["run", "lint"] },
-  { name: "test", cmd: "npm", args: ["run", "test"] },
-  { name: "perf gate", cmd: "npm", args: ["run", "test:perf-gate"] },
-  { name: "package vsix", cmd: "npm", args: ["run", "vsix"] },
-  { name: "verify vsix", cmd: "npm", args: ["run", "vsix:verify"] },
-  { name: "smoke vsix", cmd: "npx", args: ["@vscode/vsce@3.7.1", "ls", "vitte-studio.vsix"] },
+  { name: "lint", args: ["run", "lint"] },
+  { name: "test", args: ["run", "test"] },
+  { name: "perf gate", args: ["run", "test:perf-gate"] },
+  { name: "package vsix", args: ["run", "vsix"] },
+  { name: "verify vsix file list", args: ["run", "vsix:verify"] },
+  { name: "verify vsix contents", args: ["run", "vsix:verify-artifact"] },
+  { name: "smoke installed vsix", args: ["run", "vsix:smoke"] },
 ];
 
 for (const step of steps) {
-  await runStep(step.name, step.cmd, step.args);
+  await runStep(step.name, step.args);
 }
 process.stdout.write("\n[release-gate] OK\n");

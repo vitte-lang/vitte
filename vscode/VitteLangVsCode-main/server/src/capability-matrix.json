@@ -1,10 +1,10 @@
 {
   "schema": "vitte-capabilities@1",
-  "matrixVersion": "1.0.13",
+  "matrixVersion": "1.0.14",
   "updated": "2026-11-28",
   "versions": {
-    "extension": "2.3.9",
-    "languageServer": "2.3.9",
+    "extension": "2.3.10",
+    "languageServer": "2.3.10",
     "compilerEvidence": "0.1.1"
   },
   "statusDefinitions": {
@@ -465,7 +465,7 @@
       "advertised": false,
       "provider": "Bundled DAP adapter with LLDB and DWARF",
       "description": "An explicitly enabled experimental LLDB/DAP backend compiles source with --debug-info and #line mappings or launches an existing executable whose DWARF names Vitte sources. Its adapter implements line and conditional breakpoints, stepping, continue, pause, termination, stack frames, DWARF locals and expression watches.",
-      "limitation": "Requires Vitte CLI 0.1.1, LLDB and Expect on Linux x86_64 / Ubuntu 24.04. It is not advertised by default. The extension-dap workflow checks out a pinned older extension revision (98470ad8de948a4fb3ecdc8c41e2a4c7ee66b441), so it does not validate the current 2.3.9 source snapshot. On the active macOS arm64 host, compiling with --debug-info produced a Mach-O executable whose .debug_info and .debug_line sections were empty; local DAP scenarios also fail frame, variable and breakpoint checks. Windows has no DAP gate. Source mapping relies on C #line/DWARF for source files emitted by the current backend; structured runtime diagnostics and generated multi-module source maps are unavailable.",
+      "limitation": "Requires Vitte CLI 0.1.1, LLDB and Expect on Linux x86_64 / Ubuntu 24.04. It is not advertised by default. The legacy extension-dap workflow still checks out a pinned older extension revision (98470ad8de948a4fb3ecdc8c41e2a4c7ee66b441), so it does not validate native DAP on this 2.3.10 source snapshot; the new cross-platform job verifies package activation only. On the active macOS arm64 host, compiling with --debug-info produced a Mach-O executable whose .debug_info and .debug_line sections were empty; local DAP scenarios also fail frame, variable and breakpoint checks. Windows has no native DAP gate. Source mapping relies on C #line/DWARF for source files emitted by the current backend; structured runtime diagnostics and generated multi-module source maps are unavailable.",
       "evidence": [
         "src/main.c: --debug-info enables DWARF and source line directives",
         "src/bootstrap/backend/c17/ast_emitter.c: emits #line source locations and compiler -g flags",
@@ -633,11 +633,12 @@
       "product": "VS Code extension runtime",
       "platform": "VS Code 1.105 and later",
       "status": "partial",
-      "description": "The manifest declares ^1.105.0 and validates its entry point; integration evidence currently runs on VS Code 1.148.0, not the minimum engine.",
+      "description": "The manifest declares ^1.105.0. A packaged activation job now targets VS Code 1.105.0; this remains partial until that job records a passing run.",
       "followUp": "CAP-EXT-001",
       "evidence": [
         "test/language.test.cjs: manifest contract",
-        "scripts/check-extension-manifest.mjs: engine and packaged-entry checks"
+        "scripts/check-extension-manifest.mjs: engine and packaged-entry checks",
+        ".github/workflows/ci.yml: extension-minimum-engine job for VS Code 1.105.0 (pending first green run)"
       ]
     },
     {
@@ -645,10 +646,11 @@
       "product": "Extension and language server",
       "platform": "Linux x86_64 / Ubuntu 24.04",
       "status": "partial",
-      "description": "Unit coverage is checked in, but the DAP workflow currently builds a pinned upstream extension revision instead of this 2.3.9 source snapshot.",
+      "description": "The monorepo workflow now builds, packages and installs this source snapshot on Ubuntu 24.04 x64, then checks clean-profile activation and install/update/rollback/uninstall data safety. This capability remains partial until the new job records a passing run; the separate DAP job still uses a pinned upstream revision.",
       "evidence": [
-        ".github/workflows/ci.yml: extension-dap checks out extension revision 98470ad8de948a4fb3ecdc8c41e2a4c7ee66b441",
-        "vscode/VitteLangVsCode-main/test/language.test.cjs"
+        ".github/workflows/ci.yml: extension-package-platforms Linux x64 job (pending first green run)",
+        "test/process-safety.test.cjs",
+        "scripts/vsix-smoke.mjs"
       ]
     },
     {
@@ -656,10 +658,11 @@
       "product": "Extension and language server",
       "platform": "macOS arm64",
       "status": "partial",
-      "description": "Local VS Code 1.148.0 integration run passed 39 cases and failed five native DAP/DWARF cases; the repository has no macOS CI gate.",
+      "description": "The monorepo workflow now packages and installs this source snapshot on macOS arm64 with a clean profile. This capability remains partial until the new job records a passing run; native DAP remains unavailable on this platform.",
       "evidence": [
-        "VITTE_COMPILER=/usr/local/bin/vitte node out/test/runTest.js on 2026-11-27: 39 passed, 5 failed",
-        "vscode/VitteLangVsCode-main/package.json"
+        ".github/workflows/ci.yml: extension-package-platforms macOS arm64 job (pending first green run)",
+        "test/process-safety.test.cjs",
+        "scripts/vsix-smoke.mjs"
       ]
     },
     {
@@ -667,9 +670,11 @@
       "product": "Extension and language server",
       "platform": "Windows x86_64",
       "status": "partial",
-      "description": "The extension is packaged as portable Node.js code, but this repository has no Windows VS Code integration/DAP gate.",
+      "description": "The monorepo workflow now packages and installs this source snapshot on Windows x64 with a clean profile. This capability remains partial until the new job records a passing run; the compiler and native DAP are not claimed as supported here.",
       "evidence": [
-        "vscode/VitteLangVsCode-main/package.json"
+        ".github/workflows/ci.yml: extension-package-platforms Windows x64 job (pending first green run)",
+        "test/process-safety.test.cjs",
+        "scripts/vsix-smoke.mjs"
       ]
     },
     {

@@ -80,7 +80,7 @@ pause, termination, call stacks, DWARF locals and watch expressions. It can
 launch a Vitte source or an executable built with Vitte DWARF data. The current
 platform candidate is compiler 0.1.1 on Linux x86_64 / Ubuntu 24.04 and requires
 LLDB and Expect. The checked-in CI job still pins an older extension revision,
-so it does not certify this pending 2.3.9 source snapshot; native debugging
+so it does not certify this pending 2.3.10 source snapshot; native debugging
 remains experimental and unadvertised by default. When the compiler preserves
 DWARF, its line directives map generated C back to Vitte source; structured
 Vitte runtime diagnostics and generated multi-module source maps are not yet
@@ -89,7 +89,7 @@ Vitte: Build / Vitte: Run as the selected-CLI fallback. The selected folder's
 compiler, project root, environment, module roots, manifest and compiler
 arguments are preserved; the debugger never switches frontend silently.
 
-The 2.3 release synchronizes editor support with the current parser grammar, including canonical `return`, procedure contracts (`requires` / `ensures`), `pick` variants, `match` arms, and external procedures. Shared lexical scanning keeps completion, navigation, indexing, and semantic highlighting consistent inside nested comments and strings. Version 2.3.2 adds source-scoped completions, actual filesystem module/import candidates, public export filtering, supported trait-method completion, constructor snippets, and signature help for local/imported procedures, supported methods and callable values. Version 2.3.3 adds source-derived hover details, scoped local and imported navigation, type and implementation navigation, bounded workspace symbols/references, and nested outlines for breadcrumbs. Version 2.3.4 adds conservative symbol-aware rename and checked file/module updates. Version 2.3.5 adds semantic token deltas, safe literal-type and unique-signature inlay hints, source-indexed reference lenses, lexical folding, nested selection ranges and unique project-local import links. Version 2.3.6 checks saved and unsaved buffers through structured compiler diagnostics, removes duplicate heuristic syntax lint and unsafe source rewrites, and disables document/range formatting until a canonical compatible formatter exists. Version 2.3.7 generates packaged snippets from the shared catalog, validates their expansions with the active parser, configures canonical comments/brackets/indentation, and keeps on-type source rewrites disabled. Version 2.3.8 detects CLI project files, isolates multi-root toolchains and module roots, adds check/build/run tasks and a compiler problem matcher, and explains unavailable standalone tests. Version 2.3.9 generates extension-owned task templates, aligns native debug compilation with folder-scoped CLI settings, and limits native launch templates to the evidenced platform. Compiler 0.1.1 exposes no test metadata, so Test Explorer discovery and source-level test actions remain unavailable. These editor providers remain explicitly partial because compiler 0.1.1 has no editor semantic query API; import organization, return/alias hints and call/type hierarchies stay unavailable.
+The 2.3 release synchronizes editor support with the current parser grammar, including canonical `return`, procedure contracts (`requires` / `ensures`), `pick` variants, `match` arms, and external procedures. Shared lexical scanning keeps completion, navigation, indexing, and semantic highlighting consistent inside nested comments and strings. Version 2.3.2 adds source-scoped completions, actual filesystem module/import candidates, public export filtering, supported trait-method completion, constructor snippets, and signature help for local/imported procedures, supported methods and callable values. Version 2.3.3 adds source-derived hover details, scoped local and imported navigation, type and implementation navigation, bounded workspace symbols/references, and nested outlines for breadcrumbs. Version 2.3.4 adds conservative symbol-aware rename and checked file/module updates. Version 2.3.5 adds semantic token deltas, safe literal-type and unique-signature inlay hints, source-indexed reference lenses, lexical folding, nested selection ranges and unique project-local import links. Version 2.3.6 checks saved and unsaved buffers through structured compiler diagnostics, removes duplicate heuristic syntax lint and unsafe source rewrites, and disables document/range formatting until a canonical compatible formatter exists. Version 2.3.7 generates packaged snippets from the shared catalog, validates their expansions with the active parser, configures canonical comments/brackets/indentation, and keeps on-type source rewrites disabled. Version 2.3.8 detects CLI project files, isolates multi-root toolchains and module roots, adds check/build/run tasks and a compiler problem matcher, and explains unavailable standalone tests. Version 2.3.9 generates extension-owned task templates, aligns native debug compilation with folder-scoped CLI settings, and limits native launch templates to the evidenced platform. Version 2.3.10 adds VSIX contents and lifecycle checks across supported editor platforms, hardens Expect path quoting, and reduces remote suggestion context. Compiler 0.1.1 exposes no test metadata, so Test Explorer discovery and source-level test actions remain unavailable. These editor providers remain explicitly partial because compiler 0.1.1 has no editor semantic query API; import organization, return/alias hints and call/type hierarchies stay unavailable.
 
 ```vit
 space hello
@@ -121,6 +121,8 @@ The extension activates for `.vit`, `.vitl`, and legacy `.vitte` documents, or w
 Project detection follows the native CLI: starting at the active Vitte file (or selected workspace folder when no Vitte file is active), it walks upward and selects the nearest `vitte.toml` or `.vitte/config`. `vitte.project.root` overrides that result for its workspace folder; if there is no matching project file, the workspace folder is used. `Vitte: Detect Project` reports the selected folder, root, config file and rule in the **Vitte Project** Output channel. The extension can validate `vitte.config.json` and `.vitte/config.json` against its JSON schema and use them to activate support; compiler 0.1.1 does not load them as CLI build configuration.
 
 The VSIX includes the compiled extension, TypeScript language server, production runtime dependencies, TextMate grammar, snippets, schemas, and icon. It does not include the Vitte compiler. Install from the Marketplace or use **Extensions: Install from VSIX...** with a locally available `.vsix`; after installation the bundled editor features work without a repository checkout or network access. Compiler-backed commands need a compatible local toolchain. Updating from the Marketplace requires network access; an offline update can be installed from a newer local VSIX.
+
+Release checks validate the VSIX version, MIT license, changelog, production dependencies and contributed runtime resources. The platform matrix builds and installs the exact package in an isolated profile on Linux x64, macOS arm64 and Windows x64, then verifies activation and that install, update, rollback and uninstall preserve a workspace file, a user-profile setting and another installed extension. These rows remain partial until CI reports a green run. VS Code 1.105.0 is tested separately on Linux; the packaged activation checks do not claim compiler or native-debugger support on every editor platform. To run the package checks without downloading VS Code, set `VSCODE_EXECUTABLE_PATH` to an existing VS Code executable; CI uses the downloaded stable build and a minimum-engine build.
 
 Toolchain discovery uses this precedence:
 
@@ -216,7 +218,7 @@ Open **Preferences: Open Settings (UI)** and search for `vitte`.
 
 ## Project
 
-- Extension: `VitteStudio.vitte-studio` · version `2.3.9`
+- Extension: `VitteStudio.vitte-studio` · version `2.3.10`
 - Requires VS Code `1.105` or later
 - License: [MIT](LICENSE)
 - Release notes: [CHANGELOG.md](CHANGELOG.md)
@@ -233,12 +235,23 @@ npm run test:unit
 npm run lint
 npm test
 npm run vsix
+npm run vsix:verify-artifact
+VSCODE_EXECUTABLE_PATH=/path/to/code npm run vsix:smoke
 ```
 
 `test:unit` builds the client and server, then checks lexical boundaries, grammar
 vocabulary, TextMate tokenization, completion, hover, indexing,
 signatures, semantic tokens, the capability contract, and a real stdio LSP
-session without starting a graphical editor.
+session without starting a graphical editor. It also checks argv/environment
+preservation, managed-child shutdown and Tcl argument quoting.
+`vsix:verify-artifact` checks metadata and required files inside the archive.
+`vsix:smoke` installs the archive into a clean profile outside the checkout,
+tests activation, simulates update and rollback, uninstalls it, and checks that
+the workspace file, user-profile setting and other extension sentinel remain intact. It downloads VS Code unless
+`VSCODE_EXECUTABLE_PATH` points to an existing executable; set that variable in
+the shell before running the command for offline validation. The VS Code test
+download honors `npm_config_proxy` and `npm_config_https_proxy`; the installed
+extension downloads no language server or helper binary.
 `npm test` additionally runs the VS Code integration suite, which needs a display
 (on Linux CI, use `xvfb-run -a npm test`). Import paths are regenerated from this
 repository's modules during the build; standalone checkouts retain the checked-in

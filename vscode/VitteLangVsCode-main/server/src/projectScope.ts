@@ -23,7 +23,7 @@ export function resolveVitteProjectScope(resourceUri: string, workspaceRoots: re
   try { if (resourceUri.startsWith("file:")) resourcePath = fileURLToPath(resourceUri); } catch { /* use the workspace fallback */ }
   const matching = resourcePath
     ? workspaceRoots.filter((root) => {
-      const relative = path.relative(path.resolve(root), path.resolve(resourcePath!));
+      const relative = path.relative(path.resolve(root), path.resolve(resourcePath));
       return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
     }).sort((a, b) => b.length - a.length)
     : [];

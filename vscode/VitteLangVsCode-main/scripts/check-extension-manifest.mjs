@@ -109,6 +109,12 @@ async function main() {
   }
   if (pkg.main !== "./out/extension.js") errors.push('Manifest main must target the compiled extension entry point "./out/extension.js".');
   if (pkg.engines?.vscode !== "^1.105.0") errors.push('Manifest engine range must match the validated VS Code baseline "^1.105.0".');
+  if (pkg.license !== "MIT") errors.push('The extension package must declare the MIT license.');
+  for (const lifecycle of ["preinstall", "install", "postinstall", "preuninstall", "uninstall", "postuninstall"]) {
+    if (Object.hasOwn(pkg.scripts ?? {}, lifecycle)) {
+      errors.push(`Extension lifecycle script "${lifecycle}" must not execute during install or removal.`);
+    }
+  }
   if (pkg.version !== matrix.versions?.extension) errors.push("Extension package version must match the capability matrix.");
   const extensionSeries = /^([0-9]+\.[0-9]+)\./.exec(pkg.version ?? "")?.[1];
   const serverSeries = /^([0-9]+\.[0-9]+)\./.exec(matrix.versions?.languageServer ?? "")?.[1];
@@ -156,8 +162,12 @@ async function main() {
   }
 
   const requiredArtifacts = [
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
     "out/extension.js",
     "out/server.js",
+    "out/debug/tcl.js",
     "server/out/src/server.js",
     "server/out/src/capability-matrix.json",
     "assets/logo.png",

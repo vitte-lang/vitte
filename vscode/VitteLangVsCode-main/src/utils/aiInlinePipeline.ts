@@ -1,6 +1,5 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
-import * as cp from "node:child_process";
 import * as path from "node:path";
 import { Worker } from "node:worker_threads";
 import * as vscode from "vscode";
@@ -80,12 +79,6 @@ export class AiInlinePipeline {
     acceptedLikeCount: 0,
     latencies: [] as number[],
   };
-  private workspaceContext = {
-    buildConfig: "",
-    testConfig: "",
-    externalDeps: [] as string[],
-    gitRecent: [] as string[],
-  };
   private promptCache = new Map<string, { ts: number; chunks: Chunk[] }>();
   private worker: Worker | undefined;
   private workerPending = new Map<string, (value: { chunks: Chunk[]; symbols: Set<string> }) => void>();
@@ -115,7 +108,6 @@ export class AiInlinePipeline {
         // ignore unreadable files
       }
     }
-    await this.refreshWorkspaceContext();
   }
 
   private ensureWorker(): void {
@@ -206,15 +198,6 @@ export class AiInlinePipeline {
     return chunks;
   }
   
-  async refreshWorkspaceContext(): Promise<void> {
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!root) return;
-    this.workspaceContext.buildConfig = await readSmallFileIfExists(`${root}/vitte.config.json`);
-    this.workspaceContext.testConfig = await readSmallFileIfExists(`${root}/.vitte/config.json`);
-    this.workspaceContext.externalDeps = collectExternalDeps(this.byUri);
-    this.workspaceContext.gitRecent = readGitRecentFiles(root);
-  }
-
   async upsert(uri: string, text: string): Promise<void> {
     if (!this.opts.enabled) return;
     const hash = digest(text);
@@ -258,29 +241,19 @@ export class AiInlinePipeline {
     const query = tokenMap(left);
     const top = this.resolveTopChunks(left, query);
     const relatedImports = extractImportTargets(document).slice(0, 5).join(", ");
-    const diagHints = vscode.languages.getDiagnostics(document.uri)
-      .filter((d) => d.range.start.line <= position.line && d.range.end.line >= position.line)
-      .slice(0, 3)
-      .map((d) => `${diagnosticCodeText(d.code)}:${d.message}`)
-      .join(" | ");
+    const cursorContext = left.slice(Math.max(0, left.length - 320));
     const context = [
-      `FILE: ${document.uri.fsPath}`,
-      `LEFT: ${left.slice(Math.max(0, left.length - 320))}`,
+      `LEFT: ${cursorContext}`,
       `IMPORTS: ${relatedImports}`,
-      `DIAGNOSTICS: ${diagHints}`,
-      `BUILD_CFG: ${this.workspaceContext.buildConfig.slice(0, 500)}`,
-      `TEST_CFG: ${this.workspaceContext.testConfig.slice(0, 500)}`,
-      `EXTERNAL_DEPS: ${this.workspaceContext.externalDeps.slice(0, 20).join(", ")}`,
-      `GIT_RECENT: ${this.workspaceContext.gitRecent.slice(0, 20).join(", ")}`,
-      "CHUNKS:",
-      ...top.map((c) => `--- ${c.uri}\n${c.text.slice(0, 700)}`),
+      "RELATED SOURCE:",
+      ...top.map((c, index) => `--- related source ${index + 1}\n${c.text.slice(0, 700)}`),
     ].join("\n");
     const safeContext = this.opts.redactSecrets ? redactSensitive(context) : context;
 
     let backendCandidates: string[] = [];
     if (this.opts.backendEnabled && this.opts.backendUrl.trim().length > 0 && this.canUseBackend()) {
       this.stats.backendRequests += 1;
-      backendCandidates = await this.fetchBackendCandidates(safeContext, left);
+      backendCandidates = await this.fetchBackendCandidates(safeContext, cursorContext);
     }
 
     const merged = this.rankAndFilter(localCandidates, backendCandidates, left);
@@ -538,48 +511,6 @@ function extractImportTargets(document: vscode.TextDocument): string[] {
     if (m?.[1]) out.push(m[1]);
   }
   return out;
-}
-
-function diagnosticCodeText(code: vscode.Diagnostic["code"]): string {
-  if (code === undefined) return "diag";
-  if (typeof code === "string" || typeof code === "number") return String(code);
-  return String(code.value);
-}
-
-function collectExternalDeps(byUri: Map<string, FileDoc>): string[] {
-  const out = new Set<string>();
-  for (const doc of byUri.values()) {
-    for (const ch of doc.chunks) {
-      for (const m of ch.text.matchAll(/^(?:import|use|pull)\s+([A-Za-z_][\w./:-]*)/gm)) {
-        const target = m[1] ?? "";
-        if (!target) continue;
-        if (target.includes("/") || target.includes(":")) out.add(target);
-      }
-    }
-  }
-  return [...out].sort((a, b) => a.localeCompare(b)).slice(0, 200);
-}
-
-async function readSmallFileIfExists(file: string): Promise<string> {
-  try {
-    const stat = await fs.promises.stat(file);
-    if (!stat.isFile() || stat.size > 256 * 1024) return "";
-    return await fs.promises.readFile(file, "utf8");
-  } catch {
-    return "";
-  }
-}
-
-function readGitRecentFiles(root: string): string[] {
-  try {
-    const status = cp.execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" });
-    const changed = status.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => l.slice(3).trim());
-    if (changed.length > 0) return changed.slice(0, 80);
-    const recent = cp.execFileSync("git", ["log", "--name-only", "--pretty=format:", "-n", "20"], { cwd: root, encoding: "utf8" });
-    return recent.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 80);
-  } catch {
-    return [];
-  }
 }
 
 function redactSensitive(input: string): string {

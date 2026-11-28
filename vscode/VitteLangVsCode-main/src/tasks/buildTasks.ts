@@ -62,7 +62,7 @@ export function registerBuildTasks(ctx: vscode.ExtensionContext) {
   );
 
   const provider: vscode.TaskProvider = {
-    provideTasks: async (): Promise<vscode.Task[]> => {
+    provideTasks: (): vscode.Task[] => {
       if (!vscode.workspace.isTrusted) return [];
       const folders = vscode.workspace.workspaceFolders ?? [];
       const tasks: vscode.Task[] = [];
@@ -72,7 +72,7 @@ export function registerBuildTasks(ctx: vscode.ExtensionContext) {
         const repository = projectRoot ? findCompilerRepository(projectRoot) : undefined;
         const detectedProject = projectRoot ? detectVitteProject(projectRoot) : undefined;
         const repositoryWorkflow = Boolean(repository && !detectedProject);
-        const definitions: Array<{ command: SubCmd; currentFileOnly?: boolean; compilerRepository?: boolean; label?: string }> = [
+        const definitions: { command: SubCmd; currentFileOnly?: boolean; compilerRepository?: boolean; label?: string }[] = [
           { command: 'check', currentFileOnly: true },
           { command: 'build', currentFileOnly: true },
           { command: 'run' },
@@ -127,7 +127,7 @@ function isTaskCmd(value: unknown): value is Exclude<SubCmd, 'clean'> {
 
 function taskFolder(task: vscode.Task, projectFolder?: string): vscode.WorkspaceFolder | undefined {
   const scope = task.scope;
-  if (scope && typeof scope === 'object' && 'uri' in scope) return scope as vscode.WorkspaceFolder;
+  if (scope && typeof scope === 'object' && 'uri' in scope) return scope;
   if (projectFolder) {
     const uri = vscode.Uri.parse(projectFolder);
     return vscode.workspace.getWorkspaceFolder(uri) ?? (vscode.workspace.workspaceFolders ?? []).find(folder => folder.uri.toString() === projectFolder);

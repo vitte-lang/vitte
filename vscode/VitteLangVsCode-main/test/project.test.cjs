@@ -112,7 +112,7 @@ test('application commands use canonical CLI options and isolate editor output',
   const run = projectCommand({ root, compiler: 'vitte', action: 'run', input, programArgs: ['hello world', '--flag'] });
   assert.deepEqual(run.args.slice(-3), ['--', 'hello world', '--flag']);
   assert.equal(compilerProfile('bench'), 'release');
-  assert.throws(() => projectCommand({ root, compiler: 'vitte', action: 'build' }), /fichier Vitte/);
+  assert.throws(() => projectCommand({ root, compiler: 'vitte', action: 'build' }), /No active Vitte file/);
   assert.throws(() => projectCommand({ root, compiler: 'vitte', action: 'test', input }), /vitte test is unavailable/);
 });
 
@@ -125,7 +125,8 @@ test('workspace scaffolding uses scoped Vitte tasks and verified launch template
   assert.equal(config.tasks.tasks[1].currentFileOnly, true);
   assert.ok(config.tasks.tasks.every(task => task.problemMatcher.includes('$vitte')));
   const launch = config.launch.configurations.find(item => item.request === 'launch');
-  assert.equal(launch.program, '${file}');
+  assert.equal(launch.name, 'Vitte: Debug built executable (DWARF)');
+  assert.equal(launch.program, '${workspaceFolder}/build/vscode/${fileBasenameNoExtension}');
   assert.equal(launch.nativeBackend, true);
   assert.equal(config.launch.configurations.some(item => item.request === 'attach'), true);
   assert.ok(!PROJECT_CONFIG.includes('[build]'));

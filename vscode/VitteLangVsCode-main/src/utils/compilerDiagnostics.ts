@@ -218,11 +218,13 @@ function relatedFrom(item: JsonRecord, data: JsonRecord, text: string, bytes: Bu
           endCharacter: number(lspEnd.character)!,
         },
       });
-    } else if (span && message) result.push({
-      ...span,
-      message,
-      offsetUnit: sameFile ? undefined : byteStart !== undefined && byteEnd !== undefined ? "utf8-byte" : "utf16",
-    });
+    } else if (span && message) {
+      result.push({
+        ...span,
+        message,
+        offsetUnit: sameFile ? undefined : byteStart !== undefined && byteEnd !== undefined ? "utf8-byte" : "utf16",
+      });
+    }
   }
 
   // Secondary compiler labels carry the same useful source context when an LSP

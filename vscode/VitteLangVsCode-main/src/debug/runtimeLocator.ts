@@ -470,7 +470,7 @@ export function registerRuntimeLocatorCommand(ctx: vscode.ExtensionContext, outp
     const runtime = await locateVitteRuntime(undefined, activeFolder?.uri);
     const config = vscode.workspace.getConfiguration('vitte', activeFolder?.uri);
     const currentSetting = config.get<string>('compiler.path', '').trim();
-    const choices: Array<vscode.QuickPickItem & { action: 'detected' | 'browse' | 'automatic' }> = [];
+    const choices: (vscode.QuickPickItem & { action: 'detected' | 'browse' | 'automatic' })[] = [];
     if (runtime.found && runtime.cliPath) {
       choices.push({
         label: uiText(`Use detected compiler: ${path.basename(runtime.cliPath)}`, `Utiliser le compilateur détecté : ${path.basename(runtime.cliPath)}`),

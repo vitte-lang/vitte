@@ -807,7 +807,7 @@ const breaker = { consecutiveErrors: 0, until: 0 };
 const BREAKER_THRESHOLD = 5;
 const BREAKER_COOLDOWN_MS = 30000;
 const MAX_QUEUED_REQUESTS = 64;
-const requestQueue: Array<() => void> = [];
+const requestQueue: (() => void)[] = [];
 let activeRequests = 0;
 
 function isBreakerActive(): boolean {
@@ -857,6 +857,8 @@ async function withBackpressure<T>(fn: () => Promise<T>, token?: CancellationTok
       throw new Error("Language server is busy; retry the request shortly.");
     }
     return new Promise<T>((resolve, reject) => {
+      // The callback can fire before onCancellationRequested returns its subscription.
+      // eslint-disable-next-line prefer-const
       let cancellationSubscription: { dispose(): void } | undefined;
       const queuedTask = (): void => {
         cancellationSubscription?.dispose();
@@ -1712,7 +1714,7 @@ function safeIndexDocument(doc: TextDocument): void {
   indexTimers.set(doc.uri, setTimeout(() => {
     indexTimers.delete(doc.uri);
     const current = documents.get(doc.uri);
-    if (!current || current.version !== version || serverShuttingDown) return;
+    if (current?.version !== version || serverShuttingDown) return;
     if (memoryExceeded() || getIndex().size >= maxIndexedDocuments) return;
     indexWorkspaceDocument(current);
   }, 120));

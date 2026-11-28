@@ -941,7 +941,7 @@ async function ensureCloudOptInIfNeeded(): Promise<void> {
   const optIn = cfg.get<boolean>("suggestions.aiPipeline.cloudOptIn", false);
   if (!enabled || !backend || localOnly || optIn) return;
   const choice = await vscode.window.showWarningMessage(
-    "Vitte AI cloud backend is configured but disabled until explicit opt-in.",
+    "Cloud suggestions send up to 320 characters before the cursor, import names, and selected local source snippets (up to 700 characters each) to the configured endpoint. Enable only if this workspace's code may be shared.",
     "Enable Cloud",
     "Keep Local-Only",
   );
@@ -1552,7 +1552,7 @@ async function selectVitteBuildTarget(requestedFolderUri?: unknown): Promise<voi
 
   const config = vscode.workspace.getConfiguration("vitte", folder?.uri);
   const current = config.get<string>("build.target", "").trim();
-  const choices: Array<vscode.QuickPickItem & { target?: string; input?: boolean }> = current
+  const choices: (vscode.QuickPickItem & { target?: string; input?: boolean })[] = current
     ? [{ label: uiText(`Keep current target: ${current}`, `Conserver la cible actuelle : ${current}`), description: uiText("No setting change", "Aucun changement"), target: current }]
     : [];
   choices.push(
@@ -1582,7 +1582,9 @@ async function selectVitteBuildTarget(requestedFolderUri?: unknown): Promise<voi
     ? vscode.ConfigurationTarget.WorkspaceFolder
     : folders.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
   await config.update("build.target", target ?? "", targetScope);
-  vscode.window.setStatusBarMessage(uiText(`Vitte build target: ${target || "host default"}`, `Cible Vitte : ${target || "hôte"}`), 3500);
+  const targetText = typeof target === "string" && target.length > 0 ? target : "host default";
+  const targetTextFr = typeof target === "string" && target.length > 0 ? target : "hôte";
+  vscode.window.setStatusBarMessage(uiText(`Vitte build target: ${targetText}`, `Cible Vitte : ${targetTextFr}`), 3500);
 }
 
 let fileWatchers: vscode.FileSystemWatcher[] = [];
@@ -2626,8 +2628,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
         void vscode.window.showInformationMessage("Vitte inline suggestions disabled.");
       }
     }),
-    vscode.commands.registerCommand("vitte.suggestions.refreshContext", async () => {
-      await aiInlinePipeline?.refreshWorkspaceContext();
+    vscode.commands.registerCommand("vitte.suggestions.refreshContext", () => {
       for (const doc of vscode.workspace.textDocuments) {
         if (!isVitteDocument(doc)) continue;
         void aiInlinePipeline?.upsert(doc.uri.toString(), doc.getText());
@@ -5135,7 +5136,7 @@ async function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number
     if (snapshotPath) await fs.promises.unlink(snapshotPath).catch(() => undefined);
     return true;
   };
-  child.on("close", async () => {
+  const handleClose = async (): Promise<void> => {
     if (!await settle()) return;
     if ((syntaxLintSeq.get(key) ?? 0) !== seq || doc.version !== sourceVersion) return;
     if (!syntaxLintCollection) return;
@@ -5254,6 +5255,9 @@ async function runLiveSyntaxDiagnosticsNow(doc: vscode.TextDocument, seq: number
       output.appendLine(`[syntax.live] invalid diagnostic json: ${redactLogText(parseErr)}`);
       syntaxLintCollection.set(doc.uri, []);
     }
+  };
+  child.on("close", () => {
+    void handleClose();
   });
   child.on("error", (spawnErr) => {
     void settle().then(first => {

@@ -52,7 +52,100 @@ jobs:
         run: xvfb-run -a npm test --silent
 
       - name: Release gate
-        run: npm run ci:release-gate
+        run: xvfb-run -a npm run ci:release-gate
 
       - name: Package VSIX
         run: npm run package
+
+  packaged-platform:
+    name: Packaged activation (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            label: Linux x64
+            node-platform: linux
+            node-arch: x64
+          - runner: macos-15
+            label: macOS arm64
+            node-platform: darwin
+            node-arch: arm64
+          - runner: windows-2025
+            label: Windows x64
+            node-platform: win32
+            node-arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Assert runner platform and architecture
+        env:
+          EXPECTED_NODE_PLATFORM: ${{ matrix.node-platform }}
+          EXPECTED_NODE_ARCH: ${{ matrix.node-arch }}
+        run: node -e "if (process.platform !== process.env.EXPECTED_NODE_PLATFORM || process.arch !== process.env.EXPECTED_NODE_ARCH) { console.error('Unexpected runner:', process.platform, process.arch); process.exit(1); } console.log('Verified runner:', process.platform, process.arch);"
+
+      - name: Check manifest and generated imports
+        run: npm run check:imports-sync && npm run check:manifest
+
+      - name: Build and run process safety tests
+        run: npm run test:unit
+
+      - name: Package VSIX
+        run: npm run vsix
+
+      - name: Verify release metadata and resources
+        run: npm run vsix:verify-artifact
+
+      - name: Install, update, rollback, activate and uninstall VSIX (Linux)
+        if: runner.os == 'Linux'
+        env:
+          VSCODE_TEST_VERSION: stable
+        run: xvfb-run -a npm run vsix:smoke
+
+      - name: Install, update, rollback, activate and uninstall VSIX (macOS / Windows)
+        if: runner.os != 'Linux'
+        env:
+          VSCODE_TEST_VERSION: stable
+        run: npm run vsix:smoke
+
+      - name: Upload tested VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitte-studio-${{ matrix.node-platform }}-${{ matrix.node-arch }}
+          path: vitte-studio.vsix
+          if-no-files-found: error
+          retention-days: 14
+
+  minimum-engine:
+    name: Minimum VS Code engine (1.105.0)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Package VSIX
+        run: npm run vsix
+      - name: Install and activate at the declared minimum engine
+        env:
+          VSCODE_TEST_VERSION: "1.105.0"
+        run: xvfb-run -a npm run vsix:smoke

@@ -164,14 +164,16 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
     }];
     const externalAdapter = Boolean(settings.get<string>('debug.program', '').trim() || project.debug?.program?.trim());
     const nativeOptIn = settings.get<boolean>('debug.nativeBackend', false) || project.debug?.nativeBackend === true;
-    if (externalAdapter) configs.unshift({
-      name: 'Vitte: Launch current file (external DAP)',
-      type: 'vitte',
-      request: 'launch',
-      program: '${file}',
-      nativeBackend: false,
-      args: [],
-    });
+    if (externalAdapter) {
+      configs.unshift({
+        name: 'Vitte: Launch current file (external DAP)',
+        type: 'vitte',
+        request: 'launch',
+        program: '${file}',
+        nativeBackend: false,
+        args: [],
+      });
+    }
     if (nativeOptIn && isNativeDebugCandidatePlatform()) {
       const folderSuffix = (vscode.workspace.workspaceFolders?.length ?? 0) > 1 ? ` — ${folder?.name ?? path.basename(workspaceRoot)}` : '';
       configs.unshift({
@@ -266,10 +268,10 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
       ],
       target: typeof configRecord.target === 'string' && configRecord.target.trim()
         ? configRecord.target.trim()
-        : project.debug?.target?.trim() || settings.get<string>('build.target', '').trim(),
+        : firstNonBlank(project.debug?.target, settings.get<string>('build.target', '').trim()),
       manifestPath: typeof configRecord.manifestPath === 'string' && configRecord.manifestPath.trim()
         ? configRecord.manifestPath
-        : project.debug?.manifestPath?.trim() || settings.get<string>('project.manifestPath', ''),
+        : firstNonBlank(project.debug?.manifestPath, settings.get<string>('project.manifestPath', '')),
       cwd: (() => {
         const cfgCwd = configRecord.cwd;
         if (typeof cfgCwd === 'string' && cfgCwd.length > 0) return cfgCwd;
@@ -371,6 +373,11 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
 
     return base;
   }
+}
+
+function firstNonBlank(value: string | undefined, fallback: string): string {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : fallback;
 }
 
 export function registerDebugConfigurationProvider(ctx: vscode.ExtensionContext) {

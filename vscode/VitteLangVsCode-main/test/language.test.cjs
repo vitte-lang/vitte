@@ -776,7 +776,7 @@ test('extension manifest exposes the matrix and keeps unverified hints off', () 
 test('bundled server serves editor features, navigation and workspace symbols over stdio LSP', { timeout: 15000 }, async (t) => {
   const { spawn } = require('node:child_process');
   const { createMessageConnection, StreamMessageReader, StreamMessageWriter } = require('vscode-jsonrpc/node');
-  const workspace = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-lsp-workspace-'));
+  const workspace = fs.realpathSync(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vitte-lsp-workspace-')));
   const workspaceUri = require('node:url').pathToFileURL(workspace).toString();
   fs.writeFileSync(path.join(workspace, 'workspace-indexed.vit'), 'proc workspaceOnly() {}\n');
   fs.writeFileSync(path.join(workspace, 'diskapi.vit'), 'export proc workspaceApi(value: i32) -> i32 { return value; }\n');
@@ -837,7 +837,7 @@ test('bundled server serves editor features, navigation and workspace symbols ov
   const symbols = await connection.sendRequest('textDocument/documentSymbol', { textDocument: { uri } });
   assert.ok(symbols.some(symbol => symbol.name === 'editorTarget' || symbol.children?.some(child => child.name === 'editorTarget')));
   const workspaceResults = await connection.sendRequest('workspace/symbol', { query: 'editorTarget' });
-  assert.ok(workspaceResults.some(symbol => symbol.name === 'editorTarget'));
+  assert.ok(!workspaceResults.some(symbol => symbol.name === 'editorTarget'), 'workspace search excludes open documents outside the workspace');
   const diskSymbols = await connection.sendRequest('workspace/symbol', { query: 'workspaceOnly' });
   assert.ok(diskSymbols.some(symbol => symbol.name === 'workspaceOnly' && symbol.location.uri.endsWith('/workspace-indexed.vit')));
 

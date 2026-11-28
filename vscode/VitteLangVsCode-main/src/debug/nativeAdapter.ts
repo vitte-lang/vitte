@@ -11,6 +11,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { quoteTclWord } from './tcl';
 
 type JsonObject = Record<string, unknown>;
 
@@ -357,7 +358,7 @@ async function compileProgram(program: string, cwd: string, env: NodeJS.ProcessE
     const compiler = spawn(
       compilerPath(),
       args,
-      { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] },
+      { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], shell: false },
     );
     compiler.stdout.on('data', (chunk: Buffer | string) => output('stdout', String(chunk)));
     compiler.stderr.on('data', (chunk: Buffer | string) => output('stderr', String(chunk)));
@@ -376,15 +377,15 @@ class LldbSession {
   private queue: Promise<void> = Promise.resolve();
 
   constructor(cwd: string, env: NodeJS.ProcessEnv) {
-    const escapedLldbPath = lldbPath().replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const command = process.platform === 'win32' ? lldbPath() : 'expect';
     const args = process.platform === 'win32'
       ? ['-x', '-Q', '--no-use-colors']
-      : ['-c', `set timeout -1; spawn -noecho "${escapedLldbPath}" -x -Q --no-use-colors; interact`];
+      : ['-c', `set timeout -1; spawn -noecho ${quoteTclWord(lldbPath())} -x -Q --no-use-colors; interact`];
     this.process = spawn(command, args, {
       cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
+      shell: false,
     });
     this.process.setMaxListeners(0);
     this.process.stdout.on('data', (chunk: Buffer | string) => { this.outputBuffer += String(chunk); });

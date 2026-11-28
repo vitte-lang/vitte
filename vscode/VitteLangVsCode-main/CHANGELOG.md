@@ -14,7 +14,22 @@ and adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 - Disable the startup command popup by default and make settings validation offer a direct Settings action.
 - Remove extension keybindings that captured common editor keys; command workflows remain available in the Command Palette and status menus.
 - Use theme-aware status colors and static progress indicators, and document supported workflows and capability limits in the getting-started guide.
-- Bump the capability matrix to 1.0.13 with the scoped UI/accessibility follow-up.
+- Bump the capability matrix to 1.0.14 with platform/engine evidence and scoped UI/accessibility follow-up.
+
+## [2.3.10] — 2026-11-28
+### Added
+- Add release artifact verification for version, MIT license, changelog, production dependencies, icon, language server and editor resources.
+- Add isolated VSIX lifecycle smoke coverage for install, update, rollback, activation and uninstall, including a workspace path with spaces/non-ASCII characters and a sentinel project file.
+- Preserve a profile setting and an unrelated installed extension across each VSIX lifecycle operation.
+- Add CI jobs for Linux x64, macOS arm64 and Windows x64, plus VS Code 1.105.0 minimum-engine activation; keep platform status partial until the new jobs have passing runs.
+
+### Changed
+- Escape Tcl command substitutions in the experimental Expect/LLDB path before launching the debugger.
+- Keep process launch arguments separated from shell parsing and test argv, environment propagation and shutdown behavior.
+- Reduce optional cloud-suggestion payloads to cursor context, import names and selected source snippets; stop reading project settings and Git history for remote prompt context, and explain the payload before opt-in.
+- Use the installed local VSCE and invoke the Windows release gate through Node/npm without a shell or a network `npx` lookup.
+- Deduplicate module candidates reached through equivalent symlink roots while preserving stable workspace URI spelling.
+- Bump the capability matrix to 1.0.14 with partial status retained until the new platform CI jobs report green.
 
 ## [2.3.9] — 2026-11-28
 ### Added

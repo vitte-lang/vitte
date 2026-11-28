@@ -8,11 +8,13 @@ The extension is configured to run local-only by default:
 No remote suggestion context is sent unless user explicitly opts in.
 
 ## Data Sent to Backend (Opt-In Only)
-When cloud is enabled and consented, request payload can include:
-- cursor-left context
-- related repository chunks (RAG top-k)
-- import hints and active diagnostics
-- declared policy metadata (`dataRetentionDays`, `allowExternalTraining`)
+When cloud is enabled and consented, each request sends:
+- up to 320 characters immediately before the cursor
+- up to five import names from the active document
+- selected local source snippets, each capped at 700 characters and limited by `ragTopK`
+- candidate count and declared policy metadata (`dataRetentionDays`, `allowExternalTraining`)
+
+Requests omit absolute file paths, source file names, diagnostics, build/test configuration, dependency lists and Git history. Secret-like text is redacted when `redactSecrets` is enabled. The configured endpoint receives source text only after the explicit cloud opt-in; when disabled or offline, suggestions stay local and no request is made.
 
 ## Data Retention
 `dataRetentionDays` expresses desired retention policy to backend.

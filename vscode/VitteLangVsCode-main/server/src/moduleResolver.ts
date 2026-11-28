@@ -288,15 +288,26 @@ export async function resolveModuleFiles(
   environment: CompletionEnvironment = {},
 ): Promise<string[]> {
   const relative = modulePathToFilePath(modulePath);
-  const resolved = new Set<string>();
+  const resolved = new Map<string, string>();
   for (const root of getModuleSearchRoots(importerUri, environment)) {
     const base = path.join(root, relative);
     for (const candidate of [`${base}.vit`, `${base}.vitl`, `${base}.vitte`, path.join(base, "mod.vit"), path.join(base, "mod.vitte")]) {
-      try { if ((await fs.stat(candidate)).isFile()) resolved.add(path.resolve(candidate)); }
+      try {
+        if (!(await fs.stat(candidate)).isFile()) continue;
+        // macOS commonly exposes the same temporary directory through both
+        // /var and /private/var. Canonicalize existing files so one module is
+        // never mistaken for an ambiguous import merely because its roots use
+        // different symlink paths.
+        const realPath = await fs.realpath(candidate);
+        const identity = process.platform === "win32" ? realPath.toLocaleLowerCase("en-US") : realPath;
+        // Preserve the workspace's spelling in returned URIs; the canonical
+        // path is only the identity used to collapse aliases.
+        resolved.set(identity, path.resolve(candidate));
+      }
       catch { /* continue through the compiler-compatible roots */ }
     }
   }
-  return Array.from(resolved);
+  return Array.from(resolved.values());
 }
 
 async function readModule(modulePath: string, importerUri: string, environment: CompletionEnvironment): Promise<ModuleFileSnapshot | undefined> {
