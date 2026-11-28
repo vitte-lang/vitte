@@ -33,6 +33,7 @@ test('diagnostic regression inventory covers every canonical grammar production'
 
   const exporter = spawnSync('python3', [path.join(repo, 'src/tests/diagnostic_contract_test.py'), '--export-fixtures'], {
     cwd: repo,
+    env: { ...process.env, PYTHONUTF8: '1' },
     encoding: 'utf8',
     timeout: 10000,
   });

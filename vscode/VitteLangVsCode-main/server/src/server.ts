@@ -2009,7 +2009,7 @@ async function collectWorkspaceRenameDocuments(
   const deadline = Date.now() + 2000;
   const fileLimit = 1024;
   const totalByteLimit = 64 * 1024 * 1024;
-  const filePaths = new Set<string>();
+  const filePaths = new Map<string, string>();
   const visitedDirectories = new Set<string>();
   const maxQueuedDirectories = 4096;
   const directorySnapshots = new Map<string, { mtimeMs: number; ctimeMs: number }>();
@@ -2089,7 +2089,10 @@ async function collectWorkspaceRenameDocuments(
         if (!isFile || !/\.(?:vit|vitl|vitte)$/i.test(entry.name)) continue;
         try {
           const realFile = await fs.realpath(absolute);
-          if (realPathWithinRoots(realFile)) filePaths.add(path.resolve(realFile));
+          if (realPathWithinRoots(realFile)) {
+            const canonicalFile = normalizedPathForComparison(realFile);
+            if (!filePaths.has(canonicalFile)) filePaths.set(canonicalFile, path.resolve(absolute));
+          }
         } catch {
           complete = false;
           reason = `Le fichier « ${absolute} » ne peut pas être résolu; l’ensemble des références est inconnu.`;
@@ -2107,7 +2110,7 @@ async function collectWorkspaceRenameDocuments(
     if (!complete) break;
   }
 
-  for (const file of filePaths) {
+  for (const [canonicalFile, file] of filePaths) {
     if (cancelled(token) || !keepGoing()) {
       complete = false;
       reason = "Le renommage a été annulé après un changement de document, configuration ou workspace.";
@@ -2118,7 +2121,7 @@ async function collectWorkspaceRenameDocuments(
       reason = "Le scan de renommage a atteint sa limite de temps; aucun résultat partiel ne sera appliqué.";
       break;
     }
-    if (openRealPaths.has(normalizedPathForComparison(file))) continue;
+    if (openRealPaths.has(canonicalFile)) continue;
     const uri = pathToFileURL(file).toString();
     if (out.has(uri)) continue;
     try {

@@ -53,7 +53,7 @@ export function expandToolPath(value: string, workspaceRoot: string, toolchainRo
   const substituted = value.replace(/\$\{workspaceFolder}/g, workspaceRoot)
     .replace(/\$\{env:([^}]+)}/g, (_match: string, key: string) => process.env[key] ?? '');
   const expanded = substituted.replace(/^~(?=$|[\\/])/, os.homedir());
-  return path.isAbsolute(expanded) ? expanded : path.resolve(toolchainRoot ?? workspaceRoot, expanded);
+  return path.normalize(path.isAbsolute(expanded) ? expanded : path.resolve(toolchainRoot ?? workspaceRoot, expanded));
 }
 
 /** Find the nearest project config for a file/folder, walking toward the filesystem root. */
