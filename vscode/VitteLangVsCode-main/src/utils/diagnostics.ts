@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { uiText } from "./uiText";
 
 export const VITTE_FILE_EXTS = new Set([".vit", ".vitl", ".vitte"]);
 
@@ -84,22 +85,24 @@ export function formatDiagnosticsSummary(summary: DiagnosticsSummary): string {
   const parts: string[] = [];
   const fileCount = vscode.languages.getDiagnostics().filter(([uri]) => isVitteFile(uri)).length;
   if (summary.errors > 0) {
-    parts.push(formatCount(summary.errors, "erreur"));
+    parts.push(formatCount(summary.errors, uiText("error", "erreur")));
   }
   if (summary.warnings > 0) {
-    parts.push(formatCount(summary.warnings, "avertissement"));
+    parts.push(formatCount(summary.warnings, uiText("warning", "avertissement")));
   }
   if (summary.info > 0) {
-    parts.push(formatCount(summary.info, "info"));
+    parts.push(formatCount(summary.info, uiText("info", "info")));
   }
   if (summary.hints > 0) {
-    parts.push(formatCount(summary.hints, "suggestion"));
+    parts.push(formatCount(summary.hints, uiText("hint", "suggestion")));
   }
   if (parts.length === 0) {
-    return "Diagnostics : aucun problème détecté";
+    return uiText("Diagnostics: no issues detected", "Diagnostics : aucun problème détecté");
   }
-  const header = fileCount > 0 ? `${fileCount} fichier${fileCount > 1 ? 's' : ''} — ` : '';
-  return `${header}Diagnostics : ${parts.join(', ')}`;
+  const header = fileCount > 0
+    ? uiText(`${fileCount} file${fileCount > 1 ? 's' : ''} — `, `${fileCount} fichier${fileCount > 1 ? 's' : ''} — `)
+    : '';
+  return uiText(`${header}Diagnostics: ${parts.join(', ')}`, `${header}Diagnostics : ${parts.join(', ')}`);
 }
 
 /**

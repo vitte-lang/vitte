@@ -326,18 +326,18 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
     }
 
     if (request === 'launch' && (!base.program || typeof base.program !== 'string')) {
-      void vscode.window.showErrorMessage('Vitte: indiquez le fichier ou le binaire à lancer dans "program".');
+      void vscode.window.showErrorMessage('Vitte: set the source file or executable to launch in "program".');
       return undefined;
     }
     if (request === 'launch' && (!base.adapter || typeof base.adapter !== 'string') && !nativeBackend) {
       void vscode.window.showErrorMessage(
-        'Vitte: aucun adaptateur DAP configuré. Définissez "vitte.debug.program" ou "adapter", ou activez le backend natif expérimental. Sans débogueur, utilisez Vitte: Build ou Vitte: Run avec le CLI sélectionné.',
+        'Vitte: no DAP adapter is configured. Set "vitte.debug.program" or "adapter", or enable the experimental native backend. Without a debugger, use Vitte: Build or Vitte: Run with the selected CLI.',
       );
       return undefined;
     }
     if (request === 'launch' && nativeBackend && !base.adapter) {
       if (!isNativeDebugCandidatePlatform()) {
-        void vscode.window.showWarningMessage('Le backend natif Vitte est expérimental ; Linux x86_64 / Ubuntu 24.04 est la seule plateforme candidate. Configurez un adaptateur DAP externe, ou utilisez Vitte: Build puis Vitte: Run avec le CLI sélectionné.');
+      void vscode.window.showWarningMessage('The Vitte native backend is experimental; Linux x86_64 / Ubuntu 24.04 is the only platform candidate. Configure an external DAP adapter, or use Vitte: Build and Vitte: Run with the selected CLI.');
         return undefined;
       }
       const runtime = await locateVitteRuntime(undefined, selectedFolder?.uri ?? activeUri);
@@ -365,7 +365,7 @@ class VitteDebugConfigurationProvider implements vscode.DebugConfigurationProvid
       base.env = { ...((base.env as Record<string, string> | undefined) ?? {}), VITTE_COMPILER: compiler };
     }
     if (request === 'attach' && (!Number.isInteger(base.port) || Number(base.port) < 1 || Number(base.port) > 65535)) {
-      void vscode.window.showErrorMessage('Vitte: le port du serveur DAP doit être compris entre 1 et 65535.');
+      void vscode.window.showErrorMessage('Vitte: the DAP server port must be between 1 and 65535.');
       return undefined;
     }
 

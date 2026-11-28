@@ -5,6 +5,17 @@ and adheres to [SemVer](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+### Added
+- Add status and project quick picks for compiler selection, project workflows and build targets; show the active server, verified CLI and project diagnostics from the status bar.
+- Add English/French strings for the status item, project/compiler/target pickers, module view and diagnostic summaries/views through `vitte.lang`; document remaining localization and accessibility work as CAP-UX-001.
+
+### Changed
+- Disable the startup command popup by default and make settings validation offer a direct Settings action.
+- Remove extension keybindings that captured common editor keys; command workflows remain available in the Command Palette and status menus.
+- Use theme-aware status colors and static progress indicators, and document supported workflows and capability limits in the getting-started guide.
+- Bump the capability matrix to 1.0.13 with the scoped UI/accessibility follow-up.
+
 ## [2.3.9] — 2026-11-28
 ### Added
 - Generate extension-owned Check/Build/Run task templates so workspace tasks use folder-scoped CLI, project root, environment, module paths, targets and manifest settings; keep compiler-repository Make build as an explicit separate task.

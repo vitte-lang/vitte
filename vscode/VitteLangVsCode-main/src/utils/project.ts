@@ -131,7 +131,7 @@ export function projectCommand(options: {
     const scope = options.currentFileOnly ? 'current-file tests are unavailable' : 'vitte test is unavailable for standalone projects';
     throw new Error(`${scope} in compiler 0.1.1. Use Vitte: Show Capabilities for the current support matrix.`);
   }
-  if (!input) throw new Error('Aucun fichier Vitte actif ou src/main.vit trouvé.');
+  if (!input) throw new Error('No active Vitte file or src/main.vit entry point was found.');
   const args = [action === 'build' ? 'compile' : action, input];
   if (options.manifestPath?.trim()) args.push(`--manifest-path=${expandToolPath(options.manifestPath.trim(), root)}`);
   if (options.profile && options.profile !== 'default') args.push(`--profile=${compilerProfile(options.profile)}`);

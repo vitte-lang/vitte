@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { uiText } from "./utils/uiText";
 import type { DiagnosticsSummary } from "./utils/diagnostics";
 import {
   diagnosticsLevel,
@@ -103,14 +104,14 @@ export class ModuleExplorerProvider implements vscode.TreeDataProvider<ModuleTre
       this.nodes = entries.map(entry => new ModuleNode(entry));
       this.emitter.fire(undefined);
       if (this.tree) {
-        this.tree.message = this.nodes.length === 0 ? "Aucun module Vitte détecté" : "";
+        this.tree.message = this.nodes.length === 0 ? uiText("No Vitte modules detected", "Aucun module Vitte détecté") : "";
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (this.tree) {
-        this.tree.message = "Impossible d’analyser les modules";
+        this.tree.message = uiText("Unable to inspect Vitte modules", "Impossible d’analyser les modules");
       }
-      void vscode.window.showWarningMessage(`Vitte : échec de l’analyse des modules — ${message}`);
+      void vscode.window.showWarningMessage(uiText(`Vitte: failed to inspect modules — ${message}`, `Vitte : échec de l’analyse des modules — ${message}`));
     }
   }
 }

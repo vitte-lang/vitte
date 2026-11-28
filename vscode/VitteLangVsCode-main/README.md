@@ -36,6 +36,12 @@ Open a .vit file  →  Detect the toolchain  →  Edit with live feedback
                          Build · Run · Test
 ```
 
+## Quick start
+
+Open the project folder and a `.vit` / `.vitl` file. The Vitte status item shows server readiness, the active compiler version and project diagnostics. Select it, or use **Vitte: Status and Project Health** in the Command Palette, to choose a compiler, inspect the project or set a build target. Then run **Vitte: Check**, **Vitte: Build** or **Vitte: Run**. Project roots are detected from `vitte.toml` or `.vitte/config`; see the [getting-started guide](https://github.com/vitte-lang/vitte/blob/main/vscode/VitteLangVsCode-main/docs/getting-started.md) for toolchain precedence and supported commands.
+
+The extension adds no default keybindings and shows no startup command popup unless `vitte.notifications.showStartupCommands` is enabled. Status and project Quick Picks use native VS Code controls; the status item, project/toolchain selectors and diagnostic views can be set to French with `vitte.lang: "fr"`.
+
 ## Language support
 
 - `.vit` — Vitte source

@@ -5,10 +5,18 @@ This guide describes the prerequisites, installation workflow, and validation st
 ## Prerequisites
 
 - Visual Studio Code version **1.105.0** or later.
-- The unified Vitte CLI (`vitte`) available on your `PATH`, or configured via `vitte.debug.program` / `vitte.compiler.path`.
+- The Vitte CLI (`vitte`) available on your `PATH`, or selected with **Vitte: Select Compiler** / `vitte.compiler.path`.
 - A workspace that includes at least one Vitte source file (`.vit`, `.vitl`, or legacy `.vitte`).
 
-> ℹ️ Tip: Pin the **Vitte ▸ Diagnostics** and **Vitte ▸ Structure** views in the Activity Bar to monitor real-time diagnostics and module topology while you work.
+## Quick start
+
+1. Install **Vitte Language Support** from the Marketplace or a VSIX, then open the project folder in VS Code.
+2. Open a `.vit`, `.vitl` or `.vitte` file. The extension detects `vitte.toml` or `.vitte/config` by walking upward from that file. If neither exists, the workspace folder is used. Set `vitte.project.root` to override the root for that folder.
+3. Read the Vitte status item: it shows language-server state, the selected CLI version and project diagnostics. Select it, or run **Vitte: Status and Project Health** from the Command Palette, for compiler, project, target, logs and capability actions.
+4. If needed, run **Vitte: Select Compiler** and choose a detected CLI or browse for one. Discovery precedence is `vitte.compiler.path`, `vitte.toolchain.root`, project-local binaries, user/environment installs, then `PATH`.
+5. Run **Vitte: Check**, **Vitte: Build** or **Vitte: Run** from the Command Palette. **Vitte: Project Actions** offers the same commands with project detection and scaffolding. **Vitte: Select Build Target** sets or clears `vitte.build.target`; the selected CLI decides whether a requested target is supported.
+
+For multiple workspace folders, select a folder when prompted. Compiler, project-root, module-path, target, environment and build-argument settings are folder-scoped. The extension does not silently change the compiler frontend or project configuration.
 
 ## Installation
 
@@ -27,25 +35,24 @@ code --install-extension vitte-studio-<version>.vsix
 
 ## Initial Verification
 
-1. Open any Vitte/Vit source file; the extension activates automatically.
-2. Confirm that syntax highlighting, code snippets, hover information, and diagnostics are available.
-3. Observe the status bar item `$(rocket) Vitte`:
-   - `$(gear)` indicates the server is starting.
-   - `$(check)` confirms an active connection.
-   - `$(pass-filled)` denotes a clean diagnostics pass, while `$(warning)` or `$(error)` signal outstanding issues.
-   - `$(debug-stop)` appears if the client stops unexpectedly; review the output channel for details.
-4. Browse the **Vitte ▸ Structure** view to inspect modules, structs, and functions annotated with diagnostics badges.
-5. Use command palette shortcuts (`⇧⌘P`) such as `Vitte: Restart Server`, `Vitte: Show Info`, or `Vitte: Show Server Log` for routine maintenance.
+Use the status item tooltip for full server, compiler and project health details. Error and warning colors use VS Code theme tokens, including high-contrast themes. Problems and navigation are exposed through VS Code's native editor views. Quick Picks support keyboard navigation and screen readers; the extension adds no default keybindings, so it does not capture common editor shortcuts. Use VS Code's built-in Command Palette shortcut (`Ctrl+Shift+P` on Windows/Linux, `Cmd+Shift+P` on macOS) and search for a `Vitte:` command.
 
-## Kickstart with the Run Setup action
+Status and project actions are available without startup popups. To opt into the post-start command picker, enable `vitte.notifications.showStartupCommands`.
 
-Prefer one-click onboarding? Run **Vitte: Quick Actions** and select **🚀 Setup**. The extension will automatically:
+The status item, project/toolchain selectors and diagnostic views support English and French through `vitte.lang` (`en` or `fr`). Other command titles, project messages and compiler/server text may remain in English. Native VS Code controls inherit editor theme and accessibility behavior. Extension-owned status indicators use no continuous animation.
 
-1. Open the local docs to highlight the walkthrough
-2. Detect the toolchain on your machine
-3. Trigger an initial build to warm caches and surface diagnostics
+## Capabilities and configuration
 
-You can invoke this action from the status bar menu, the startup toast, or directly from the palette. It is safe to rerun whenever you change environments.
+Open **Vitte: Show Capabilities** for the versioned editor/compiler/platform support matrix. Editor features backed by the active compiler can be partial or unavailable; the matrix lists the tested scope and evidence. In particular, compiler 0.1.1 has no reliable Test Explorer metadata, and document/range formatting is unavailable without a compatible canonical formatter.
+
+Useful folder-scoped settings include:
+
+- `vitte.compiler.path` and `vitte.lsp.path` select the CLI and optional language server.
+- `vitte.project.root`, `vitte.project.manifestPath` and `vitte.modulePaths` configure project and module roots.
+- `vitte.build.args`, `vitte.build.env`, `vitte.build.profile` and `vitte.build.target` configure CLI commands.
+- `vitte.lang` selects English or French for the supported extension UI; `vitte.notifications.showStartupCommands` enables the optional startup picker.
+
+Settings descriptions in the VS Code Settings editor document their scope and limits. Run **Vitte: Detect Project**, **Vitte: Detect Toolchain**, **Vitte: Show Server Log** or **Vitte: Show Capabilities** for details. The server log is available in the **Vitte Language Server** Output channel.
 
 ## Running the Debugger
 

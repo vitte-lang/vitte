@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { uiText } from "./utils/uiText";
 
 type SeverityKey = 'error' | 'warning' | 'information' | 'hint';
 type DisplayMode = "compact" | "detailed";
@@ -179,20 +180,20 @@ function syntaxSuggestion(entry: AggregatedDiagnostic): string | undefined {
   if (code === "E0007") {
     const lineText = openLineText(entry.uri, entry.diagnostic.range.start.line).trim();
     if (lineText === "}") {
-      return "Suggestion: accolade fermante orpheline au top-level. Supprime `}` ou ferme le bloc précédent.";
+      return uiText("Suggestion: orphan closing brace at top level. Remove `}` or close the preceding block.", "Suggestion : accolade fermante orpheline au niveau supérieur. Supprimez `}` ou fermez le bloc précédent.");
     }
-    return "Suggestion: place ce code dans `proc ... { ... }` ou `entry ... { ... }`, ou ajoute une déclaration top-level (`space`, `use`, `form`, `pick`, `type`, `const`, `proc`, `entry`).";
+    return uiText("Suggestion: place this code inside `proc ... { ... }` or `entry ... { ... }`, or add a top-level declaration (`space`, `use`, `form`, `pick`, `type`, `const`, `proc`, `entry`).", "Suggestion : placez ce code dans `proc ... { ... }` ou `entry ... { ... }`, ou ajoutez une déclaration de niveau supérieur (`space`, `use`, `form`, `pick`, `type`, `const`, `proc`, `entry`).");
   }
-  if (code === "E0001") return "Suggestion: ajoute un identifiant valide (lettres/chiffres/`_`, sans commencer par un chiffre).";
-  if (code === "E0002") return "Suggestion: ajoute une expression valide (`1`, `name`, `call()`, `{ ... }`).";
-  if (code === "E0003") return "Suggestion: ajoute un pattern valide (identifiant, constructeur, pattern tuple/liste).";
-  if (code === "E0004") return "Suggestion: ajoute un type valide (`int`, `i32`, `string`, `bool`, `Option[T]`, ...).";
-  if (code === "E0005") return "Suggestion: termine le bloc avec `.end`.";
-  if (code === "E0006") return "Suggestion: un attribut doit être suivi d’un `proc`.";
-  if (code === "E1016") return "Suggestion: import interne refusé. Importe la façade publique du module (`use vitte/<module> as <alias>`).";
-  if (code === "E1017") return "Suggestion: conflit de re-export. Remplace les glob imports par des symboles explicites.";
-  if (code === "E1018") return "Suggestion: chemin d’import ambigu. Garde soit la forme fichier soit la forme dossier, pas les deux.";
-  if (/^VITTE-P\d{4}$/.test(code)) return "Suggestion: diagnostic process. Vérifie timeout/grace/policy/allowlist dans la config process.";
+  if (code === "E0001") return uiText("Suggestion: add a valid identifier (letters, digits or `_`; it cannot start with a digit).", "Suggestion : ajoutez un identifiant valide (lettres, chiffres ou `_`, sans commencer par un chiffre).");
+  if (code === "E0002") return uiText("Suggestion: add a valid expression (`1`, `name`, `call()`, `{ ... }`).", "Suggestion : ajoutez une expression valide (`1`, `name`, `call()`, `{ ... }`).");
+  if (code === "E0003") return uiText("Suggestion: add a valid pattern (identifier, constructor, tuple or list pattern).", "Suggestion : ajoutez un motif valide (identifiant, constructeur, motif tuple ou liste).");
+  if (code === "E0004") return uiText("Suggestion: add a valid type (`int`, `i32`, `string`, `bool`, `Option[T]`, ...).", "Suggestion : ajoutez un type valide (`int`, `i32`, `string`, `bool`, `Option[T]`, ...).");
+  if (code === "E0005") return uiText("Suggestion: finish the block with `.end`.", "Suggestion : terminez le bloc avec `.end`.");
+  if (code === "E0006") return uiText("Suggestion: an attribute must be followed by a `proc`.", "Suggestion : un attribut doit être suivi d’un `proc`.");
+  if (code === "E1016") return uiText("Suggestion: internal import is not allowed. Import the module's public facade (`use vitte/<module> as <alias>`).", "Suggestion : l’import interne est refusé. Importez la façade publique du module (`use vitte/<module> as <alias>`).");
+  if (code === "E1017") return uiText("Suggestion: resolve the re-export conflict by replacing glob imports with explicit symbols.", "Suggestion : résolvez le conflit de réexport en remplaçant les imports globaux par des symboles explicites.");
+  if (code === "E1018") return uiText("Suggestion: the import path is ambiguous. Keep either the file form or the directory form, not both.", "Suggestion : le chemin d’import est ambigu. Gardez la forme fichier ou la forme dossier, mais pas les deux.");
+  if (/^VITTE-P\d{4}$/.test(code)) return uiText("Suggestion: review the process timeout, grace period, policy and allowlist settings.", "Suggestion : vérifiez les réglages timeout, grace, policy et allowlist du processus.");
   return undefined;
 }
 

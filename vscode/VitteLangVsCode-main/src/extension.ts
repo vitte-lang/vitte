@@ -51,6 +51,7 @@ import type {
 } from "vscode-languageclient/node";
 import {
   summarizeWorkspaceDiagnostics,
+  summarizeDiagnosticsForUris,
   buildWorkspaceDiagnosticsReport,
   summarizeDiagnosticsByDirectory,
   diagnosticsLevel,
@@ -73,6 +74,7 @@ import { spawnManaged, stopManagedProcesses } from "./utils/managedProcesses";
 import { requireTrustedWorkspace } from "./utils/workspaceTrust";
 import { stopVitteTasks } from "./tasks/buildTasks";
 import { redactLogText } from "./utils/logRedaction";
+import { uiText } from "./utils/uiText";
 
 interface CapabilityRow {
   id: string;
@@ -143,7 +145,9 @@ let statusItem: vscode.StatusBarItem;
 let completionTimeoutNoticeShown = false;
 type CompilerRuntimeStatus = "checking" | "supported" | "missing" | "unsupported";
 const compilerRuntimeStatusByFolder = new Map<string, CompilerRuntimeStatus>();
+const compilerRuntimeDetailsByFolder = new Map<string, { path?: string | undefined; version?: string | undefined }>();
 const compilerValidationByFolder = new Map<string, Promise<boolean>>();
+const compilerValidationGenerationByFolder = new Map<string, number>();
 const lastCompilerWarningByFolder = new Map<string, string>();
 let trustNoticeShown = false;
 let startupCommandPromptShown = false;
@@ -156,7 +160,13 @@ let statusBaseIcon = "$(rocket)";
 const STATUS_LABEL = "Vitte";
 let statusLanguageSuffix = "";
 let statusBaseTooltip = "Vitte Language Server";
+let statusCompilerText = "";
+let statusCompilerTooltip = "Compiler: not checked";
+let statusProjectText = "";
+let statusProjectTooltip = "Project: no active workspace folder";
+let statusProjectName = "";
 let statusHealthIcon = "";
+let statusHealthColor: vscode.ThemeColor | undefined;
 let statusHealthTooltip = "";
 let statusOverrideText: string | undefined;
 let statusOverrideTooltip: string | undefined;
@@ -1119,7 +1129,6 @@ const RESTART_RELEVANT_CONFIG_KEYS = [
   "vitte.toolchain.root",
   "vitte.toolchainPath",
   "vitte.project.root",
-  "vitte.lang",
   "vitte.policy.path",
   "vitte.policy.json",
 ] as const;
@@ -1200,7 +1209,11 @@ async function initializeOptionalSuggestionEngines(context: vscode.ExtensionCont
 }
 
 async function ensureLanguageServices(context: vscode.ExtensionContext, reason: string): Promise<boolean> {
-  if (extensionShuttingDown || !(await hasRelevantVitteContext())) return false;
+  if (extensionShuttingDown) return false;
+  if (!(await hasRelevantVitteContext())) {
+    setStatusBase("$(circle-slash)", uiText("Vitte language server: waiting for a Vitte project", "Serveur de langage Vitte : en attente d’un projet Vitte"));
+    return false;
+  }
   if (!vscode.workspace.isTrusted) {
     setOfflineStatus("Workspace is untrusted; Vitte language services and project tools are paused.", false);
     if (!trustNoticeShown) {
@@ -1223,7 +1236,7 @@ async function ensureLanguageServices(context: vscode.ExtensionContext, reason: 
     void ensureCloudOptInIfNeeded();
   }
   const started = await startClient(context);
-  if (started && !startupCommandPromptShown) {
+  if (started && !startupCommandPromptShown && vscode.workspace.getConfiguration("vitte").get<boolean>("notifications.showStartupCommands", false)) {
     startupCommandPromptShown = true;
     void showStartupCommandPrompt(context);
   }
@@ -1412,7 +1425,11 @@ function reportSettingsIssues(outputChannel: vscode.OutputChannel, phase: "activ
     outputChannel.appendLine(`[settings:${phase}] ${issue}`);
   }
   const suffix = issues.length > 1 ? ` (+${issues.length - 1} more)` : "";
-  void vscode.window.showWarningMessage(`Vitte settings validation: ${issues[0]}${suffix}`);
+  const openSettings = uiText("Open Vitte Settings", "Ouvrir les paramètres Vitte");
+  void vscode.window.showWarningMessage(uiText(`Vitte settings validation: ${issues[0]}${suffix}`, `Validation des paramètres Vitte : ${issues[0]}${suffix}`), openSettings)
+    .then((choice) => choice === openSettings
+      ? vscode.commands.executeCommand("workbench.action.openSettings", "@ext:VitteStudio.vitte-studio vitte")
+      : undefined);
 }
 
 interface CommandShortcutConfig {
@@ -1434,6 +1451,10 @@ const DEFAULT_COMMAND_SHORTCUTS: readonly CommandShortcutConfig[] = [
 ] as const;
 
 const COMMAND_MENU_ENTRIES: readonly CommandMenuEntry[] = [
+  { label: "Project actions", description: "Project detection, scaffolding and build commands", command: "vitte.projectActions" },
+  { label: "Select compiler", description: "Choose an installed or custom Vitte CLI", command: "vitte.selectRuntime" },
+  { label: "Select build target", description: "Set or clear vitte.build.target", command: "vitte.selectTarget" },
+  { label: "Status and project health", description: "Server, compiler, diagnostics and project actions", command: "vitte.showStatusMenu" },
   { label: "Project Assistant", description: "Create project/module/package", command: "vitte.projectAssistant" },
   { label: "New Project", description: "Scaffold a new Vitte project", command: "vitte.newProject" },
   { label: "New Module", description: "Scaffold a new module file", command: "vitte.newModule" },
@@ -1464,6 +1485,105 @@ const COMMAND_MENU_ENTRIES: readonly CommandMenuEntry[] = [
   { label: "Suggestions ▸ Open profiler", description: "Open request timeline for suggestions", command: "vitte.suggestions.openProfiler" },
   { label: "Detect toolchain", description: "Scan for Vitte runtimes", command: "vitte.detectToolchain" },
 ];
+
+async function showVitteStatusMenu(): Promise<void> {
+  const serverState = client?.state === ClientState.Running ? uiText("Ready", "Prêt") : client?.state === ClientState.Starting ? uiText("Starting", "Démarrage") : uiText("Not running", "Arrêté");
+  const folder = activeStatusFolder();
+  const choices: CommandMenuItem[] = [
+    { label: uiText(`Server: ${serverState}`, `Serveur : ${serverState}`), description: statusBaseTooltip, command: "vitte.showServerLog" },
+    { label: uiText(`Compiler: ${statusCompilerText || "not selected"}`, `Compilateur : ${statusCompilerText || "non sélectionné"}`), description: statusCompilerTooltip, command: "vitte.selectRuntime" },
+    { label: uiText(`Project: ${statusProjectText || "choose a workspace folder"}`, `Projet : ${statusProjectText || "choisir un dossier de travail"}`), description: statusProjectTooltip, command: "vitte.projectActions" },
+    { label: uiText("Select compiler…", "Sélectionner le compilateur…"), description: uiText("Choose a Vitte CLI for this workspace folder", "Choisir un CLI Vitte pour ce dossier"), command: "vitte.selectRuntime" },
+    { label: uiText("Select build target…", "Sélectionner la cible…"), description: uiText("Set vitte.build.target for this workspace folder", "Définir vitte.build.target pour ce dossier"), command: "vitte.selectTarget" },
+    { label: uiText("Project actions…", "Actions du projet…"), description: uiText("Detect, scaffold, check, build or run a Vitte project", "Détecter, créer, vérifier, compiler ou exécuter un projet Vitte"), command: "vitte.projectActions" },
+    { label: uiText("Show capabilities", "Afficher les capacités"), description: uiText("See tested features and toolchain limits", "Voir les fonctions vérifiées et les limites de la chaîne d’outils"), command: "vitte.showCapabilities" },
+    { label: uiText("Restart language server", "Redémarrer le serveur de langage"), command: "vitte.restartServer" },
+    { label: uiText("Open server log", "Ouvrir le journal du serveur"), command: "vitte.showServerLog" },
+  ];
+  const selection = await vscode.window.showQuickPick(choices, {
+    title: folder ? uiText(`Vitte status — ${folder.name}`, `État Vitte — ${folder.name}`) : uiText("Vitte status", "État Vitte"),
+    placeHolder: uiText("Choose a toolchain, project action or support details", "Choisissez une chaîne d’outils, une action de projet ou les détails d’assistance"),
+    matchOnDescription: true,
+  });
+  if (selection) await vscode.commands.executeCommand(selection.command);
+}
+
+async function showVitteProjectActions(): Promise<void> {
+  const choices: CommandMenuItem[] = [
+    { label: uiText("Detect project", "Détecter le projet"), description: uiText("Inspect the active folder and CLI project configuration", "Examiner le dossier actif et la configuration du projet CLI"), command: "vitte.detectProject" },
+    { label: uiText("Project assistant", "Assistant de projet"), description: uiText("Create a project, module or package", "Créer un projet, un module ou un paquet"), command: "vitte.projectAssistant" },
+    { label: uiText("New project", "Nouveau projet"), command: "vitte.newProject" },
+    { label: uiText("New module", "Nouveau module"), command: "vitte.newModule" },
+    { label: uiText("New package", "Nouveau paquet"), command: "vitte.newPackage" },
+    { label: uiText("Generate VS Code tasks and launch configuration", "Générer les tâches et la configuration de lancement VS Code"), command: "vitte.generateWorkspaceConfig" },
+    { label: "Check", description: uiText("Run the active toolchain's check command", "Lancer la vérification de la chaîne d’outils active"), command: "vitte.check" },
+    { label: "Build", description: uiText("Build using the active compiler and project settings", "Compiler avec les réglages du projet et le compilateur actifs"), command: "vitte.build" },
+    { label: "Run", description: uiText("Build and run using the active compiler and project settings", "Compiler et exécuter avec les réglages du projet et le compilateur actifs"), command: "vitte.run" },
+    { label: uiText("Test compiler repository", "Tester le dépôt du compilateur"), description: uiText("Available only when the active compiler checkout has a Make test target", "Disponible si le dépôt du compilateur actif possède une cible Make test"), command: "vitte.test" },
+    { label: uiText("Select build target…", "Sélectionner la cible…"), command: "vitte.selectTarget" },
+    { label: uiText("Show capabilities", "Afficher les capacités"), command: "vitte.showCapabilities" },
+  ];
+  const selection = await vscode.window.showQuickPick(choices, {
+    title: uiText("Vitte project actions", "Actions du projet Vitte"),
+    placeHolder: uiText("Choose a project command", "Choisissez une commande de projet"),
+    matchOnDescription: true,
+  });
+  if (selection) await vscode.commands.executeCommand(selection.command);
+}
+
+async function selectVitteBuildTarget(requestedFolderUri?: unknown): Promise<void> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  let folder = typeof requestedFolderUri === "string"
+    ? folders.find((item) => item.uri.toString() === requestedFolderUri)
+    : activeStatusFolder();
+  if (!folder && folders.length === 1) folder = folders[0];
+  if (!folder && folders.length > 1) {
+    const picked = await vscode.window.showQuickPick(folders.map((item) => ({
+      label: item.name,
+      description: item.uri.fsPath,
+      folder: item,
+    })), {
+      title: uiText("Select Vitte project folder", "Sélectionner le dossier du projet Vitte"),
+      placeHolder: uiText("Build target settings are scoped to a workspace folder", "La cible de compilation est définie par dossier de travail"),
+      matchOnDescription: true,
+    });
+    folder = picked?.folder;
+  }
+
+  const config = vscode.workspace.getConfiguration("vitte", folder?.uri);
+  const current = config.get<string>("build.target", "").trim();
+  const choices: Array<vscode.QuickPickItem & { target?: string; input?: boolean }> = current
+    ? [{ label: uiText(`Keep current target: ${current}`, `Conserver la cible actuelle : ${current}`), description: uiText("No setting change", "Aucun changement"), target: current }]
+    : [];
+  choices.push(
+    { label: uiText("Use host default", "Utiliser la cible de l’hôte"), description: uiText("Clear vitte.build.target", "Effacer vitte.build.target"), target: "" },
+    { label: uiText("Enter target triple…", "Saisir un triplet cible…"), description: uiText("Passed unchanged to the selected CLI as --target", "Transmis tel quel au CLI sélectionné avec --target"), input: true },
+  );
+  const selected = await vscode.window.showQuickPick(choices, {
+    title: uiText("Vitte build target", "Cible de compilation Vitte"),
+    placeHolder: uiText("The selected compiler validates whether a target is supported", "Le compilateur sélectionné vérifie si la cible est prise en charge"),
+  });
+  if (!selected || selected.target === current) return;
+  let target = selected.target;
+  if (selected.input) {
+    target = await vscode.window.showInputBox({
+      title: uiText("Vitte build target", "Cible de compilation Vitte"),
+      prompt: uiText("Enter a target triple or platform accepted by your Vitte CLI", "Saisissez un triplet cible ou une plateforme acceptée par le CLI Vitte"),
+      value: current,
+      ignoreFocusOut: true,
+      validateInput: (value) => value.trim().length === 0
+        ? uiText("Enter a target, or cancel and choose Use host default.", "Saisissez une cible ou annulez et choisissez la cible de l’hôte.")
+        : /[\r\n\0]/.test(value) ? uiText("Target must be a single line.", "La cible doit tenir sur une seule ligne.") : undefined,
+    });
+    if (target === undefined) return;
+    target = target.trim();
+  }
+  const targetScope = folder
+    ? vscode.ConfigurationTarget.WorkspaceFolder
+    : folders.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+  await config.update("build.target", target ?? "", targetScope);
+  vscode.window.setStatusBarMessage(uiText(`Vitte build target: ${target || "host default"}`, `Cible Vitte : ${target || "hôte"}`), 3500);
+}
 
 let fileWatchers: vscode.FileSystemWatcher[] = [];
 let commandButtonItems: vscode.StatusBarItem[] = [];
@@ -1534,11 +1654,12 @@ function applyStatusBar(): void {
   let tooltipParts: string[];
 
   if (statusOverrideText !== undefined) {
-    text = statusOverrideText;
+    text = `${statusOverrideText}${statusCompilerText ? ` · ${statusCompilerText}` : ""}`;
     tooltipParts = [statusOverrideTooltip ?? statusBaseTooltip];
   } else {
     const suffix = statusLanguageSuffix ? ` (${statusLanguageSuffix})` : "";
-    text = `${statusBaseIcon} ${STATUS_LABEL}${suffix}`;
+    const compiler = statusCompilerText ? ` · ${statusCompilerText}` : "";
+    text = `${statusBaseIcon} ${STATUS_LABEL}${suffix}${compiler}`;
     tooltipParts = [statusBaseTooltip];
     if (statusOverrideTooltip) {
       tooltipParts.push(statusOverrideTooltip);
@@ -1552,25 +1673,31 @@ function applyStatusBar(): void {
     text = `${text} [${suggestionEngineModeSuffix}]`;
   }
   if (syntaxParsingInFlight > 0) {
-    text = `${text} $(sync~spin)`;
-    tooltipParts.push(`Parsing… (${syntaxParsingInFlight})`);
+    text = `${text} $(sync)`;
+    tooltipParts.push(uiText(`Parsing… (${syntaxParsingInFlight})`, `Analyse en cours… (${syntaxParsingInFlight})`));
   }
 
   if (statusHealthTooltip) {
     tooltipParts.push(statusHealthTooltip);
   }
+  if (statusCompilerTooltip) tooltipParts.push(statusCompilerTooltip);
+  if (statusProjectTooltip) tooltipParts.push(statusProjectTooltip);
 
   statusItem.text = text;
   statusItem.tooltip = tooltipParts.filter(Boolean).join("\n");
   statusItem.accessibilityInformation = {
-    label: text.replace(/\$\([^)]+\)/g, "").trim(),
+    label: [
+      statusBaseTooltip,
+      statusCompilerText,
+      statusProjectText,
+    ].filter(Boolean).join("; "),
     role: "status"
   };
   if (offlineReason) {
     statusItem.color = OFFLINE_STATUS_COLOR;
     statusItem.backgroundColor = OFFLINE_STATUS_BG;
   } else {
-    statusItem.color = undefined;
+    statusItem.color = statusHealthColor;
     statusItem.backgroundColor = undefined;
   }
 }
@@ -1609,9 +1736,9 @@ function isOfflineEffective(): boolean {
 function setOfflineStatus(reason: string, notify = true): void {
   offlineReason = reason;
   offlineSince = offlineSince ?? Date.now();
-  setStatusBase("$(circle-slash)", "Vitte LSP: offline");
-  const forced = isOfflinePermanent() ? "Offline permanent (user-forced)" : "Offline";
-  const since = offlineSince ? ` since ${new Date(offlineSince).toLocaleTimeString()}` : "";
+  setStatusBase("$(circle-slash)", uiText("Vitte language server: offline", "Serveur de langage Vitte : hors ligne"));
+  const forced = isOfflinePermanent() ? uiText("Offline permanent (user-forced)", "Hors ligne permanent (forcé par l’utilisateur)") : uiText("Offline", "Hors ligne");
+  const since = offlineSince ? uiText(` since ${new Date(offlineSince).toLocaleTimeString()}`, ` depuis ${new Date(offlineSince).toLocaleTimeString()}`) : "";
   setStatusOverride(`$(circle-slash) Vitte ${forced.toUpperCase()}`, `${reason}${since}`);
   void setServerOnlineContext(false);
   logOfflineReason(reason);
@@ -1635,14 +1762,16 @@ async function showOfflineBanner(reason: string): Promise<void> {
   const mute = vscode.workspace.getConfiguration("vitte").get<boolean>("server.offlineMuteBanner", false);
   if (mute) return;
   offlineBannerShown = true;
+  const explain = uiText("Explain Offline", "Expliquer l’état hors ligne");
+  const openSettings = uiText("Open Settings", "Ouvrir les paramètres");
   const selection = await vscode.window.showWarningMessage(
-    `Vitte server offline: ${reason}`,
-    "Explain Offline",
-    "Open Settings"
+    uiText(`Vitte server offline: ${reason}`, `Serveur Vitte hors ligne : ${reason}`),
+    explain,
+    openSettings
   );
-  if (selection === "Explain Offline") {
+  if (selection === explain) {
     await vscode.commands.executeCommand("vitte.offline.explain");
-  } else if (selection === "Open Settings") {
+  } else if (selection === openSettings) {
     void vscode.commands.executeCommand("workbench.action.openSettings", "vitte.server");
   }
 }
@@ -1661,7 +1790,8 @@ async function setOfflineMode(enabled: boolean, reason?: string): Promise<void> 
     cancelOfflineRetry();
     statusItem.color = undefined;
     statusItem.backgroundColor = undefined;
-    setStatusBase("$(rocket)", "Vitte Language Server");
+    if (client?.state === ClientState.Running) setStatusBase("$(check)", uiText("Vitte language server: ready", "Serveur de langage Vitte : prêt"));
+    else setStatusBase("$(rocket)", uiText("Vitte language server: stopped; ready to start", "Serveur de langage Vitte : arrêté, prêt à démarrer"));
     await setServerOnlineContext(true);
   }
 }
@@ -1724,20 +1854,110 @@ function clampNumber(value: number, min: number, max: number, fallback: number):
 }
 
 function refreshDiagnosticsStatus(): void {
-  const summary = summarizeWorkspaceDiagnostics();
+  const folder = activeStatusFolder();
+  const uris = folder
+    ? vscode.languages.getDiagnostics()
+      .filter(([uri]) => vscode.workspace.getWorkspaceFolder(uri)?.uri.toString() === folder.uri.toString())
+      .map(([uri]) => uri)
+    : [];
+  const summary = folder ? summarizeDiagnosticsForUris(uris) : summarizeWorkspaceDiagnostics();
   const level = diagnosticsLevel(summary);
   switch (level) {
     case "error":
       statusHealthIcon = "$(error)";
+      statusHealthColor = new vscode.ThemeColor("statusBarItem.errorForeground");
       break;
     case "warning":
       statusHealthIcon = "$(warning)";
+      statusHealthColor = new vscode.ThemeColor("statusBarItem.warningForeground");
       break;
     default:
       statusHealthIcon = "$(pass-filled)";
+      statusHealthColor = undefined;
   }
-  statusHealthTooltip = formatDiagnosticsSummary(summary);
+  statusHealthTooltip = folder
+    ? formatProjectDiagnostics(summary)
+    : formatDiagnosticsSummary(summary);
+  if (folder) {
+    statusProjectText = `${statusProjectName || folder.name}: ${projectHealthLabel(summary)}`;
+  }
   applyStatusBar();
+}
+
+function activeStatusFolder(): vscode.WorkspaceFolder | undefined {
+  const activeUri = vscode.window.activeTextEditor?.document.uri;
+  if (activeUri) return vscode.workspace.getWorkspaceFolder(activeUri);
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  return folders.length === 1 ? folders[0] : undefined;
+}
+
+function projectHealthLabel(summary: { errors: number; warnings: number }): string {
+  if (summary.errors > 0) return uiText(`${summary.errors} error${summary.errors === 1 ? "" : "s"}`, `${summary.errors} erreur${summary.errors === 1 ? "" : "s"}`);
+  if (summary.warnings > 0) return uiText(`${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}`, `${summary.warnings} avertissement${summary.warnings === 1 ? "" : "s"}`);
+  return uiText("healthy", "sain");
+}
+
+function formatProjectDiagnostics(summary: { errors: number; warnings: number; info: number; hints: number }): string {
+  const parts = [
+    summary.errors ? uiText(`${summary.errors} error${summary.errors === 1 ? "" : "s"}`, `${summary.errors} erreur${summary.errors === 1 ? "" : "s"}`) : "",
+    summary.warnings ? uiText(`${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}`, `${summary.warnings} avertissement${summary.warnings === 1 ? "" : "s"}`) : "",
+    summary.info ? uiText(`${summary.info} info${summary.info === 1 ? "" : "s"}`, `${summary.info} info${summary.info === 1 ? "" : "s"}`) : "",
+    summary.hints ? uiText(`${summary.hints} hint${summary.hints === 1 ? "" : "s"}`, `${summary.hints} suggestion${summary.hints === 1 ? "" : "s"}`) : "",
+  ].filter(Boolean);
+  return uiText(
+    `Project diagnostics: ${parts.length ? parts.join(", ") : "no issues"}`,
+    `Diagnostics du projet : ${parts.length ? parts.join(", ") : "aucun problème"}`,
+  );
+}
+
+function refreshStatusContext(): void {
+  const folder = activeStatusFolder();
+  if (!folder) {
+    statusCompilerText = "";
+    statusCompilerTooltip = uiText("Compiler: select a workspace folder", "Compilateur : sélectionnez un dossier de travail");
+    statusProjectText = "";
+    statusProjectTooltip = uiText("Project: select a Vitte workspace folder", "Projet : sélectionnez un dossier Vitte");
+    statusProjectName = "";
+    refreshDiagnosticsStatus();
+    return;
+  }
+
+  const key = folder.uri.toString();
+  const runtimeStatus = compilerRuntimeStatusByFolder.get(key);
+  if (runtimeStatus === "supported") {
+    const details = compilerRuntimeDetailsByFolder.get(key);
+    const version = details?.version;
+    statusCompilerText = version ? `CLI ${version}` : uiText("CLI ready", "CLI prêt");
+    const compilerPath = details?.path ? `\nPath: ${details.path}` : "";
+    statusCompilerTooltip = uiText(
+      `Compiler: Vitte CLI ${version ?? "version unknown"} (tested)${compilerPath}`,
+      `Compilateur : CLI Vitte ${version ?? "version inconnue"} (vérifié)${compilerPath ? `\nChemin : ${details?.path}` : ""}`,
+    );
+  } else if (runtimeStatus === "unsupported") {
+    statusCompilerText = uiText("CLI unverified", "CLI non vérifié");
+    const compilerPath = compilerRuntimeDetailsByFolder.get(key)?.path;
+    const pathLine = compilerPath ? `\nPath: ${compilerPath}` : "";
+    statusCompilerTooltip = uiText(
+      `Compiler: not verified; evidence targets ${VITTE_COMPILER_EVIDENCE_VERSION}${pathLine}`,
+      `Compilateur : non vérifié ; les preuves ciblent ${VITTE_COMPILER_EVIDENCE_VERSION}${compilerPath ? `\nChemin : ${compilerPath}` : ""}`,
+    );
+  } else if (runtimeStatus === "missing") {
+    statusCompilerText = uiText("CLI missing", "CLI introuvable");
+    statusCompilerTooltip = uiText("Compiler: not found. Run Vitte: Select Compiler or configure vitte.compiler.path.", "Compilateur : introuvable. Lancez Vitte : Select Compiler ou configurez vitte.compiler.path.");
+  } else {
+    statusCompilerText = runtimeStatus === "checking" ? uiText("CLI checking", "Vérification du CLI") : uiText("CLI not checked", "CLI non vérifié");
+    statusCompilerTooltip = uiText("Compiler: use Vitte: Select Compiler or Vitte: Detect Toolchain.", "Compilateur : utilisez Vitte : Select Compiler ou Vitte : Detect Toolchain.");
+  }
+
+  const config = vscode.workspace.getConfiguration("vitte", folder.uri);
+  const configuredRoot = config.get<string>("project.root", "").trim();
+  const activeUri = vscode.window.activeTextEditor?.document.uri;
+  const project = detectVitteProject(activeUri?.fsPath ?? folder.uri.fsPath);
+  const root = resolveProjectRoot(configuredRoot, folder.uri.fsPath, activeUri?.fsPath) ?? folder.uri.fsPath;
+  const source = configuredRoot ? "vitte.project.root" : project ? path.basename(project.configFile) : uiText("workspace folder", "dossier de travail");
+  statusProjectTooltip = uiText(`Project: ${root}\nDetected from: ${source}`, `Projet : ${root}\nDétecté depuis : ${source}`);
+  statusProjectName = path.basename(root) || folder.name;
+  refreshDiagnosticsStatus();
 }
 
 function ensureFileWatchers(context: vscode.ExtensionContext): vscode.FileSystemWatcher[] {
@@ -1806,9 +2026,9 @@ function updateCommandButtons(context: vscode.ExtensionContext): void {
   commandMenuButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, priority--);
   commandMenuButton.text = "$(list-selection) Vitte";
   commandMenuButton.command = "vitte.showCommandMenu";
-  commandMenuButton.tooltip = "Show additional Vitte commands";
-  commandMenuButton.name = "Vitte Command Menu";
-  commandMenuButton.accessibilityInformation = { label: "Vitte command menu", role: "button" };
+  commandMenuButton.tooltip = uiText("Show additional Vitte commands", "Afficher les autres commandes Vitte");
+  commandMenuButton.name = uiText("Vitte Command Menu", "Menu des commandes Vitte");
+  commandMenuButton.accessibilityInformation = { label: uiText("Vitte command menu", "Menu des commandes Vitte"), role: "button" };
   commandMenuButton.show();
   context.subscriptions.push(commandMenuButton);
 }
@@ -1851,10 +2071,10 @@ async function showStartupCommandPrompt(context: vscode.ExtensionContext): Promi
   }
   if (items.length === 0) return;
 
-  const moreItem: CommandMessageItem = { title: "More…" };
-  const dismissItem: CommandMessageItem = { title: "Dismiss", isCloseAffordance: true };
+  const moreItem: CommandMessageItem = { title: uiText("More…", "Autres commandes…") };
+  const dismissItem: CommandMessageItem = { title: uiText("Dismiss", "Ignorer"), isCloseAffordance: true };
   const selection = await vscode.window.showInformationMessage<CommandMessageItem>(
-    "Vitte is ready — run a command:",
+    uiText("Vitte is ready — run a command:", "Vitte est prêt — choisissez une commande :"),
     ...items,
     moreItem,
     dismissItem
@@ -1886,14 +2106,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   } catch {
     statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   }
-  statusItem.name = "Vitte LSP";
-  statusItem.command = "vitte.showServerLog";
+  statusItem.name = uiText("Vitte language server, compiler and project status", "État du serveur de langage, du compilateur et du projet Vitte");
+  statusItem.command = "vitte.showStatusMenu";
   context.subscriptions.push(output, statusItem, projectOutput);
   if (process.env.VSCODE_TESTING === "1") {
     ensureTestingWorkspaceFolder(context);
   }
-  setStatusBase("$(rocket)", "Vitte Language Server");
-  refreshDiagnosticsStatus();
+  setStatusBase(
+    isRelevantVitteContext() ? "$(gear)" : "$(circle-slash)",
+    isRelevantVitteContext()
+      ? uiText("Vitte language server: starting", "Serveur de langage Vitte : démarrage")
+      : uiText("Vitte language server: waiting for a Vitte project", "Serveur de langage Vitte : en attente d’un projet Vitte"),
+  );
+  refreshStatusContext();
   statusItem.show();
   reportSettingsIssues(output, "activate");
   updateSuggestionEngineModeSuffix();
@@ -1908,9 +2133,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
     optionalEngineWorkspaceRoot = undefined;
     clearRuntimeLocatorCache();
+    for (const key of new Set([
+      ...compilerRuntimeStatusByFolder.keys(),
+      ...compilerValidationByFolder.keys(),
+      ...(vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.toString()),
+    ])) {
+      compilerValidationGenerationByFolder.set(key, (compilerValidationGenerationByFolder.get(key) ?? 0) + 1);
+    }
     compilerRuntimeStatusByFolder.clear();
+    compilerRuntimeDetailsByFolder.clear();
     compilerValidationByFolder.clear();
     lastCompilerWarningByFolder.clear();
+    refreshStatusContext();
     for (const document of vscode.workspace.textDocuments) {
       if (isVitteDocument(document)) {
         const folder = vscode.workspace.getWorkspaceFolder(document.uri);
@@ -2087,6 +2321,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     vscode.commands.registerCommand("vitte.showServerLog", () => {
       output.show(true);
     }),
+    vscode.commands.registerCommand("vitte.showStatusMenu", () => showVitteStatusMenu()),
+    vscode.commands.registerCommand("vitte.projectActions", () => showVitteProjectActions()),
+    vscode.commands.registerCommand("vitte.selectTarget", (folderUri?: unknown) => selectVitteBuildTarget(folderUri)),
     vscode.commands.registerCommand("vitte.detectProject", async () => {
       const activeUri = vscode.window.activeTextEditor?.document.uri;
       const activeFolder = activeUri ? vscode.workspace.getWorkspaceFolder(activeUri) : undefined;
@@ -2815,7 +3052,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
   await ensureBaselineContributedCommands(context);
 
   // Refresh status depending on the active editor
-  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(updateStatusText));
+  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor((editor) => {
+    updateStatusText(editor);
+    refreshStatusContext();
+  }));
   context.subscriptions.push(vscode.languages.registerInlineCompletionItemProvider(
     LANGUAGES.map((id) => ({ language: id, scheme: "file" })),
     {
@@ -2899,22 +3139,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
     },
   ));
   updateStatusText(vscode.window.activeTextEditor ?? undefined);
+  refreshStatusContext();
 
   // Relance si config Vitte change
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
+    if (e.affectsConfiguration("vitte.notifications.showStartupCommands")) {
+      const enabled = vscode.workspace.getConfiguration("vitte").get<boolean>("notifications.showStartupCommands", false);
+      if (!enabled) startupCommandPromptShown = false;
+      else if (!startupCommandPromptShown && client?.state === ClientState.Running) {
+        startupCommandPromptShown = true;
+        void showStartupCommandPrompt(context);
+      }
+    }
     if (e.affectsConfiguration("vitte.commandShortcuts")) {
       updateCommandButtons(context);
     }
     if (e.affectsConfiguration("vitte")) {
       reportSettingsIssues(output, "config");
-      if (["vitte.compiler.path", "vitte.toolchain.root", "vitte.toolchainPath", "vitte.project.root", "vitte.lsp.path"].some((key) => e.affectsConfiguration(key))) {
+      const runtimeSettingKeys = ["vitte.compiler.path", "vitte.toolchain.root", "vitte.toolchainPath", "vitte.project.root", "vitte.lsp.path"] as const;
+      if (runtimeSettingKeys.some((key) => e.affectsConfiguration(key))) {
         clearRuntimeLocatorCache();
-        compilerRuntimeStatusByFolder.clear();
-        compilerValidationByFolder.clear();
-        lastCompilerWarningByFolder.clear();
+        const affectedFolders = (vscode.workspace.workspaceFolders ?? []).filter((folder) =>
+          runtimeSettingKeys.some((key) => e.affectsConfiguration(key, folder.uri)),
+        );
+        for (const folder of affectedFolders) {
+          const key = folder.uri.toString();
+          compilerRuntimeStatusByFolder.delete(key);
+          compilerRuntimeDetailsByFolder.delete(key);
+          compilerValidationGenerationByFolder.set(key, (compilerValidationGenerationByFolder.get(key) ?? 0) + 1);
+          compilerValidationByFolder.delete(key);
+          lastCompilerWarningByFolder.delete(key);
+          void validateCompilerRuntime(folder.uri);
+        }
         for (const document of vscode.workspace.textDocuments) {
           if (isVitteDocument(document)) {
             const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+            if (!folder || !affectedFolders.some((item) => item.uri.toString() === folder.uri.toString())) continue;
             // Invalidate diagnostics produced by the previous toolchain now,
             // then rerun once the replacement executable has been validated.
             scheduleLiveSyntaxDiagnostics(document, "config");
@@ -2926,6 +3186,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Extens
           }
         }
       }
+      refreshStatusContext();
       if (shouldRestartForConfigChange(e)) {
         scheduleConfigRestart(context, "config-change");
       } else {
@@ -3227,12 +3488,18 @@ async function validateCompilerRuntime(scopeUri?: vscode.Uri): Promise<boolean> 
   const inFlight = compilerValidationByFolder.get(key);
   if (inFlight) return inFlight;
 
+  const validationGeneration = (compilerValidationGenerationByFolder.get(key) ?? 0) + 1;
+  compilerValidationGenerationByFolder.set(key, validationGeneration);
   compilerRuntimeStatusByFolder.set(key, "checking");
+  refreshStatusContext();
   const pending = (async () => {
     const runtime = await locateVitteRuntime(undefined, selectedFolder.uri);
+    if (compilerValidationGenerationByFolder.get(key) !== validationGeneration || extensionShuttingDown) return false;
     const version = runtime.versions?.cli;
+    compilerRuntimeDetailsByFolder.set(key, { path: runtime.cliPath, version });
     let message: string | undefined;
     if (!runtime.found) {
+      compilerRuntimeDetailsByFolder.set(key, {});
       compilerRuntimeStatusByFolder.set(key, "missing");
       message = `Vitte compiler was not found for “${selectedFolder.name}”. Set vitte.compiler.path or vitte.toolchain.root for this folder, or install Vitte on PATH.`;
     } else if (!isSupportedVitteCompilerVersion(version)) {
@@ -3243,6 +3510,7 @@ async function validateCompilerRuntime(scopeUri?: vscode.Uri): Promise<boolean> 
     } else {
       compilerRuntimeStatusByFolder.set(key, "supported");
       output.appendLine(`[toolchain:${redactLogText(selectedFolder.name)}] compiler version verified: ${version}`);
+      refreshStatusContext();
       for (const document of vscode.workspace.textDocuments) {
         if (isVitteDocument(document) && vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString() === key) scheduleLiveSyntaxDiagnostics(document, "config");
       }
@@ -3252,6 +3520,7 @@ async function validateCompilerRuntime(scopeUri?: vscode.Uri): Promise<boolean> 
     for (const document of vscode.workspace.textDocuments) {
       if (isVitteDocument(document) && vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString() === key) syntaxLintCollection?.delete(document.uri);
     }
+    refreshStatusContext();
     if (message && message !== lastCompilerWarningByFolder.get(key)) {
       lastCompilerWarningByFolder.set(key, message);
       output.appendLine(`[toolchain] ${redactLogText(message)}`);
@@ -3783,7 +4052,7 @@ async function startClient(context: vscode.ExtensionContext | undefined): Promis
 async function restartClient(context: vscode.ExtensionContext | undefined): Promise<boolean> {
   if (client) {
     const previousClient = client;
-    setStatusBase("$(sync)", "Vitte LSP: restarting…");
+    setStatusBase("$(sync)", uiText("Vitte language server: restarting…", "Serveur de langage Vitte : redémarrage…"));
     // The restart command can run immediately after activation, while the
     // first client is still Starting. LanguageClient.stop() rejects in that
     // state; finish that start first so we do not orphan a live server.
@@ -3964,17 +4233,17 @@ function wireClientState(c: LanguageClient): void {
       newState: ClientState[e.newState],
     });
     if (e.newState === ClientState.Starting) {
-      setStatusBase("$(gear)", "Vitte LSP: starting");
+      setStatusBase("$(gear)", uiText("Vitte language server: starting", "Serveur de langage Vitte : démarrage"));
       void setServerOnlineContext(false);
     } else if (e.newState === ClientState.Running) {
       offlineReason = undefined;
       offlineSince = undefined;
       offlineBannerShown = false;
       cancelOfflineRetry();
-      setStatusBase("$(check)", "Vitte LSP: running");
+      setStatusBase("$(check)", uiText("Vitte language server: ready", "Serveur de langage Vitte : prêt"));
       void setServerOnlineContext(true);
     } else if (e.newState === ClientState.Stopped) {
-      setStatusBase("$(debug-stop)", "Vitte LSP: stopped");
+      setStatusBase("$(debug-stop)", uiText("Vitte language server: stopped", "Serveur de langage Vitte : arrêté"));
       void setServerOnlineContext(false);
       const now = Date.now();
       recentStops.push(now);

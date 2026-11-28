@@ -109,7 +109,7 @@ export async function getToolchain(ctx?: vscode.ExtensionContext, forceRefresh =
 
   const messages: string[] = [];
   const root = configuredToolchainRoot();
-  if (!root) messages.push('Aucun "vitte.toolchain.root" configuré — recherche via PATH…');
+  if (!root) messages.push('No "vitte.toolchain.root" is configured; searching PATH…');
 
   const rootOpt = root !== undefined ? { root } : undefined;
   const cli = await resolveBinary('vitte', { settingKeys: ['compiler.path'], ...rootOpt });
@@ -128,7 +128,7 @@ export async function getToolchain(ctx?: vscode.ExtensionContext, forceRefresh =
   if (bench !== undefined) bins.bench = bench;
 
   const ok = !!cli || !!runtime;
-  if (!ok) messages.push('vitte introuvable (paramètre vitte.compiler.path, vitte.toolchain.root ou PATH).');
+  if (!ok) messages.push('vitte was not found (check vitte.compiler.path, vitte.toolchain.root or PATH).');
 
   const info: ToolchainInfo = { bins, versions: {}, ok, messages };
   if (root !== undefined) info.root = root;

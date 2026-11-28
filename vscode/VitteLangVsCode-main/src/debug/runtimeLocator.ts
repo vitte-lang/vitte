@@ -1,5 +1,6 @@
 import { workspaceBinaryRoots, expandToolPath, resolveProjectRoot } from "../utils/project";
 import { redactLogText } from "../utils/logRedaction";
+import { uiText } from "../utils/uiText";
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -456,7 +457,7 @@ export function registerRuntimeLocatorCommand(ctx: vscode.ExtensionContext, outp
 
   const clearCmd = vscode.commands.registerCommand('vitte.clearRuntimeCache', () => {
     clearRuntimeLocatorCache();
-    vscode.window.showInformationMessage('Vitte: runtime cache cleared. Restart the language server to apply toolchain changes.');
+    vscode.window.setStatusBarMessage(uiText('Vitte runtime cache cleared. Restart the language server to apply toolchain changes.', 'Cache du runtime Vitte effacé. Redémarrez le serveur de langage pour appliquer les changements.'), 4000);
   });
 
   const pickCmd = vscode.commands.registerCommand('vitte.selectRuntime', async (requestedFolderUri?: unknown) => {
@@ -466,32 +467,60 @@ export function registerRuntimeLocatorCommand(ctx: vscode.ExtensionContext, outp
     const activeFolder = requestedFolder ?? (vscode.window.activeTextEditor
       ? vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri)
       : await selectToolchainFolder());
-    const opts: vscode.OpenDialogOptions = {
-      canSelectMany: false,
-      canSelectFiles: true,
-      canSelectFolders: false,
-      openLabel: 'Sélectionner vitte',
-      title: 'Sélectionner le binaire vitte',
-    };
-    if (isWindows()) {
-      opts.filters = { Exécutables: ['exe', 'cmd', 'bat'] };
+    const runtime = await locateVitteRuntime(undefined, activeFolder?.uri);
+    const config = vscode.workspace.getConfiguration('vitte', activeFolder?.uri);
+    const currentSetting = config.get<string>('compiler.path', '').trim();
+    const choices: Array<vscode.QuickPickItem & { action: 'detected' | 'browse' | 'automatic' }> = [];
+    if (runtime.found && runtime.cliPath) {
+      choices.push({
+        label: uiText(`Use detected compiler: ${path.basename(runtime.cliPath)}`, `Utiliser le compilateur détecté : ${path.basename(runtime.cliPath)}`),
+        description: runtime.versions?.cli ? `Vitte CLI ${runtime.versions.cli}` : runtime.cliPath,
+        detail: runtime.cliPath,
+        action: 'detected',
+      });
     }
-    const picked = await vscode.window.showOpenDialog(opts);
-    const uri = picked?.[0];
-    if (!uri) return;
-    const fsPath = uri.fsPath;
-    if (!isExecutableSync(fsPath)) {
-      vscode.window.showErrorMessage('Le fichier sélectionné ne semble pas exécutable.');
-      return;
+    choices.push({ label: uiText('Browse for compiler…', 'Parcourir pour choisir un compilateur…'), description: uiText('Select a Vitte executable from disk', 'Sélectionner un exécutable Vitte sur le disque'), action: 'browse' });
+    if (currentSetting) {
+      choices.push({ label: uiText('Use automatic discovery', 'Utiliser la détection automatique'), description: uiText('Clear vitte.compiler.path and resume discovery', 'Effacer vitte.compiler.path et reprendre la détection'), action: 'automatic' });
     }
+    const selection = await vscode.window.showQuickPick(choices, {
+      title: activeFolder ? uiText(`Select Vitte compiler — ${activeFolder.name}`, `Sélectionner le compilateur Vitte — ${activeFolder.name}`) : uiText('Select Vitte compiler', 'Sélectionner le compilateur Vitte'),
+      placeHolder: uiText('Choose a discovered compiler, browse for one or restore automatic discovery', 'Choisissez un compilateur détecté, parcourez les fichiers ou réactivez la détection automatique'),
+      matchOnDescription: true,
+    });
+    if (!selection) return;
     const target = activeFolder
       ? vscode.ConfigurationTarget.WorkspaceFolder
       : vscode.workspace.workspaceFolders?.length
         ? vscode.ConfigurationTarget.Workspace
         : vscode.ConfigurationTarget.Global;
-    await vscode.workspace.getConfiguration('vitte', activeFolder?.uri).update('compiler.path', fsPath, target);
+    if (selection.action === 'automatic') {
+      await config.update('compiler.path', '', target);
+      clearRuntimeLocatorCache();
+      vscode.window.setStatusBarMessage(uiText('Vitte compiler override cleared; automatic discovery will be used.', 'Le choix du compilateur Vitte est effacé ; la détection automatique sera utilisée.'), 4000);
+      return;
+    }
+
+    let fsPath = selection.action === 'detected' ? runtime.cliPath : undefined;
+    if (selection.action === 'browse') {
+      const opts: vscode.OpenDialogOptions = {
+        canSelectMany: false,
+        canSelectFiles: true,
+        canSelectFolders: false,
+        openLabel: uiText('Select Vitte CLI', 'Sélectionner le CLI Vitte'),
+        title: uiText('Select Vitte compiler executable', 'Sélectionner l’exécutable du compilateur Vitte'),
+      };
+      if (isWindows()) opts.filters = { [uiText('Executables', 'Exécutables')]: ['exe', 'cmd', 'bat'] };
+      fsPath = (await vscode.window.showOpenDialog(opts))?.[0]?.fsPath;
+    }
+    if (!fsPath) return;
+    if (!isExecutableSync(fsPath)) {
+      void vscode.window.showErrorMessage(uiText('The selected file is not executable. Choose the Vitte CLI binary.', 'Le fichier sélectionné n’est pas exécutable. Choisissez le binaire CLI de Vitte.'));
+      return;
+    }
+    await config.update('compiler.path', fsPath, target);
     clearRuntimeLocatorCache();
-    vscode.window.showInformationMessage(`Vitte: CLI défini sur ${fsPath}`);
+    vscode.window.setStatusBarMessage(uiText(`Vitte compiler selected: ${path.basename(fsPath)}`, `Compilateur Vitte sélectionné : ${path.basename(fsPath)}`), 4000);
   });
 
   ctx.subscriptions.push(detectCmd, clearCmd, pickCmd);
@@ -508,6 +537,6 @@ async function selectToolchainFolder(): Promise<vscode.WorkspaceFolder | undefin
     label: folder.name,
     description: folder.uri.fsPath,
     folder,
-  })), { placeHolder: 'Choose the workspace folder whose Vitte toolchain to inspect' });
+  })), { placeHolder: uiText('Choose the workspace folder whose Vitte toolchain to inspect', 'Choisissez le dossier de travail dont vous voulez examiner la chaîne Vitte') });
   return picked?.folder;
 }

@@ -210,6 +210,21 @@
     ],
     "commands": [
       {
+        "command": "vitte.showStatusMenu",
+        "title": "Vitte: Status and Project Health",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.projectActions",
+        "title": "Vitte: Project Actions",
+        "category": "Vitte"
+      },
+      {
+        "command": "vitte.selectTarget",
+        "title": "Vitte: Select Build Target",
+        "category": "Vitte"
+      },
+      {
         "command": "vitte.showServerLog",
         "title": "Vitte: Show Server Log"
       },
@@ -1001,43 +1016,6 @@
             }
           }
         ]
-      }
-    ],
-    "keybindings": [
-      {
-        "command": "vitte.restartServer",
-        "key": "ctrl+shift+r",
-        "when": "editorLangId == vitte"
-      },
-      {
-        "command": "vitte.restartServer",
-        "key": "ctrl+shift+r",
-        "when": "editorLangId == vit"
-      },
-      {
-        "command": "vitte.suggestions.loadNextPage",
-        "key": "ctrl+alt+.",
-        "when": "editorTextFocus && suggestWidgetVisible && (editorLangId == vitte || editorLangId == vit)"
-      },
-      {
-        "command": "vitte.inline.nextSuggestion",
-        "key": "alt+]",
-        "when": "editorTextFocus && (editorLangId == vitte || editorLangId == vit)"
-      },
-      {
-        "command": "vitte.inline.nextEdit",
-        "key": "alt+shift+]",
-        "when": "editorTextFocus && (editorLangId == vitte || editorLangId == vit)"
-      },
-      {
-        "command": "editor.action.inlineSuggest.acceptNextWord",
-        "key": "ctrl+right",
-        "when": "inlineSuggestionVisible && editorTextFocus && (editorLangId == vitte || editorLangId == vit)"
-      },
-      {
-        "command": "editor.action.inlineSuggest.hide",
-        "key": "escape",
-        "when": "inlineSuggestionVisible && editorTextFocus && (editorLangId == vitte || editorLangId == vit)"
       }
     ],
     "taskDefinitions": [
@@ -2496,10 +2474,26 @@
           },
           "scope": "resource"
         },
+        "vitte.lang": {
+          "type": "string",
+          "enum": [
+            "en",
+            "fr"
+          ],
+          "default": "en",
+          "description": "Language for the status item, status/project/compiler/target pickers, module view and diagnostic summaries. Other command titles, project messages and compiler/server text may remain in English.",
+          "scope": "window"
+        },
+        "vitte.notifications.showStartupCommands": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the optional command picker after the language server starts. The default is quiet; commands remain available from the Command Palette and Vitte status menu.",
+          "scope": "window"
+        },
         "vitte.commandShortcuts": {
           "type": "array",
           "default": [],
-          "description": "Customize the shortcuts shown in the status bar and startup prompt. Each entry defines a label, command, and optional icon/tooltip.",
+          "description": "Customize command buttons shown in the status bar. Startup suggestions are opt-in through vitte.notifications.showStartupCommands.",
           "items": {
             "type": "object",
             "required": [
@@ -2530,7 +2524,7 @@
               },
               "startup": {
                 "type": "boolean",
-                "description": "Include this shortcut in the startup toast.",
+                "description": "Include this command in the optional startup picker.",
                 "default": true
               }
             }
@@ -2588,7 +2582,7 @@
         "vitte.build.target": {
           "type": "string",
           "default": "",
-          "description": "Optional target triple or platform forwarded to the CLI as --target. The active C17 backend may reject cross-target requests that it cannot fulfill.",
+          "description": "Optional target triple or platform forwarded unchanged to the CLI as --target. Use Vitte: Select Build Target to set or clear it. The active C17 backend may reject unsupported cross-target requests.",
           "scope": "resource"
         }
       }
